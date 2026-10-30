@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "0.1",
+  "id": "method",
+  "title": "How we compared them",
+  "layout": "text-media",
+  "lead": "human",
+  "blocks": [
+    {
+      "id": "method-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Same period, same orders, one count"
+    },
+    {
+      "id": "method-body",
+      "type": "text",
+      "role": "body",
+      "text": "Each order is counted once, in the channel where the customer placed it. Returns are excluded."
+    },
+    {
+      "id": "method-diagram",
+      "type": "image",
+      "asset": "assets/method.svg",
+      "alt": "Diagram: orders from channel A and channel B flow into one deduplicated count.",
+      "caption": "Orders are deduplicated before the shares are computed."
+    }
+  ],
+  "reading": {
+    "text": "Both channels cover the same quarter. Each order is counted once, in the channel where the customer placed it, and returns are excluded before the shares are computed."
+  }
+}
