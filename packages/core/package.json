@@ -1,0 +1,30 @@
+{
+  "name": "@depthcue/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema/deck.schema.json": "./schema/deck.schema.json",
+    "./schema/scene.schema.json": "./schema/scene.schema.json"
+  },
+  "files": [
+    "dist",
+    "schema"
+  ],
+  "scripts": {
+    "schema": "node scripts/build-schema.mjs",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
+  },
+  "devDependencies": {
+    "json-schema-to-ts": "^3.1.1"
+  }
+}

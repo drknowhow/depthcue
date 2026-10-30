@@ -7,28 +7,28 @@ near-verbatim. Before this repo goes public, drop the user handles or quote only
 
 ## 1. Landscape
 
-| Tool | License, stars | Agent fit | Biggest weakness |
-|---|---|---|---|
-| reveal.js | MIT, 72.5k | HTML, no schema or check | hand-built layout, nothing semantic |
-| Slidev | MIT, 49.3k | MCP and official skill, Markdown diffs | Node and Vue stack; render check undocumented |
-| Marp | MIT, 12.7k | best diffs, ~70 community skills | static, no interaction |
-| Spectacle, impress.js | MIT, 10.2k, 38.2k | none found | hand-coded niches |
-| Quarto, Typst/Touying | MIT | text sources | publishing tools, not live decks |
-| Observable Framework | ISC, 3.7k | static-site generator | not for presenting |
-| Motion Canvas | MIT, 19.6k | code to video | last release Dec 2024, video only |
-| Manim, manim-web, Manim Slides | MIT | code | offline render, young web port |
-| Remotion | custom license, 69.1k | official agent skills (S) | free only up to 3 employees, no reselling derivatives |
-| open-slide | MIT, 9.5k | skills, inspector comments saved as source markers | one maintainer, about 2 months old |
-| Stagecraft | MIT, npm 0.2.2, 2 stars | AGENT.md, 50 components, `check --shots`, presenter window | v0.2, one author; npm name taken |
-| hands-on-deck | MIT, 223 | JSON patches, inspect, diff, render and lint | no charts or animation |
-| CreatPPT | Apache-2.0, 171 | `deck.json` plus CLI `--json` | 9 commits; pages can be images |
-| Presenton | Apache-2.0, 11.5k | REST and MCP async jobs | LLM rewrites text; no verification documented |
-| Open Design | Apache-2.0, 105k | MCP, `od --json`, deck mode, PPTX, MP4 | decks are one mode of a broad tool |
-| guizang-ppt-skill, html-ppt-skill | AGPL 29.0k, MIT 8.9k | validators, Playwright overflow check | AGPL; no PPTX |
-| python-pptx, PptxGenJS | MIT, 3.6k, 6.3k | APIs, no render | python-pptx stalled; off-slide coordinates unclamped |
-| Anthropic pptx skill | proprietary | `validate.py`, LibreOffice to JPEG review | fonts resolve in the user's PowerPoint |
-| Gamma, Pitch, Beautiful.ai, Canva, Figma Slides, Google Slides | closed | APIs and MCPs of varying depth | you do not own a diffable source; Tome slides shut Apr 2025 (S) |
-| Claude and ChatGPT for PowerPoint, Copilot | closed | chat inside PowerPoint | docs advise review before any final deliverable |
+| Tool                                                           | License, stars          | Agent fit                                                  | Biggest weakness                                                |
+| -------------------------------------------------------------- | ----------------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
+| reveal.js                                                      | MIT, 72.5k              | HTML, no schema or check                                   | hand-built layout, nothing semantic                             |
+| Slidev                                                         | MIT, 49.3k              | MCP and official skill, Markdown diffs                     | Node and Vue stack; render check undocumented                   |
+| Marp                                                           | MIT, 12.7k              | best diffs, ~70 community skills                           | static, no interaction                                          |
+| Spectacle, impress.js                                          | MIT, 10.2k, 38.2k       | none found                                                 | hand-coded niches                                               |
+| Quarto, Typst/Touying                                          | MIT                     | text sources                                               | publishing tools, not live decks                                |
+| Observable Framework                                           | ISC, 3.7k               | static-site generator                                      | not for presenting                                              |
+| Motion Canvas                                                  | MIT, 19.6k              | code to video                                              | last release Dec 2024, video only                               |
+| Manim, manim-web, Manim Slides                                 | MIT                     | code                                                       | offline render, young web port                                  |
+| Remotion                                                       | custom license, 69.1k   | official agent skills (S)                                  | free only up to 3 employees, no reselling derivatives           |
+| open-slide                                                     | MIT, 9.5k               | skills, inspector comments saved as source markers         | one maintainer, about 2 months old                              |
+| Stagecraft                                                     | MIT, npm 0.2.2, 2 stars | AGENT.md, 50 components, `check --shots`, presenter window | v0.2, one author; npm name taken                                |
+| hands-on-deck                                                  | MIT, 223                | JSON patches, inspect, diff, render and lint               | no charts or animation                                          |
+| CreatPPT                                                       | Apache-2.0, 171         | `deck.json` plus CLI `--json`                              | 9 commits; pages can be images                                  |
+| Presenton                                                      | Apache-2.0, 11.5k       | REST and MCP async jobs                                    | LLM rewrites text; no verification documented                   |
+| Open Design                                                    | Apache-2.0, 105k        | MCP, `od --json`, deck mode, PPTX, MP4                     | decks are one mode of a broad tool                              |
+| guizang-ppt-skill, html-ppt-skill                              | AGPL 29.0k, MIT 8.9k    | validators, Playwright overflow check                      | AGPL; no PPTX                                                   |
+| python-pptx, PptxGenJS                                         | MIT, 3.6k, 6.3k         | APIs, no render                                            | python-pptx stalled; off-slide coordinates unclamped            |
+| Anthropic pptx skill                                           | proprietary             | `validate.py`, LibreOffice to JPEG review                  | fonts resolve in the user's PowerPoint                          |
+| Gamma, Pitch, Beautiful.ai, Canva, Figma Slides, Google Slides | closed                  | APIs and MCPs of varying depth                             | you do not own a diffable source; Tome slides shut Apr 2025 (S) |
+| Claude and ChatGPT for PowerPoint, Copilot                     | closed                  | chat inside PowerPoint                                     | docs advise review before any final deliverable                 |
 
 Presenting agents are closed: Sutando (private beta, no handoff documented) and Jotform (S). A Slidev MCP can
 navigate slides but has no section ownership, narration or audience Q&A.
@@ -132,15 +132,15 @@ About 250 candidates were then checked on npm, PyPI, crates.io, GitHub user, Doc
 `.io` (404 on the registry or RDAP endpoint counts as free), and the finalists were searched on the web. The
 script was `namecheck.py` in the session scratchpad; it is not kept.
 
-| Name | Registries and domains | Web and GitHub | Cod's rank |
-|---|---|---|---|
-| Depthcue | free except `.com` (parked lander, registered 2013, expires 2026-11-30) | no product; Unity effect repo with 15 stars; graphics and vision term | 1 |
-| Sceneloom | free except `.com` (empty page, registered 2024) | one repo with 0 stars; no brand found | 2 |
-| Plainscene | free everywhere | no repos, no brand | 3 |
-| Loomcue | free everywhere | no repos, no brand | 4 |
-| Weavecue | free everywhere | one repo with 0 stars; "Weave" is crowded (Figma Weave, Weave Inc) | 5 |
-| Cuethread | free except `.com` | `.com` is a live Shopify store, so rejected | |
-| Tavra, Veyra, Orvio, Velto, Sceno | taken on at least one of npm, PyPI, crates.io or `.com`, with active namesakes or crowds | | |
-| Stagecraft, Podium, Lectern, Dais, Rostrum, Plinth, Deckhand, Stagehand | taken | crowded or in this exact space | |
+| Name                                                                    | Registries and domains                                                                   | Web and GitHub                                                        | Cod's rank |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------- |
+| Depthcue                                                                | free except `.com` (parked lander, registered 2013, expires 2026-11-30)                  | no product; Unity effect repo with 15 stars; graphics and vision term | 1          |
+| Sceneloom                                                               | free except `.com` (empty page, registered 2024)                                         | one repo with 0 stars; no brand found                                 | 2          |
+| Plainscene                                                              | free everywhere                                                                          | no repos, no brand                                                    | 3          |
+| Loomcue                                                                 | free everywhere                                                                          | no repos, no brand                                                    | 4          |
+| Weavecue                                                                | free everywhere                                                                          | one repo with 0 stars; "Weave" is crowded (Figma Weave, Weave Inc)    | 5          |
+| Cuethread                                                               | free except `.com`                                                                       | `.com` is a live Shopify store, so rejected                           |            |
+| Tavra, Veyra, Orvio, Velto, Sceno                                       | taken on at least one of npm, PyPI, crates.io or `.com`, with active namesakes or crowds |                                                                       |            |
+| Stagecraft, Podium, Lectern, Dais, Rostrum, Plinth, Deckhand, Stagehand | taken                                                                                    | crowded or in this exact space                                        |            |
 
 No trademark search was possible: the Justia search returned 403. Legal clearance is unresolved for every name.
