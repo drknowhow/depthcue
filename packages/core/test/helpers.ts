@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { DeckFiles } from "../src/index.ts";
+import { type DeckFiles, type Doc, loadDoc } from "../src/index.ts";
 
 export const demoDir = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
 
@@ -32,4 +32,10 @@ export function scene(overrides: Record<string, unknown> = {}): Record<string, u
     blocks: [{ id: "demo-heading", type: "text", role: "heading", text: "Hello" }],
     ...overrides,
   };
+}
+
+export function demoDoc(): Doc {
+  const { doc } = loadDoc(loadDir(demoDir));
+  if (!doc) throw new Error("the demo deck should load");
+  return doc;
 }

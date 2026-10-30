@@ -2,7 +2,7 @@
 // Run with `pnpm schema`; CI re-runs it and fails if the committed output differs.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { deckSchema, sceneSchema } from "../src/schema.ts";
+import { deckSchema, opsSchema, sceneSchema } from "../src/schema.ts";
 
 const require = createRequire(import.meta.url);
 const Ajv = require("ajv").default;
@@ -16,6 +16,7 @@ mkdirSync(new URL("src/generated/", root), { recursive: true });
 for (const [name, schema] of [
   ["deck", deckSchema],
   ["scene", sceneSchema],
+  ["ops", opsSchema],
 ]) {
   writeFileSync(new URL(`schema/${name}.schema.json`, root), `${JSON.stringify(schema, null, 2)}\n`);
 }
@@ -25,14 +26,19 @@ const ajv = new Ajv({
   allErrors: true,
   strict: true,
   discriminator: true,
+  allowUnionTypes: true,
+  // Length limits count UTF-16 units, as `String.length` and an HTML maxlength do. The default counts code points,
+  // which makes Ajv emit require("ajv/dist/runtime/ucs2length") and breaks the self-contained ES module.
   unicode: false,
 });
 ajv.addSchema(deckSchema);
 ajv.addSchema(sceneSchema);
+ajv.addSchema(opsSchema);
 
 const code = standaloneCode(ajv, {
   validateDeck: deckSchema.$id,
   validateScene: sceneSchema.$id,
+  validateOps: opsSchema.$id,
 });
 
 writeFileSync(
@@ -55,6 +61,7 @@ interface Validator {
 }
 export const validateDeck: Validator;
 export const validateScene: Validator;
+export const validateOps: Validator;
 `,
 );
 console.log("schema: wrote schema/*.schema.json and src/generated/validators.js");

@@ -18,7 +18,7 @@
     "format": "biome format --write .",
     "budgets": "node tools/check-budgets.mjs",
     "smoke": "node packages/cli/dist/main.js check fixtures/decks/demo",
-    "check:generated": "pnpm schema && pnpm tokens && git diff --exit-code -- packages/core/schema packages/core/src/generated brand/tokens.css",
+    "check:generated": "node tools/check-generated.mjs",
     "verify": "pnpm lint && pnpm typecheck && pnpm check:generated && pnpm build && pnpm test && pnpm budgets && pnpm smoke"
   },
   "devDependencies": {

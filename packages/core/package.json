@@ -10,7 +10,8 @@
       "default": "./dist/index.js"
     },
     "./schema/deck.schema.json": "./schema/deck.schema.json",
-    "./schema/scene.schema.json": "./schema/scene.schema.json"
+    "./schema/scene.schema.json": "./schema/scene.schema.json",
+    "./schema/ops.schema.json": "./schema/ops.schema.json"
   },
   "files": [
     "dist",

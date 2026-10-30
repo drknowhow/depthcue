@@ -194,3 +194,61 @@ export const deckSchema = {
     },
   },
 } as const;
+
+export const OP_NAMES = [
+  "deck.set",
+  "scene.add",
+  "scene.remove",
+  "scene.move",
+  "scene.set",
+  "block.add",
+  "block.remove",
+  "block.move",
+  "block.set",
+] as const;
+
+const object = { type: "object" } as const;
+/** Where to put something: after this id, or null for the start. */
+const position = { type: ["string", "null"], pattern: ID_PATTERN } as const;
+/** Properties to write; a null value deletes an optional property. Values are checked on the result. */
+const changes = { type: "object", minProperties: 1 } as const;
+
+const op = <Name extends string, Properties extends object, Required extends readonly string[]>(
+  name: Name,
+  properties: Properties,
+  required: Required,
+) =>
+  ({
+    type: "object",
+    additionalProperties: false,
+    required: ["op", ...required],
+    properties: { op: { const: name }, ...properties },
+  }) as const;
+
+/**
+ * The command vocabulary. Shapes are checked here; the values inside `scene`, `block` and `set` are checked
+ * against the scene schema on the document the operations produce, so errors point at the real file and path.
+ */
+export const opsSchema = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "urn:depthcue:schema:0.1:ops",
+  title: "Depthcue operations",
+  type: "array",
+  minItems: 1,
+  maxItems: 100,
+  items: {
+    type: "object",
+    discriminator: { propertyName: "op" },
+    oneOf: [
+      op("deck.set", { set: changes }, ["set"]),
+      op("scene.add", { scene: object, after: position }, ["scene"]),
+      op("scene.remove", { id }, ["id"]),
+      op("scene.move", { id, after: position }, ["id", "after"]),
+      op("scene.set", { id, set: changes }, ["id", "set"]),
+      op("block.add", { scene: id, block: object, after: position }, ["scene", "block"]),
+      op("block.remove", { scene: id, id }, ["scene", "id"]),
+      op("block.move", { scene: id, id, after: position }, ["scene", "id", "after"]),
+      op("block.set", { scene: id, id, set: changes }, ["scene", "id", "set"]),
+    ],
+  },
+} as const;

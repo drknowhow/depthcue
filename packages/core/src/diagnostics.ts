@@ -30,7 +30,8 @@ function schemaAt(root: Json, schemaPath: string): Json {
   return node;
 }
 
-function closest(value: string, options: readonly string[]): string | undefined {
+/** The option within two edits of `value`, if any. */
+export function closest(value: string, options: readonly string[]): string | undefined {
   let best: string | undefined;
   let bestDistance = 3;
   for (const option of options) {
@@ -194,19 +195,30 @@ function explainOne(error: RawError, data: Json, root: Json): Explained {
         message: `Invalid property name ${display(params.propertyName)}.`,
         fix: PATTERN_HINTS[ID_PATTERN] as string,
       };
-    case "discriminator":
-      return params.error === "tag"
-        ? {
-            code: "missing-property",
-            message: 'Missing "type".',
-            fix: 'Set "type" to text, image, bar-chart or clip.',
-          }
-        : {
-            code: "bad-value",
-            path: `${path}/type`,
-            message: `Unknown block type ${display(params.tagValue)}.`,
-            fix: "Use one of: text, image, bar-chart, clip.",
-          };
+    case "discriminator": {
+      const tag = String(params.tag);
+      const branches = (
+        schemaAt(root, error.schemaPath.replace(/\/discriminator$/, "")) as {
+          oneOf?: Array<{ properties?: Record<string, { const?: unknown }> }>;
+        }
+      )?.oneOf;
+      const allowed = (branches ?? []).map((branch) => String(branch.properties?.[tag]?.const));
+      if (params.error === "tag") {
+        return {
+          code: "missing-property",
+          message: `Missing "${tag}".`,
+          fix: `Set "${tag}" to one of: ${allowed.join(", ")}.`,
+        };
+      }
+      const given = String(params.tagValue);
+      const guess = closest(given, allowed);
+      return {
+        code: "bad-value",
+        path: `${path}/${tag}`,
+        message: `Unknown ${tag} ${display(params.tagValue)}.`,
+        fix: `${guess ? `Did you mean "${guess}"? ` : ""}Use one of: ${allowed.join(", ")}.`,
+      };
+    }
     default:
       return { code: keyword, message: error.message ?? "Invalid." };
   }
