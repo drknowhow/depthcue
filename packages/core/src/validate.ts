@@ -1,5 +1,6 @@
 import { explain } from "./diagnostics.ts";
 import { validateDeck, validateScene } from "./generated/validators.js";
+import { checkReferences } from "./references.ts";
 import { deckSchema, sceneSchema } from "./schema.ts";
 import type { Diagnostic, Scene } from "./types.ts";
 
@@ -52,10 +53,49 @@ function assetRefs(scene: Scene): Array<{ path: string; asset: string }> {
   return refs;
 }
 
+/**
+ * Everything checkable about one scene: structure, that its id matches the listing, then (only for a
+ * structurally sound scene) its internal references and that its assets exist.
+ */
+export function checkScenePart(
+  data: unknown,
+  file: string,
+  expectedId: string,
+  assets: ReadonlySet<string>,
+): Diagnostic[] {
+  const out = checkScene(data, file);
+  const sceneId = (data as { id?: unknown } | null)?.id;
+  if (typeof sceneId === "string" && sceneId !== expectedId) {
+    out.push({
+      severity: "error",
+      code: "scene-id-mismatch",
+      file,
+      path: "/id",
+      message: `The file is listed as "${expectedId}" but its id is "${sceneId}".`,
+      fix: `Make the id "${expectedId}", or rename the file and the manifest entry together.`,
+    });
+  }
+  if (out.some((d) => d.code !== "scene-id-mismatch")) return out;
+  out.push(...checkReferences(data as Scene, file));
+  for (const ref of assetRefs(data as Scene)) {
+    if (!assets.has(ref.asset)) {
+      out.push({
+        severity: "error",
+        code: "missing-asset",
+        file,
+        path: ref.path,
+        message: `${ref.asset} does not exist.`,
+        fix: "Add the file to the deck folder, or point at an existing asset.",
+      });
+    }
+  }
+  return out;
+}
+
 /** Structure of every file, plus the cross-file facts: scene files exist, asset files exist, nothing is orphaned. */
 export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
   const out: Diagnostic[] = [];
-  const assets = new Set(files.assets);
+  const assets: ReadonlySet<string> = new Set(files.assets);
   const manifestText = files.text[MANIFEST_FILE];
   if (manifestText === undefined) {
     return [
@@ -99,33 +139,7 @@ export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
       out.push(scene.diagnostic);
       return;
     }
-    const errors = checkScene(scene.data, file);
-    out.push(...errors);
-    const sceneId = (scene.data as { id?: unknown })?.id;
-    if (typeof sceneId === "string" && sceneId !== id) {
-      out.push({
-        severity: "error",
-        code: "scene-id-mismatch",
-        file,
-        path: "/id",
-        message: `The file is listed as "${id}" but its id is "${sceneId}".`,
-        fix: `Make the id "${id}", or rename the file and the manifest entry together.`,
-      });
-    }
-    if (errors.length === 0) {
-      for (const ref of assetRefs(scene.data as Scene)) {
-        if (!assets.has(ref.asset)) {
-          out.push({
-            severity: "error",
-            code: "missing-asset",
-            file,
-            path: ref.path,
-            message: `${ref.asset} does not exist.`,
-            fix: "Add the file to the deck folder, or point at an existing asset.",
-          });
-        }
-      }
-    }
+    out.push(...checkScenePart(scene.data, file, id, assets));
   });
 
   for (const file of Object.keys(files.text)) {
