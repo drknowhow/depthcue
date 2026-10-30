@@ -1,5 +1,5 @@
 {
-  "$comment": "Speed budgets from docs/PLAN.md; the player script and styles limits add up to its 150 KB Brotli player budget. CI fails when a measured size exceeds its limit. A budget whose file is missing also fails, so a renamed output cannot silently pass.",
+  "$comment": "Speed budgets from docs/PLAN.md; the player script and styles limits add up to its 150 KB Brotli player budget; the editor's add up to 120 KB. CI fails when a measured size exceeds its limit. A budget whose file is missing also fails, so a renamed output cannot silently pass.",
   "budgets": [
     {
       "name": "core runtime",
@@ -16,6 +16,18 @@
     {
       "name": "player styles",
       "file": "packages/player/dist/player.css",
+      "metric": "brotli",
+      "limitBytes": 30720
+    },
+    {
+      "name": "editor script",
+      "file": "packages/editor/dist/editor.js",
+      "metric": "brotli",
+      "limitBytes": 92160
+    },
+    {
+      "name": "editor styles",
+      "file": "packages/editor/dist/editor.css",
       "metric": "brotli",
       "limitBytes": 30720
     }

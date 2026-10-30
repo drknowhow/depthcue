@@ -4,7 +4,7 @@ import { checkDeckFiles, type Diagnostic, loadDoc, revisionOf } from "@depthcue/
 import { applyToFolder, openDeck } from "./deck-api.ts";
 import { loadDeckDir } from "./loader.ts";
 import { openRenderer, type RenderOptions } from "./render.ts";
-import { builtPlayerDir, startServer } from "./serve.ts";
+import { builtEditorDir, builtPlayerDir, startServer } from "./serve.ts";
 
 export interface Io {
   out(line: string): void;
@@ -16,6 +16,7 @@ const USAGE = `Usage:
   depthcue rev <deck-folder>
   depthcue apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue serve <deck-folder> [--port <n>]
+  depthcue edit <deck-folder> [--port <n>]
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
 
 check  Checks deck.json, every scene file, every reference and every asset.
@@ -25,6 +26,10 @@ apply  Applies a list of operations as one transaction, or none of them. It is r
 
 serve  Shows the deck in the player at a loopback address and reloads the page when the folder changes.
        The default port is 4173; --port 0 picks a free one.
+
+edit   Opens the editor at a loopback address. Changes go through the same operations an agent uses, save
+       to the folder only when you ask, and a draft survives a closed tab. The deck must pass check.
+       The player is at /present. Same default port as serve; keep one port to keep your drafts.
 
 render Renders scenes in a headless browser at the stage size (default 1280x720, controls hidden), measures
        the result, and reports overflow, clipping, overlap, text that is too small and low contrast. With
@@ -161,7 +166,7 @@ function apply(folder: string, opsFile: string, baseRev: string, json: boolean, 
   return 0;
 }
 
-async function serve(folder: string, port: number, io: Io): Promise<number> {
+async function serve(folder: string, port: number, edit: boolean, io: Io): Promise<number> {
   const diagnostics = checkDeckFiles(loadDeckDir(folder));
   const errors = count(diagnostics, "error");
   const dir = builtPlayerDir();
@@ -169,9 +174,19 @@ async function serve(folder: string, port: number, io: Io): Promise<number> {
     io.err("The player is not built. Run `pnpm build` first.");
     return 2;
   }
+  const editorDir = edit ? builtEditorDir() : undefined;
+  if (editorDir && !existsSync(join(editorDir, "editor.js"))) {
+    io.err("The editor is not built. Run `pnpm build` first.");
+    return 2;
+  }
+  if (edit && errors > 0) {
+    report(io, diagnostics, false);
+    io.err("The editor needs a deck that passes `depthcue check`. Fix these first.");
+    return 1;
+  }
   let server: Awaited<ReturnType<typeof startServer>>;
   try {
-    server = await startServer({ folder, playerDir: dir, port });
+    server = await startServer({ folder, playerDir: dir, port, ...(editorDir ? { editorDir } : {}) });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
       io.err(`Port ${port} is in use. Pick another with --port, or --port 0 for a free one.`);
@@ -179,10 +194,14 @@ async function serve(folder: string, port: number, io: Io): Promise<number> {
     }
     throw error;
   }
-  io.out(`Serving ${folder} at ${server.url}`);
+  io.out(`${edit ? "Editing" : "Serving"} ${folder} at ${server.url}`);
   if (errors > 0)
     io.out(`The deck has ${errors} error${errors === 1 ? "" : "s"}; run \`depthcue check\` for details.`);
-  io.out("Edits to the folder reload the page. Press Ctrl+C to stop.");
+  io.out(
+    edit
+      ? `Present with ${server.url}present. Changes made elsewhere show up in the editor. Press Ctrl+C to stop.`
+      : "Edits to the folder reload the page. Press Ctrl+C to stop.",
+  );
   await new Promise<void>((done) => {
     process.once("SIGINT", () => done());
     process.once("SIGTERM", () => done());
@@ -271,7 +290,7 @@ export function run(argv: readonly string[], io: Io): number | Promise<number> {
       return rev(folder, io);
     }
     if (
-      command === "serve" &&
+      (command === "serve" || command === "edit") &&
       folder &&
       opsFile === undefined &&
       !json &&
@@ -281,7 +300,7 @@ export function run(argv: readonly string[], io: Io): number | Promise<number> {
       if (port !== undefined && !(Number.isInteger(port) && port >= 0 && port <= 65535)) {
         return usage("--port needs a whole number from 0 to 65535.");
       }
-      return serve(folder, port ?? 4173, io).catch((error: Error) => {
+      return serve(folder, port ?? 4173, command === "edit", io).catch((error: Error) => {
         io.err(error.message);
         return 2;
       });

@@ -116,4 +116,46 @@ describe("session history", () => {
     session.apply([title("Two")]);
     expect(seen).toEqual(["apply", "undo", "redo", "saved", "reset"]);
   });
+
+  it("can record an earlier revision as saved when edits arrived while it was being written", () => {
+    const session = createSession(demoDoc());
+    session.apply([title("One")]);
+    const written = session.rev;
+    session.apply([title("Two")]);
+    session.markSaved(written);
+    expect(session.savedRev).toBe(written);
+    expect(session.dirty).toBe(true);
+    session.undo();
+    expect(session.dirty).toBe(false);
+  });
+
+  it("accepts new assets in every history state without touching the revision or dirty flag", () => {
+    const session = createSession(demoDoc());
+    const addImage: Op = {
+      op: "block.add",
+      scene: "opening",
+      block: { id: "photo", type: "image", asset: "assets/new-photo.png", alt: "A photo" },
+    };
+    expect(session.apply([addImage]).ok).toBe(false);
+    session.apply([title("One")]);
+    session.apply([title("Two")]);
+    const seen: SessionEvent["type"][] = [];
+    session.subscribe((event) => seen.push(event.type));
+    const rev = session.rev;
+
+    session.addAssets(["assets/new-photo.png"]);
+    session.addAssets(["assets/new-photo.png"]);
+    expect(seen).toEqual(["assets"]);
+    expect(session.rev).toBe(rev);
+    expect(session.dirty).toBe(true);
+    expect(session.doc.assets.has("assets/new-photo.png")).toBe(true);
+
+    session.undo();
+    session.undo();
+    expect(session.dirty).toBe(false);
+    expect(session.apply([addImage]).ok).toBe(true);
+    expect(session.undo()).toBe(true);
+    expect(session.redo()).toBe(true);
+    expect(session.doc.assets.has("assets/new-photo.png")).toBe(true);
+  });
 });

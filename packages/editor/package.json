@@ -1,0 +1,21 @@
+{
+  "name": "@depthcue/editor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@depthcue/core": "workspace:*",
+    "@depthcue/player": "workspace:*"
+  }
+}

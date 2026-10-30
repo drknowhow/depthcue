@@ -1,8 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { createReadStream, existsSync, realpathSync, statSync, watch } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { dirname, extname, join, resolve, sep } from "node:path";
+import { type EditContext, handleEditApi } from "./edit-api.ts";
 
 export interface ServeOptions {
   /** The deck folder: deck.json, scenes/, assets/. */
@@ -11,11 +13,18 @@ export interface ServeOptions {
   playerDir: string;
   port: number;
   host?: string;
+  /**
+   * Directory holding the built editor. When set the server is in edit mode: `/` is the editor, the player moves
+   * to `/present`, and the token-protected write calls under `/_depthcue/api/` are answered.
+   */
+  editorDir?: string;
 }
 
 export interface RunningServer {
   url: string;
   port: number;
+  /** The secret the editor page sends with every write call; only set in edit mode. */
+  token: string | undefined;
   close(): Promise<void>;
 }
 
@@ -24,6 +33,14 @@ export function builtPlayerDir(): string {
   const require = createRequire(import.meta.url);
   return join(dirname(require.resolve("@depthcue/player/package.json")), "dist");
 }
+
+/** The directory holding the built editor, found through the editor package. */
+export function builtEditorDir(): string {
+  const require = createRequire(import.meta.url);
+  return join(dirname(require.resolve("@depthcue/editor/package.json")), "dist");
+}
+
+const LOOPBACK_NAMES = ["127.0.0.1", "localhost", "::1"];
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -59,6 +76,24 @@ const SHELL = `<!doctype html>
 <body>
 <div id="depthcue" data-deck="" data-live></div>
 <script type="module" src="/_depthcue/app.js"></script>
+</body>
+</html>
+`;
+
+const editorShell = (token: string) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="depthcue-token" content="${token}">
+<title>Depthcue editor</title>
+<link rel="icon" href="${FAVICON}">
+<link rel="stylesheet" href="/_depthcue/editor/editor.css">
+</head>
+<body>
+<div id="depthcue-editor"></div>
+<script type="module" src="/_depthcue/editor/editor.js"></script>
 </body>
 </html>
 `;
@@ -120,29 +155,63 @@ function sendFile(request: IncomingMessage, response: ServerResponse, path: stri
 export function startServer(options: ServeOptions): Promise<RunningServer> {
   const folder = realpathSync(resolve(options.folder));
   const playerDir = realpathSync(resolve(options.playerDir));
+  const editorDir = options.editorDir === undefined ? undefined : realpathSync(resolve(options.editorDir));
+  const token = editorDir === undefined ? undefined : randomBytes(24).toString("base64url");
   const host = options.host ?? "127.0.0.1";
   const listeners = new Set<ServerResponse>();
+  let boundPort = 0;
+
+  const edit: EditContext | undefined =
+    token === undefined
+      ? undefined
+      : {
+          folder,
+          token,
+          origins: () =>
+            LOOPBACK_NAMES.map((name) => `http://${name === "::1" ? "[::1]" : name}:${boundPort}`),
+        };
+
+  const page = (request: IncomingMessage, response: ServerResponse, html: string) => {
+    response.writeHead(200, {
+      "Content-Type": TYPES[".html"] as string,
+      "Content-Security-Policy": PAGE_POLICY,
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "no-store",
+    });
+    return response.end(request.method === "HEAD" ? undefined : html);
+  };
 
   const handle = (request: IncomingMessage, response: ServerResponse) => {
     const named = (request.headers.host ?? "").replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
-    if (!["127.0.0.1", "localhost", "::1"].includes(named)) return send(response, 403, "Unknown host.");
-    if (request.method !== "GET" && request.method !== "HEAD") return send(response, 405, "Use GET.");
+    if (!LOOPBACK_NAMES.includes(named)) return send(response, 403, "Unknown host.");
 
+    let url: URL;
     let path: string;
     try {
-      path = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
+      url = new URL(request.url ?? "/", "http://localhost");
+      path = decodeURIComponent(url.pathname);
     } catch {
       return send(response, 400, "Bad path.");
     }
 
-    if (path === "/" || path === "/index.html") {
-      response.writeHead(200, {
-        "Content-Type": TYPES[".html"] as string,
-        "Content-Security-Policy": PAGE_POLICY,
-        "X-Content-Type-Options": "nosniff",
-        "Cache-Control": "no-store",
+    // The write calls check their own methods, token and origin; everything else stays read-only. The route is
+    // taken from the normalised path, so "/_depthcue/api/../x" is never mistaken for an API call.
+    if (edit && url.pathname.startsWith("/_depthcue/api/")) {
+      void handleEditApi(request, response, url, edit).then((handled) => {
+        if (!handled) send(response, 404, "Not found.");
       });
-      return response.end(request.method === "HEAD" ? undefined : SHELL);
+      return undefined;
+    }
+    if (request.method !== "GET" && request.method !== "HEAD") return send(response, 405, "Use GET.");
+
+    if (path === "/" || path === "/index.html") {
+      return page(request, response, token === undefined ? SHELL : editorShell(token));
+    }
+    if (edit && (path === "/present" || path === "/present/")) return page(request, response, SHELL);
+
+    if (editorDir && path.startsWith("/_depthcue/editor/")) {
+      const file = inside(editorDir, path.slice("/_depthcue/editor/".length));
+      return file ? sendFile(request, response, file) : send(response, 404, "Not found.");
     }
 
     if (path === "/_depthcue/events") {
@@ -190,8 +259,10 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     server.once("error", reject);
     server.listen(options.port, host, () => {
       const { port } = server.address() as AddressInfo;
+      boundPort = port;
       resolveStart({
         port,
+        token,
         url: `http://${host === "::1" ? "[::1]" : host}:${port}/`,
         close: () =>
           new Promise<void>((done) => {
