@@ -1,7 +1,10 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { applyOps, checkDeckFiles, type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
 import { loadDeckDir } from "./loader.ts";
 import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
+import { startServer } from "./serve.ts";
 
 export interface Io {
   out(line: string): void;
@@ -12,11 +15,15 @@ const USAGE = `Usage:
   depthcue check <deck-folder> [--json]
   depthcue rev <deck-folder>
   depthcue apply <deck-folder> <ops.json> --base-rev <rev> [--json]
+  depthcue serve <deck-folder> [--port <n>]
 
 check  Checks deck.json, every scene file, every reference and every asset.
 rev    Prints the deck's revision, a hash of its content. Pass it back as --base-rev.
 apply  Applies a list of operations as one transaction, or none of them. It is rejected
        when --base-rev is not the current revision, and the files stay untouched.
+
+serve  Shows the deck in the player at a loopback address and reloads the page when the folder changes.
+       The default port is 4173; --port 0 picks a free one.
 
 Exit codes: 0 done, 1 errors found or edit rejected, 2 could not run, 3 stale revision.`;
 
@@ -40,16 +47,19 @@ interface Parsed {
   positional: string[];
   json: boolean;
   baseRev: string | undefined;
+  port: number | undefined;
   unknown: string[];
 }
 
 function parse(args: readonly string[]): Parsed {
-  const parsed: Parsed = { positional: [], json: false, baseRev: undefined, unknown: [] };
+  const parsed: Parsed = { positional: [], json: false, baseRev: undefined, port: undefined, unknown: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
     if (arg === "--json") parsed.json = true;
     else if (arg === "--base-rev") parsed.baseRev = args[++i];
     else if (arg.startsWith("--base-rev=")) parsed.baseRev = arg.slice("--base-rev=".length);
+    else if (arg === "--port") parsed.port = Number(args[++i]);
+    else if (arg.startsWith("--port=")) parsed.port = Number(arg.slice("--port=".length));
     else if (arg.startsWith("--")) parsed.unknown.push(arg);
     else parsed.positional.push(arg);
   }
@@ -144,9 +154,44 @@ function apply(folder: string, opsFile: string, baseRev: string, json: boolean, 
   return 0;
 }
 
-export function run(argv: readonly string[], io: Io): number {
+function playerDir(): string {
+  const require = createRequire(import.meta.url);
+  return join(dirname(require.resolve("@depthcue/player/package.json")), "dist");
+}
+
+async function serve(folder: string, port: number, io: Io): Promise<number> {
+  const diagnostics = checkDeckFiles(loadDeckDir(folder));
+  const errors = count(diagnostics, "error");
+  const dir = playerDir();
+  if (!existsSync(join(dir, "app.js"))) {
+    io.err("The player is not built. Run `pnpm build` first.");
+    return 2;
+  }
+  let server: Awaited<ReturnType<typeof startServer>>;
+  try {
+    server = await startServer({ folder, playerDir: dir, port });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+      io.err(`Port ${port} is in use. Pick another with --port, or --port 0 for a free one.`);
+      return 2;
+    }
+    throw error;
+  }
+  io.out(`Serving ${folder} at ${server.url}`);
+  if (errors > 0)
+    io.out(`The deck has ${errors} error${errors === 1 ? "" : "s"}; run \`depthcue check\` for details.`);
+  io.out("Edits to the folder reload the page. Press Ctrl+C to stop.");
+  await new Promise<void>((done) => {
+    process.once("SIGINT", () => done());
+    process.once("SIGTERM", () => done());
+  });
+  await server.close();
+  return 0;
+}
+
+export function run(argv: readonly string[], io: Io): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, baseRev, unknown } = parse(rest);
+  const { positional, json, baseRev, port, unknown } = parse(rest);
   const [folder, opsFile, ...extra] = positional;
   const usage = (message?: string) => {
     io.err(message ? `${message}\n\n${USAGE}` : USAGE);
@@ -161,6 +206,15 @@ export function run(argv: readonly string[], io: Io): number {
     }
     if (command === "rev" && folder && opsFile === undefined && !json && baseRev === undefined) {
       return rev(folder, io);
+    }
+    if (command === "serve" && folder && opsFile === undefined && !json && baseRev === undefined) {
+      if (port !== undefined && !(Number.isInteger(port) && port >= 0 && port <= 65535)) {
+        return usage("--port needs a whole number from 0 to 65535.");
+      }
+      return serve(folder, port ?? 4173, io).catch((error: Error) => {
+        io.err(error.message);
+        return 2;
+      });
     }
     if (command === "apply" && folder && opsFile) {
       if (baseRev === undefined) {
