@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@depthcue/core": root("packages/core/src/index.ts"),
+      "@depthcue/player": root("packages/player/src/index.ts"),
       "@depthcue/cli/deck-api": root("packages/cli/src/deck-api.ts"),
       "@depthcue/cli/render": root("packages/cli/src/render.ts"),
     },

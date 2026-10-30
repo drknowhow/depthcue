@@ -1,7 +1,7 @@
 import { type ApplyResult, applyOps, type Op } from "./apply.ts";
 import { type Doc, revisionOf } from "./doc.ts";
 
-export type SessionEventType = "apply" | "undo" | "redo" | "reset" | "saved";
+export type SessionEventType = "apply" | "undo" | "redo" | "reset" | "saved" | "assets";
 
 export interface SessionEvent {
   type: SessionEventType;
@@ -30,7 +30,13 @@ export interface Session {
   redo(): boolean;
   /** Replaces the document and clears history, for a reload from disk or a recovered draft. */
   reset(doc: Doc, options?: { dirty?: boolean }): void;
-  markSaved(): void;
+  /** Records that `rev` (default: the present revision) is what is on disk now. */
+  markSaved(rev?: string): void;
+  /**
+   * Makes newly added files under assets/ available to references, in the present document and in every undo
+   * and redo state, without touching the revision, the history or the dirty flag.
+   */
+  addAssets(paths: readonly string[]): void;
   subscribe(listener: (event: SessionEvent) => void): () => void;
 }
 
@@ -121,9 +127,20 @@ export function createSession(initial: Doc, options: { historyLimit?: number } =
       lastCoalesce = undefined;
       emit("reset", prevRev);
     },
-    markSaved() {
-      savedRev = present.rev;
+    markSaved(rev) {
+      savedRev = rev ?? present.rev;
       emit("saved", present.rev);
+    },
+    addAssets(paths) {
+      if (paths.every((path) => present.doc.assets.has(path))) return;
+      const widen = (snapshot: Snapshot): Snapshot => ({
+        rev: snapshot.rev,
+        doc: { ...snapshot.doc, assets: new Set([...snapshot.doc.assets, ...paths]) },
+      });
+      present = widen(present);
+      past = past.map(widen);
+      future = future.map(widen);
+      emit("assets", present.rev);
     },
     subscribe(listener) {
       listeners.add(listener);

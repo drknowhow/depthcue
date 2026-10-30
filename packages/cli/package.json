@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@depthcue/core": "workspace:*",
+    "@depthcue/editor": "workspace:*",
     "@depthcue/player": "workspace:*",
     "playwright-core": "1.64.0"
   }

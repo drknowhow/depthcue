@@ -1,5 +1,6 @@
 import "./player.css";
 
+export { h } from "./dom.ts";
 export type { PlayerSource } from "./load.ts";
 export { loadDeck } from "./load.ts";
 export type { Position, Route } from "./model.ts";

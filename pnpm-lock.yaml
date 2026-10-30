@@ -32,6 +32,9 @@ importers:
       '@depthcue/core':
         specifier: workspace:*
         version: link:../core
+      '@depthcue/editor':
+        specifier: workspace:*
+        version: link:../editor
       '@depthcue/player':
         specifier: workspace:*
         version: link:../player
@@ -48,6 +51,15 @@ importers:
       json-schema-to-ts:
         specifier: ^3.1.1
         version: 3.1.1
+
+  packages/editor:
+    devDependencies:
+      '@depthcue/core':
+        specifier: workspace:*
+        version: link:../core
+      '@depthcue/player':
+        specifier: workspace:*
+        version: link:../player
 
   packages/mcp:
     dependencies:
