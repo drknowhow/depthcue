@@ -1,0 +1,31 @@
+{
+  "name": "depthcue-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "schema": "pnpm --filter @depthcue/core schema",
+    "tokens": "node tools/build-tokens.mjs",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "budgets": "node tools/check-budgets.mjs",
+    "smoke": "node packages/cli/dist/main.js check fixtures/decks/demo",
+    "check:generated": "pnpm schema && pnpm tokens && git diff --exit-code -- packages/core/schema packages/core/src/generated brand/tokens.css",
+    "verify": "pnpm lint && pnpm typecheck && pnpm check:generated && pnpm build && pnpm test && pnpm budgets && pnpm smoke"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}
