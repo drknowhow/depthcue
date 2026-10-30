@@ -1,10 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-import { applyOps, checkDeckFiles, type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { checkDeckFiles, type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
+import { applyToFolder, openDeck } from "./deck-api.ts";
 import { loadDeckDir } from "./loader.ts";
-import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
-import { startServer } from "./serve.ts";
+import { openRenderer, type RenderOptions } from "./render.ts";
+import { builtPlayerDir, startServer } from "./serve.ts";
 
 export interface Io {
   out(line: string): void;
@@ -16,6 +16,7 @@ const USAGE = `Usage:
   depthcue rev <deck-folder>
   depthcue apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue serve <deck-folder> [--port <n>]
+  depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
 
 check  Checks deck.json, every scene file, every reference and every asset.
 rev    Prints the deck's revision, a hash of its content. Pass it back as --base-rev.
@@ -24,6 +25,11 @@ apply  Applies a list of operations as one transaction, or none of them. It is r
 
 serve  Shows the deck in the player at a loopback address and reloads the page when the folder changes.
        The default port is 4173; --port 0 picks a free one.
+
+render Renders scenes in a headless browser at the stage size (default 1280x720, controls hidden), measures
+       the result, and reports overflow, clipping, overlap, text that is too small and low contrast. With
+       --out it also writes one PNG per scene. It needs Chrome or Edge; set DEPTHCUE_BROWSER for another.
+       Without a scene it renders them all. --step shows that many steps (default: all).
 
 Exit codes: 0 done, 1 errors found or edit rejected, 2 could not run, 3 stale revision.`;
 
@@ -43,25 +49,33 @@ function summary(diagnostics: readonly Diagnostic[]): string {
   return `${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}`;
 }
 
+const VALUE_FLAGS = ["base-rev", "port", "out", "step", "width", "height"] as const;
+type ValueFlag = (typeof VALUE_FLAGS)[number];
+
 interface Parsed {
   positional: string[];
   json: boolean;
-  baseRev: string | undefined;
-  port: number | undefined;
+  values: Partial<Record<ValueFlag, string>>;
   unknown: string[];
 }
 
 function parse(args: readonly string[]): Parsed {
-  const parsed: Parsed = { positional: [], json: false, baseRev: undefined, port: undefined, unknown: [] };
+  const parsed: Parsed = { positional: [], json: false, values: {}, unknown: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
-    if (arg === "--json") parsed.json = true;
-    else if (arg === "--base-rev") parsed.baseRev = args[++i];
-    else if (arg.startsWith("--base-rev=")) parsed.baseRev = arg.slice("--base-rev=".length);
-    else if (arg === "--port") parsed.port = Number(args[++i]);
-    else if (arg.startsWith("--port=")) parsed.port = Number(arg.slice("--port=".length));
-    else if (arg.startsWith("--")) parsed.unknown.push(arg);
-    else parsed.positional.push(arg);
+    if (arg === "--json") {
+      parsed.json = true;
+      continue;
+    }
+    const flag = VALUE_FLAGS.find((name) => arg === `--${name}` || arg.startsWith(`--${name}=`));
+    if (flag) {
+      const value = arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : args[++i];
+      if (value !== undefined) parsed.values[flag] = value;
+    } else if (arg.startsWith("--")) {
+      parsed.unknown.push(arg);
+    } else {
+      parsed.positional.push(arg);
+    }
   }
   return parsed;
 }
@@ -100,12 +114,6 @@ function rev(folder: string, io: Io): number {
 }
 
 function apply(folder: string, opsFile: string, baseRev: string, json: boolean, io: Io): number {
-  const { doc, diagnostics: loadDiagnostics } = loadDoc(loadDeckDir(folder));
-  if (!doc) {
-    report(io, loadDiagnostics, json);
-    if (!json) io.out(summary(loadDiagnostics));
-    return 1;
-  }
   let ops: unknown;
   try {
     ops = JSON.parse(readFileSync(opsFile, "utf8"));
@@ -114,22 +122,21 @@ function apply(folder: string, opsFile: string, baseRev: string, json: boolean, 
     return 2;
   }
 
-  const result = applyOps(doc, ops, baseRev);
-  if (!result.ok) {
-    report(io, result.diagnostics, json, { applied: false, code: result.code, rev: result.rev });
-    if (!json) io.out(`Rejected (${result.code}); nothing was written. ${summary(result.diagnostics)}`);
-    return result.code === "stale-revision" ? 3 : 1;
-  }
-
-  let written: string[] = [];
-  try {
-    written = saveDeckDir(folder, doc, result.doc);
-  } catch (error) {
-    if (error instanceof ChangedOnDiskError) {
-      io.err(error.message);
+  const outcome = applyToFolder(folder, ops, baseRev);
+  if (!outcome.ok) {
+    if (outcome.code === "changed-on-disk") {
+      io.err(outcome.hint);
       return 3;
     }
-    throw error;
+    report(io, outcome.diagnostics, json, { applied: false, code: outcome.code, rev: outcome.rev });
+    if (!json) {
+      io.out(
+        outcome.code === "unreadable-deck"
+          ? summary(outcome.diagnostics)
+          : `Rejected (${outcome.code}); nothing was written. ${summary(outcome.diagnostics)}`,
+      );
+    }
+    return outcome.code === "stale-revision" ? 3 : 1;
   }
   if (json) {
     io.out(
@@ -137,32 +144,27 @@ function apply(folder: string, opsFile: string, baseRev: string, json: boolean, 
         {
           ok: true,
           applied: true,
-          prevRev: result.prevRev,
-          rev: result.rev,
-          changed: result.changed,
-          removed: result.removed,
-          written,
+          prevRev: outcome.prevRev,
+          rev: outcome.rev,
+          changed: outcome.changed,
+          removed: outcome.removed,
+          written: outcome.written,
         },
         null,
         2,
       ),
     );
   } else {
-    io.out(`Applied. Revision ${result.prevRev} -> ${result.rev}`);
-    for (const path of written) io.out(`  wrote ${path}`);
+    io.out(`Applied. Revision ${outcome.prevRev} -> ${outcome.rev}`);
+    for (const path of outcome.written) io.out(`  wrote ${path}`);
   }
   return 0;
-}
-
-function playerDir(): string {
-  const require = createRequire(import.meta.url);
-  return join(dirname(require.resolve("@depthcue/player/package.json")), "dist");
 }
 
 async function serve(folder: string, port: number, io: Io): Promise<number> {
   const diagnostics = checkDeckFiles(loadDeckDir(folder));
   const errors = count(diagnostics, "error");
-  const dir = playerDir();
+  const dir = builtPlayerDir();
   if (!existsSync(join(dir, "app.js"))) {
     io.err("The player is not built. Run `pnpm build` first.");
     return 2;
@@ -189,10 +191,64 @@ async function serve(folder: string, port: number, io: Io): Promise<number> {
   return 0;
 }
 
+const wholeNumber = (value: string | undefined, min: number, max: number): number | undefined | "bad" => {
+  if (value === undefined) return undefined;
+  const number = Number(value);
+  return Number.isInteger(number) && number >= min && number <= max ? number : "bad";
+};
+
+async function renderCommand(
+  folder: string,
+  scene: string | undefined,
+  options: RenderOptions,
+  out: string | undefined,
+  json: boolean,
+  io: Io,
+): Promise<number> {
+  const opened = openDeck(folder);
+  if (!opened.ok) {
+    report(io, opened.diagnostics, json);
+    if (!json) io.out(summary(opened.diagnostics));
+    return 1;
+  }
+  const ids = scene ? [scene] : opened.doc.deck.scenes;
+  const renderer = await openRenderer(folder);
+  const found: Diagnostic[] = [];
+  const rows: Array<{ scene: string; step: number; screenshot?: string; errors: number }> = [];
+  try {
+    if (out) mkdirSync(out, { recursive: true });
+    for (const id of ids) {
+      const result = await renderer.render(id, { ...options, screenshot: out !== undefined });
+      found.push(...result.diagnostics);
+      const row: (typeof rows)[number] = { scene: id, step: result.step, errors: result.diagnostics.length };
+      if (out && result.png) {
+        row.screenshot = join(out, `${id}.png`);
+        writeFileSync(row.screenshot, result.png);
+      }
+      rows.push(row);
+      if (!json) {
+        io.out(`${row.errors === 0 ? "ok  " : "FAIL"} ${id}${row.screenshot ? `  ${row.screenshot}` : ""}`);
+        for (const diagnostic of result.diagnostics)
+          for (const line of format(diagnostic)) io.out(`  ${line}`);
+      }
+    }
+  } finally {
+    await renderer.close();
+  }
+  const errors = count(found, "error");
+  if (json) report(io, found, true, { scenes: rows });
+  else io.out(`${ids.length} scene${ids.length === 1 ? "" : "s"} rendered, ${summary(found)}`);
+  return errors === 0 ? 0 : 1;
+}
+
 export function run(argv: readonly string[], io: Io): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, baseRev, port, unknown } = parse(rest);
+  const { positional, json, values, unknown } = parse(rest);
+  const baseRev = values["base-rev"];
+  const portText = values.port;
+  const port = portText === undefined ? undefined : Number(portText);
   const [folder, opsFile, ...extra] = positional;
+  const renderFlags = values.out ?? values.step ?? values.width ?? values.height;
   const usage = (message?: string) => {
     io.err(message ? `${message}\n\n${USAGE}` : USAGE);
     return 2;
@@ -201,13 +257,27 @@ export function run(argv: readonly string[], io: Io): number | Promise<number> {
   if (extra.length > 0) return usage(`Unexpected argument ${extra[0]}.`);
 
   try {
-    if (command === "check" && folder && opsFile === undefined && baseRev === undefined) {
+    if (command === "check" && folder && opsFile === undefined && baseRev === undefined && !renderFlags) {
       return check(folder, json, io);
     }
-    if (command === "rev" && folder && opsFile === undefined && !json && baseRev === undefined) {
+    if (
+      command === "rev" &&
+      folder &&
+      opsFile === undefined &&
+      !json &&
+      baseRev === undefined &&
+      !renderFlags
+    ) {
       return rev(folder, io);
     }
-    if (command === "serve" && folder && opsFile === undefined && !json && baseRev === undefined) {
+    if (
+      command === "serve" &&
+      folder &&
+      opsFile === undefined &&
+      !json &&
+      baseRev === undefined &&
+      !renderFlags
+    ) {
       if (port !== undefined && !(Number.isInteger(port) && port >= 0 && port <= 65535)) {
         return usage("--port needs a whole number from 0 to 65535.");
       }
@@ -216,7 +286,24 @@ export function run(argv: readonly string[], io: Io): number | Promise<number> {
         return 2;
       });
     }
-    if (command === "apply" && folder && opsFile) {
+    if (command === "render" && folder && baseRev === undefined && port === undefined) {
+      const step = wholeNumber(values.step, 0, 100);
+      const width = wholeNumber(values.width, 160, 7680);
+      const height = wholeNumber(values.height, 90, 4320);
+      if (step === "bad") return usage("--step needs a whole number from 0 to 100.");
+      if (width === "bad") return usage("--width needs a whole number from 160 to 7680.");
+      if (height === "bad") return usage("--height needs a whole number from 90 to 4320.");
+      const options: RenderOptions = {
+        ...(step === undefined ? {} : { step }),
+        ...(width === undefined ? {} : { width }),
+        ...(height === undefined ? {} : { height }),
+      };
+      return renderCommand(folder, opsFile, options, values.out, json, io).catch((error: Error) => {
+        io.err(error.message);
+        return 2;
+      });
+    }
+    if (command === "apply" && folder && opsFile && !renderFlags) {
       if (baseRev === undefined) {
         return usage(
           "apply needs --base-rev, the revision you read. Get it with: depthcue rev <deck-folder>",

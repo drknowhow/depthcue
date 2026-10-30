@@ -4,7 +4,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "rewriteRelativeImportExtensions": true,
-    "sourceMap": false
+    "sourceMap": false,
+    "declaration": true
   },
   "include": ["src"]
 }
