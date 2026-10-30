@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": { "@depthcue/core": ["../core/src/index.ts"] }
+  },
+  "include": ["src", "test", "vite.config.ts"]
+}
