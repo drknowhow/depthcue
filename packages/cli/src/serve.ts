@@ -1,7 +1,8 @@
 import { createReadStream, existsSync, realpathSync, statSync, watch } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
-import { extname, join, resolve, sep } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 
 export interface ServeOptions {
   /** The deck folder: deck.json, scenes/, assets/. */
@@ -16,6 +17,12 @@ export interface RunningServer {
   url: string;
   port: number;
   close(): Promise<void>;
+}
+
+/** The directory holding the built player, found through the player package so it works from any install. */
+export function builtPlayerDir(): string {
+  const require = createRequire(import.meta.url);
+  return join(dirname(require.resolve("@depthcue/player/package.json")), "dist");
 }
 
 const TYPES: Record<string, string> = {
