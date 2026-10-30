@@ -1,0 +1,227 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:depthcue:schema:0.1:ops",
+  "title": "Depthcue operations",
+  "type": "array",
+  "minItems": 1,
+  "maxItems": 100,
+  "items": {
+    "type": "object",
+    "discriminator": {
+      "propertyName": "op"
+    },
+    "oneOf": [
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "set"
+        ],
+        "properties": {
+          "op": {
+            "const": "deck.set"
+          },
+          "set": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "scene"
+        ],
+        "properties": {
+          "op": {
+            "const": "scene.add"
+          },
+          "scene": {
+            "type": "object"
+          },
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "id"
+        ],
+        "properties": {
+          "op": {
+            "const": "scene.remove"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "id",
+          "after"
+        ],
+        "properties": {
+          "op": {
+            "const": "scene.move"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "id",
+          "set"
+        ],
+        "properties": {
+          "op": {
+            "const": "scene.set"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "set": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "scene",
+          "block"
+        ],
+        "properties": {
+          "op": {
+            "const": "block.add"
+          },
+          "scene": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "block": {
+            "type": "object"
+          },
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "scene",
+          "id"
+        ],
+        "properties": {
+          "op": {
+            "const": "block.remove"
+          },
+          "scene": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "scene",
+          "id",
+          "after"
+        ],
+        "properties": {
+          "op": {
+            "const": "block.move"
+          },
+          "scene": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "scene",
+          "id",
+          "set"
+        ],
+        "properties": {
+          "op": {
+            "const": "block.set"
+          },
+          "scene": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "set": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      }
+    ]
+  }
+}
