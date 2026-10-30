@@ -20,13 +20,13 @@ everyday UI still says "slide". A deck is a guided route through scenes.
 Agent-authored HTML decks are crowded (Slidev, open-slide, Stagecraft, hands-on-deck, CreatPPT, Presenton). A
 feature list will not separate us. These five gaps stay open in the survey:
 
-| Gap | What exists | What Depthcue does |
-|---|---|---|
-| One typed schema that is also the human editing surface | Schema-less HTML, React code, lossy PPTX | JSON Schema, stable ids, every shipped property editable by hand with no model |
-| One render, lint and fix contract | Each tool verifies in its own way, none spans static, animated and video | `deck_render` returns screenshots plus overflow, contrast and reference diagnostics for any scene |
-| Control per section with handback | Closed presenter agents, no documented takeover | Lease protocol: human grants, human takes over instantly, agent failure returns control |
-| Interactive, data-bearing scenes | Humans hand-code Vue or React | Component contracts an agent can fill: chart, evidence, sources addressable per claim |
-| Renderer as a plugin | Remotion license limits, Motion Canvas stale, Manim offline | Kinescript as module 1: live HTML and faithful video from one scene source |
+| Gap                                                     | What exists                                                              | What Depthcue does                                                                                |
+| ------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| One typed schema that is also the human editing surface | Schema-less HTML, React code, lossy PPTX                                 | JSON Schema, stable ids, every shipped property editable by hand with no model                    |
+| One render, lint and fix contract                       | Each tool verifies in its own way, none spans static, animated and video | `deck_render` returns screenshots plus overflow, contrast and reference diagnostics for any scene |
+| Control per section with handback                       | Closed presenter agents, no documented takeover                          | Lease protocol: human grants, human takes over instantly, agent failure returns control           |
+| Interactive, data-bearing scenes                        | Humans hand-code Vue or React                                            | Component contracts an agent can fill: chart, evidence, sources addressable per claim             |
+| Renderer as a plugin                                    | Remotion license limits, Motion Canvas stale, Manim offline              | Kinescript as module 1: live HTML and faithful video from one scene source                        |
 
 ## Principles
 
@@ -52,11 +52,14 @@ objects, so a source supports a claim instead of sitting in the deepest panel.
   "layout": "claim-evidence",
   "lead": "human",
   "summary": { "id": "claim-shift", "text": "Channel B now leads.", "evidenceIds": ["chart-demand"] },
-  "blocks": [{
-    "id": "chart-demand", "type": "bar-chart",
-    "data": [{ "label": "A", "value": 40 }, { "label": "B", "value": 60 }],
-    "sourceIds": ["source-report"]
-  }],
+  "blocks": [
+    {
+      "id": "chart-demand",
+      "type": "bar-chart",
+      "data": [{ "label": "A", "value": 40 }, { "label": "B", "value": 60 }],
+      "sourceIds": ["source-report"]
+    }
+  ],
   "sources": [{ "id": "source-report", "asset": "assets/report.csv" }],
   "reading": { "text": "The supplied snapshot compares the two channels." },
   "steps": [{ "id": "show-evidence", "reveal": ["chart-demand"] }]
@@ -97,14 +100,14 @@ Presentation leases never authorize document edits.
 Proposed targets, not measurements. Reference: a named mid-range laptop, current Chromium, 1080p, a 50-scene
 fixture, 10 Mbps and 50 ms network. CI fails the build on a miss.
 
-| Budget | Target |
-|---|---|
-| Core runtime (schema, commands, player kernel) | 60 KB gzip or less |
+| Budget                                                  | Target                |
+| ------------------------------------------------------- | --------------------- |
+| Core runtime (schema, commands, player kernel)          | 60 KB gzip or less    |
 | Player initial JavaScript, excluding editor and modules | 150 KB Brotli or less |
-| Cold open to usable first scene | p95 1.5 s or less |
-| Preloaded scene change to first visible response | p95 50 ms or less |
-| Animation frame work in core | p95 10 ms or less |
-| Tab memory after traversing 50 scenes | 200 MB or less |
+| Cold open to usable first scene                         | p95 1.5 s or less     |
+| Preloaded scene change to first visible response        | p95 50 ms or less     |
+| Animation frame work in core                            | p95 10 ms or less     |
+| Tab memory after traversing 50 scenes                   | 200 MB or less        |
 
 Three decisions protect them: separate player and editor builds; keep only the current and adjacent scenes live;
 keep compilation, inference and rendering off the presentation path. A heavy module publishes its own budget and
@@ -138,18 +141,18 @@ material and whose audience can open a link or a PDF, or accept a basic editable
 purpose: a user can **create, revise, present offline, recover from mistakes, and deliver the required artifact
 without reopening PowerPoint.** Replacing PowerPoint for everyone is not a v1.0 claim.
 
-| Version | Theme | What ships | Gate |
-|---|---|---|---|
-| 0.1 Proof (2 weeks) | The thesis works | Everything in the v0.1 scope above | 60-second demo; side-by-side trial against Slidev and Stagecraft; speed budgets pass in CI; the first three pilot users have a deck |
-| 0.2 Finish a real deck | Everyday authoring | 8 to 10 flow templates, theme editing, tables, image and asset handling, presenter window (notes, timer, next-scene preview, multi-screen), rehearsal mode, static hosting, handout page | A pilot user finishes their own 15-scene deck. A fixture corpus of 10 real PPTX decks shows what the schema cannot represent |
-| 0.3 Share and survive | Public alpha | Single-file HTML, offline bundle, hosted static build, PDF with one page per click step, lease hardening, bounded PPTX import (unsupported slides kept as marked image fallbacks, with a report of what stays editable) | Clean-machine test; 30-minute fault-injection rehearsal (agent disconnect, stale commands, media failure, display reconnect) |
-| 0.4 Data | The evidence module | Mature charts and tables, data binding to CSV and JSON with provenance, evidence explorer (claim to source), lint that checks a chart against the claim it supports | Chart, claim and source cannot disagree silently |
-| 0.5 Motion | Kinescript, deeper | Scene-authored clips, voice-over through `kinescript-kokoro`, captions from reading text, agent narration, video export of a chosen route, interaction state and narration track | One deck exports to a narrated video that matches the live run |
-| 0.6 Modules | Open to others | Public module SDK (manifest, hydration, fallback, budgets, `module init`), second interactive module (diagram explorer), theme and template authoring guide | A third party ships a module without touching core; the heavy-module budget test passes |
-| 0.7 Interop | Honest PPTX | Editable PPTX export for text, images, tables and notes; published supported-subset document and fixture corpus; Markdown import (Slidev, Marp) | Every fixture keeps supported content editable; unsupported content gets a diagnostic and a fallback |
-| 0.8 Hardening | Trust | WCAG 2.2 AA audit, security review of the module sandbox and MCP App iframe, measured performance report on named hardware, schema migration tool, crash-recovery corpus | No open critical or high findings |
-| 0.9 Release candidate | Polish | Docs and brand site complete, 10 example decks, theme gallery of 6, install docs, schema freeze, bug bash | Release-candidate pilots pass the v1.0 criteria below |
-| 1.0 Stable | Promise kept | Schema 1.0 with migrations, compatibility policy for modules, support policy | The six criteria below |
+| Version                | Theme               | What ships                                                                                                                                                                                                              | Gate                                                                                                                                |
+| ---------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1 Proof (2 weeks)    | The thesis works    | Everything in the v0.1 scope above                                                                                                                                                                                      | 60-second demo; side-by-side trial against Slidev and Stagecraft; speed budgets pass in CI; the first three pilot users have a deck |
+| 0.2 Finish a real deck | Everyday authoring  | 8 to 10 flow templates, theme editing, tables, image and asset handling, presenter window (notes, timer, next-scene preview, multi-screen), rehearsal mode, static hosting, handout page                                | A pilot user finishes their own 15-scene deck. A fixture corpus of 10 real PPTX decks shows what the schema cannot represent        |
+| 0.3 Share and survive  | Public alpha        | Single-file HTML, offline bundle, hosted static build, PDF with one page per click step, lease hardening, bounded PPTX import (unsupported slides kept as marked image fallbacks, with a report of what stays editable) | Clean-machine test; 30-minute fault-injection rehearsal (agent disconnect, stale commands, media failure, display reconnect)        |
+| 0.4 Data               | The evidence module | Mature charts and tables, data binding to CSV and JSON with provenance, evidence explorer (claim to source), lint that checks a chart against the claim it supports                                                     | Chart, claim and source cannot disagree silently                                                                                    |
+| 0.5 Motion             | Kinescript, deeper  | Scene-authored clips, voice-over through `kinescript-kokoro`, captions from reading text, agent narration, video export of a chosen route, interaction state and narration track                                        | One deck exports to a narrated video that matches the live run                                                                      |
+| 0.6 Modules            | Open to others      | Public module SDK (manifest, hydration, fallback, budgets, `module init`), second interactive module (diagram explorer), theme and template authoring guide                                                             | A third party ships a module without touching core; the heavy-module budget test passes                                             |
+| 0.7 Interop            | Honest PPTX         | Editable PPTX export for text, images, tables and notes; published supported-subset document and fixture corpus; Markdown import (Slidev, Marp)                                                                         | Every fixture keeps supported content editable; unsupported content gets a diagnostic and a fallback                                |
+| 0.8 Hardening          | Trust               | WCAG 2.2 AA audit, security review of the module sandbox and MCP App iframe, measured performance report on named hardware, schema migration tool, crash-recovery corpus                                                | No open critical or high findings                                                                                                   |
+| 0.9 Release candidate  | Polish              | Docs and brand site complete, 10 example decks, theme gallery of 6, install docs, schema freeze, bug bash                                                                                                               | Release-candidate pilots pass the v1.0 criteria below                                                                               |
+| 1.0 Stable             | Promise kept        | Schema 1.0 with migrations, compatibility policy for modules, support policy                                                                                                                                            | The six criteria below                                                                                                              |
 
 **v1.0 exit criteria.**
 
@@ -239,16 +242,16 @@ after 2026-11-30. Any purchase goes through the spending gate and Dimitri's appr
 
 ## Early tests (run before building on the assumption)
 
-| Risk | Test |
-|---|---|
-| We are a fourth Stagecraft | Same five tasks in Depthcue, Slidev and Stagecraft, side by side, by an agent and by a person; record time and failures |
-| Human repair is hostile | Five non-technical people repair an agent deck: fix layout, change a chart, reorder a section, no prompting |
-| Modules erode speed | Three deliberately heavy dummy modules; check load, disposal, memory recovery and scene-change budgets |
-| Live handoff embarrasses us | Inject delays, disconnects and stale commands during rehearsal; takeover stays immediate and keeps state |
-| Sharing fails off our machine | Send the offline folder to a clean machine with no account, Python or key; it must present and read |
-| Screenshots are not repeatable | 20 screenshots of one deck per engine with animations disabled and zero pixel diff |
-| Transitions jank outside Chromium | 100-element scene with a View Transition at 60 and 120 Hz in Chromium, Firefox, WebKit; count dropped frames |
-| The op API is worse than rewriting the file | 20 edit tasks, `deck_apply` against whole-file rewrite; compare success, calls and tokens |
+| Risk                                        | Test                                                                                                                    |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| We are a fourth Stagecraft                  | Same five tasks in Depthcue, Slidev and Stagecraft, side by side, by an agent and by a person; record time and failures |
+| Human repair is hostile                     | Five non-technical people repair an agent deck: fix layout, change a chart, reorder a section, no prompting             |
+| Modules erode speed                         | Three deliberately heavy dummy modules; check load, disposal, memory recovery and scene-change budgets                  |
+| Live handoff embarrasses us                 | Inject delays, disconnects and stale commands during rehearsal; takeover stays immediate and keeps state                |
+| Sharing fails off our machine               | Send the offline folder to a clean machine with no account, Python or key; it must present and read                     |
+| Screenshots are not repeatable              | 20 screenshots of one deck per engine with animations disabled and zero pixel diff                                      |
+| Transitions jank outside Chromium           | 100-element scene with a View Transition at 60 and 120 Hz in Chromium, Firefox, WebKit; count dropped frames            |
+| The op API is worse than rewriting the file | 20 edit tasks, `deck_apply` against whole-file rewrite; compare success, calls and tokens                               |
 
 ## Campaign outline for v0.1 (one PR each)
 
