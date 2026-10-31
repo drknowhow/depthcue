@@ -3,6 +3,7 @@ import { h } from "@depthcue/player";
 import { createCanvas } from "./canvas.ts";
 import type { Edits } from "./fields.ts";
 import { createInspector } from "./inspector.ts";
+import { createSceneBar } from "./scenebar.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
 import { createStrip } from "./strip.ts";
 
@@ -86,10 +87,18 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
     "Present",
   );
+  const sceneBar = createSceneBar(session, {
+    act: edits.act,
+    problem(text) {
+      hint.textContent = text ?? "";
+      hint.toggleAttribute("data-problem", text !== undefined);
+    },
+  });
   const bar = h(
     "header",
     { class: "ed-bar" },
     deckTitle,
+    sceneBar.element,
     h("div", { class: "ed-actions" }, undo, redo, status, retry, details, present),
   );
   const notices = h("div", { class: "ed-notices" });
@@ -126,6 +135,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
           ? `${SAVE_LABEL[state.save]}. ${state.message}`
           : SAVE_LABEL[state.save];
     present.setAttribute("href", `/present#/${encodeURIComponent(selected)}`);
+    sceneBar.render(selected);
   }
 
   function renderNotices() {
