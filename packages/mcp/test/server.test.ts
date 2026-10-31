@@ -306,6 +306,146 @@ describe("deck_render", () => {
   });
 });
 
+describe("pinned blocks", () => {
+  const frame = { x: 56, y: 14, w: 38, h: 44 };
+  const pinnedScene = {
+    schemaVersion: "0.2",
+    id: "mcp-pins",
+    title: "Pins",
+    layout: "text-media",
+    blocks: [
+      { id: "mcp-pins-heading", type: "text", role: "heading", text: "A heading in the template" },
+      { id: "mcp-pins-note", type: "text", role: "body", text: "A short note.", frame },
+    ],
+  };
+  const noteFrame = async () => {
+    const scene = await call("deck_get", { view: "scene", scene: "mcp-pins" });
+    return scene.json.scene.blocks[1].frame;
+  };
+
+  beforeAll(async () => {
+    const added = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [{ op: "scene.add", scene: pinnedScene }],
+    });
+    if (added.json?.ok !== true) throw new Error(added.text);
+  });
+
+  afterAll(async () => {
+    await call("deck_apply", { base_rev: await revision(), ops: [{ op: "scene.remove", id: "mcp-pins" }] });
+  });
+
+  it("is told to the agent by the descriptions of deck_get, deck_apply and deck_render", async () => {
+    const described = (name: string) =>
+      (client.listTools() as Promise<{ tools: Array<{ name: string; description?: string }> }>).then(
+        ({ tools }) => tools.find((tool) => tool.name === name)?.description ?? "",
+      );
+    expect(await described("deck_get")).toContain("`frame` {x,y,w,h}");
+    const apply = await described("deck_apply");
+    expect(apply).toContain("block.frame");
+    expect(apply).toContain("block.unframe");
+    expect(await described("deck_render")).toContain("`warnings`");
+  });
+
+  it("shows the frame of a pinned block, and counts the pins of a scene in the outline", async () => {
+    const outline = await call("deck_get");
+    const scenes = outline.json.scenes as Array<{ id: string; pinned?: number }>;
+    expect(scenes.find((scene) => scene.id === "mcp-pins")?.pinned).toBe(1);
+    expect(scenes.find((scene) => scene.id === "demand")).not.toHaveProperty("pinned");
+    const detailed = await call("deck_get", { detail: "detailed" });
+    const listed = detailed.json.scenes.find((scene: { id: string }) => scene.id === "mcp-pins").blockList;
+    expect(listed).toEqual([
+      { id: "mcp-pins-heading", type: "text" },
+      { id: "mcp-pins-note", type: "text", frame },
+    ]);
+    expect(await noteFrame()).toEqual(frame);
+  });
+
+  it("pins and unpins through deck_apply, and warns about a text frame in the margin", async () => {
+    const edge = { x: 0, y: 10, w: 30, h: 20 };
+    const placed = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [{ op: "block.frame", scene: "mcp-pins", id: "mcp-pins-note", frame: edge }],
+    });
+    expect(placed.json.ok, placed.text).toBe(true);
+    expect(placed.json.warnings.map((w: { code: string }) => w.code)).toEqual(["frame-outside-safe-area"]);
+    expect(await noteFrame()).toEqual(edge);
+
+    const moved = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [{ op: "block.frame", scene: "mcp-pins", id: "mcp-pins-note", frame }],
+    });
+    expect(moved.json.ok).toBe(true);
+    expect(moved.json).not.toHaveProperty("warnings");
+
+    const freed = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [{ op: "block.unframe", scene: "mcp-pins", id: "mcp-pins-note" }],
+    });
+    expect(freed.json.ok).toBe(true);
+    expect(await noteFrame()).toBeUndefined();
+    const again = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [{ op: "block.frame", scene: "mcp-pins", id: "mcp-pins-note", frame }],
+    });
+    expect(again.json.ok).toBe(true);
+  });
+
+  it("refuses a frame that runs off the slide, and says how far", async () => {
+    const before = await revision();
+    const reply = await call("deck_apply", {
+      base_rev: before,
+      ops: [
+        { op: "block.frame", scene: "mcp-pins", id: "mcp-pins-note", frame: { x: 70, y: 10, w: 40, h: 20 } },
+      ],
+    });
+    expect(reply.isError).toBe(true);
+    expect(reply.json.diagnostics[0]).toMatchObject({ code: "frame-off-slide" });
+    expect(reply.json.diagnostics[0].message).toContain("110%");
+    expect(await revision()).toBe(before);
+  });
+
+  it("renders a block pinned over another as a warning, which still leaves the scene done", async ({
+    skip,
+  }) => {
+    if (!hasBrowser) return skip();
+    const edit = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [
+        { op: "block.frame", scene: "mcp-pins", id: "mcp-pins-note", frame: { x: 5, y: 35, w: 90, h: 30 } },
+      ],
+    });
+    expect(edit.json.ok, edit.text).toBe(true);
+    const reply = await call("deck_render", { scene: "mcp-pins", screenshot: false });
+    expect(reply.json.ok, reply.text).toBe(true);
+    expect(reply.json.diagnostics).toEqual([]);
+    expect(reply.json.warnings).toHaveLength(1);
+    expect(reply.json.warnings[0]).toMatchObject({
+      code: "frame-overlap",
+      at: "scenes/mcp-pins.json/blocks/1",
+    });
+    expect(reply.json.warnings[0].fix).toContain('frame of "mcp-pins-note"');
+  }, 60_000);
+
+  it("renders a block larger than its frame as an error, with no warning beside it", async ({ skip }) => {
+    if (!hasBrowser) return skip();
+    const long = Array.from({ length: 30 }, (_, i) => `word${i}`).join(" ");
+    const edit = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [
+        { op: "block.set", scene: "mcp-pins", id: "mcp-pins-note", set: { text: long } },
+        { op: "block.frame", scene: "mcp-pins", id: "mcp-pins-note", frame: { x: 5, y: 20, w: 25, h: 6 } },
+      ],
+    });
+    expect(edit.json.ok, edit.text).toBe(true);
+    const reply = await call("deck_render", { scene: "mcp-pins", screenshot: false });
+    expect(reply.json.ok).toBe(false);
+    expect(reply.json.diagnostics.map((d: { code: string }) => d.code)).toEqual(["frame-overflow"]);
+    expect(reply.json.diagnostics[0].at).toBe("scenes/mcp-pins.json/blocks/1");
+    expect(reply.json).not.toHaveProperty("warnings");
+  }, 60_000);
+});
+
 describe("unknown tools", () => {
   it("lists the tools that exist", async () => {
     const reply = await call("deck_delete");
