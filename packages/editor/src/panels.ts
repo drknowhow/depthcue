@@ -1,5 +1,13 @@
-import type { Block, BlockChanges, Op, Scene, SceneChanges, Session } from "@depthcue/core";
-import { h } from "@depthcue/player";
+import {
+  type Block,
+  type BlockChanges,
+  type Op,
+  type Scene,
+  type SceneChanges,
+  type Session,
+  THEMES,
+} from "@depthcue/core";
+import { firstPartyManifests, h } from "@depthcue/player";
 import { removeSource, swapped } from "./cleanup.ts";
 import {
   actionButton,
@@ -22,6 +30,7 @@ const optional = (value: string) => (value === "" ? null : value);
 export interface PanelHost {
   readonly edits: Edits;
   scene(id: string): Scene | undefined;
+  deck(): Session["doc"]["deck"];
   /** A click or a choice: applied, and a refusal said where the person is looking. True when it was applied. */
   run(ops: readonly Op[]): boolean;
   /** The files in the deck. */
@@ -44,6 +53,7 @@ export function panelHost(
   return {
     ...parts,
     scene: (id) => session.doc.scenes[id],
+    deck: () => session.doc.deck,
     run(ops) {
       const result = parts.edits.act(ops);
       parts.problem(result.ok ? undefined : problemOf(result));
@@ -637,5 +647,127 @@ export function scenePanel(host: PanelHost, current: () => string): ScenePanel {
       details.open = true;
       details.querySelector<HTMLElement>("[data-field]")?.focus();
     },
+  };
+}
+
+/** What the presenter reads and what a screen reader says for the scene. Neither is drawn on the slide. */
+export function notesPanel(host: PanelHost, current: () => string): Panel {
+  const scene = () => host.scene(current());
+  const set = (changes: SceneChanges): Op => sceneSet(current(), changes);
+  const fields = form(
+    () => scene() !== undefined,
+    () => [
+      textField(host.edits, {
+        key: "panel:notes",
+        label: "Speaker notes",
+        hint: "For the presenter. They never appear on the slide.",
+        multiline: true,
+        read: () => scene()?.notes ?? "",
+        commit: (value) => set({ notes: optional(value) }),
+      }),
+      textField(host.edits, {
+        key: "panel:reading",
+        label: "Reading version",
+        hint: "What a screen reader and the plain-text view say for this scene.",
+        multiline: true,
+        read: () => scene()?.reading?.text ?? "",
+        commit: (value) => set({ reading: value === "" ? null : { text: value } }),
+      }),
+    ],
+  );
+  const written = (live: Scene) => Number(Boolean(live.notes)) + Number(Boolean(live.reading?.text));
+  return {
+    name: "notes",
+    label: "Notes",
+    title: "Speaker notes and reading version",
+    body: fields.body,
+    fill: fields.fill,
+    state(live) {
+      const n = written(live);
+      return {
+        badge: n > 0 ? String(n) : "",
+        title:
+          n > 0 ? `Speaker notes and reading version, ${n} written` : "Speaker notes and reading version",
+      };
+    },
+  };
+}
+
+const THEME_LABEL = { paper: "Paper (light)", ink: "Ink (dark)" } as const;
+
+/** The deck's title, language, theme and what it asks of each module. */
+export function deckPanel(host: PanelHost): Panel {
+  const deck = () => host.deck();
+  const setModules = (modules: Record<string, string>): Op => ({
+    op: "deck.set",
+    set: { modules: Object.keys(modules).length > 0 ? modules : null },
+  });
+  const modules = () => deck().modules ?? {};
+  const without = (id: string) => Object.fromEntries(Object.entries(modules()).filter(([key]) => key !== id));
+  const installed = new Set(firstPartyManifests.map((manifest) => manifest.id));
+
+  const fields = form(
+    () => true,
+    () => [
+      textField(host.edits, {
+        key: "panel:deck:title",
+        label: "Title",
+        read: () => deck().title,
+        commit: (value) => ({ op: "deck.set", set: { title: value } }),
+      }),
+      textField(host.edits, {
+        key: "panel:deck:language",
+        label: "Language",
+        hint: "A language tag such as en or pt-BR.",
+        read: () => deck().language,
+        commit: (value) => ({ op: "deck.set", set: { language: value } }),
+      }),
+      selectField(host.edits, {
+        key: "panel:deck:theme",
+        label: "Theme",
+        options: THEMES.map((value) => ({ value, label: THEME_LABEL[value] })),
+        read: () => deck().theme,
+        commit: (value) => ({ op: "deck.set", set: { theme: value as (typeof THEMES)[number] } }),
+      }),
+      ...firstPartyManifests.map((manifest) =>
+        selectField(host.edits, {
+          key: `panel:deck:module:${manifest.id}`,
+          label: manifest.title,
+          empty: "Automatic",
+          options: [
+            { value: "off", label: `Off: show it as ${manifest.fallback}` },
+            { value: manifest.version, label: `Needs version ${manifest.version} or newer` },
+          ],
+          read: () => modules()[manifest.id] ?? "",
+          commit: (value) =>
+            setModules(value === "" ? without(manifest.id) : { ...modules(), [manifest.id]: value }),
+        }),
+      ),
+      // A setting for a module this editor does not have: the player ignores it, and it can be removed.
+      ...Object.keys(modules())
+        .filter((id) => !installed.has(id))
+        .map((id) =>
+          h(
+            "div",
+            { class: "ed-field", "data-module": id },
+            h(
+              "p",
+              { class: "ed-hint-text" },
+              `${id} (${modules()[id]}) is not installed here, so the player ignores it.`,
+            ),
+            actionButton("Remove", () => host.run([setModules(without(id))]), {
+              "data-field": `panel:deck:module:${id}:remove`,
+              "aria-label": `Remove the setting for ${id}`,
+            }),
+          ),
+        ),
+    ],
+  );
+  return {
+    name: "deck",
+    label: "Deck",
+    title: "Deck title, language, theme and modules",
+    body: fields.body,
+    fill: fields.fill,
   };
 }

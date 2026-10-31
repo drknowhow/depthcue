@@ -805,3 +805,55 @@ describe("a claim's toolbar", () => {
     expect(control("panel:evidence:demand-note")).not.toBeNull();
   });
 });
+
+describe("moving a block", () => {
+  const order = () => method()?.blocks.map((block) => block.id);
+  const move = (name: "earlier" | "later") => part<HTMLButtonElement>(`move-${name}`);
+
+  it("moves a text one place later or earlier, one undo step each", () => {
+    textBox("method-heading").focus();
+    move("later").click();
+    expect(order()).toEqual(["method-body", "method-heading", "method-diagram"]);
+    move("earlier").click();
+    expect(order()).toEqual(["method-heading", "method-body", "method-diagram"]);
+    move("later").click();
+    store.session.undo();
+    expect(order()).toEqual(["method-heading", "method-body", "method-diagram"]);
+  });
+
+  it("keeps the block chosen and the toolbar on it while it moves", () => {
+    textBox("method-body").focus();
+    move("later").click();
+    expect(editor.blockId).toBe("method-body");
+    expect(visible()).toBe(true);
+  });
+
+  it("rests the button that has nowhere to go", () => {
+    textBox("method-heading").focus();
+    expect(move("earlier").disabled).toBe(true);
+    expect(move("later").disabled).toBe(false);
+    textBox("method-body").focus();
+    expect(move("earlier").disabled).toBe(false);
+    // A real click moves the keyboard to the block as well, which this test has to do itself.
+    blockNode("method-diagram").focus();
+    blockNode("method-diagram").click();
+    expect(move("later").disabled).toBe(true);
+    move("earlier").click();
+    expect(order()).toEqual(["method-heading", "method-diagram", "method-body"]);
+    expect(move("later").disabled).toBe(false);
+  });
+
+  it("moves a block that is not text, and says what it will do for a screen reader", () => {
+    blockNode("method-diagram").click();
+    expect(move("earlier").getAttribute("aria-label")).toBe("Move earlier");
+    move("earlier").click();
+    expect(order()).toEqual(["method-heading", "method-diagram", "method-body"]);
+  });
+
+  it("is not offered on a claim, which has no place among the blocks", () => {
+    editor.select("demand");
+    textBox("claim-shift").focus();
+    expect(toolbar().querySelector("[data-tb='move-earlier']")).toBeNull();
+    expect(toolbar().querySelector("[data-tb='move-later']")).toBeNull();
+  });
+});

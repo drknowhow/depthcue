@@ -9,7 +9,7 @@ import {
 import { h } from "@depthcue/player";
 import { type Canvas, SUMMARY_LIMIT } from "./canvas.ts";
 import { buildChip, type Chip, fillChip, fitPopover, hidePopover, showPopover } from "./chip.ts";
-import { removeBlock, removeClaim } from "./cleanup.ts";
+import { afterWhenMoving, removeBlock, removeClaim } from "./cleanup.ts";
 import { type Edits, problemOf } from "./fields.ts";
 import {
   chartPanel,
@@ -132,6 +132,7 @@ export function createToolbar(
   let count: HTMLElement | undefined;
   let label: HTMLElement | undefined;
   let chips: Chip[] = [];
+  let moves: HTMLButtonElement[] = [];
   let open: Chip | undefined;
 
   const scene = (id: string) => session.doc.scenes[id];
@@ -191,6 +192,34 @@ export function createToolbar(
     }
   }
 
+  /** Moves the block one place along the slide's order, which is also the order the layout fills its slots. */
+  function moveButton(id: string, direction: -1 | 1) {
+    const name = direction === -1 ? "earlier" : "later";
+    const node = h(
+      "button",
+      {
+        type: "button",
+        class: "ed-tb-mini",
+        "data-tb": `move-${name}`,
+        "aria-label": `Move ${name}`,
+        title: `Move ${name}`,
+      },
+      direction === -1 ? "←" : "→",
+    );
+    node.addEventListener("click", () => {
+      const current = scene(sceneId);
+      if (!current) return;
+      const after = afterWhenMoving(
+        current.blocks.map((block) => block.id),
+        id,
+        direction,
+      );
+      if (after === undefined) return;
+      report(hooks.edits.act([{ op: "block.move", scene: current.id, id, after }]));
+    });
+    return node;
+  }
+
   function removeButton(id: string, what: string) {
     const node = h("button", {
       type: "button",
@@ -223,6 +252,7 @@ export function createToolbar(
   function build(target: Target) {
     closePop();
     role = count = label = undefined;
+    moves = [];
     const id = idOf(target);
     const controls: HTMLElement[] = [];
     const inScene = target.scene.id;
@@ -246,7 +276,14 @@ export function createToolbar(
       });
       role = select;
       count = h("span", { class: "ed-tb-count", "data-tb": "count" });
-      controls.push(select, count, ...chips.map((chip) => chip.wrap), removeButton(id, "this text"));
+      moves = [moveButton(id, -1), moveButton(id, 1)];
+      controls.push(
+        select,
+        count,
+        ...moves,
+        ...chips.map((chip) => chip.wrap),
+        removeButton(id, "this text"),
+      );
     } else if (target.kind === "claim") {
       count = h("span", { class: "ed-tb-count", "data-tb": "count" });
       controls.push(
@@ -257,7 +294,8 @@ export function createToolbar(
       );
     } else {
       label = h("span", { class: "ed-tb-label" }, describeBlock(target.block, 28));
-      controls.push(label, ...chips.map((chip) => chip.wrap), removeButton(id, "this block"));
+      moves = [moveButton(id, -1), moveButton(id, 1)];
+      controls.push(label, ...moves, ...chips.map((chip) => chip.wrap), removeButton(id, "this block"));
     }
     element.setAttribute(
       "aria-label",
@@ -282,6 +320,15 @@ export function createToolbar(
       showCount(target.scene.summary?.text.length ?? 0, SUMMARY_LIMIT);
     } else if (label) {
       label.textContent = describeBlock(target.block, 28);
+    }
+    // The first block cannot move earlier and the last cannot move later.
+    if (target.kind !== "claim") {
+      const order = target.scene.blocks.map((block) => block.id);
+      const id = idOf(target);
+      for (const [index, direction] of ([-1, 1] as const).entries()) {
+        const node = moves[index];
+        if (node) node.disabled = afterWhenMoving(order, id, direction) === undefined;
+      }
     }
     for (const chip of chips) fillChip(chip, target.scene, typing);
   }

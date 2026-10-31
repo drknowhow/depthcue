@@ -459,6 +459,64 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  it("adds a chart and a claim from the add row and writes notes, and the folder follows", async () => {
+    await open();
+    await page.locator(".ed-scene[data-scene='method']").click();
+    const row = page.locator(".ed-quick");
+    await row.locator("[data-quick='bar-chart']").click();
+    await row.locator("[data-quick='claim']").click();
+    await saved();
+    const scene = () => disk().scenes.method;
+    expect(scene()?.blocks.map((block) => block.type)).toEqual(["text", "text", "image", "bar-chart"]);
+    expect(scene()?.summary?.text).toBe("State the claim here.");
+    // The new chart is chosen, so its toolbar is up and the next thing typed is not lost.
+    await page.locator(".ed-toolbar [data-tb='data']").waitFor();
+
+    await row.locator("[data-tb='notes']").click();
+    await row.locator("[data-field='panel:notes']").fill("Start with the sample.");
+    await saved();
+    expect(scene()?.notes).toBe("Start with the sample.");
+    expect(problems).toEqual([]);
+  });
+
+  it("edits the deck's title and theme from the Deck popover, and the folder follows", async () => {
+    await open();
+    await page.locator(".ed-actions [data-tb='deck']").click();
+    const pop = page.locator(".ed-actions .ed-tb-pop:not([hidden])");
+    await pop.locator("[data-field='panel:deck:title']").fill("Spring review");
+    await pop.locator("[data-field='panel:deck:theme']").selectOption("ink");
+    await saved();
+    expect(disk().deck).toMatchObject({ title: "Spring review", theme: "ink" });
+    expect(await page.locator(".ed-deck").textContent()).toBe("Spring review");
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps the notes and deck popovers inside the window on a phone", async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open();
+    await page.evaluate(() => {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync("*{font-family:Verdana,'DejaVu Sans',sans-serif !important}");
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    });
+    for (const chip of [".ed-quick [data-tb='notes']", ".ed-actions [data-tb='deck']"]) {
+      await page.locator(chip).click();
+      const pop = page.locator(".ed-tb-pop:not([hidden])");
+      await pop.waitFor();
+      const box = await pop.boundingBox();
+      if (!box) throw new Error(`the popover of ${chip} should be on screen`);
+      expect(box.x, `${chip} left`).toBeGreaterThanOrEqual(-1);
+      expect(box.x + box.width, `${chip} right`).toBeLessThanOrEqual(390 + 1);
+      expect(box.y, `${chip} top`).toBeGreaterThanOrEqual(-1);
+      const sideways = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(sideways, `${chip} sideways scroll`).toBeLessThanOrEqual(0);
+      await page.keyboard.press("Escape");
+    }
+    expect(problems).toEqual([]);
+  });
+
   it("follows the slide when the window is resized", async () => {
     await open();
     await headline().click();

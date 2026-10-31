@@ -86,3 +86,68 @@ export function fitPopover(pop: HTMLElement, bounds: Bounds, up: boolean) {
   if (box.height > room - 8) pop.style.maxHeight = `${Math.max(160, Math.floor(room - 8))}px`;
   pop.scrollTop = scrolled;
 }
+
+/** A chip with its popover and what keeps it behaving: Escape and a press elsewhere close it, and it stays fitted. */
+export interface PopoverChip {
+  readonly chip: Chip;
+  readonly isOpen: boolean;
+  open(): void;
+  /** Closes the popover. `giveBack` puts the keyboard on the chip, as Escape does. */
+  close(giveBack?: boolean): void;
+  /** Brings the popover and the chip's count up to date, and fits the popover again when it is open. */
+  fill(scene: Scene, typing: boolean): void;
+  destroy(): void;
+}
+
+/** `up` opens the popover above its chip, for a chip near the bottom of the window. */
+export function popoverChip(panel: Panel, up = false): PopoverChip {
+  const chip = buildChip(panel);
+  let isOpen = false;
+
+  // The popover grows and shrinks as sections open and rows are added, so it is fitted again each time.
+  const fit = () =>
+    fitPopover(
+      chip.pop,
+      { left: 0, right: document.documentElement.clientWidth, top: 0, bottom: window.innerHeight },
+      up,
+    );
+  const close = (giveBack = false) => {
+    if (!isOpen) return;
+    isOpen = false;
+    hidePopover(chip);
+    if (giveBack) chip.button.focus();
+  };
+  const open = () => {
+    isOpen = true;
+    showPopover(chip, null, fit);
+  };
+
+  chip.button.addEventListener("click", () => (isOpen ? close() : open()));
+  chip.wrap.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !isOpen) return;
+    event.stopPropagation();
+    close(true);
+  });
+  // A details element reports its own opening and closing, and that event does not bubble.
+  chip.pop.addEventListener("toggle", () => isOpen && fit(), true);
+  const onPointerDown = (event: PointerEvent) => {
+    if (isOpen && !(event.target instanceof Node && chip.wrap.contains(event.target))) close();
+  };
+  document.addEventListener("pointerdown", onPointerDown);
+
+  return {
+    chip,
+    get isOpen() {
+      return isOpen;
+    },
+    open,
+    close,
+    fill(scene, typing) {
+      fillChip(chip, scene, typing);
+      if (isOpen) fit();
+    },
+    destroy() {
+      document.removeEventListener("pointerdown", onPointerDown);
+    },
+  };
+}
