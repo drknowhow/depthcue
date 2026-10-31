@@ -1,0 +1,38 @@
+---
+title: Depthcue
+description: Explanations an agent can write, a person can repair, and both can present.
+template: splash
+hero:
+  tagline: Explanations an agent can write, a person can repair, and both can present.
+  image:
+    alt: The Depthcue mark, three planes receding up and to the right
+    light: ../../assets/mark.svg
+    dark: ../../assets/mark-on-dark.svg
+  actions:
+    - text: Get started
+      link: /start/
+      icon: right-arrow
+    - text: Read the plan
+      link: /project/plan/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="An agent writes it" icon="pencil">
+    A deck is typed JSON with stable ids. The MCP server gives an agent four tools to read, edit, render and present
+    it. An edit is one transaction against a revision, and a stale revision is rejected, never merged.
+  </Card>
+  <Card title="A person repairs it" icon="setting">
+    The browser editor sends its changes through the same operations an agent uses. It saves only when you ask, and a
+    draft survives a closed tab.
+  </Card>
+  <Card title="Both present it" icon="laptop">
+    A presenter window with notes and a timer, a reading view for the audience, and a control lease: hand the deck
+    to an agent, and take it back at once.
+  </Card>
+  <Card title="It works offline" icon="download">
+    `depthcue export` writes a folder that opens by double-click, with no server and no network.
+  </Card>
+</CardGrid>
