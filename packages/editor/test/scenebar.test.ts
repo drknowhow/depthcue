@@ -103,6 +103,127 @@ describe("the lead and layout buttons in the top bar", () => {
   });
 });
 
+describe("Auto layout in the top bar", () => {
+  const auto = () =>
+    host.querySelector<HTMLButtonElement>(".ed-scene-tools [data-auto]") as HTMLButtonElement;
+  const frame = { x: 10, y: 10, w: 30, h: 20 };
+  const pin = (sceneId: string, ...ids: string[]) => {
+    const result = store.session.apply(ids.map((id) => ({ op: "block.frame", scene: sceneId, id, frame })));
+    if (!result.ok) throw new Error("the frames should be accepted");
+  };
+  const pinnedIn = (sceneId: string) =>
+    scene(sceneId)
+      ?.blocks.filter((block) => block.frame)
+      .map((block) => block.id);
+
+  it("is hidden until the scene being edited has a pinned block, and follows the selection and undo", () => {
+    expect(auto().hidden).toBe(true);
+    pin("method", "method-body");
+    expect(auto().hidden).toBe(true);
+    editor.select("method");
+    expect(auto().hidden).toBe(false);
+    editor.select("demand");
+    expect(auto().hidden).toBe(true);
+    editor.select("method");
+    store.session.undo();
+    expect(auto().hidden).toBe(true);
+  });
+
+  it("has a name a screen reader can say, and says what it does", () => {
+    expect(auto().textContent).toBe("Auto layout");
+    expect(auto().title).toMatch(/pinned/);
+    expect(auto().type).toBe("button");
+  });
+
+  it("puts every pinned block of the scene back in its slot, and leaves the pins of other scenes alone", () => {
+    pin("opening", "opening-title");
+    pin("method", "method-body", "method-diagram");
+    editor.select("method");
+    auto().click();
+    expect(pinnedIn("method")).toEqual([]);
+    expect(pinnedIn("opening")).toEqual(["opening-title"]);
+    expect(auto().hidden).toBe(true);
+  });
+
+  it("is one undo step, which brings every pin back", () => {
+    pin("method", "method-body", "method-diagram");
+    editor.select("method");
+    auto().click();
+    store.session.undo();
+    expect(pinnedIn("method")).toEqual(["method-body", "method-diagram"]);
+    expect(scene("method")?.blocks.find((block) => block.id === "method-body")?.frame).toEqual(frame);
+    expect(auto().hidden).toBe(false);
+  });
+
+  it("asks for one change that clears each pinned block and no other", () => {
+    pin("method", "method-body", "method-diagram");
+    const calls: unknown[] = [];
+    const bar = createSceneBar(store.session, {
+      edits: {
+        act: (ops) => {
+          calls.push(ops);
+          return store.session.apply(ops);
+        },
+        type: (ops) => store.session.apply(ops),
+      },
+      problem: () => {},
+      upload: async () => "",
+    });
+    bar.render("method");
+    bar.element.querySelector<HTMLButtonElement>("[data-auto]")?.click();
+    expect(calls).toEqual([
+      [
+        { op: "block.unframe", scene: "method", id: "method-body" },
+        { op: "block.unframe", scene: "method", id: "method-diagram" },
+      ],
+    ]);
+    bar.destroy();
+  });
+
+  it("asks for nothing when no block is pinned, even if the hidden button is pressed", () => {
+    const calls: unknown[] = [];
+    const bar = createSceneBar(store.session, {
+      edits: {
+        act: (ops) => {
+          calls.push(ops);
+          return store.session.apply(ops);
+        },
+        type: (ops) => store.session.apply(ops),
+      },
+      problem: () => {},
+      upload: async () => "",
+    });
+    bar.render("method");
+    const before = store.session.doc;
+    bar.element.querySelector<HTMLButtonElement>("[data-auto]")?.click();
+    expect(calls).toEqual([]);
+    expect(store.session.doc).toBe(before);
+    bar.destroy();
+  });
+
+  it("is reported through the hook when the core refuses, and the pins stay", () => {
+    pin("method", "method-body");
+    const messages: Array<string | undefined> = [];
+    const refuse = () =>
+      ({
+        ok: false,
+        code: "invalid",
+        rev: "",
+        diagnostics: [{ message: "Not that.", fix: "Try this." }],
+      }) as never;
+    const bar = createSceneBar(store.session, {
+      edits: { act: refuse, type: refuse },
+      problem: (text) => messages.push(text),
+      upload: async () => "",
+    });
+    bar.render("method");
+    bar.element.querySelector<HTMLButtonElement>("[data-auto]")?.click();
+    expect(messages).toEqual(["Not that. Try this."]);
+    expect(pinnedIn("method")).toEqual(["method-body"]);
+    bar.destroy();
+  });
+});
+
 describe("a change the core refuses", () => {
   it("is reported through the hook with the core's message, and cleared by the next one that works", () => {
     const messages: Array<string | undefined> = [];

@@ -471,6 +471,22 @@ describe("block.frame and block.unframe", () => {
     expect(blockOf(again, "opening", "opening-sub")).not.toHaveProperty("frame");
   });
 
+  it("keeps every frame when the scene's layout changes, since a frame belongs to its block", () => {
+    const pinnedDoc = success(
+      run(demoDoc(), [
+        { op: "block.frame", scene: "opening", id: "opening-title", frame: box },
+        { op: "block.frame", scene: "opening", id: "opening-sub", frame: { ...box, y: 50 } },
+      ]),
+    ).doc;
+    const changed = success(
+      run(pinnedDoc, [{ op: "scene.set", id: "opening", set: { layout: "text-media" } }]),
+    ).doc;
+    expect(changed.scenes.opening?.layout).toBe("text-media");
+    expect(blockOf(changed, "opening", "opening-title")).toMatchObject({ frame: box });
+    expect(blockOf(changed, "opening", "opening-sub")).toMatchObject({ frame: { ...box, y: 50 } });
+    expect(changed.scenes.opening?.schemaVersion).toBe("0.2");
+  });
+
   it("names the scene or block that does not exist, with the near miss", () => {
     const scene = failure(
       run(demoDoc(), [{ op: "block.frame", scene: "openin", id: "opening-title", frame: box }]),

@@ -7,6 +7,7 @@ import { createFrameDrag } from "./framedrag.ts";
 import { drawGhosts, type GhostHooks } from "./ghosts.ts";
 import { frameOver, NUDGE, NUDGE_BIG, slideIn } from "./pin.ts";
 import { createSlotDrag } from "./slotdrag.ts";
+import { restingBox, snap, standings } from "./snap.ts";
 import { describeBlock, IMAGE_FILE, needsAlt } from "./templates.ts";
 
 export interface CanvasHooks {
@@ -519,7 +520,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       const node = nodeOf(id);
       const room = slot.querySelector<HTMLElement>(".dc-view");
       if (!node || !room) return undefined;
-      return frameOver(node.getBoundingClientRect(), slideIn(room.getBoundingClientRect()));
+      return frameOver(restingBox(node), slideIn(room.getBoundingClientRect()));
     },
     focusBlock,
     refreshCues() {
@@ -540,6 +541,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       return typing;
     },
     render(sceneId, selectedId) {
+      const again = drawn === sceneId;
       drawn = sceneId;
       const scene = session.doc.scenes[sceneId];
       if (!scene) {
@@ -568,6 +570,12 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       wirePicker(scene, view);
       wireCues(scene, view);
       if (hooks.ghosts) drawGhosts(scene, view, hooks.ghosts);
+      // A block that goes into its slot, or out of it, slides there from where it stood. Only a slide with a pin on
+      // either side of the change can have one, so any other is drawn without measuring.
+      const before =
+        again && (slot.querySelector(".dc-pinned") || scene.blocks.some((block) => block.frame))
+          ? standings(slot)
+          : undefined;
       slot.replaceChildren(frame);
       drag.draw(scene);
       pins.draw(scene);
@@ -583,6 +591,9 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         else focusBlock(focusedId);
       }
       changed();
+      // Last, so everything drawn above is placed where the blocks end up. What measures a block later, the toolbar
+      // and the pin, asks for `restingBox`, which ignores a slide still on its way.
+      if (before) snap(slot, before);
     },
   };
 }

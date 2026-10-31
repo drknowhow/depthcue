@@ -419,3 +419,169 @@ describe("the Pinned popover", () => {
     expect(control("frame:x").value).toBe("15");
   });
 });
+
+describe("a block sliding into its slot", () => {
+  type Box = [number, number, number, number];
+  type Stand = { pinned: Box; slot: Box };
+  const calls: Array<{ node: HTMLElement; keyframes: unknown; options: unknown }> = [];
+  const pictureStand: Stand = { pinned: [800, 100, 640, 90], slot: [160, 450, 640, 90] };
+  const textStand: Stand = { pinned: [100, 100, 700, 120], slot: [100, 300, 700, 120] };
+  const frame = { x: 50, y: 11, w: 40, h: 10 };
+  const auto = () =>
+    host.querySelector<HTMLButtonElement>(".ed-scene-tools [data-auto]") as HTMLButtonElement;
+  const slid = () => calls.map((call) => call.node.dataset.id);
+
+  /** There is no layout here, so a block is where its stand says: one place pinned, another in its slot. */
+  const standing = (stands: Record<string, Stand>, elsewhere?: (node: HTMLElement) => Box | undefined) =>
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.classList.contains("dc-view")) return rect(0, 0, 1600, 900);
+      if (!(this instanceof HTMLElement && this.dataset.id)) return rect(0, 0, 0, 0);
+      const box = elsewhere?.(this);
+      if (box) return rect(...box);
+      const stand = stands[this.dataset.id];
+      if (!stand) return rect(0, 0, 0, 0);
+      return rect(...(this.classList.contains("dc-pinned") ? stand.pinned : stand.slot));
+    });
+
+  beforeEach(() => {
+    calls.length = 0;
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      writable: true,
+      value(this: HTMLElement, keyframes: unknown, options: unknown) {
+        calls.push({ node: this, keyframes, options });
+      },
+    });
+  });
+  afterEach(() => {
+    delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    vi.unstubAllGlobals();
+  });
+
+  /** Pins the picture, which the stands move from its slot to its frame, and forgets that slide. */
+  function pinPicture() {
+    standing({ [PICTURE]: pictureStand });
+    pinned(PICTURE, frame);
+    calls.length = 0;
+    blockNode(PICTURE).click();
+  }
+
+  it("slides from where it stood to where its slot puts it, when it goes back", () => {
+    pinPicture();
+    part("layout").click();
+    expect(slid()).toEqual([PICTURE]);
+    expect(calls[0]?.keyframes).toEqual([{ transform: "translate(640px, -350px)" }, { transform: "none" }]);
+    expect(calls[0]?.options).toMatchObject({ duration: 220 });
+  });
+
+  it("slides every pinned block of the scene on Auto layout, and no other, even one that moves", () => {
+    standing(
+      { [PICTURE]: pictureStand, [TEXT]: textStand },
+      // The heading is never pinned, but it is a long way down while the text is pinned and up when it is not.
+      (node) =>
+        node.dataset.id === "method-heading"
+          ? document.querySelector(`.dc-pinned[data-id='${TEXT}']`)
+            ? [100, 400, 700, 40]
+            : [100, 40, 700, 40]
+          : undefined,
+    );
+    pinned(PICTURE, frame);
+    pinned(TEXT, { x: 6, y: 11, w: 40, h: 14 });
+    calls.length = 0;
+    auto().click();
+    expect(slid().sort()).toEqual([PICTURE, TEXT].sort());
+  });
+
+  it("stays still for a block that is pinned where it stands", () => {
+    standing({ [PICTURE]: { pinned: pictureStand.slot, slot: pictureStand.slot } });
+    blockNode(PICTURE).click();
+    part("free").click();
+    expect(frameOf(PICTURE)).toBeDefined();
+    expect(slid()).toEqual([]);
+  });
+
+  it("stays still for a move of less than two pixels, which is only a frame rounded", () => {
+    standing({ [PICTURE]: { pinned: [800, 100, 640, 90], slot: [801, 101, 640, 90] } });
+    pinned(PICTURE, frame);
+    calls.length = 0;
+    blockNode(PICTURE).click();
+    part("layout").click();
+    expect(slid()).toEqual([]);
+  });
+
+  it("slides back the other way when an Undo pins it again", () => {
+    pinPicture();
+    part("layout").click();
+    calls.length = 0;
+    store.session.undo();
+    expect(frameOf(PICTURE)).toEqual(frame);
+    expect(slid()).toEqual([PICTURE]);
+    expect(calls[0]?.keyframes).toEqual([{ transform: "translate(-640px, 350px)" }, { transform: "none" }]);
+  });
+
+  it("pins a block that is still sliding where it will rest, and not where it passes", () => {
+    const slide = { playState: "running", currentTime: 0 as number | null };
+    let started = false;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.classList.contains("dc-view")) return rect(0, 0, 1600, 900);
+      if (!(this instanceof HTMLElement && this.dataset.id === PICTURE)) return rect(0, 0, 0, 0);
+      if (this.classList.contains("dc-pinned")) return rect(...pictureStand.pinned);
+      return started && slide.currentTime !== 220 ? rect(800, 100, 640, 90) : rect(...pictureStand.slot);
+    });
+    pinned(PICTURE, frame);
+    blockNode(PICTURE).click();
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      writable: true,
+      value() {
+        started = true;
+        return slide;
+      },
+    });
+    part("layout").click();
+    part("free").click();
+    expect(frameOf(PICTURE)).toEqual({ x: 10, y: 50, w: 40, h: 10 });
+  });
+
+  it("slides a move of two pixels, the least that shows", () => {
+    standing({ [PICTURE]: { pinned: [800, 100, 640, 90], slot: [802, 100, 640, 90] } });
+    pinned(PICTURE, frame);
+    calls.length = 0;
+    blockNode(PICTURE).click();
+    part("layout").click();
+    expect(slid()).toEqual([PICTURE]);
+  });
+
+  it("stays still for a person who asks for less motion", () => {
+    pinPicture();
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query }));
+    part("layout").click();
+    expect(frameOf(PICTURE)).toBeUndefined();
+    expect(slid()).toEqual([]);
+  });
+
+  it("slides for a person who does not ask for less motion", () => {
+    pinPicture();
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: false, media: query }));
+    part("layout").click();
+    expect(slid()).toEqual([PICTURE]);
+  });
+
+  it("stays still when another slide is drawn, even one with a block of the same id", () => {
+    standing({ [TEXT]: textStand });
+    pinned(TEXT, { x: 6, y: 11, w: 40, h: 14 });
+    store.session.apply([
+      { op: "block.add", scene: "opening", block: { id: TEXT, type: "text", role: "body", text: "Same id" } },
+    ]);
+    calls.length = 0;
+    editor.select("opening");
+    expect(slid()).toEqual([]);
+  });
+
+  it("stays still for a browser that cannot animate", () => {
+    pinPicture();
+    delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    expect(() => part("layout").click()).not.toThrow();
+    expect(frameOf(PICTURE)).toBeUndefined();
+  });
+});
