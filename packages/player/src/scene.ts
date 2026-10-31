@@ -151,15 +151,31 @@ function pin(node: HTMLElement, frame: NonNullable<Block["frame"]>): HTMLElement
 }
 
 /**
+ * What a pinned block leaves in its region: a copy that takes the same room and has nothing to see, hear, reach or
+ * find. It has no id, so nothing that looks a block up by id meets it.
+ */
+function ghost(node: HTMLElement): HTMLElement {
+  const copy = node.cloneNode(true) as HTMLElement;
+  copy.classList.replace("dc-block", "dc-ghost");
+  for (const name of ["data-id", "data-gated", "data-revealed"]) copy.removeAttribute(name);
+  copy.setAttribute("aria-hidden", "true");
+  copy.setAttribute("inert", "");
+  return copy;
+}
+
+/**
  * One scene as DOM. Every block is present; the player shows and hides gated ones as steps advance. A pinned block
- * (one with a `frame`) leaves the template's regions and sits at its frame, in a layer over a 16 by 9 slide, in
- * block order. The template lays out whatever is left as if the pinned blocks were not there.
+ * (one with a `frame`) sits at its frame, in a layer over a 16 by 9 slide, in block order. Its place in the template
+ * stays reserved, so pinning one block moves nothing else.
  */
 export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
   const gated = gatedIds(scene);
-  const blocks = scene.blocks.map((block) => ({ block, node: renderBlock(scene, block, ctx, gated) }));
+  const blocks = scene.blocks.map((block) => {
+    const node = renderBlock(scene, block, ctx, gated);
+    return { block, node, slot: block.frame ? ghost(node) : node };
+  });
   const nodes = (pick: (block: Block) => boolean) =>
-    blocks.filter((entry) => !entry.block.frame && pick(entry.block)).map((e) => e.node);
+    blocks.filter((entry) => pick(entry.block)).map((entry) => entry.slot);
   const pinned = blocks.flatMap(({ block, node }) => (block.frame ? [pin(node, block.frame)] : []));
 
   let body: HTMLElement[];

@@ -108,6 +108,12 @@
   pointer-events: none;
 }
 
+/* The room a pinned block had in its region, kept so the blocks around it stay where they were. */
+.dc-ghost {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .dc-pinned {
   position: absolute;
   left: calc(var(--x) * 1%);
@@ -149,6 +155,11 @@
     display: grid;
     gap: 1.1em;
     pointer-events: auto;
+  }
+
+  /* The pinned blocks follow the template here, so there is no room to keep for them. */
+  .dc-ghost {
+    display: none;
   }
 
   .dc-pinned {

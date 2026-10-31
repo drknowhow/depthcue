@@ -401,9 +401,30 @@ describe("an exported scene with pinned blocks", () => {
     expect(problems).toEqual([]);
   });
 
+  it("keeps the room of each pinned block in the template, where nothing can see or reach it", async () => {
+    await openPinned("#/pinned/1");
+    const ghosts = page.locator(".dc-scene[data-scene='pinned'] .dc-ghost");
+    expect(await ghosts.count()).toBe(Object.keys(frames).length);
+    for (const ghost of await ghosts.all()) {
+      const state = await ghost.evaluate((node) => ({
+        visibility: getComputedStyle(node).visibility,
+        height: node.getBoundingClientRect().height,
+        id: node.closest("[data-id]")?.getAttribute("data-id") ?? null,
+      }));
+      expect(state.visibility).toBe("hidden");
+      expect(state.height).toBeGreaterThan(0);
+      expect(state.id).toBeNull();
+    }
+    expect(problems).toEqual([]);
+  });
+
   it("gives way to the flow in a window too narrow for a slide, with every block in reach", async () => {
     await page.setViewportSize({ width: 600, height: 900 });
     await openPinned("#/pinned/1");
+    // The pinned blocks follow the template here, so the room kept for them in it is not drawn.
+    for (const ghost of await page.locator(".dc-ghost").all()) {
+      expect(await ghost.evaluate((node) => getComputedStyle(node).display)).toBe("none");
+    }
     for (const id of Object.keys(frames)) {
       const found = await box(`[data-id='${id}']`);
       expect(

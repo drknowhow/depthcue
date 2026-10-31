@@ -1503,6 +1503,36 @@ describe("pinning in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  it("moves no other block when one is pinned, or when it is dragged far away, or when it goes back", async () => {
+    await openScene("method", "method-diagram");
+    const before = new Map<string, Awaited<ReturnType<typeof boxOf>>>();
+    for (const id of ["method-heading", "method-body"]) before.set(id, await boxOf(id));
+    const unmoved = async () => {
+      for (const [id, box] of before) await expectSameBox(id, box);
+    };
+
+    await block("method-diagram").click();
+    await free().click();
+    await saved();
+    await unmoved();
+
+    const slide = await page.locator(".ed-frame .dc-pins").boundingBox();
+    const picture = await boxOf("method-diagram");
+    if (!slide) throw new Error("the slide should be drawn");
+    await page.mouse.move(picture.x + picture.width / 2, picture.y + picture.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(slide.x + slide.width * 0.2, slide.y + slide.height * 0.2, { steps: 8 });
+    await page.mouse.up();
+    await saved();
+    await unmoved();
+
+    await block("method-diagram").click();
+    await layout().click();
+    await saved();
+    await unmoved();
+    expect(problems).toEqual([]);
+  });
+
   it("pins and unpins with P, and the keyboard stays on the block", async () => {
     await openScene("method", "method-diagram");
     await block("method-diagram").click();
