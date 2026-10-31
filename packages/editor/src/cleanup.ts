@@ -52,6 +52,15 @@ export function removeSource(scene: Scene, sourceId: string): Op[] {
   return ops;
 }
 
+/** `items` with the one at `index` swapped with its neighbour, or undefined when it has none that way. */
+export function swapped<T>(items: readonly T[], index: number, direction: -1 | 1): T[] | undefined {
+  const other = index + direction;
+  if (index < 0 || other < 0 || other >= items.length) return undefined;
+  const next = [...items];
+  [next[index], next[other]] = [next[other] as T, next[index] as T];
+  return next;
+}
+
 /** The id to put a moved item after: the sibling before it when moving up, the one after it when moving down. */
 export function afterWhenMoving(
   ids: readonly string[],

@@ -100,6 +100,8 @@ export function newBlock(scene: Scene, kind: NewBlockKind, asset?: string): Bloc
   }
 }
 
+/** The kinds of image the upload accepts. */
+export const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 export const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
 export const VIDEO_FILE = /\.(mp4|webm)$/i;
 

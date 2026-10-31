@@ -11,7 +11,7 @@ import {
   THEMES,
 } from "@depthcue/core";
 import { firstPartyManifests, h } from "@depthcue/player";
-import { afterWhenMoving, removeBlock, removeClaim, removeSource } from "./cleanup.ts";
+import { afterWhenMoving, removeBlock, removeClaim, removeSource, swapped } from "./cleanup.ts";
 import {
   actionButton,
   checkField,
@@ -26,6 +26,7 @@ import { sortable } from "./sortable.ts";
 import {
   BLOCK_KINDS,
   describeBlock,
+  IMAGE_ACCEPT,
   IMAGE_FILE,
   idsInScene,
   LAYOUT_LABEL,
@@ -57,23 +58,12 @@ export interface Inspector {
 }
 
 const THEME_LABEL = { paper: "Paper (light)", ink: "Ink (dark)" } as const;
-const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
-
 export const LAYOUT_CHOICES = LAYOUTS.map((value) => ({ value, label: LAYOUT_LABEL[value] }));
 
 type Source = NonNullable<Scene["sources"]>[number];
 type Step = NonNullable<Scene["steps"]>[number];
 
 const optional = (value: string) => (value === "" ? null : value);
-
-/** `items` with the one at `index` swapped with its neighbour, or undefined when it has none that way. */
-function swapped<T>(items: readonly T[], index: number, direction: -1 | 1): T[] | undefined {
-  const other = index + direction;
-  if (index < 0 || other < 0 || other >= items.length) return undefined;
-  const next = [...items];
-  [next[index], next[other]] = [next[other] as T, next[index] as T];
-  return next;
-}
 
 /**
  * The column of forms beside the canvas: every property a deck, scene or block has, each applied through the

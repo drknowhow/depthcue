@@ -39,21 +39,22 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const { session } = store;
   let selected = session.doc.deck.scenes[0] as string;
   let selectedBlock: string | undefined;
-  // True while the inspector is applying a keystroke, so it is not rebuilt under the caret.
-  let typingInInspector = false;
+  // The form that is applying a keystroke right now, so that one is not rebuilt under the caret.
+  let typingIn: "inspector" | "toolbar" | undefined;
   let detailsOpen = false;
 
-  const edits: Edits = {
+  const editsFor = (form: "inspector" | "toolbar"): Edits => ({
     type(ops: readonly Op[], options?: ApplyOptions) {
-      typingInInspector = true;
+      typingIn = form;
       try {
         return session.apply(ops, options);
       } finally {
-        typingInInspector = false;
+        typingIn = undefined;
       }
     },
     act: (ops: readonly Op[], options?: ApplyOptions) => session.apply(ops, options),
-  };
+  });
+  const edits = editsFor("inspector");
 
   const hint = h("p", { class: "ed-hint", "aria-live": "polite" });
   const showProblem = (text: string | undefined) => {
@@ -70,8 +71,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     changed: () => toolbar.place(),
   });
   const toolbar = createToolbar(session, canvas, {
-    act: edits.act,
+    edits: editsFor("toolbar"),
     problem: showProblem,
+    upload: (file) => store.upload(file),
     deselect: () => selectBlock(undefined),
     goTo(id) {
       selectBlock(id);
@@ -226,12 +228,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   }
 
   function selectBlock(id: string | undefined) {
-    const blocks = session.doc.scenes[selected]?.blocks ?? [];
-    const picked = blocks.find((block) => block.id === id);
     const next = id !== undefined && hasItem(selected, id) ? id : undefined;
     canvas.mark(next);
-    // Only text can be edited on the slide so far. Picking anything else opens the panel that edits it.
-    if (picked && picked.type !== "text") setDetails(true);
     if (next === selectedBlock) return;
     selectedBlock = next;
     toolbar.render(selected, selectedBlock);
@@ -267,8 +265,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderScenes();
     renderBar();
     if (!canvas.typing) canvas.render(selected, selectedBlock);
-    toolbar.render(selected, selectedBlock);
-    if (!typingInInspector) inspector.render();
+    toolbar.render(selected, selectedBlock, typingIn === "toolbar");
+    if (typingIn !== "inspector") inspector.render();
   });
   const unsubscribeStore = store.subscribe(() => {
     renderBar();

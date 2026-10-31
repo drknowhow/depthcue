@@ -1,7 +1,6 @@
 import {
   type ApplyResult,
   type Block,
-  type Op,
   type Scene,
   type Session,
   TEXT_LIMITS,
@@ -10,7 +9,8 @@ import {
 import { h } from "@depthcue/player";
 import { type Canvas, SUMMARY_LIMIT } from "./canvas.ts";
 import { removeBlock, removeClaim } from "./cleanup.ts";
-import { problemOf } from "./fields.ts";
+import { type Edits, problemOf } from "./fields.ts";
+import { chartPanel, citePanel, clipPanel, imagePanel, type Panel, type PanelHost } from "./panels.ts";
 import { describeBlock, ROLE_LABEL, type TextRole } from "./templates.ts";
 
 /** How far the toolbar floats from the block it belongs to, in pixels. */
@@ -59,9 +59,12 @@ export function placeToolbar(
 }
 
 export interface ToolbarHooks {
-  act(ops: readonly Op[]): ApplyResult;
+  /** How the toolbar changes the deck: `act` for a click or a choice, `type` for a keystroke in one of its fields. */
+  edits: Edits;
   /** Says why a change was refused, or clears the message when `text` is undefined. */
   problem(text: string | undefined): void;
+  /** Stores a file in the deck and answers with its path. Rejects with a message the person can read. */
+  upload(file: File): Promise<string>;
   /** Nothing should stay chosen. */
   deselect(): void;
   /** Choose this block and put the keyboard on it. */
@@ -74,8 +77,11 @@ export interface ToolbarHooks {
 
 export interface Toolbar {
   readonly element: HTMLElement;
-  /** Shows the toolbar for the chosen block or claim of a scene, brings it up to date, or hides it. */
-  render(sceneId: string, id: string | undefined): void;
+  /**
+   * Shows the toolbar for the chosen block or claim of a scene, brings it up to date, or hides it. `typing` is true
+   * while a keystroke in one of the toolbar's own fields is being applied, so that field is not drawn again.
+   */
+  render(sceneId: string, id: string | undefined, typing?: boolean): void;
   /** Puts the toolbar against its block again. */
   place(): void;
   /** Takes the length of what is typed on the slide, which the document does not have when it is refused. */
@@ -94,11 +100,20 @@ function resolve(scene: Scene, id: string): Target | undefined {
   return block.type === "text" ? { kind: "text", scene, block } : { kind: "block", scene, block };
 }
 
+/** A chip in the toolbar and the popover it opens. */
+interface Chip {
+  panel: Panel;
+  button: HTMLButtonElement;
+  badge: HTMLElement;
+  pop: HTMLElement;
+  wrap: HTMLElement;
+}
+
 /**
- * The toolbar that floats against the chosen block of the slide. For text it has the role, a count against the
- * limit, a chip for citing sources and a remove button; for the claim and for other blocks it has what applies to
- * them. It is built when the choice changes and brought up to date after that, so a control keeps the keyboard
- * while the deck changes under it.
+ * The toolbar that floats against the chosen block of the slide. Text has its role, a count against the limit and
+ * a remove button; every kind of block also has chips that open a popover for what the slide cannot show, such as
+ * a chart's rows or the sources a block cites. It is built when the choice changes and brought up to date after
+ * that, so a control keeps the keyboard while the deck changes under it.
  */
 export function createToolbar(
   session: Session,
@@ -114,11 +129,9 @@ export function createToolbar(
   // The parts of whichever toolbar is built. Each is only set for the kinds that have it.
   let role: HTMLSelectElement | undefined;
   let count: HTMLElement | undefined;
-  let cite: HTMLButtonElement | undefined;
-  let citeCount: HTMLElement | undefined;
-  let pop: HTMLElement | undefined;
-  let list: HTMLElement | undefined;
-  let listKey = "";
+  let label: HTMLElement | undefined;
+  let chips: Chip[] = [];
+  let open: Chip | undefined;
 
   const scene = (id: string) => session.doc.scenes[id];
 
@@ -127,24 +140,88 @@ export function createToolbar(
     return result.ok;
   }
 
+  const panelHost: PanelHost = {
+    edits: hooks.edits,
+    scene,
+    run: (ops) => report(hooks.edits.act(ops)),
+    assets: () => [...session.doc.assets],
+    upload: hooks.upload,
+    problem: hooks.problem,
+    close: () => closePop(),
+    openDetails: hooks.openDetails,
+  };
+
   function closePop(giveBack = false) {
-    if (!pop || pop.hidden) return;
-    pop.hidden = true;
-    cite?.setAttribute("aria-expanded", "false");
-    if (giveBack) cite?.focus();
+    if (!open) return;
+    const chip = open;
+    open = undefined;
+    chip.pop.hidden = true;
+    chip.button.setAttribute("aria-expanded", "false");
+    if (giveBack) chip.button.focus();
+  }
+
+  /** Keeps the open popover inside the slide: slid sideways when it would overhang, shortened to the room it has. */
+  function fitPop() {
+    if (!open) return;
+    const { pop } = open;
+    const bounds = canvas.element.getBoundingClientRect();
+    pop.style.left = "0px";
+    pop.style.maxHeight = "";
+    const up = element.dataset.side === "below";
+    pop.toggleAttribute("data-up", up);
+    const box = pop.getBoundingClientRect();
+    const shift = Math.max(bounds.left - box.left, Math.min(0, bounds.right - box.right));
+    pop.style.left = `${Math.round(shift)}px`;
+    const room = up ? box.bottom - bounds.top : bounds.bottom - box.top;
+    if (box.height > room - 8) pop.style.maxHeight = `${Math.max(160, Math.floor(room - 8))}px`;
+  }
+
+  function openPop(chip: Chip) {
+    closePop();
+    open = chip;
+    chip.pop.hidden = false;
+    chip.button.setAttribute("aria-expanded", "true");
+    fitPop();
+    chip.pop.querySelector<HTMLElement>("input, select, textarea, button")?.focus();
+  }
+
+  function chipFor(panel: Panel): Chip {
+    const badge = h("span", { class: "ed-tb-n" });
+    const button = h(
+      "button",
+      {
+        type: "button",
+        class: "ed-tb-chip",
+        "data-tb": panel.name,
+        "aria-label": panel.title,
+        "aria-haspopup": "true",
+        "aria-expanded": "false",
+      },
+      panel.label,
+      badge,
+    );
+    const pop = h(
+      "div",
+      { class: "ed-tb-pop", role: "group", "aria-label": panel.title, hidden: true },
+      panel.body,
+    );
+    const wrap = h("span", { class: "ed-tb-chip-wrap" }, button, pop);
+    const chip: Chip = { panel, button, badge, pop, wrap };
+    button.addEventListener("click", () => (open === chip ? closePop() : openPop(chip)));
+    return chip;
   }
 
   function remove(id: string) {
     const current = scene(sceneId);
     if (!current) return;
     if (current.summary?.id === id) {
-      if (report(hooks.act(removeClaim(current)))) hooks.deselect();
+      if (report(hooks.edits.act(removeClaim(current)))) hooks.deselect();
       return;
     }
     const order = current.blocks.map((block) => block.id);
     const at = order.indexOf(id);
     const neighbour = order[at + 1] ?? order[at - 1];
-    if (report(hooks.act(removeBlock(current, id)))) {
+    if (report(hooks.edits.act(removeBlock(current, id)))) {
       if (neighbour) hooks.goTo(neighbour);
       else hooks.deselect();
     }
@@ -162,12 +239,31 @@ export function createToolbar(
     return node;
   }
 
+  /** What each kind of block can be asked for beyond what it shows, then the sources it cites. */
+  function panelsFor(block: Block): Panel[] {
+    const own = (): Panel[] => {
+      switch (block.type) {
+        case "bar-chart":
+          return [chartPanel(panelHost, sceneId, block.id)];
+        case "image":
+          return [imagePanel(panelHost, sceneId, block.id)];
+        case "clip":
+          return [clipPanel(panelHost, sceneId, block.id)];
+        default:
+          return [];
+      }
+    };
+    return [...own(), citePanel(panelHost, sceneId, block.id)];
+  }
+
   function build(target: Target) {
     closePop();
-    role = count = cite = citeCount = pop = list = undefined;
-    listKey = "";
+    role = count = label = undefined;
     const id = idOf(target);
     const controls: HTMLElement[] = [];
+    const inScene = target.scene.id;
+    sceneId = inScene;
+    chips = target.kind === "claim" ? [] : panelsFor(target.block).map(chipFor);
 
     if (target.kind === "text") {
       const select = h(
@@ -176,58 +272,23 @@ export function createToolbar(
         ...TEXT_ROLES.map((value) => h("option", { value }, ROLE_LABEL[value])),
       );
       select.addEventListener("change", () => {
-        const live = scene(target.scene.id);
+        const live = scene(inScene);
         const block = live?.blocks.find((candidate) => candidate.id === id);
         const next = select.value as TextRole;
         if (!live || block?.type !== "text") return;
-        const done = report(hooks.act([{ op: "block.set", scene: live.id, id, set: { role: next } }]));
+        const done = report(hooks.edits.act([{ op: "block.set", scene: live.id, id, set: { role: next } }]));
         // A refused role, such as text too long for a heading, leaves the block as it was.
         if (!done) select.value = block.role;
       });
       role = select;
       count = h("span", { class: "ed-tb-count", "data-tb": "count" });
-
-      citeCount = h("span", { class: "ed-tb-n" });
-      cite = h(
-        "button",
-        {
-          type: "button",
-          class: "ed-tb-cite",
-          "data-tb": "cite",
-          "aria-haspopup": "true",
-          "aria-expanded": "false",
-        },
-        "Cite",
-        citeCount,
-      );
-      list = h("div", { class: "ed-tb-sources" });
-      pop = h(
-        "div",
-        { class: "ed-tb-pop", role: "group", "aria-label": "Sources this text cites", hidden: true },
-        list,
-      );
-      const chip = cite;
-      const popover = pop;
-      chip.addEventListener("click", () => {
-        const open = popover.hidden;
-        popover.hidden = !open;
-        chip.setAttribute("aria-expanded", String(open));
-        if (open) popover.querySelector<HTMLElement>("input, button")?.focus();
-      });
-      controls.push(
-        select,
-        count,
-        h("span", { class: "ed-tb-cite-wrap" }, chip, popover),
-        removeButton(id, "this text"),
-      );
+      controls.push(select, count, ...chips.map((chip) => chip.wrap), removeButton(id, "this text"));
     } else if (target.kind === "claim") {
       count = h("span", { class: "ed-tb-count", "data-tb": "count" });
       controls.push(h("span", { class: "ed-tb-label" }, "Claim"), count, removeButton(id, "the claim"));
     } else {
-      controls.push(
-        h("span", { class: "ed-tb-label" }, describeBlock(target.block, 28)),
-        removeButton(id, "this block"),
-      );
+      label = h("span", { class: "ed-tb-label" }, describeBlock(target.block, 28));
+      controls.push(label, ...chips.map((chip) => chip.wrap), removeButton(id, "this block"));
     }
     element.setAttribute(
       "aria-label",
@@ -243,70 +304,21 @@ export function createToolbar(
     count.setAttribute("aria-label", `${length} of ${limit} characters`);
   }
 
-  /** The list of sources in the popover, rebuilt only when the scene's sources change so a click keeps its focus. */
-  function syncSources(target: Extract<Target, { kind: "text" }>) {
-    if (!list || !pop) return;
-    const sources = target.scene.sources ?? [];
-    const key = JSON.stringify(sources.map((source) => [source.id, source.title]));
-    const cited = new Set(target.block.sourceIds ?? []);
-    if (key !== listKey) {
-      listKey = key;
-      if (sources.length === 0) {
-        const open = h("button", { type: "button", "data-tb": "open-sources" }, "Add one in Details");
-        open.addEventListener("click", () => {
-          closePop();
-          hooks.openDetails();
-        });
-        list.replaceChildren(h("p", {}, "This scene has no sources yet."), open);
-      } else {
-        list.replaceChildren(
-          ...sources.map((source) => {
-            const box = h("input", { type: "checkbox", value: source.id, "data-tb": "source" });
-            box.addEventListener("change", () => {
-              const live = scene(target.scene.id);
-              const ids = (live?.sources ?? [])
-                .map((candidate) => candidate.id)
-                .filter((candidate) =>
-                  candidate === source.id
-                    ? box.checked
-                    : (list?.querySelector<HTMLInputElement>(`input[value="${candidate}"]`)?.checked ??
-                      false),
-                );
-              const done = report(
-                hooks.act([
-                  {
-                    op: "block.set",
-                    scene: target.scene.id,
-                    id: target.block.id,
-                    set: { sourceIds: ids.length > 0 ? ids : null },
-                  },
-                ]),
-              );
-              if (!done) box.checked = !box.checked;
-            });
-            return h("label", { class: "ed-tb-source" }, box, h("span", {}, source.title));
-          }),
-        );
-      }
-    }
-    for (const box of list.querySelectorAll<HTMLInputElement>("input[data-tb='source']")) {
-      box.checked = cited.has(box.value);
-    }
-  }
-
-  function sync(target: Target) {
+  function sync(target: Target, typing: boolean) {
     if (target.kind === "text") {
       const { block } = target;
       if (role) role.value = block.role;
       showCount(block.text.length, TEXT_LIMITS[block.role]);
-      if (citeCount) {
-        const n = block.sourceIds?.length ?? 0;
-        citeCount.textContent = n > 0 ? String(n) : "";
-        cite?.setAttribute("aria-label", n > 0 ? `Cite a source, ${n} cited` : "Cite a source");
-      }
-      syncSources(target);
     } else if (target.kind === "claim") {
       showCount(target.scene.summary?.text.length ?? 0, SUMMARY_LIMIT);
+    } else if (label) {
+      label.textContent = describeBlock(target.block, 28);
+    }
+    for (const chip of chips) {
+      chip.panel.fill(target.scene, typing);
+      const state = chip.panel.state?.(target.scene);
+      chip.badge.textContent = state?.badge ?? "";
+      chip.button.setAttribute("aria-label", state?.title ?? chip.panel.title);
     }
   }
 
@@ -325,6 +337,7 @@ export function createToolbar(
     element.style.left = `${Math.round(spot.left)}px`;
     element.style.top = `${Math.round(spot.top)}px`;
     element.dataset.side = spot.side;
+    fitPop();
   }
 
   /** The block moves with every keystroke and every redraw, so placing waits for the next frame and happens once. */
@@ -342,18 +355,21 @@ export function createToolbar(
   element.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || !shown) return;
     event.stopPropagation();
-    if (pop && !pop.hidden) closePop(true);
+    if (open) closePop(true);
     else hooks.focusBlock(shown.id);
   });
 
   const onPointerDown = (event: PointerEvent) => {
-    if (pop && !pop.hidden && !(event.target instanceof Node && element.contains(event.target))) closePop();
+    if (open && !(event.target instanceof Node && element.contains(event.target))) closePop();
   };
   document.addEventListener("pointerdown", onPointerDown);
+  // The slide scales with the room it has, so a resized window or an opened panel moves every block.
+  const resized = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => soon());
+  resized?.observe(canvas.element);
 
   return {
     element,
-    render(inScene, id) {
+    render(inScene, id, typing = false) {
       sceneId = inScene;
       const current = scene(inScene);
       const target = current && id !== undefined ? resolve(current, id) : undefined;
@@ -367,7 +383,7 @@ export function createToolbar(
         // The side is only known once the new target is placed, a frame from now. Until then it is not the old one.
         delete element.dataset.side;
       }
-      sync(target);
+      sync(target, typing);
       element.hidden = false;
       soon();
     },
@@ -383,6 +399,7 @@ export function createToolbar(
     },
     destroy() {
       document.removeEventListener("pointerdown", onPointerDown);
+      resized?.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
     },
   };

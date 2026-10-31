@@ -167,13 +167,12 @@ describe("the details panel", () => {
     expect(app().dataset.details).toBe("closed");
   });
 
-  it("opens by itself when a block with no text on the slide is picked", () => {
+  it("stays closed when a block with no text on the slide is picked, since its toolbar edits it", () => {
     sceneButtons()[1]?.click();
-    expect(panel().hidden).toBe(true);
     pick("chart-demand")?.click();
     expect(editor.blockId).toBe("chart-demand");
-    expect(panel().hidden).toBe(false);
-    expect(button("details").getAttribute("aria-expanded")).toBe("true");
+    expect(panel().hidden).toBe(true);
+    expect(button("details").getAttribute("aria-expanded")).toBe("false");
   });
 
   it("stays closed when text is picked, since the slide edits it", () => {

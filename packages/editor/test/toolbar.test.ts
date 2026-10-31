@@ -7,11 +7,13 @@ import { placeToolbar } from "../src/toolbar.ts";
 import { FakeServer } from "./helpers.ts";
 
 let host: HTMLElement;
+let server: FakeServer;
 let store: EditorStore;
 let editor: Editor;
 
 beforeEach(async () => {
-  store = await openStore(new FakeServer(), () => memoryDraftStore());
+  server = new FakeServer();
+  store = await openStore(server, () => memoryDraftStore());
   host = document.createElement("div");
   document.body.replaceChildren(host);
   editor = mountEditor(host, store);
@@ -384,7 +386,7 @@ describe("blocks that are not text", () => {
     expect(visible()).toBe(true);
     expect(toolbar().getAttribute("aria-label")).toBe("Block options");
     expect(toolbar().textContent).toContain("Image: Diagram");
-    expect(toolbar().querySelector("select")).toBeNull();
+    expect(toolbar().querySelector("[data-tb='role']")).toBeNull();
     part<HTMLButtonElement>("remove").click();
     expect(method()?.blocks.some((block) => block.id === "method-diagram")).toBe(false);
   });
@@ -461,5 +463,299 @@ describe("the keyboard", () => {
     expect(toolbar().querySelector<HTMLElement>(".ed-tb-pop")?.hidden).toBe(true);
     expect(document.activeElement).toBe(part("cite"));
     expect(editor.blockId).toBe("method-body");
+  });
+});
+
+// Typing and choosing in the toolbar's own forms, which are the details panel's fields in a popover.
+const control = <T extends HTMLElement = HTMLInputElement>(key: string): T => {
+  const found = toolbar().querySelector<T>(`[data-field="${key}"]`);
+  if (!found) throw new Error(`no control with data-field ${key} in the toolbar`);
+  return found;
+};
+const typeInto = (node: HTMLInputElement, text: string) => {
+  node.focus();
+  node.value = text;
+  node.dispatchEvent(new Event("input", { bubbles: true }));
+};
+const choose = (node: HTMLSelectElement, value: string) => {
+  node.value = value;
+  node.dispatchEvent(new Event("change", { bubbles: true }));
+};
+const popOf = (name: string) =>
+  part(name).closest(".ed-tb-chip-wrap")?.querySelector<HTMLElement>(".ed-tb-pop") as HTMLElement;
+const flush = () => new Promise((done) => setTimeout(done, 0));
+const chooseFile = (key: string, file: File) => {
+  const input = control(key);
+  Object.defineProperty(input, "files", { value: [file], configurable: true });
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+};
+
+describe("a chart's toolbar", () => {
+  const chart = () => {
+    const block = store.session.doc.scenes.demand?.blocks.find(
+      (candidate) => candidate.id === "chart-demand",
+    );
+    if (block?.type !== "bar-chart") throw new Error("the chart should be there");
+    return block;
+  };
+  const labels = () => chart().data.map((row) => row.label);
+
+  beforeEach(() => {
+    editor.select("demand");
+    blockNode("chart-demand").click();
+  });
+
+  it("has the data and the sources to cite, and nothing that is only for text", () => {
+    expect(visible()).toBe(true);
+    expect(toolbar().textContent).toContain("Chart: Share of orders");
+    expect(part("data")).not.toBeNull();
+    expect(part("cite")).not.toBeNull();
+    expect(toolbar().querySelector("[data-tb='role']")).toBeNull();
+    expect(popOf("data").hidden).toBe(true);
+  });
+
+  it("opens the data with the title, the unit and a line for each row", () => {
+    part<HTMLButtonElement>("data").click();
+    expect(popOf("data").hidden).toBe(false);
+    expect(part("data").getAttribute("aria-expanded")).toBe("true");
+    expect(control("chart:title").value).toBe("Share of orders, latest quarter");
+    expect(control("chart:unit").value).toBe("%");
+    expect(popOf("data").querySelectorAll(".ed-chart-row")).toHaveLength(2);
+  });
+
+  it("sets the title and the unit as they are typed, and drops each when it is emptied", () => {
+    part<HTMLButtonElement>("data").click();
+    typeInto(control("chart:title"), "Where orders come from");
+    expect(chart().title).toBe("Where orders come from");
+    typeInto(control("chart:title"), "");
+    expect("title" in chart()).toBe(false);
+    typeInto(control("chart:unit"), "pct");
+    expect(chart().unit).toBe("pct");
+    typeInto(control("chart:unit"), "");
+    expect("unit" in chart()).toBe(false);
+  });
+
+  it("refuses a unit that is too long, says why, and keeps the old one", () => {
+    part<HTMLButtonElement>("data").click();
+    typeInto(control("chart:unit"), "x".repeat(17));
+    expect(chart().unit).toBe("%");
+    expect(control("chart:unit").getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("keeps the field being typed in, so the caret stays where it is", () => {
+    part<HTMLButtonElement>("data").click();
+    const input = control("chart:title");
+    typeInto(input, "A");
+    typeInto(input, "AB");
+    expect(control("chart:title")).toBe(input);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("edits a row's label and value, and refuses a value that is not a number", () => {
+    part<HTMLButtonElement>("data").click();
+    typeInto(control("chart:row0:label"), "Alpha");
+    typeInto(control("chart:row0:value"), "55");
+    expect(chart().data[0]).toEqual({ label: "Alpha", value: 55 });
+    typeInto(control("chart:row0:value"), "");
+    expect(chart().data[0]).toEqual({ label: "Alpha", value: 55 });
+    expect(control("chart:row0:value").getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("adds a row and puts the keyboard on its label", () => {
+    part<HTMLButtonElement>("data").click();
+    control<HTMLButtonElement>("chart:addrow").click();
+    expect(chart().data[2]).toEqual({ label: "Item 3", value: 0 });
+    expect(document.activeElement).toBe(control("chart:row2:label"));
+  });
+
+  it("removes a row, and never the last one", () => {
+    part<HTMLButtonElement>("data").click();
+    control<HTMLButtonElement>("chart:row0:remove").click();
+    expect(labels()).toEqual(["Channel B"]);
+    expect(control<HTMLButtonElement>("chart:row0:remove").disabled).toBe(true);
+  });
+
+  it("moves a row up or down, and disables the moves that go nowhere", () => {
+    part<HTMLButtonElement>("data").click();
+    expect(control<HTMLButtonElement>("chart:row0:up").disabled).toBe(true);
+    expect(control<HTMLButtonElement>("chart:row1:down").disabled).toBe(true);
+    control<HTMLButtonElement>("chart:row0:down").click();
+    expect(labels()).toEqual(["Channel B", "Channel A"]);
+    control<HTMLButtonElement>("chart:row1:up").click();
+    expect(labels()).toEqual(["Channel A", "Channel B"]);
+  });
+
+  it("sorts by value, largest first, and the other way round when pressed again", () => {
+    part<HTMLButtonElement>("data").click();
+    control<HTMLButtonElement>("chart:sort").click();
+    expect(chart().data.map((row) => row.value)).toEqual([60, 40]);
+    control<HTMLButtonElement>("chart:sort").click();
+    expect(chart().data.map((row) => row.value)).toEqual([40, 60]);
+  });
+
+  it("stops offering rows at the most a chart holds", () => {
+    const many = Array.from({ length: 24 }, (_, index) => ({ label: `Row ${index}`, value: index }));
+    store.session.apply([{ op: "block.set", scene: "demand", id: "chart-demand", set: { data: many } }]);
+    part<HTMLButtonElement>("data").click();
+    expect(control<HTMLButtonElement>("chart:addrow").disabled).toBe(true);
+  });
+
+  it("draws the rows again after an undo, without closing", () => {
+    part<HTMLButtonElement>("data").click();
+    control<HTMLButtonElement>("chart:addrow").click();
+    expect(popOf("data").querySelectorAll(".ed-chart-row")).toHaveLength(3);
+    store.session.undo();
+    expect(popOf("data").querySelectorAll(".ed-chart-row")).toHaveLength(2);
+    expect(popOf("data").hidden).toBe(false);
+  });
+
+  it("shows a typed change in the details panel too", () => {
+    part<HTMLButtonElement>("data").click();
+    typeInto(control("chart:title"), "Seen in both");
+    const inspector = host.querySelector<HTMLInputElement>("[data-field='block:chart-demand:title']");
+    expect(inspector?.value).toBe("Seen in both");
+  });
+
+  it("closes with Escape and gives the keyboard to its chip, and then to the block", () => {
+    part<HTMLButtonElement>("data").click();
+    press(control("chart:title"), "Escape");
+    expect(popOf("data").hidden).toBe(true);
+    expect(document.activeElement).toBe(part("data"));
+    press(part("data"), "Escape");
+    expect(document.activeElement).toBe(blockNode("chart-demand"));
+  });
+
+  it("closes when the pointer goes down anywhere else", () => {
+    part<HTMLButtonElement>("data").click();
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(popOf("data").hidden).toBe(true);
+  });
+
+  it("opens one popover at a time", () => {
+    part<HTMLButtonElement>("data").click();
+    part<HTMLButtonElement>("cite").click();
+    expect(popOf("data").hidden).toBe(true);
+    expect(popOf("cite").hidden).toBe(false);
+  });
+
+  it("cites sources like any block, and says how many on the chip", () => {
+    expect(part("cite").textContent).toContain("1");
+    expect(part("cite").getAttribute("aria-label")).toBe("Cite a source, 1 cited");
+    part<HTMLButtonElement>("cite").click();
+    const box = popOf("cite").querySelector<HTMLInputElement>("input[data-tb='source']") as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    box.checked = false;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    expect("sourceIds" in chart()).toBe(false);
+    expect(part("cite").getAttribute("aria-label")).toBe("Cite a source");
+  });
+});
+
+describe("an image's toolbar", () => {
+  const image = () => {
+    const block = method()?.blocks.find((candidate) => candidate.id === "method-diagram");
+    if (block?.type !== "image") throw new Error("the image should be there");
+    return block;
+  };
+
+  beforeEach(() => {
+    blockNode("method-diagram").click();
+    part<HTMLButtonElement>("edit").click();
+  });
+
+  it("offers the image files in the deck, and only those", () => {
+    const select = control<HTMLSelectElement>("image:asset");
+    expect([...select.options].map((option) => option.value)).toEqual(["assets/method.svg"]);
+    expect(select.value).toBe("assets/method.svg");
+  });
+
+  it("changes the file to another image in the deck", () => {
+    server.assets.push("assets/second.png");
+    store.session.addAssets(["assets/second.png"]);
+    choose(control<HTMLSelectElement>("image:asset"), "assets/second.png");
+    expect(image().asset).toBe("assets/second.png");
+  });
+
+  it("requires alt text, and shows the new text on the toolbar's label", () => {
+    typeInto(control("image:alt"), "");
+    expect(image().alt).toMatch(/^Diagram/);
+    expect(control("image:alt").getAttribute("aria-invalid")).toBe("true");
+    typeInto(control("image:alt"), "Flow of the method");
+    expect(image().alt).toBe("Flow of the method");
+    expect(toolbar().textContent).toContain("Image: Flow of the method");
+  });
+
+  it("sets a caption and clears it again", () => {
+    typeInto(control("image:caption"), "Figure 1");
+    expect(image().caption).toBe("Figure 1");
+    typeInto(control("image:caption"), "");
+    expect("caption" in image()).toBe(false);
+  });
+
+  it("uploads a replacement and uses it", async () => {
+    chooseFile("image:upload", new File(["x"], "new.png", { type: "image/png" }));
+    await flush();
+    expect(image().asset).toBe("assets/new.png");
+  });
+
+  it("says why an upload failed, and keeps the image", async () => {
+    server.uploadAsset = async () => {
+      throw new Error("That file is not an image the editor accepts.");
+    };
+    chooseFile("image:upload", new File(["x"], "notes.txt", { type: "text/plain" }));
+    await flush();
+    expect(image().asset).toBe("assets/method.svg");
+    expect(hintText()).toBe("That file is not an image the editor accepts.");
+  });
+});
+
+describe("a clip's toolbar", () => {
+  const clip = () => {
+    const block = method()?.blocks.find((candidate) => candidate.id === "method-clip");
+    if (block?.type !== "clip") throw new Error("the clip should be there");
+    return block;
+  };
+
+  beforeEach(() => {
+    server.assets.push("assets/intro.mp4", "assets/intro.webm");
+    store.session.addAssets(["assets/intro.mp4", "assets/intro.webm"]);
+    store.session.apply([
+      {
+        op: "block.add",
+        scene: "method",
+        block: { id: "method-clip", type: "clip", source: "assets/intro.mp4", alt: "The intro" },
+      },
+    ]);
+    blockNode("method-clip").click();
+    part<HTMLButtonElement>("edit").click();
+  });
+
+  it("offers the video files in the deck, and only those", () => {
+    const select = control<HTMLSelectElement>("clip:source");
+    expect([...select.options].map((option) => option.value)).toEqual([
+      "assets/intro.mp4",
+      "assets/intro.webm",
+    ]);
+  });
+
+  it("changes the video, sets a poster from the images and clears it again", () => {
+    choose(control<HTMLSelectElement>("clip:source"), "assets/intro.webm");
+    expect(clip().source).toBe("assets/intro.webm");
+    expect([...control<HTMLSelectElement>("clip:poster").options].map((option) => option.value)).toEqual([
+      "",
+      "assets/method.svg",
+    ]);
+    choose(control<HTMLSelectElement>("clip:poster"), "assets/method.svg");
+    expect(clip().poster).toBe("assets/method.svg");
+    choose(control<HTMLSelectElement>("clip:poster"), "");
+    expect("poster" in clip()).toBe(false);
+  });
+
+  it("requires alt text", () => {
+    typeInto(control("clip:alt"), "");
+    expect(clip().alt).toBe("The intro");
+    expect(control("clip:alt").getAttribute("aria-invalid")).toBe("true");
+    typeInto(control("clip:alt"), "A short intro");
+    expect(clip().alt).toBe("A short intro");
   });
 });
