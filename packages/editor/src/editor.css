@@ -54,6 +54,7 @@ body {
 }
 
 .ed-deck {
+  flex: 1 1 8rem;
   margin: 0;
   min-width: 0;
   overflow: hidden;
@@ -433,6 +434,48 @@ body {
 
 .ed-scene-list[data-axis="x"] [data-drop="lower"] {
   box-shadow: 3px 0 0 var(--dc-evidence);
+}
+
+/* Scene tools: who leads and which layout, for the scene being edited. They sit in the top bar. */
+.ed-scene-tools {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-2);
+}
+
+.ed-seg {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+}
+
+.ed-app .ed-seg button {
+  min-height: 2.25rem;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ed-app .ed-seg button + button {
+  border-left: 1px solid var(--dc-line);
+}
+
+.ed-app .ed-seg button[aria-pressed="true"] {
+  background: var(--dc-text);
+  color: var(--dc-bg);
+}
+
+.ed-seg svg {
+  width: 1.5rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
 }
 
 /* Inspector */

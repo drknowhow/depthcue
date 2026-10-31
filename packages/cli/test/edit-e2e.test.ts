@@ -205,6 +205,24 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  it("changes who leads a scene and its layout from the top bar, and the folder follows", async () => {
+    await open();
+    const tools = page.locator(".ed-bar .ed-scene-tools");
+    await tools.locator("[data-lead='agent']").click();
+    await tools.locator("[data-layout='text-media']").click();
+    expect(await tools.locator("[data-lead='agent']").getAttribute("aria-pressed")).toBe("true");
+    expect(await tools.locator("[data-layout='text-media']").getAttribute("aria-pressed")).toBe("true");
+    expect(await read(page.locator("[data-id='opening'] .ed-lead"))).toBe("Agent");
+    await saved();
+    expect(disk().scenes.opening).toMatchObject({ lead: "agent", layout: "text-media" });
+
+    // One undo takes back one of the two choices.
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(disk().scenes.opening).toMatchObject({ lead: "agent", layout: "title" });
+    expect(problems).toEqual([]);
+  });
+
   it("takes in a change made on disk while nothing is unsaved", async () => {
     await open();
     external([retitle("Rewritten by an agent")]);
@@ -275,6 +293,10 @@ describe("the editor in a real browser", () => {
     expect(scroll).toBeLessThanOrEqual(width as number);
     expect(await status().isVisible()).toBe(true);
     expect(await headline().isVisible()).toBe(true);
+    // The lead and layout buttons wrap onto their own row instead of running off the side.
+    const tools = (await page.locator(".ed-scene-tools").boundingBox()) ?? { x: -1, width: 0 };
+    expect(tools.x).toBeGreaterThanOrEqual(0);
+    expect(tools.x + tools.width).toBeLessThanOrEqual(width as number);
   });
 
   it("serves a page that a script on another origin cannot read the token from", async () => {
