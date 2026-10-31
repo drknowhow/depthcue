@@ -218,7 +218,10 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
   function swap(render: () => void, direction: number) {
     if (!reducedMotion() && typeof document.startViewTransition === "function") {
       document.documentElement.dataset.dcDirection = direction < 0 ? "back" : "forward";
-      document.startViewTransition(render);
+      const transition = document.startViewTransition(render);
+      // A key pressed before the animation ends skips it, and the browser rejects `ready` with an AbortError. The
+      // scene has changed either way. A failure in `render` still shows, because it rejects the other promises.
+      transition.ready?.catch(() => {});
     } else {
       render();
     }
