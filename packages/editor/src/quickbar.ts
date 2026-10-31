@@ -1,21 +1,23 @@
-import type { Op, Session } from "@depthcue/core";
+import type { Session } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { popoverChip } from "./chip.ts";
-import { actionButton, type Edits, fileButton, problemOf } from "./fields.ts";
+import { actionButton, type Edits, fileButton } from "./fields.ts";
 import { notesPanel, panelHost } from "./panels.ts";
-import { BLOCK_KINDS, IMAGE_ACCEPT, type NewBlockKind, newBlock, newClaim, VIDEO_FILE } from "./templates.ts";
+import { BLOCK_KINDS, IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
 
 export interface QuickBarHooks {
-  /** How the bar changes the deck: `act` for a click, `type` for a keystroke in the notes. */
+  /** How the notes change the deck: `type` for a keystroke. */
   edits: Edits;
   /** Says why a change was refused, or clears the message when `text` is undefined. */
   problem(text: string | undefined): void;
   /** Stores a file in the deck and answers with its path. Rejects with a message the person can read. */
   upload(file: File): Promise<string>;
-  /** The chosen block of the scene, if any. A new block goes after it. */
-  block(): string | undefined;
-  /** A block was added: choose it. */
-  added(id: string): void;
+  /** Adds a block of a kind where the chosen block is, or in the first free area. An image comes with its file. */
+  add(kind: NewBlockKind, file?: File): void;
+  /** Gives the slide a claim. */
+  claim(): void;
+  /** Whether the deck has a video a clip could play. */
+  hasVideo(): boolean;
   /** The Build order button was pressed: show the badges on the slide, or put them away. */
   build?(on: boolean): void;
 }
@@ -27,66 +29,35 @@ export interface QuickBar {
   destroy(): void;
 }
 
+/** The order the bar lists the kinds in. A kind that is not here comes last, so a new one still gets a button. */
+const ORDER: readonly NewBlockKind[] = ["text", "bar-chart", "image", "clip"];
+const rank = (kind: NewBlockKind) => {
+  const at = ORDER.indexOf(kind);
+  return at < 0 ? ORDER.length : at;
+};
+
 /**
- * The row under the slide that adds to it: a block of each kind, or the claim, and the scene's notes. A new block
- * goes after the chosen one, or at the end, and is chosen so its toolbar is right there.
+ * The bar that floats at the foot of the stage: a block of each kind, or the claim, and the scene's notes. Where a new
+ * block goes is the adder's business, so the bar and the empty places on the slide agree.
  */
 export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar {
   let current = session.doc.deck.scenes[0] as string;
   const scene = () => session.doc.scenes[current];
 
-  const run = (ops: readonly Op[]) => {
-    const result = hooks.edits.act(ops);
-    hooks.problem(result.ok ? undefined : problemOf(result));
-    return result.ok;
-  };
+  const clip = actionButton("Clip", () => hooks.add("clip"), { "data-quick": "clip" });
+  const claim = actionButton("Claim", () => hooks.claim(), { "data-quick": "claim" });
 
-  function add(kind: NewBlockKind, asset?: string) {
-    const target = scene();
-    if (!target) return;
-    const block = newBlock(target, kind, asset);
-    const anchor = hooks.block();
-    const after =
-      anchor !== undefined && target.blocks.some((candidate) => candidate.id === anchor) ? anchor : undefined;
-    if (run([{ op: "block.add", scene: current, block, ...(after === undefined ? {} : { after }) }])) {
-      hooks.added(block.id);
-    }
-  }
-
-  async function addImage(file: File) {
-    hooks.problem(undefined);
-    try {
-      add("image", await hooks.upload(file));
-    } catch (error) {
-      hooks.problem(error instanceof Error ? error.message : "The upload failed.");
-    }
-  }
-
-  const clip = actionButton(
-    "Clip",
-    () => {
-      const first = [...session.doc.assets].sort().find((path) => VIDEO_FILE.test(path));
-      if (first) add("clip", first);
-    },
-    { "data-quick": "clip" },
-  );
-  const claim = actionButton(
-    "Claim",
-    () => {
-      const target = scene();
-      if (!target || target.summary) return;
-      run([{ op: "scene.set", id: current, set: { summary: newClaim(target) } }]);
-    },
-    { "data-quick": "claim" },
-  );
-
-  const adders = BLOCK_KINDS.map(({ kind, label }) => {
-    if (kind === "clip") return clip;
-    if (kind === "image") {
-      return fileButton(label, IMAGE_ACCEPT, "quick:image", (file) => void addImage(file));
-    }
-    return actionButton(kind === "bar-chart" ? "Chart" : label, () => add(kind), { "data-quick": kind });
-  });
+  const adders = [...BLOCK_KINDS]
+    .sort((a, b) => rank(a.kind) - rank(b.kind))
+    .map(({ kind, label }) => {
+      if (kind === "clip") return clip;
+      if (kind === "image") {
+        return fileButton(label, IMAGE_ACCEPT, "quick:image", (file) => hooks.add("image", file));
+      }
+      return actionButton(kind === "bar-chart" ? "Chart" : label, () => hooks.add(kind), {
+        "data-quick": kind,
+      });
+    });
 
   const host = panelHost(session, {
     edits: hooks.edits,
@@ -96,8 +67,8 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     openSources: () => {},
   });
   const panel = notesPanel(host, () => current);
-  // The bar sits under the slide, so the notes open upward over it.
-  const notes = popoverChip(panel, true);
+  // The bar sits at the foot of the stage, so the notes open upward over it, a little way in from the window's edge.
+  const notes = popoverChip(panel, true, 8);
 
   // Build order is a view of the slide and not an addition to it, so it sits apart from the row of things to add.
   const order = actionButton(
@@ -113,9 +84,9 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
   const element = h(
     "div",
     { class: "ed-quick", role: "group", "aria-label": "Add to this slide" },
-    h("span", { class: "ed-quick-label" }, "Add"),
     ...adders,
     claim,
+    h("span", { class: "ed-quick-rule", "aria-hidden": "true" }),
     notes.chip.wrap,
     order,
   );
@@ -128,7 +99,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
       const live = scene();
       if (!live) return;
       notes.fill(live, typing);
-      const hasVideo = [...session.doc.assets].some((path) => VIDEO_FILE.test(path));
+      const hasVideo = hooks.hasVideo();
       clip.disabled = !hasVideo;
       clip.title = hasVideo ? "" : "Put an .mp4 or .webm file in the deck's assets folder first.";
       claim.disabled = live.summary !== undefined;

@@ -39,24 +39,25 @@ const typeInto = (node: HTMLTextAreaElement | HTMLInputElement, text: string) =>
 const hintText = () => host.querySelector(".ed-hint")?.textContent ?? "";
 
 describe("adding to the slide", () => {
-  it("sits under the slide, with a button for each kind of block and for the claim", () => {
-    expect(bar().closest(".ed-main")).not.toBeNull();
+  it("floats at the foot of the stage, with a button for each kind of block and for the claim", () => {
+    // Beside the scrolling slide and not in it, so the bar stays put while the slide scrolls under it.
+    expect(bar().closest(".ed-stage")).not.toBeNull();
+    expect(bar().closest(".ed-main")).toBeNull();
     expect(bar().getAttribute("aria-label")).toBe("Add to this slide");
-    expect(quick("text").textContent).toBe("Text");
-    expect(quick("bar-chart").textContent).toBe("Chart");
+    const labels = [...bar().querySelectorAll("[data-quick], .ed-button")].map((node) => node.textContent);
+    expect(labels).toEqual(["Text", "Chart", "Image", "Clip", "Claim", "Build order"]);
     expect(bar().querySelector("input[type='file']")).not.toBeNull();
-    expect(quick("clip").textContent).toBe("Clip");
-    expect(quick("claim").textContent).toBe("Claim");
   });
 
-  it("adds a text at the end when nothing is chosen, and chooses it", () => {
+  it("adds a text after the last text of the slide when nothing is chosen, and chooses it", () => {
     quick("text").click();
-    expect(ids()).toEqual(["method-heading", "method-body", "method-diagram", "method-text"]);
+    // The slide draws its texts in one area and its pictures in another, and the new text joins the texts.
+    expect(ids()).toEqual(["method-heading", "method-body", "method-text", "method-diagram"]);
     expect(editor.blockId).toBe("method-text");
     expect(document.activeElement?.getAttribute("data-id")).toBe("method-text");
   });
 
-  it("adds after the chosen block", () => {
+  it("adds a text right after the chosen text", () => {
     // A text is chosen by putting the keyboard in it.
     host
       .querySelector<HTMLElement>(
@@ -64,9 +65,49 @@ describe("adding to the slide", () => {
       )
       ?.focus();
     expect(editor.blockId).toBe("method-heading");
+    quick("text").click();
+    expect(ids()).toEqual(["method-heading", "method-text", "method-body", "method-diagram"]);
+    expect(editor.blockId).toBe("method-text");
+  });
+
+  it("puts a chart in the area that takes charts, whatever is chosen, and after the chosen picture", () => {
+    host
+      .querySelector<HTMLElement>(
+        "[data-id='method-heading'] [data-edit], [data-id='method-heading'][data-edit]",
+      )
+      ?.focus();
     quick("bar-chart").click();
-    expect(ids()).toEqual(["method-heading", "method-chart", "method-body", "method-diagram"]);
-    expect(editor.blockId).toBe("method-chart");
+    expect(ids()).toEqual(["method-heading", "method-body", "method-diagram", "method-chart"]);
+    host.querySelector<HTMLElement>("[data-id='method-diagram']")?.click();
+    expect(editor.blockId).toBe("method-diagram");
+    quick("bar-chart").click();
+    expect(ids()).toEqual([
+      "method-heading",
+      "method-body",
+      "method-diagram",
+      "method-chart-2",
+      "method-chart",
+    ]);
+  });
+
+  it("goes to the first empty area of a claim slide, and into the chosen block's area when one is chosen", () => {
+    editor.select("demand");
+    const demand = () => store.session.doc.scenes.demand;
+    // The claim cites the chart, so Support is the empty area.
+    quick("text").click();
+    expect(demand()?.blocks.map((block) => block.id)).toEqual(["chart-demand", "demand-text"]);
+    expect(demand()?.summary?.evidenceIds).toEqual(["chart-demand"]);
+    // With the chart chosen, the text goes where the chart is, and the claim cites it.
+    host.querySelector<HTMLElement>("[data-id='chart-demand']")?.click();
+    quick("text").click();
+    expect(demand()?.blocks.map((block) => block.id)).toEqual([
+      "chart-demand",
+      "demand-text-2",
+      "demand-text",
+    ]);
+    expect(demand()?.summary?.evidenceIds).toEqual(["chart-demand", "demand-text-2"]);
+    store.session.undo();
+    expect(demand()?.summary?.evidenceIds).toEqual(["chart-demand"]);
   });
 
   it("is one undo step", () => {

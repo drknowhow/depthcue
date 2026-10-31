@@ -584,7 +584,7 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
-  it("adds a chart and a claim from the add row and writes notes, and the folder follows", async () => {
+  it("adds a chart and a claim from the quick bar and writes notes, and the folder follows", async () => {
     await open();
     await page.locator(".ed-scene[data-scene='method']").click();
     const row = page.locator(".ed-quick");
@@ -1210,30 +1210,31 @@ describe("moving blocks between slots in a real browser", () => {
   });
 });
 
+const sceneOnDisk = (id: string) => disk().scenes[id];
+const idsOnDisk = (id: string) => sceneOnDisk(id)?.blocks.map((entry) => entry.id);
+const note = (id: string, text: string): Block => ({ id, type: "text", role: "body", text });
+
+/** A scene added by something other than the editor: its file, and its place in the deck. */
+function addScene(scene: NewScene) {
+  const doc = disk();
+  const result = applyOps(doc, [{ op: "scene.add", scene }], revisionOf(doc));
+  if (!result.ok) throw new Error(result.diagnostics[0]?.message);
+  const text = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+  writeFileSync(join(folder, "deck.json"), text(result.doc.deck));
+  for (const id of result.changed)
+    writeFileSync(join(folder, "scenes", `${id}.json`), text(result.doc.scenes[id]));
+}
+
+async function openScene(id: string, anchor: string) {
+  await page.goto(url());
+  await page.locator(`.ed-scene[data-scene='${id}']`).click();
+  await page.locator(`.ed-frame [data-id='${anchor}']`).waitFor();
+}
+
 describe("empty areas of the slide in a real browser", () => {
   const block = (id: string) => page.locator(`.ed-frame [data-id='${id}']`);
   const ghost = (slot: string) => page.locator(`.ed-frame .ed-ghost[data-ghost='${slot}']`);
   const grip = (id: string) => page.locator(`.ed-grip[data-grip='${id}']`);
-  const sceneOnDisk = (id: string) => disk().scenes[id];
-  const idsOnDisk = (id: string) => sceneOnDisk(id)?.blocks.map((entry) => entry.id);
-  const note = (id: string, text: string): Block => ({ id, type: "text", role: "body", text });
-
-  /** A scene added by something other than the editor: its file, and its place in the deck. */
-  function addScene(scene: NewScene) {
-    const doc = disk();
-    const result = applyOps(doc, [{ op: "scene.add", scene }], revisionOf(doc));
-    if (!result.ok) throw new Error(result.diagnostics[0]?.message);
-    const text = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-    writeFileSync(join(folder, "deck.json"), text(result.doc.deck));
-    for (const id of result.changed)
-      writeFileSync(join(folder, "scenes", `${id}.json`), text(result.doc.scenes[id]));
-  }
-
-  async function openScene(id: string, anchor: string) {
-    await page.goto(url());
-    await page.locator(`.ed-scene[data-scene='${id}']`).click();
-    await page.locator(`.ed-frame [data-id='${anchor}']`).waitFor();
-  }
 
   it("adds text to Evidence from its place, cited by the claim, and one Undo takes it back", async () => {
     addScene({
@@ -1873,5 +1874,122 @@ describe("pinning in a real browser", () => {
       expect(await page.locator(".ed-frame .dc-pinned").count()).toBe(0);
       expect(problems).toEqual([]);
     });
+  });
+});
+
+describe("the quick bar in a real browser", () => {
+  const bar = () => page.locator(".ed-quick");
+  const block = (id: string) => page.locator(`.ed-frame [data-id='${id}']`);
+  const boxOf = async (locator: Locator) => {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error("the element should be drawn");
+    return box;
+  };
+
+  /** What a person sees of the bar at a window size: where it is, how many rows, and whether the page scrolls. */
+  async function layout(width: number, height: number) {
+    await page.setViewportSize({ width, height });
+    await page.goto(url());
+    await bar().waitFor();
+    return page.evaluate(() => {
+      const rect = (selector: string) => {
+        const box = (document.querySelector(selector) as HTMLElement).getBoundingClientRect();
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+      };
+      const main = document.querySelector(".ed-main") as HTMLElement;
+      return {
+        bar: rect(".ed-quick"),
+        slide: rect(".ed-frame"),
+        stage: rect(".ed-stage"),
+        scrolls: main.scrollHeight > main.clientHeight + 1,
+        wide: document.documentElement.scrollWidth > window.innerWidth,
+        window: { width: window.innerWidth, height: window.innerHeight },
+      };
+    });
+  }
+
+  for (const [width, height] of [
+    [1440, 900],
+    [1024, 768],
+  ] as const) {
+    it(`floats at the foot of the stage, in one row under the slide, at ${width} by ${height}`, async () => {
+      const seen = await layout(width, height);
+      // Under the slide, so nothing of the slide is covered, and in the middle of the stage.
+      expect(seen.bar.top).toBeGreaterThanOrEqual(seen.slide.bottom);
+      expect(seen.bar.bottom).toBeLessThanOrEqual(seen.stage.bottom);
+      expect(seen.bar.bottom - seen.bar.top).toBeLessThan(60);
+      const stageMiddle = (seen.stage.left + seen.stage.right) / 2;
+      expect(Math.abs((seen.bar.left + seen.bar.right) / 2 - stageMiddle)).toBeLessThan(2);
+      expect(seen.scrolls).toBe(false);
+      expect(seen.wide).toBe(false);
+      expect(problems).toEqual([]);
+    });
+  }
+
+  it("stays at the foot of the window while a short window scrolls the slide under it", async () => {
+    const seen = await layout(1024, 360);
+    expect(seen.scrolls).toBe(true);
+    expect(seen.bar.bottom).toBeLessThanOrEqual(seen.window.height);
+    expect(seen.bar.top).toBeGreaterThan(seen.window.height / 2);
+    await page.locator(".ed-main").evaluate((node) => node.scrollTo(0, node.scrollHeight));
+    const after = await boxOf(bar());
+    expect(Math.abs(after.y + after.height - seen.bar.bottom)).toBeLessThan(1);
+    expect(problems).toEqual([]);
+  });
+
+  it("sits in the flow under the slide on a phone, inside the window", async () => {
+    const seen = await layout(390, 844);
+    expect(seen.bar.left).toBeGreaterThanOrEqual(0);
+    expect(seen.bar.right).toBeLessThanOrEqual(seen.window.width);
+    expect(seen.bar.top).toBeGreaterThanOrEqual(seen.slide.bottom);
+    expect(seen.wide).toBe(false);
+    expect(problems).toEqual([]);
+  });
+
+  it("opens the notes upward, inside the window and a little way from its edge", async () => {
+    await layout(1024, 768);
+    await page.locator("[data-tb='notes']").click();
+    const pop = page.locator(".ed-quick .ed-tb-pop");
+    await pop.waitFor();
+    const [popBox, barBox] = await Promise.all([boxOf(pop), boxOf(bar())]);
+    expect(popBox.y + popBox.height).toBeLessThanOrEqual(barBox.y);
+    expect(popBox.x).toBeGreaterThanOrEqual(8 - 1);
+    expect(popBox.x + popBox.width).toBeLessThanOrEqual(1024 - 8 + 1);
+    expect(problems).toEqual([]);
+  });
+
+  it("adds into the area of the chosen block, after it, and one Undo takes it back", async () => {
+    addScene({
+      id: "qb",
+      title: "Quick",
+      layout: "claim-evidence",
+      summary: { id: "qb-claim", text: "A claim", evidenceIds: ["qb-proof"] },
+      blocks: [note("qb-proof", "Proof."), note("qb-side", "Side.")],
+    });
+    await openScene("qb", "qb-proof");
+    await block("qb-proof").click();
+    await bar().locator("[data-quick='text']").click();
+    await saved();
+    expect(idsOnDisk("qb")).toEqual(["qb-proof", "qb-text", "qb-side"]);
+    expect(sceneOnDisk("qb")?.summary?.evidenceIds).toEqual(["qb-proof", "qb-text"]);
+    // The new block has the keyboard, ready to be typed over.
+    expect(
+      await page.evaluate(() => document.activeElement?.closest("[data-id]")?.getAttribute("data-id")),
+    ).toBe("qb-text");
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(idsOnDisk("qb")).toEqual(["qb-proof", "qb-side"]);
+    expect(sceneOnDisk("qb")?.summary?.evidenceIds).toEqual(["qb-proof"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("adds to the first empty area when nothing is chosen, and a chart fills the media area", async () => {
+    addScene({ id: "qm", title: "Media", layout: "text-media", blocks: [note("qm-words", "Words.")] });
+    await openScene("qm", "qm-words");
+    await bar().locator("[data-quick='bar-chart']").click();
+    await saved();
+    expect(idsOnDisk("qm")).toEqual(["qm-words", "qm-chart"]);
+    expect(await page.locator(".ed-frame .dc-media-region [data-id='qm-chart']").count()).toBe(1);
+    expect(problems).toEqual([]);
   });
 });

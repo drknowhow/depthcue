@@ -211,7 +211,7 @@ const WAYS: Record<string, Entry> = {
   "scene.layout": { where: "Layout buttons in the top bar", reach: () => find(host, "[data-layout]") },
   "scene.lead": { where: "Who leads buttons in the top bar", reach: () => find(host, "[data-lead]") },
   "scene.summary": {
-    where: "Add row, Claim; the claim's toolbar removes it",
+    where: "Quick bar, Claim; the claim's toolbar removes it",
     reach: () => {
       choose("claim-shift", "text");
       return find(host, "[data-quick='claim']") && find(host, ".ed-toolbar [data-tb='remove']");
@@ -230,7 +230,7 @@ const WAYS: Record<string, Entry> = {
     },
   },
   "scene.blocks": {
-    where: "Add row to add; block toolbar to move and remove",
+    where: "Quick bar to add; block toolbar to move and remove",
     reach: () => {
       choose(blocks.text, "text");
       return (

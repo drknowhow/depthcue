@@ -115,21 +115,22 @@ function evidenceChange(scene: Scene, ids: readonly string[]): Op[] {
 }
 
 /**
- * The operations that put a new block in an area: the block goes after the last one there, and in Evidence it is
- * cited by the claim in the same step. The same refusals apply as for a move, so a layout never ends up holding a
- * block it would draw somewhere else.
+ * The operations that put a new block in an area: the block goes after `after` when that block is drawn there, and
+ * otherwise after the last one there. In Evidence it is cited by the claim in the same step. The same refusals apply
+ * as for a move, so a layout never ends up holding a block it would draw somewhere else.
  */
-export function addBlock(scene: Scene, to: SlotName, block: Block): Placed {
+export function addBlock(scene: Scene, to: SlotName, block: Block, after?: string): Placed {
   const into = slotsOf(scene).find((slot) => slot.name === to);
   if (!into) return refuse("This layout has no such area.");
   const bad = turnedAway(scene, into, block.type);
   if (bad) return refuse(bad);
-  const last = into.blocks[into.blocks.length - 1];
+  const anchor =
+    after !== undefined && into.blocks.includes(after) ? after : into.blocks[into.blocks.length - 1];
   const cited = scene.summary?.evidenceIds ?? [];
   return {
     ok: true,
     ops: [
-      { op: "block.add", scene: scene.id, block, ...(last === undefined ? {} : { after: last }) },
+      { op: "block.add", scene: scene.id, block, ...(anchor === undefined ? {} : { after: anchor }) },
       ...evidenceChange(scene, to === "evidence" ? [...cited, block.id] : cited),
     ],
   };

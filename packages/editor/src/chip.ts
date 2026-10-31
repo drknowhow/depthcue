@@ -100,8 +100,11 @@ export interface PopoverChip {
   destroy(): void;
 }
 
-/** `up` opens the popover above its chip, for a chip near the bottom of the window. */
-export function popoverChip(panel: Panel, up = false): PopoverChip {
+/**
+ * `up` opens the popover above its chip, for a chip near the bottom of the window. `margin` keeps it that many pixels
+ * from the sides of the window, for a popover that is not meant to touch them.
+ */
+export function popoverChip(panel: Panel, up = false, margin = 0): PopoverChip {
   const chip = buildChip(panel);
   let isOpen = false;
 
@@ -109,7 +112,12 @@ export function popoverChip(panel: Panel, up = false): PopoverChip {
   const fit = () =>
     fitPopover(
       chip.pop,
-      { left: 0, right: document.documentElement.clientWidth, top: 0, bottom: window.innerHeight },
+      {
+        left: margin,
+        right: document.documentElement.clientWidth - margin,
+        top: 0,
+        bottom: window.innerHeight,
+      },
       up,
     );
   const close = (giveBack = false) => {

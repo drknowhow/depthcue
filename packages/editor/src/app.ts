@@ -41,8 +41,8 @@ export interface Editor {
 
 /**
  * Mounts the editor into `host`: a slim top bar, the scene strip, the selected scene filling the rest with its
- * text editable in place, and the rest of its properties in a toolbar over the chosen block, an add row under the
- * slide and the popovers of the top bar.
+ * text editable in place, and the rest of its properties in a toolbar over the chosen block, a quick bar at the foot
+ * of the stage and the popovers of the top bar.
  * All state lives in the store's session; this only reflects it and sends edits back through it.
  */
 export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
@@ -79,6 +79,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   });
   const adder = createAdder(session, {
     scene: () => selected,
+    block: () => selectedBlock,
     act: (ops) => session.apply(ops),
     problem: showProblem,
     upload: (file) => store.upload(file),
@@ -165,21 +166,15 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     edits: editsFor("quick"),
     problem: showProblem,
     upload: (file) => store.upload(file),
-    block: () => selectedBlock,
-    added(id) {
-      selectBlock(id);
-      canvas.focusBlock(id);
-    },
+    add: (kind, file) => void adder.quick(kind, file),
+    claim: () => adder.claim(),
+    hasVideo: () => adder.hasVideo(),
     build: (on) => canvas.setBuild(on),
   });
-  const stage = h(
-    "main",
-    { class: "ed-main", "aria-label": "Scene preview" },
-    canvas.element,
-    hint,
-    quick.element,
-  );
-  const root = h("div", { class: "ed-app" }, bar, notices, strip.element, stage);
+  const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
+  // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
+  const floor = h("div", { class: "ed-stage" }, stage, quick.element);
+  const root = h("div", { class: "ed-app" }, bar, notices, strip.element, floor);
   host.replaceChildren(root);
   // A file dropped anywhere but on an image would open in this tab and take the editor away.
   const refuseFiles = (event: DragEvent) => {
@@ -348,14 +343,15 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderNotices();
   });
 
-  // A click on the stage that lands on no block, and not on the toolbar or the add row, lets go of the choice.
+  // A click on the stage that lands on no block, and not on the toolbar or the build badges, lets go of the choice.
+  // The quick bar is beside the stage and not in it, so a press on the bar keeps the choice its adds go after.
   // This runs while the click is still on its way down, before the target's own handler. A button in the toolbar can
   // be gone by the time the click bubbles back up, because the removal it caused redrew the toolbar.
   stage.addEventListener(
     "click",
     (event) => {
       const target = event.target;
-      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar, .ed-quick, .ed-build"))
+      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar, .ed-build"))
         selectBlock(undefined);
     },
     true,
