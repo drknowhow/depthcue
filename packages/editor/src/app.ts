@@ -1,13 +1,10 @@
-import type { ApplyOptions, Op, Scene } from "@depthcue/core";
+import type { ApplyOptions, Op } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { createCanvas } from "./canvas.ts";
-import { type Edits, problemOf } from "./fields.ts";
-import { createInspector, LAYOUT_CHOICES } from "./inspector.ts";
-import { sortable } from "./sortable.ts";
+import type { Edits } from "./fields.ts";
+import { createInspector } from "./inspector.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
-import { type Layout, newScene } from "./templates.ts";
-
-const LEAD = { human: "Human", agent: "Agent", shared: "Shared" } as const;
+import { createStrip } from "./strip.ts";
 
 const SAVE_LABEL = {
   saved: "Saved",
@@ -96,31 +93,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     h("div", { class: "ed-actions" }, undo, redo, status, retry, details, present),
   );
   const notices = h("div", { class: "ed-notices" });
-  const sceneList = h("ol", { class: "ed-scene-list" });
-
-  const layoutChoice = h(
-    "select",
-    { "aria-label": "Layout for the new scene", "data-field": "rail:layout" },
-    ...LAYOUT_CHOICES.map((choice) => h("option", { value: choice.value }, choice.label)),
-  );
-  const railProblem = h("p", { class: "ed-problem", role: "alert", hidden: true });
-  const addScene = button("add-scene", "Add scene", () => {
-    const scene = newScene(session.doc, layoutChoice.value as Layout);
-    const result = edits.act([{ op: "scene.add", scene, after: selected }]);
-    railProblem.hidden = result.ok;
-    railProblem.textContent = result.ok ? "" : problemOf(result);
-    if (result.ok) select(scene.id);
-  });
-  const rail = h(
-    "nav",
-    { class: "ed-scenes", "aria-label": "Scenes" },
-    sceneList,
-    h("div", { class: "ed-add-scene" }, layoutChoice, addScene),
-    railProblem,
-  );
+  const strip = createStrip(session, { select: (id) => select(id), act: edits.act });
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   inspector.element.id = "ed-details";
-  const root = h("div", { class: "ed-app" }, bar, notices, rail, stage, inspector.element);
+  const root = h("div", { class: "ed-app" }, bar, notices, strip.element, stage, inspector.element);
   host.replaceChildren(root);
 
   /** The details panel holds every property the slide cannot edit yet. It stays closed so the slide gets the room. */
@@ -132,36 +108,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   }
   setDetails(false);
 
-  function renderScenes() {
-    const { deck, scenes } = session.doc;
-    const items = new Map<string, HTMLElement>();
-    for (const [index, id] of deck.scenes.entries()) {
-      const scene = scenes[id] as Scene;
-      const item = h(
-        "button",
-        {
-          type: "button",
-          class: "ed-scene",
-          "data-scene": id,
-          "aria-current": id === selected ? "true" : "false",
-        },
-        h("span", { class: "ed-num" }, String(index + 1)),
-        h("span", { class: "ed-title" }, scene.title),
-        h("span", { class: "ed-lead", "data-lead": scene.lead ?? "human" }, LEAD[scene.lead ?? "human"]),
-      );
-      item.addEventListener("click", () => select(id));
-      items.set(id, h("li", {}, item));
-    }
-    sceneList.replaceChildren(...items.values());
-    // `flex-direction` is "row" even on a grid, so it only counts when the list really is a flex container.
-    const layout = getComputedStyle(sceneList);
-    sceneList.dataset.axis =
-      layout.display.includes("flex") && layout.flexDirection.startsWith("row") ? "x" : "y";
-    sortable(sceneList, items, {
-      ids: () => session.doc.deck.scenes,
-      move: (id, after) => void edits.act([{ op: "scene.move", id, after }]),
-    });
-  }
+  const renderScenes = () => strip.render(selected);
 
   function renderBar() {
     const { deck } = session.doc;
@@ -312,6 +259,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       document.removeEventListener("keydown", onKey);
       unsubscribeSession();
       unsubscribeStore();
+      strip.destroy();
       host.replaceChildren();
     },
   };

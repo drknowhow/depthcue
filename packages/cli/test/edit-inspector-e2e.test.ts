@@ -119,12 +119,13 @@ describe("the inspector in a real browser", () => {
       () => document.querySelectorAll(".ed-scene")[0]?.getAttribute("data-scene") === "opening",
     );
 
+    // Dropped on the lower half of the last row, which puts the dragged scene after it.
+    const last = page.locator(".ed-scene-list > li").nth(2);
+    const height = (await last.boundingBox())?.height ?? 0;
     await page
       .locator(".ed-scene-list > li")
       .nth(0)
-      .dragTo(page.locator(".ed-scene-list > li").nth(2), {
-        targetPosition: { x: 20, y: 40 },
-      });
+      .dragTo(last, { targetPosition: { x: 20, y: height - 10 } });
     await page.waitForFunction(
       () => document.querySelectorAll(".ed-scene")[2]?.getAttribute("data-scene") === "opening",
     );
