@@ -24,7 +24,11 @@ export function openDeck(folder: string): OpenResult {
   return doc ? { ok: true, doc, diagnostics } : { ok: false, diagnostics };
 }
 
-const blockSummary = (block: Block) => ({ id: block.id, type: block.type });
+const blockSummary = (block: Block) => ({
+  id: block.id,
+  type: block.type,
+  ...(block.frame === undefined ? {} : { frame: block.frame }),
+});
 
 export function getOutline(doc: Doc, detail: Detail = "concise") {
   return {
@@ -35,6 +39,7 @@ export function getOutline(doc: Doc, detail: Detail = "concise") {
     language: doc.deck.language,
     scenes: doc.deck.scenes.map((id) => {
       const scene = doc.scenes[id] as Scene;
+      const pinned = scene.blocks.filter((block) => block.frame !== undefined).length;
       const base = {
         id,
         title: scene.title,
@@ -42,6 +47,7 @@ export function getOutline(doc: Doc, detail: Detail = "concise") {
         lead: scene.lead ?? "human",
         blocks: scene.blocks.length,
         steps: scene.steps?.length ?? 0,
+        ...(pinned > 0 ? { pinned } : {}),
       };
       return detail === "concise"
         ? base

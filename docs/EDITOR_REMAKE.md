@@ -58,6 +58,11 @@ page: a pinned block that overlaps another block is a `frame-overlap` warning, s
 on purpose, and a pinned block whose content is larger than its frame is a `frame-overflow` error. Two blocks in the
 template that overlap stay an `overlap` error.
 
+An agent sees frames too. `deck_get` lists a pinned count per scene in the outline and the `frame` of each pinned block
+in the detailed block list; `deck_apply` pins and unpins with `block.frame` and `block.unframe`. `deck_render` returns
+errors in `diagnostics` and advice in `warnings`, and `ok` is true when there are no errors, so a scene with only a
+pinned overlap is done.
+
 ### Comments
 
 `comments.json` sits beside the deck and has its own revision, so a comment never changes the deck revision.

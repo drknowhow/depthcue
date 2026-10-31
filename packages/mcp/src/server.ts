@@ -59,14 +59,14 @@ const TOOLS = [
   {
     name: "deck_get",
     description:
-      "Read the deck. view 'outline' (default) lists every scene with its id, title, layout, lead, block count and step count, and returns `rev`, the deck revision to pass to deck_apply as base_rev. view 'scene' returns one scene's full JSON. Use detail 'detailed' for block lists, per-scene revisions, and the asset list.",
+      "Read the deck. view 'outline' (default) lists every scene with its id, title, layout, lead, block count and step count, and returns `rev`, the deck revision to pass to deck_apply as base_rev. view 'scene' returns one scene's full JSON. Use detail 'detailed' for block lists, per-scene revisions, and the asset list. A block with a `frame` {x,y,w,h} is pinned: percent of the 16:9 slide, x and y its top-left corner, so x+w and y+h stay within 100. The rest sit in their layout's slots.",
     inputSchema: jsonSchema(getArgs),
     annotations: { title: "Read the deck", readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   },
   {
     name: "deck_apply",
     description:
-      "Edit the deck. Applies `ops` atomically against `base_rev`, the `rev` from deck_get or your last deck_apply. If any op is invalid or base_rev is stale, nothing is written and the reply says how to fix it; a stale revision is never merged: read again and redo. `set` replaces each key it names whole: send whole arrays (chart data, steps). null deletes an optional key. deck.set keys: title, language, theme, modules. scene.set keys: title, layout, lead, summary, sources, reading, steps, notes. scene.add and block.add take a whole scene or block. `after` is a sibling id, null for first, omitted for last. Ids never change: add the new item, remove the old. Then deck_render changed scenes.",
+      "Edit the deck. Applies `ops` atomically against `base_rev`, the `rev` from deck_get or your last deck_apply. An invalid op or a stale base_rev writes nothing and the reply says how to fix it; a stale revision is never merged: read again and redo. `set` replaces each key it names whole: send whole arrays (chart data, steps). null deletes an optional key. deck.set keys: title, language, theme, modules. scene.set keys: title, layout, lead, summary, sources, reading, steps, notes. scene.add and block.add take a whole scene or block. `after` is a sibling id, null for first, omitted for last. block.frame and block.unframe pin and unpin a block. Ids never change: add the new item, remove the old.",
     inputSchema: {
       type: "object",
       properties: {
@@ -87,7 +87,7 @@ const TOOLS = [
   {
     name: "deck_render",
     description:
-      "Render one scene at the stage size in a real browser, with fonts loaded and motion off, then measure it. Returns a PNG and diagnostics for overflow, clipping, overlap, text under the minimum size, low contrast, and images that failed to load. Each diagnostic names a `path` into the scene JSON and a `fix`. Repair order: shorten the text, pick a roomier template, split the scene. Nothing is scaled down to fit. A scene is done when its diagnostics are empty.",
+      "Render one scene at the stage size in a real browser, with fonts loaded and motion off, then measure it. Returns a PNG and diagnostics for overflow, clipping, overlap, text under the minimum size, low contrast, images that failed to load, and a pinned block larger than its frame. Each diagnostic names a `path` into the scene JSON and a `fix`. Repair order: shorten the text, pick a roomier template, split the scene. Nothing is scaled down to fit. A scene is done when `diagnostics` is empty. `warnings`, such as a pinned block over another block, are advice.",
     inputSchema: jsonSchema(renderArgs),
     annotations: { title: "Render a scene", readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   },
@@ -229,12 +229,16 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
         ...(height === undefined ? {} : { height }),
       }),
     );
+    // A warning is advice: a block pinned over another may be meant, so only an error keeps a scene from done.
+    const errors = result.diagnostics.filter((d) => d.severity === "error");
+    const warnings = result.diagnostics.filter((d) => d.severity === "warning");
     const body = {
-      ok: result.diagnostics.length === 0,
+      ok: errors.length === 0,
       scene: result.scene,
       step: result.step,
       viewport: result.viewport,
-      diagnostics: result.diagnostics.map(plain),
+      diagnostics: errors.map(plain),
+      ...(warnings.length > 0 ? { warnings: warnings.map(plain) } : {}),
       ...(level === "detailed"
         ? {
             words: result.measure.words,
