@@ -1,0 +1,1797 @@
+{
+  "canvas": {
+    "w": 1920,
+    "h": 1080,
+    "fps": 30,
+    "bg": "#0C0E12",
+    "duration": 60
+  },
+  "layers": [
+    {
+      "id": "ground",
+      "type": "rect",
+      "x": 0,
+      "y": 0,
+      "anchor": "topleft",
+      "w": "100%",
+      "h": "100%",
+      "fill": "#0C0E12"
+    },
+    {
+      "id": "mark-small",
+      "type": "image",
+      "src": "assets/mark.png",
+      "x": 120,
+      "y": 70,
+      "w": 60,
+      "anchor": "topleft",
+      "at": 6,
+      "until": 57,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "wordmark-small",
+      "type": "text",
+      "text": "Depthcue",
+      "x": 200,
+      "y": 100,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/InstrumentSerif-Regular.ttf",
+      "weight": 400,
+      "size": 48,
+      "fill": "#F2EFE6",
+      "at": 6,
+      "until": 57,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "title-mark",
+      "type": "image",
+      "src": "assets/mark.png",
+      "x": "50%",
+      "y": 300,
+      "w": 300,
+      "at": 0.2,
+      "until": 6,
+      "rotateY": [
+        [
+          0,
+          -50
+        ],
+        [
+          1.1,
+          0,
+          "outCubic"
+        ]
+      ],
+      "enter": {
+        "name": "pop",
+        "dur": 0.7
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "title-wordmark",
+      "type": "text",
+      "text": "Depthcue",
+      "x": "50%",
+      "y": 610,
+      "font": "../../brand/fonts/InstrumentSerif-Regular.ttf",
+      "weight": 400,
+      "size": 200,
+      "fill": "#F2EFE6",
+      "split": "chars",
+      "at": 0.9,
+      "until": 6,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5,
+        "stagger": 0.05
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "title-tagline",
+      "type": "text",
+      "text": "Explanations an agent can write, a person can repair, and both can present.",
+      "x": "50%",
+      "y": 830,
+      "font": "../../brand/fonts/SpaceGrotesk-Medium.ttf",
+      "size": 40,
+      "lineHeight": 1.3,
+      "maxWidth": 1100,
+      "fill": "#A5ABB8",
+      "at": 1.4,
+      "until": 6,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "format-kicker",
+      "type": "text",
+      "text": "01 · The format",
+      "x": 120,
+      "y": 300,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 26,
+      "letterSpacing": 4,
+      "case": "upper",
+      "fill": "#FF633F",
+      "at": 6.2,
+      "until": 14,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "format-headline",
+      "type": "text",
+      "text": "A deck is typed JSON with stable ids.",
+      "x": 120,
+      "y": 350,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/InstrumentSerif-Regular.ttf",
+      "weight": 400,
+      "size": 84,
+      "lineHeight": 1.04,
+      "maxWidth": 680,
+      "fill": "#F2EFE6",
+      "split": "words",
+      "at": 6.35,
+      "until": 14,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5,
+        "stagger": 0.07
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "format-support",
+      "type": "text",
+      "text": "Generate it, review it in a pull request, diff it.",
+      "x": 120,
+      "y": 575,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/SpaceGrotesk-Medium.ttf",
+      "size": 34,
+      "lineHeight": 1.32,
+      "maxWidth": 640,
+      "fill": "#A5ABB8",
+      "at": 7,
+      "until": 14,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "format-code",
+      "type": "rect",
+      "x": 860,
+      "y": 220,
+      "w": 960,
+      "h": 620,
+      "anchor": "topleft",
+      "radius": 24,
+      "fill": "#161A21",
+      "stroke": "#2A303A",
+      "strokeWidth": 2,
+      "at": 6.3,
+      "until": 14,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "format-code-dot-1",
+      "type": "circle",
+      "x": 898,
+      "y": 258,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 6.5,
+      "until": 14,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "format-code-dot-2",
+      "type": "circle",
+      "x": 924,
+      "y": 258,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 6.5,
+      "until": 14,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "format-code-dot-3",
+      "type": "circle",
+      "x": 950,
+      "y": 258,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 6.5,
+      "until": 14,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "format-code-name",
+      "type": "text",
+      "text": "scenes/demand.json",
+      "x": 1000,
+      "y": 258,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 24,
+      "fill": "#A5ABB8",
+      "at": 6.5,
+      "until": 14,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "format-json",
+      "type": "text",
+      "text": "{\n  \"id\": \"**demand**\",\n  \"lead\": \"agent\",\n  \"summary\": {\n    \"id\": \"**claim-shift**\",\n    \"text\": \"**Channel B now leads, 60 to 40.**\",\n    \"evidenceIds\": [\"chart-demand\"]\n  },\n  \"blocks\": [\n    { \"id\": \"**chart-demand**\", \"type\": \"bar-chart\" }\n  ]\n}",
+      "x": 908,
+      "y": 290,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 28,
+      "lineHeight": 1.45,
+      "fill": "#A5ABB8",
+      "emph": "#FF633F",
+      "at": 6.5,
+      "until": 14,
+      "enter": {
+        "name": "type",
+        "dur": 3.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-kicker",
+      "type": "text",
+      "text": "02 · An agent edits it",
+      "x": 120,
+      "y": 300,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 26,
+      "letterSpacing": 4,
+      "case": "upper",
+      "fill": "#FF633F",
+      "at": 14.2,
+      "until": 26,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-headline",
+      "type": "text",
+      "text": "An edit is one transaction.",
+      "x": 120,
+      "y": 350,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/InstrumentSerif-Regular.ttf",
+      "weight": 400,
+      "size": 84,
+      "lineHeight": 1.04,
+      "maxWidth": 680,
+      "fill": "#F2EFE6",
+      "split": "words",
+      "at": 14.35,
+      "until": 26,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5,
+        "stagger": 0.07
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-support",
+      "type": "text",
+      "text": "It names a revision. If the deck has moved on, the edit is rejected, never merged.",
+      "x": 120,
+      "y": 575,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/SpaceGrotesk-Medium.ttf",
+      "size": 34,
+      "lineHeight": 1.32,
+      "maxWidth": 640,
+      "fill": "#A5ABB8",
+      "at": 15,
+      "until": 26,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-terminal",
+      "type": "rect",
+      "x": 860,
+      "y": 190,
+      "w": 960,
+      "h": 690,
+      "anchor": "topleft",
+      "radius": 24,
+      "fill": "#161A21",
+      "stroke": "#2A303A",
+      "strokeWidth": 2,
+      "at": 14.4,
+      "until": 26,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-terminal-dot-1",
+      "type": "circle",
+      "x": 898,
+      "y": 228,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 14.6,
+      "until": 26,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-terminal-dot-2",
+      "type": "circle",
+      "x": 924,
+      "y": 228,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 14.6,
+      "until": 26,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-terminal-dot-3",
+      "type": "circle",
+      "x": 950,
+      "y": 228,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 14.6,
+      "until": 26,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-terminal-name",
+      "type": "text",
+      "text": "terminal",
+      "x": 1000,
+      "y": 228,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 24,
+      "fill": "#A5ABB8",
+      "at": 14.6,
+      "until": 26,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-1",
+      "type": "text",
+      "text": "**$** depthcue rev demo",
+      "x": 900,
+      "y": 280,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#F2EFE6",
+      "emph": "#FF633F",
+      "at": 15.2,
+      "until": 26,
+      "enter": {
+        "name": "type",
+        "dur": 0.5
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-2",
+      "type": "text",
+      "text": "ec4e0cd5c59ef06a",
+      "x": 900,
+      "y": 318,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#A5ABB8",
+      "emph": "#FF633F",
+      "at": 16,
+      "until": 26,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-3",
+      "type": "text",
+      "text": "**$** depthcue apply demo ops.json --base-rev ec4e0cd5c59ef06a",
+      "x": 900,
+      "y": 371.2,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#F2EFE6",
+      "emph": "#FF633F",
+      "at": 16.32,
+      "until": 26,
+      "enter": {
+        "name": "type",
+        "dur": 1.3920000000000001
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-4",
+      "type": "text",
+      "text": "Applied. Revision ec4e0cd5c59ef06a -> f6e3d2babf98676d",
+      "x": 900,
+      "y": 409.2,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#B9F45D",
+      "emph": "#FF633F",
+      "at": 18.012,
+      "until": 26,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-5",
+      "type": "text",
+      "text": "  wrote scenes/demand.json",
+      "x": 900,
+      "y": 447.20000000000005,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#A5ABB8",
+      "emph": "#FF633F",
+      "at": 18.332,
+      "until": 26,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-6",
+      "type": "text",
+      "text": "**$** depthcue apply demo ops.json --base-rev ec4e0cd5c59ef06a",
+      "x": 900,
+      "y": 500.40000000000003,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#F2EFE6",
+      "emph": "#FF633F",
+      "at": 18.652,
+      "until": 26,
+      "enter": {
+        "name": "type",
+        "dur": 1.3920000000000001
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-7",
+      "type": "text",
+      "text": "ops  error  The deck is at revision f6e3d2babf98676d, not",
+      "x": 900,
+      "y": 538.4000000000001,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#A5ABB8",
+      "emph": "#FF633F",
+      "at": 20.344,
+      "until": 26,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-8",
+      "type": "text",
+      "text": "  ec4e0cd5c59ef06a. It changed after you read it.",
+      "x": 900,
+      "y": 576.4000000000001,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#A5ABB8",
+      "emph": "#FF633F",
+      "at": 20.664,
+      "until": 26,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-9",
+      "type": "text",
+      "text": "  fix: Read the deck again, then redo the edit against the",
+      "x": 900,
+      "y": 614.4000000000001,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#A5ABB8",
+      "emph": "#FF633F",
+      "at": 20.984,
+      "until": 26,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-10",
+      "type": "text",
+      "text": "  new revision.",
+      "x": 900,
+      "y": 652.4000000000001,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#A5ABB8",
+      "emph": "#FF633F",
+      "at": 21.304000000000002,
+      "until": 26,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-11",
+      "type": "text",
+      "text": "Rejected (stale-revision); nothing was written. 1 error, 0",
+      "x": 900,
+      "y": 690.4000000000001,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#FF633F",
+      "emph": "#FF633F",
+      "at": 21.624000000000002,
+      "until": 26,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "agent-line-12",
+      "type": "text",
+      "text": "  warnings",
+      "x": 900,
+      "y": 728.4000000000001,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#FF633F",
+      "emph": "#FF633F",
+      "at": 21.944000000000003,
+      "until": 26,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-kicker",
+      "type": "text",
+      "text": "03 · Check and present",
+      "x": 120,
+      "y": 300,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 26,
+      "letterSpacing": 4,
+      "case": "upper",
+      "fill": "#FF633F",
+      "at": 26.2,
+      "until": 36,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-headline",
+      "type": "text",
+      "text": "Every scene is drawn and checked.",
+      "x": 120,
+      "y": 350,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/InstrumentSerif-Regular.ttf",
+      "weight": 400,
+      "size": 84,
+      "lineHeight": 1.04,
+      "maxWidth": 680,
+      "fill": "#F2EFE6",
+      "split": "words",
+      "at": 26.35,
+      "until": 36,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5,
+        "stagger": 0.07
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-support-1",
+      "type": "text",
+      "text": "Overflow, clipping, overlap, small text and low contrast are reported.",
+      "x": 120,
+      "y": 575,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/SpaceGrotesk-Medium.ttf",
+      "size": 34,
+      "lineHeight": 1.32,
+      "maxWidth": 640,
+      "fill": "#A5ABB8",
+      "at": 27,
+      "until": 31.2,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-support-2",
+      "type": "text",
+      "text": "Blocks respond in the room. This one sorts.",
+      "x": 120,
+      "y": 575,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/SpaceGrotesk-Medium.ttf",
+      "size": 34,
+      "lineHeight": 1.32,
+      "maxWidth": 640,
+      "fill": "#A5ABB8",
+      "at": 31.4,
+      "until": 36,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-slide",
+      "type": "image",
+      "src": "assets/demand.png",
+      "x": 860,
+      "y": 170,
+      "w": 960,
+      "anchor": "topleft",
+      "radius": 18,
+      "shadow": {
+        "x": 0,
+        "y": 26,
+        "blur": 56,
+        "color": "#000000b3"
+      },
+      "rotateY": [
+        [
+          0,
+          -14
+        ],
+        [
+          0.9,
+          0,
+          "outCubic"
+        ]
+      ],
+      "at": 26.3,
+      "until": 31.5,
+      "enter": {
+        "name": "rise",
+        "dur": 0.6
+      },
+      "exit": "none"
+    },
+    {
+      "id": "player-slide",
+      "type": "image",
+      "src": "assets/player-demand.png",
+      "x": 860,
+      "y": 170,
+      "w": 960,
+      "anchor": "topleft",
+      "radius": 18,
+      "shadow": {
+        "x": 0,
+        "y": 26,
+        "blur": 56,
+        "color": "#000000b3"
+      },
+      "at": 31,
+      "until": 34.1,
+      "enter": {
+        "name": "fade",
+        "dur": 0.4
+      },
+      "exit": "none"
+    },
+    {
+      "id": "player-sorted",
+      "type": "image",
+      "src": "assets/player-sorted.png",
+      "x": 860,
+      "y": 170,
+      "w": 960,
+      "anchor": "topleft",
+      "radius": 18,
+      "shadow": {
+        "x": 0,
+        "y": 26,
+        "blur": 56,
+        "color": "#000000b3"
+      },
+      "at": 33.6,
+      "until": 36,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-terminal",
+      "type": "rect",
+      "x": 860,
+      "y": 750,
+      "w": 960,
+      "h": 170,
+      "anchor": "topleft",
+      "radius": 24,
+      "fill": "#161A21",
+      "stroke": "#2A303A",
+      "strokeWidth": 2,
+      "at": 27.2,
+      "until": 36,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-terminal-dot-1",
+      "type": "circle",
+      "x": 898,
+      "y": 788,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 27.4,
+      "until": 36,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-terminal-dot-2",
+      "type": "circle",
+      "x": 924,
+      "y": 788,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 27.4,
+      "until": 36,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-terminal-dot-3",
+      "type": "circle",
+      "x": 950,
+      "y": 788,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 27.4,
+      "until": 36,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-terminal-name",
+      "type": "text",
+      "text": "terminal",
+      "x": 1000,
+      "y": 788,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 24,
+      "fill": "#A5ABB8",
+      "at": 27.4,
+      "until": 36,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-line-1",
+      "type": "text",
+      "text": "**$** depthcue render demo",
+      "x": 900,
+      "y": 840,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#F2EFE6",
+      "emph": "#FF633F",
+      "at": 27.9,
+      "until": 36,
+      "enter": {
+        "name": "type",
+        "dur": 0.528
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "render-line-2",
+      "type": "text",
+      "text": "3 scenes rendered, 0 errors, 0 warnings",
+      "x": 900,
+      "y": 878,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#B9F45D",
+      "emph": "#FF633F",
+      "at": 28.727999999999998,
+      "until": 36,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "sort-ring",
+      "type": "rect",
+      "x": 1358,
+      "y": 455,
+      "w": 101,
+      "h": 31.5,
+      "anchor": "topleft",
+      "radius": 10,
+      "stroke": "#FF633F",
+      "strokeWidth": 4,
+      "at": 32.4,
+      "until": 34.6,
+      "enter": "pop",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "sort-label",
+      "type": "text",
+      "text": "click",
+      "x": 1477,
+      "y": 470.75,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 24,
+      "fill": "#F2EFE6",
+      "box": {
+        "fill": "#0C0E12e6",
+        "pad": [
+          8,
+          14
+        ],
+        "radius": 8
+      },
+      "at": 32.55,
+      "until": 34.6,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "human-kicker",
+      "type": "text",
+      "text": "04 · A person repairs it",
+      "x": 120,
+      "y": 300,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 26,
+      "letterSpacing": 4,
+      "case": "upper",
+      "fill": "#FF633F",
+      "at": 36.2,
+      "until": 43,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "human-headline",
+      "type": "text",
+      "text": "The editor makes the same edits.",
+      "x": 120,
+      "y": 350,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/InstrumentSerif-Regular.ttf",
+      "weight": 400,
+      "size": 84,
+      "lineHeight": 1.04,
+      "maxWidth": 680,
+      "fill": "#F2EFE6",
+      "split": "words",
+      "at": 36.35,
+      "until": 43,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5,
+        "stagger": 0.07
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "human-support",
+      "type": "text",
+      "text": "Each scene says who leads, a person or an agent. Changes save only when you ask.",
+      "x": 120,
+      "y": 575,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/SpaceGrotesk-Medium.ttf",
+      "size": 34,
+      "lineHeight": 1.32,
+      "maxWidth": 640,
+      "fill": "#A5ABB8",
+      "at": 37,
+      "until": 43,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "human-editor",
+      "type": "image",
+      "src": "assets/editor.png",
+      "x": 860,
+      "y": 170,
+      "w": 960,
+      "anchor": "topleft",
+      "radius": 18,
+      "shadow": {
+        "x": 0,
+        "y": 26,
+        "blur": 56,
+        "color": "#000000b3"
+      },
+      "rotateY": [
+        [
+          0,
+          -14
+        ],
+        [
+          0.9,
+          0,
+          "outCubic"
+        ]
+      ],
+      "at": 36.3,
+      "until": 43,
+      "enter": {
+        "name": "rise",
+        "dur": 0.6
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "lead-ring",
+      "type": "rect",
+      "x": 862,
+      "y": 202.5,
+      "w": 131.5,
+      "h": 79,
+      "anchor": "topleft",
+      "radius": 10,
+      "stroke": "#FF633F",
+      "strokeWidth": 4,
+      "at": 38.4,
+      "until": 43,
+      "enter": "pop",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "lead-label",
+      "type": "text",
+      "text": "who leads",
+      "x": 1011.5,
+      "y": 242,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 24,
+      "fill": "#F2EFE6",
+      "box": {
+        "fill": "#0C0E12e6",
+        "pad": [
+          8,
+          14
+        ],
+        "radius": 8
+      },
+      "at": 38.55,
+      "until": 43,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "handoff-kicker",
+      "type": "text",
+      "text": "05 · Hand over",
+      "x": 120,
+      "y": 300,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 26,
+      "letterSpacing": 4,
+      "case": "upper",
+      "fill": "#FF633F",
+      "at": 43.2,
+      "until": 50,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "handoff-headline",
+      "type": "text",
+      "text": "Give a scene\nto an agent.",
+      "x": 120,
+      "y": 350,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/InstrumentSerif-Regular.ttf",
+      "weight": 400,
+      "size": 84,
+      "lineHeight": 1.04,
+      "maxWidth": 680,
+      "fill": "#F2EFE6",
+      "split": "words",
+      "at": 43.35,
+      "until": 50,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5,
+        "stagger": 0.07
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "handoff-support",
+      "type": "text",
+      "text": "Take it back with Escape. The deck stays where it was.",
+      "x": 120,
+      "y": 575,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/SpaceGrotesk-Medium.ttf",
+      "size": 34,
+      "lineHeight": 1.32,
+      "maxWidth": 640,
+      "fill": "#A5ABB8",
+      "at": 44,
+      "until": 50,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "handoff-slide",
+      "type": "image",
+      "src": "assets/player-sorted.png",
+      "x": 860,
+      "y": 170,
+      "w": 960,
+      "anchor": "topleft",
+      "radius": 18,
+      "shadow": {
+        "x": 0,
+        "y": 26,
+        "blur": 56,
+        "color": "#000000b3"
+      },
+      "rotateY": [
+        [
+          0,
+          -14
+        ],
+        [
+          0.9,
+          0,
+          "outCubic"
+        ]
+      ],
+      "at": 43.3,
+      "until": 50,
+      "enter": {
+        "name": "rise",
+        "dur": 0.6
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "controls-person",
+      "type": "image",
+      "src": "assets/controls-person.png",
+      "x": 860,
+      "y": 770,
+      "w": 960,
+      "anchor": "topleft",
+      "radius": 18,
+      "shadow": {
+        "x": 0,
+        "y": 26,
+        "blur": 56,
+        "color": "#000000b3"
+      },
+      "at": 44.2,
+      "until": 46.7,
+      "enter": {
+        "name": "fade",
+        "dur": 0.4
+      },
+      "exit": "none",
+      "h": 91
+    },
+    {
+      "id": "controls-agent",
+      "type": "image",
+      "src": "assets/controls-agent.png",
+      "x": 860,
+      "y": 770,
+      "w": 960,
+      "anchor": "topleft",
+      "radius": 18,
+      "shadow": {
+        "x": 0,
+        "y": 26,
+        "blur": 56,
+        "color": "#000000b3"
+      },
+      "at": 46.2,
+      "until": 50,
+      "enter": {
+        "name": "fade",
+        "dur": 0.3
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      },
+      "h": 91
+    },
+    {
+      "id": "chip-ring",
+      "type": "rect",
+      "x": 1053.081081081081,
+      "y": 795.1351351351351,
+      "w": 223.56756756756758,
+      "h": 53.513513513513516,
+      "anchor": "topleft",
+      "radius": 10,
+      "stroke": "#FF633F",
+      "strokeWidth": 4,
+      "at": 46.6,
+      "until": 50,
+      "enter": "pop",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "chip-label",
+      "type": "text",
+      "text": "agent presenting",
+      "x": 1164.8648648648648,
+      "y": 866.6486486486486,
+      "anchor": "top",
+      "align": "center",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 24,
+      "fill": "#F2EFE6",
+      "box": {
+        "fill": "#0C0E12e6",
+        "pad": [
+          8,
+          14
+        ],
+        "radius": 8
+      },
+      "at": 46.75,
+      "until": 50,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-kicker",
+      "type": "text",
+      "text": "06 · Deliver",
+      "x": 120,
+      "y": 300,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 26,
+      "letterSpacing": 4,
+      "case": "upper",
+      "fill": "#FF633F",
+      "at": 50.2,
+      "until": 57,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-headline",
+      "type": "text",
+      "text": "Deliver a folder.",
+      "x": 120,
+      "y": 350,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/InstrumentSerif-Regular.ttf",
+      "weight": 400,
+      "size": 84,
+      "lineHeight": 1.04,
+      "maxWidth": 680,
+      "fill": "#F2EFE6",
+      "split": "words",
+      "at": 50.35,
+      "until": 57,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5,
+        "stagger": 0.07
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-support",
+      "type": "text",
+      "text": "Double-click index.html. No server, no network.",
+      "x": 120,
+      "y": 575,
+      "anchor": "topleft",
+      "align": "left",
+      "font": "../../brand/fonts/SpaceGrotesk-Medium.ttf",
+      "size": 34,
+      "lineHeight": 1.32,
+      "maxWidth": 640,
+      "fill": "#A5ABB8",
+      "at": 51,
+      "until": 57,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-terminal",
+      "type": "rect",
+      "x": 860,
+      "y": 150,
+      "w": 960,
+      "h": 260,
+      "anchor": "topleft",
+      "radius": 24,
+      "fill": "#161A21",
+      "stroke": "#2A303A",
+      "strokeWidth": 2,
+      "at": 50.4,
+      "until": 57,
+      "enter": {
+        "name": "rise",
+        "dur": 0.5
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-terminal-dot-1",
+      "type": "circle",
+      "x": 898,
+      "y": 188,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 50.6,
+      "until": 57,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-terminal-dot-2",
+      "type": "circle",
+      "x": 924,
+      "y": 188,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 50.6,
+      "until": 57,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-terminal-dot-3",
+      "type": "circle",
+      "x": 950,
+      "y": 188,
+      "r": 7,
+      "fill": "#2A303A",
+      "at": 50.6,
+      "until": 57,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-terminal-name",
+      "type": "text",
+      "text": "terminal",
+      "x": 1000,
+      "y": 188,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 24,
+      "fill": "#A5ABB8",
+      "at": 50.6,
+      "until": 57,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-line-1",
+      "type": "text",
+      "text": "**$** depthcue export demo --out demo-export",
+      "x": 900,
+      "y": 240,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#F2EFE6",
+      "emph": "#FF633F",
+      "at": 51,
+      "until": 57,
+      "enter": {
+        "name": "type",
+        "dur": 0.96
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-line-2",
+      "type": "text",
+      "text": "Exported 3 scenes to demo-export",
+      "x": 900,
+      "y": 278,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#B9F45D",
+      "emph": "#FF633F",
+      "at": 52.26,
+      "until": 57,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-line-3",
+      "type": "text",
+      "text": "  open demo-export/index.html",
+      "x": 900,
+      "y": 316,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#A5ABB8",
+      "emph": "#FF633F",
+      "at": 52.58,
+      "until": 57,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-line-4",
+      "type": "text",
+      "text": "  5 files, 43.4 KB: 2 assets, 0 cue maps, notes kept",
+      "x": 900,
+      "y": 354,
+      "anchor": "left",
+      "align": "left",
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 25,
+      "fill": "#A5ABB8",
+      "emph": "#FF633F",
+      "at": 52.9,
+      "until": 57,
+      "enter": {
+        "name": "fade",
+        "dur": 0.2
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-page",
+      "type": "image",
+      "src": "assets/exported.png",
+      "x": 1000,
+      "y": 460,
+      "w": 680,
+      "anchor": "topleft",
+      "radius": 18,
+      "shadow": {
+        "x": 0,
+        "y": 26,
+        "blur": 56,
+        "color": "#000000b3"
+      },
+      "rotateY": [
+        [
+          0,
+          -14
+        ],
+        [
+          0.9,
+          0,
+          "outCubic"
+        ]
+      ],
+      "at": 53.2,
+      "until": 57,
+      "enter": {
+        "name": "rise",
+        "dur": 0.6
+      },
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "deliver-caption",
+      "type": "text",
+      "text": "index.html, opened from the disk",
+      "x": 1340,
+      "y": 910,
+      "font": "../../brand/fonts/IBMPlexMono-Regular.ttf",
+      "size": 24,
+      "fill": "#A5ABB8",
+      "at": 53.7,
+      "until": 57,
+      "enter": "fade",
+      "exit": {
+        "name": "fade",
+        "dur": 0.3
+      }
+    },
+    {
+      "id": "end-mark",
+      "type": "image",
+      "src": "assets/mark.png",
+      "x": "50%",
+      "y": 380,
+      "w": 220,
+      "at": 57.1,
+      "until": 60,
+      "enter": {
+        "name": "pop",
+        "dur": 0.6
+      }
+    },
+    {
+      "id": "end-wordmark",
+      "type": "text",
+      "text": "Depthcue",
+      "x": "50%",
+      "y": 600,
+      "font": "../../brand/fonts/InstrumentSerif-Regular.ttf",
+      "weight": 400,
+      "size": 150,
+      "fill": "#F2EFE6",
+      "at": 57.3,
+      "until": 60,
+      "enter": "fade"
+    },
+    {
+      "id": "end-line",
+      "type": "text",
+      "text": "Decks that agents write and people present.",
+      "x": "50%",
+      "y": 770,
+      "font": "../../brand/fonts/SpaceGrotesk-Medium.ttf",
+      "size": 36,
+      "maxWidth": 1100,
+      "fill": "#A5ABB8",
+      "at": 57.3,
+      "until": 60,
+      "enter": "fade"
+    },
+    {
+      "use": "progress",
+      "id": "progress",
+      "color": "#FF633F",
+      "h": 6
+    }
+  ]
+}

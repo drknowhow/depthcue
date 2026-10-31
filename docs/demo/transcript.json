@@ -1,0 +1,11 @@
+{
+  "ops": "[{\"op\":\"scene.set\",\"id\":\"demand\",\"set\":{\"title\":\"Demand is shifting fast\"}}]",
+  "before": "ec4e0cd5c59ef06a",
+  "applied": "Applied. Revision ec4e0cd5c59ef06a -> f6e3d2babf98676d\n  wrote scenes/demand.json",
+  "appliedCode": 0,
+  "stale": "ops  error  The deck is at revision f6e3d2babf98676d, not ec4e0cd5c59ef06a. It changed after you read it.\n  fix: Read the deck again, then redo the edit against the new revision.\nRejected (stale-revision); nothing was written. 1 error, 0 warnings",
+  "staleCode": 3,
+  "render": "ok   opening\nok   demand\nok   method\n3 scenes rendered, 0 errors, 0 warnings",
+  "delivery": "Exported 3 scenes to demo-export\n  open demo-export/index.html\n  5 files, 43.4 KB: 2 assets, 0 cue maps, notes kept",
+  "deliveryCode": 0
+}
