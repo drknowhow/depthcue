@@ -2034,11 +2034,25 @@ describe("keyboard shortcuts in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
-  it("opens the browser's own file chooser on I", async () => {
+  it("clicks the Image button's file input on I, on the key press's own user activation", async () => {
     addScene({ id: "ki", title: "Image", layout: "text-media", blocks: [note("ki-words", "Words.")] });
     await openScene("ki", "ki-words");
-    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.keyboard.press("i")]);
-    expect(chooser.isMultiple()).toBe(false);
+    const input = page.locator("[data-field='quick:image']");
+    // A test cannot answer the browser's chooser, and the browser shows one only for a click made on a user
+    // activation. So the click is stopped here and the activation it came with is what gets read.
+    await input.evaluate((node) => {
+      node.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          node.setAttribute("data-clicked", String(navigator.userActivation.isActive));
+        },
+        { once: true },
+      );
+    });
+    await page.keyboard.press("i");
+    await page.waitForSelector("[data-field='quick:image'][data-clicked]");
+    expect(await input.getAttribute("data-clicked")).toBe("true");
     expect(problems).toEqual([]);
   });
 
