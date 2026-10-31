@@ -2,7 +2,15 @@ import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyOps, loadDoc, type Op, readCueMap, revisionOf } from "@depthcue/core";
+import {
+  applyOps,
+  type Block,
+  loadDoc,
+  type NewScene,
+  type Op,
+  readCueMap,
+  revisionOf,
+} from "@depthcue/core";
 import type { Browser, BrowserContext, Locator, Page } from "playwright-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadDeckDir } from "../src/loader.ts";
@@ -1198,6 +1206,106 @@ describe("moving blocks between slots in a real browser", () => {
     await page.mouse.up();
     await saved();
     expect(await read(block("opening-title"))).toBe(before);
+    expect(problems).toEqual([]);
+  });
+});
+
+describe("empty areas of the slide in a real browser", () => {
+  const block = (id: string) => page.locator(`.ed-frame [data-id='${id}']`);
+  const ghost = (slot: string) => page.locator(`.ed-frame .ed-ghost[data-ghost='${slot}']`);
+  const grip = (id: string) => page.locator(`.ed-grip[data-grip='${id}']`);
+  const sceneOnDisk = (id: string) => disk().scenes[id];
+  const idsOnDisk = (id: string) => sceneOnDisk(id)?.blocks.map((entry) => entry.id);
+  const note = (id: string, text: string): Block => ({ id, type: "text", role: "body", text });
+
+  /** A scene added by something other than the editor: its file, and its place in the deck. */
+  function addScene(scene: NewScene) {
+    const doc = disk();
+    const result = applyOps(doc, [{ op: "scene.add", scene }], revisionOf(doc));
+    if (!result.ok) throw new Error(result.diagnostics[0]?.message);
+    const text = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+    writeFileSync(join(folder, "deck.json"), text(result.doc.deck));
+    for (const id of result.changed)
+      writeFileSync(join(folder, "scenes", `${id}.json`), text(result.doc.scenes[id]));
+  }
+
+  async function openScene(id: string, anchor: string) {
+    await page.goto(url());
+    await page.locator(`.ed-scene[data-scene='${id}']`).click();
+    await page.locator(`.ed-frame [data-id='${anchor}']`).waitFor();
+  }
+
+  it("adds text to Evidence from its place, cited by the claim, and one Undo takes it back", async () => {
+    addScene({
+      id: "lab",
+      title: "Lab",
+      layout: "claim-evidence",
+      summary: { id: "lab-claim", text: "A claim", evidenceIds: [] },
+      blocks: [note("lab-note", "A note.")],
+    });
+    await openScene("lab", "lab-note");
+    await ghost("evidence").locator(".ed-ghost-open").click();
+    await ghost("evidence").locator("[data-ghost-kind='text']").click();
+    await saved();
+    expect(idsOnDisk("lab")).toEqual(["lab-note", "lab-text"]);
+    expect(sceneOnDisk("lab")?.summary?.evidenceIds).toEqual(["lab-text"]);
+    expect(await ghost("evidence").count()).toBe(0);
+    expect(
+      await page.evaluate(
+        () => document.querySelector(".ed-frame .dc-evidence-region [data-id='lab-text']") !== null,
+      ),
+    ).toBe(true);
+    // The new block has the keyboard, ready to be typed over.
+    expect(
+      await page.evaluate(() => document.activeElement?.closest("[data-id]")?.getAttribute("data-id")),
+    ).toBe("lab-text");
+
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(idsOnDisk("lab")).toEqual(["lab-note"]);
+    expect(sceneOnDisk("lab")?.summary?.evidenceIds).toEqual([]);
+    expect(await ghost("evidence").count()).toBe(1);
+    expect(problems).toEqual([]);
+  });
+
+  it("draws the media area a text-only slide leaves out, and a chart added there fills it", async () => {
+    addScene({ id: "talk", title: "Talk", layout: "text-media", blocks: [note("talk-body", "Words.")] });
+    await openScene("talk", "talk-body");
+    expect(await page.locator(".ed-frame .dc-media-region").count()).toBe(1);
+    const [text, place] = await Promise.all([block("talk-body").boundingBox(), ghost("media").boundingBox()]);
+    if (!text || !place) throw new Error("the text and the empty media area should both be drawn");
+    expect(place.x).toBeGreaterThan(text.x + text.width - 1);
+    await ghost("media").locator(".ed-ghost-open").click();
+    await ghost("media").locator("[data-ghost-kind='bar-chart']").click();
+    await saved();
+    expect(idsOnDisk("talk")).toEqual(["talk-body", "talk-chart"]);
+    expect(await page.locator(".ed-frame .dc-media-region [data-id='talk-chart']").count()).toBe(1);
+    expect(await page.locator(".ed-frame [data-ghost]").count()).toBe(0);
+    expect(problems).toEqual([]);
+  });
+
+  it("takes a block dragged onto the empty Evidence place, and the claim cites it", async () => {
+    addScene({
+      id: "pick",
+      title: "Pick",
+      layout: "claim-evidence",
+      summary: { id: "pick-claim", text: "A claim", evidenceIds: [] },
+      blocks: [note("pick-one", "One."), note("pick-two", "Two.")],
+    });
+    await openScene("pick", "pick-two");
+    await block("pick-two").hover();
+    await grip("pick-two").hover();
+    await page.mouse.down();
+    const place = await ghost("evidence").boundingBox();
+    if (!place) throw new Error("the empty Evidence area should be drawn");
+    await page.mouse.move(place.x + place.width / 2, place.y + place.height / 2, { steps: 8 });
+    await page.mouse.move(place.x + place.width / 2 + 2, place.y + place.height / 2 + 1);
+    expect(await page.locator(".ed-frame .dc-evidence-region").getAttribute("data-place")).toBe("into");
+    await page.mouse.up();
+    await saved();
+    expect(sceneOnDisk("pick")?.summary?.evidenceIds).toEqual(["pick-two"]);
+    expect(await ghost("evidence").count()).toBe(0);
+    expect(await page.locator(".ed-frame [data-place], .ed-frame [data-dragging]").count()).toBe(0);
     expect(problems).toEqual([]);
   });
 });

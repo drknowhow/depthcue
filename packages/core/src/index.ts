@@ -80,7 +80,7 @@ export {
 export type { ApplyOptions, Session, SessionEvent, SessionEventType } from "./session.ts";
 export { createSession } from "./session.ts";
 export type { Placed, Placement, Slot, SlotName } from "./slots.ts";
-export { placeBlock, slotOf, slotsOf } from "./slots.ts";
+export { addBlock, placeBlock, slotOf, slotsOf } from "./slots.ts";
 export type { Block, BlockType, Deck, Diagnostic, Scene, Severity } from "./types.ts";
 export type { DeckFiles } from "./validate.ts";
 export { checkDeckFiles, checkManifest, checkScene, MANIFEST_FILE, scenePath } from "./validate.ts";

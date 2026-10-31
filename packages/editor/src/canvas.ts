@@ -2,6 +2,7 @@ import { isMarker, type Op, type Scene, type Session, TEXT_LIMITS } from "@depth
 import { h, renderScene } from "@depthcue/player";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
 import { type CueBook, clock } from "./cues.ts";
+import { drawGhosts, type GhostHooks } from "./ghosts.ts";
 import { createSlotDrag } from "./slotdrag.ts";
 import { describeBlock, IMAGE_FILE, needsAlt } from "./templates.ts";
 
@@ -22,6 +23,8 @@ export interface CanvasHooks {
   replaceImage?(id: string, file: File): void;
   /** The cues of the clips. A clip that has some gets a row of places to jump to under it. */
   cues?: CueBook;
+  /** Adds to an area of the slide that holds nothing yet, which the slide draws a place for. */
+  ghosts?: GhostHooks;
 }
 
 export interface Canvas {
@@ -464,6 +467,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       for (const field of fieldsOf(scene, view)) wire(field, sceneId);
       wirePicker(scene, view);
       wireCues(scene, view);
+      if (hooks.ghosts) drawGhosts(scene, view, hooks.ghosts);
       slot.replaceChildren(frame);
       drag.draw(scene);
       mark(selectedId);

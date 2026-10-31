@@ -82,6 +82,7 @@ export function createSlotDrag(
       node.removeAttribute("data-dragging");
     }
     layer.removeAttribute("data-dragging");
+    host.removeAttribute("data-dragging");
   };
 
   /** The block a pointer is over: the block itself, or the grip that stands for it. */
@@ -200,6 +201,8 @@ export function createSlotDrag(
       event.dataTransfer.setDragImage(block, event.clientX - box.left, event.clientY - box.top);
       block.dataset.dragging = "";
       layer.dataset.dragging = "";
+      // The empty areas of the slide show themselves, so there is something to drop on.
+      host.dataset.dragging = "";
     });
     node.addEventListener("dragend", () => {
       dragging = undefined;

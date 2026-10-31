@@ -118,6 +118,15 @@ export function newBlock(scene: Scene, kind: NewBlockKind, asset?: string): Bloc
   }
 }
 
+/** The claim a scene gets when one is added: a line to replace, citing nothing yet. */
+export function newClaim(scene: Scene): NonNullable<Scene["summary"]> {
+  return {
+    id: uniqueId(`${scene.id}-claim`, idsInScene(scene)),
+    text: "State the claim here.",
+    evidenceIds: [],
+  };
+}
+
 /** The kinds of image the upload accepts. */
 export const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 export const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
