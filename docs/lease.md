@@ -210,4 +210,5 @@ with the tool and a real click and key press in headless Chrome, including 4.5 s
 ## Not yet
 
 - A second window has its own lease. Nothing is shared between tabs.
-- The full presenter window (multi-screen, notes, timer) is v0.2 work, as the plan says. A minimal one comes next.
+- The presenter window is a small first version with notes, a timer and a next-scene preview; see
+  [the presenter view](presenter.md). Multi-screen placement is v0.2 work, as the plan says.

@@ -10,6 +10,8 @@ export type Route = { kind: "scene"; position: Position } | { kind: "read" };
 
 export const stepCount = (scene: Scene): number => scene.steps?.length ?? 0;
 
+export const LEAD_LABEL = { human: "Human-led", agent: "Agent-led", shared: "Shared" } as const;
+
 /** Ids that some step reveals. Anything not listed is on screen from the start. */
 export function gatedIds(scene: Scene): Set<string> {
   const ids = new Set<string>();
