@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { deckSchema, sceneSchema } from "@depthcue/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -79,6 +80,24 @@ describe("the tool list", () => {
     expect(schema.required).toEqual(["ops", "base_rev"]);
     expect(schema.properties.ops.items.oneOf).toHaveLength(9);
     expect(schema.additionalProperties).toBe(false);
+  });
+
+  it("lists in deck_apply the keys that deck.set and scene.set accept, as the schemas have them", async () => {
+    // The description repeats the keys because a model cannot guess them. If a schema gains or loses a key,
+    // this fails and names the description to update.
+    const description = (await client.listTools()).tools.find(
+      (tool) => tool.name === "deck_apply",
+    )?.description;
+    const listed = (op: string) =>
+      new RegExp(`${op} keys: ([a-z, ]+)\\.`).exec(description ?? "")?.[1]?.split(", ") ?? [];
+    const settable = (schema: { properties: object }, apart: string[]) =>
+      Object.keys(schema.properties).filter((key) => !apart.includes(key));
+    expect(listed("deck.set").sort(), "update the deck.set keys in the deck_apply description").toEqual(
+      settable(deckSchema, ["$schema", "schemaVersion", "id", "scenes"]).sort(),
+    );
+    expect(listed("scene.set").sort(), "update the scene.set keys in the deck_apply description").toEqual(
+      settable(sceneSchema, ["$schema", "schemaVersion", "id", "blocks"]).sort(),
+    );
   });
 
   it("marks reads as read-only, and the edit and presenting as not", async () => {
