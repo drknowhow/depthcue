@@ -107,17 +107,19 @@ describe("a change the core refuses", () => {
   it("is reported through the hook with the core's message, and cleared by the next one that works", () => {
     const messages: Array<string | undefined> = [];
     let refuse = true;
+    const act = (ops: Parameters<typeof store.session.apply>[0]) =>
+      refuse
+        ? ({
+            ok: false,
+            code: "invalid",
+            rev: "",
+            diagnostics: [{ message: "Not that.", fix: "Try this." }],
+          } as never)
+        : store.session.apply(ops);
     const bar = createSceneBar(store.session, {
-      act: (ops) =>
-        refuse
-          ? ({
-              ok: false,
-              code: "invalid",
-              rev: "",
-              diagnostics: [{ message: "Not that.", fix: "Try this." }],
-            } as never)
-          : store.session.apply(ops),
+      edits: { act, type: act },
       problem: (text) => messages.push(text),
+      upload: async () => "",
     });
     bar.render("opening");
     bar.element.querySelector<HTMLButtonElement>("[data-lead='agent']")?.click();

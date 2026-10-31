@@ -289,12 +289,14 @@ describe("citing sources", () => {
     expect(document.activeElement).toBe(box);
   });
 
-  it("says when the scene has no sources, and opens the details panel where they are added", () => {
+  it("says when the scene has no sources, and opens the scene panel where they are added", () => {
     textBox("method-body").focus();
     part("cite").click();
     expect(toolbar().querySelector(".ed-tb-pop")?.textContent).toContain("no sources");
     part("open-sources").click();
-    expect(host.querySelector<HTMLElement>(".ed-app")?.dataset.details).toBe("open");
+    const scenePop = host.querySelector<HTMLElement>(".ed-scene-tools .ed-tb-pop") as HTMLElement;
+    expect(scenePop.hidden).toBe(false);
+    expect(scenePop.querySelector<HTMLDetailsElement>("details[data-section='sources']")?.open).toBe(true);
   });
 
   it("shows the sources a block already cites", () => {
@@ -757,5 +759,49 @@ describe("a clip's toolbar", () => {
     expect(control("clip:alt").getAttribute("aria-invalid")).toBe("true");
     typeInto(control("clip:alt"), "A short intro");
     expect(clip().alt).toBe("A short intro");
+  });
+});
+
+describe("a claim's toolbar", () => {
+  const claim = () => store.session.doc.scenes.demand?.summary;
+
+  beforeEach(() => {
+    editor.select("demand");
+    textBox("claim-shift").focus();
+  });
+
+  it("has an Evidence chip that says how many blocks it rests on", () => {
+    expect(toolbar().getAttribute("aria-label")).toBe("Claim options");
+    expect(part("evidence").textContent).toContain("1");
+    expect(part("evidence").getAttribute("aria-label")).toBe("Evidence for the claim, 1 chosen");
+  });
+
+  it("lists the scene's blocks, with the ones that are evidence ticked", () => {
+    part<HTMLButtonElement>("evidence").click();
+    const boxes = [...popOf("evidence").querySelectorAll<HTMLInputElement>("input[type='checkbox']")];
+    expect(boxes.map((box) => [box.value, box.checked])).toEqual([["chart-demand", true]]);
+  });
+
+  it("takes a block out of the evidence and puts it back", () => {
+    part<HTMLButtonElement>("evidence").click();
+    const box = control<HTMLInputElement>("panel:evidence:chart-demand");
+    box.checked = false;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(claim()?.evidenceIds).toEqual([]);
+    expect(part("evidence").getAttribute("aria-label")).toBe("Evidence for the claim");
+    control<HTMLInputElement>("panel:evidence:chart-demand").click();
+    expect(claim()?.evidenceIds).toEqual(["chart-demand"]);
+  });
+
+  it("offers a block added to the scene afterwards", () => {
+    store.session.apply([
+      {
+        op: "block.add",
+        scene: "demand",
+        block: { id: "demand-note", type: "text", role: "body", text: "A note" },
+      },
+    ]);
+    part<HTMLButtonElement>("evidence").click();
+    expect(control("panel:evidence:demand-note")).not.toBeNull();
   });
 });

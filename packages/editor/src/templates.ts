@@ -1,4 +1,4 @@
-import type { Block, Doc, NewScene, Scene } from "@depthcue/core";
+import { type Block, type Doc, LAYOUTS, type NewScene, type Scene } from "@depthcue/core";
 
 export type Layout = Scene["layout"];
 export type Lead = NonNullable<Scene["lead"]>;
@@ -13,6 +13,7 @@ export const LAYOUT_LABEL: Record<Layout, string> = {
   "claim-evidence": "Claim and evidence",
   "text-media": "Text and media",
 };
+export const LAYOUT_CHOICES = LAYOUTS.map((value) => ({ value, label: LAYOUT_LABEL[value] }));
 export const LEAD_LABEL: Record<Lead, string> = { human: "Human", agent: "Agent", shared: "Shared" };
 export const ROLE_LABEL: Record<TextRole, string> = {
   heading: "Heading",

@@ -8,9 +8,19 @@ import {
 } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { type Canvas, SUMMARY_LIMIT } from "./canvas.ts";
+import { buildChip, type Chip, fillChip, fitPopover, hidePopover, showPopover } from "./chip.ts";
 import { removeBlock, removeClaim } from "./cleanup.ts";
 import { type Edits, problemOf } from "./fields.ts";
-import { chartPanel, citePanel, clipPanel, imagePanel, type Panel, type PanelHost } from "./panels.ts";
+import {
+  chartPanel,
+  citePanel,
+  clipPanel,
+  evidencePanel,
+  imagePanel,
+  type Panel,
+  type PanelHost,
+  panelHost,
+} from "./panels.ts";
 import { describeBlock, ROLE_LABEL, type TextRole } from "./templates.ts";
 
 /** How far the toolbar floats from the block it belongs to, in pixels. */
@@ -71,8 +81,8 @@ export interface ToolbarHooks {
   goTo(id: string): void;
   /** Give the keyboard back to the chosen block. */
   focusBlock(id: string): void;
-  /** Sources are edited in the details panel until they get a toolbar of their own. */
-  openDetails(): void;
+  /** Opens where the scene's sources are added and edited. */
+  openSources(): void;
 }
 
 export interface Toolbar {
@@ -98,15 +108,6 @@ function resolve(scene: Scene, id: string): Target | undefined {
   const block = scene.blocks.find((candidate) => candidate.id === id);
   if (!block) return undefined;
   return block.type === "text" ? { kind: "text", scene, block } : { kind: "block", scene, block };
-}
-
-/** A chip in the toolbar and the popover it opens. */
-interface Chip {
-  panel: Panel;
-  button: HTMLButtonElement;
-  badge: HTMLElement;
-  pop: HTMLElement;
-  wrap: HTMLElement;
 }
 
 /**
@@ -140,74 +141,37 @@ export function createToolbar(
     return result.ok;
   }
 
-  const panelHost: PanelHost = {
+  const host: PanelHost = panelHost(session, {
     edits: hooks.edits,
-    scene,
-    run: (ops) => report(hooks.edits.act(ops)),
-    assets: () => [...session.doc.assets],
     upload: hooks.upload,
     problem: hooks.problem,
     close: () => closePop(),
-    openDetails: hooks.openDetails,
-  };
+    openSources: hooks.openSources,
+  });
 
   function closePop(giveBack = false) {
     if (!open) return;
     const chip = open;
     open = undefined;
-    chip.pop.hidden = true;
-    chip.button.setAttribute("aria-expanded", "false");
+    hidePopover(chip);
     if (giveBack) chip.button.focus();
   }
 
-  /** Keeps the open popover inside the slide: slid sideways when it would overhang, shortened to the room it has. */
+  /** Keeps the open popover inside the slide, opening it upward when the toolbar is below its block. */
   function fitPop() {
-    if (!open) return;
-    const { pop } = open;
-    const bounds = canvas.element.getBoundingClientRect();
-    pop.style.left = "0px";
-    pop.style.maxHeight = "";
-    const up = element.dataset.side === "below";
-    pop.toggleAttribute("data-up", up);
-    const box = pop.getBoundingClientRect();
-    const shift = Math.max(bounds.left - box.left, Math.min(0, bounds.right - box.right));
-    pop.style.left = `${Math.round(shift)}px`;
-    const room = up ? box.bottom - bounds.top : bounds.bottom - box.top;
-    if (box.height > room - 8) pop.style.maxHeight = `${Math.max(160, Math.floor(room - 8))}px`;
+    if (open) fitPopover(open.pop, canvas.element.getBoundingClientRect(), element.dataset.side === "below");
   }
 
   function openPop(chip: Chip) {
     closePop();
     open = chip;
-    chip.pop.hidden = false;
-    chip.button.setAttribute("aria-expanded", "true");
+    showPopover(chip);
     fitPop();
-    chip.pop.querySelector<HTMLElement>("input, select, textarea, button")?.focus();
   }
 
   function chipFor(panel: Panel): Chip {
-    const badge = h("span", { class: "ed-tb-n" });
-    const button = h(
-      "button",
-      {
-        type: "button",
-        class: "ed-tb-chip",
-        "data-tb": panel.name,
-        "aria-label": panel.title,
-        "aria-haspopup": "true",
-        "aria-expanded": "false",
-      },
-      panel.label,
-      badge,
-    );
-    const pop = h(
-      "div",
-      { class: "ed-tb-pop", role: "group", "aria-label": panel.title, hidden: true },
-      panel.body,
-    );
-    const wrap = h("span", { class: "ed-tb-chip-wrap" }, button, pop);
-    const chip: Chip = { panel, button, badge, pop, wrap };
-    button.addEventListener("click", () => (open === chip ? closePop() : openPop(chip)));
+    const chip = buildChip(panel);
+    chip.button.addEventListener("click", () => (open === chip ? closePop() : openPop(chip)));
     return chip;
   }
 
@@ -244,16 +208,16 @@ export function createToolbar(
     const own = (): Panel[] => {
       switch (block.type) {
         case "bar-chart":
-          return [chartPanel(panelHost, sceneId, block.id)];
+          return [chartPanel(host, sceneId, block.id)];
         case "image":
-          return [imagePanel(panelHost, sceneId, block.id)];
+          return [imagePanel(host, sceneId, block.id)];
         case "clip":
-          return [clipPanel(panelHost, sceneId, block.id)];
+          return [clipPanel(host, sceneId, block.id)];
         default:
           return [];
       }
     };
-    return [...own(), citePanel(panelHost, sceneId, block.id)];
+    return [...own(), citePanel(host, sceneId, block.id)];
   }
 
   function build(target: Target) {
@@ -263,7 +227,7 @@ export function createToolbar(
     const controls: HTMLElement[] = [];
     const inScene = target.scene.id;
     sceneId = inScene;
-    chips = target.kind === "claim" ? [] : panelsFor(target.block).map(chipFor);
+    chips = (target.kind === "claim" ? [evidencePanel(host, inScene)] : panelsFor(target.block)).map(chipFor);
 
     if (target.kind === "text") {
       const select = h(
@@ -285,7 +249,12 @@ export function createToolbar(
       controls.push(select, count, ...chips.map((chip) => chip.wrap), removeButton(id, "this text"));
     } else if (target.kind === "claim") {
       count = h("span", { class: "ed-tb-count", "data-tb": "count" });
-      controls.push(h("span", { class: "ed-tb-label" }, "Claim"), count, removeButton(id, "the claim"));
+      controls.push(
+        h("span", { class: "ed-tb-label" }, "Claim"),
+        count,
+        ...chips.map((chip) => chip.wrap),
+        removeButton(id, "the claim"),
+      );
     } else {
       label = h("span", { class: "ed-tb-label" }, describeBlock(target.block, 28));
       controls.push(label, ...chips.map((chip) => chip.wrap), removeButton(id, "this block"));
@@ -314,12 +283,7 @@ export function createToolbar(
     } else if (label) {
       label.textContent = describeBlock(target.block, 28);
     }
-    for (const chip of chips) {
-      chip.panel.fill(target.scene, typing);
-      const state = chip.panel.state?.(target.scene);
-      chip.badge.textContent = state?.badge ?? "";
-      chip.button.setAttribute("aria-label", state?.title ?? chip.panel.title);
-    }
+    for (const chip of chips) fillChip(chip, target.scene, typing);
   }
 
   function place() {

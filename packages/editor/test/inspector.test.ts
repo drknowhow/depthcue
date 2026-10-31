@@ -65,7 +65,7 @@ const problems = () =>
 const blockIds = (id: string) => scene(id)?.blocks.map((block) => block.id);
 const opening = () => scene("opening");
 const section = (name: string) =>
-  host.querySelector<HTMLDetailsElement>(`[data-section="${name}"]`) as HTMLDetailsElement;
+  host.querySelector<HTMLDetailsElement>(`.ed-inspector [data-section="${name}"]`) as HTMLDetailsElement;
 
 describe("the scene form", () => {
   it("shows the scene's own properties", () => {
@@ -819,7 +819,9 @@ describe("the steps form", () => {
     tick(field("step:show-claim:claim-shift"), false);
     expect(steps()?.[0]?.reveal).toEqual(["claim-shift"]);
     expect(field("step:show-claim:claim-shift").checked).toBe(true);
-    const message = host.querySelector<HTMLElement>("[data-section='steps'] .ed-problem:not([hidden])");
+    const message = host.querySelector<HTMLElement>(
+      ".ed-inspector [data-section='steps'] .ed-problem:not([hidden])",
+    );
     expect(message?.textContent).toMatch(/\S/);
   });
 

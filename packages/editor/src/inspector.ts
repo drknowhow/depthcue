@@ -1,7 +1,6 @@
 import {
   type ApplyOptions,
   type BlockChanges,
-  LAYOUTS,
   LEADS,
   type Op,
   type Scene,
@@ -29,7 +28,7 @@ import {
   IMAGE_ACCEPT,
   IMAGE_FILE,
   idsInScene,
-  LAYOUT_LABEL,
+  LAYOUT_CHOICES,
   type Layout,
   LEAD_LABEL,
   type NewBlockKind,
@@ -58,8 +57,6 @@ export interface Inspector {
 }
 
 const THEME_LABEL = { paper: "Paper (light)", ink: "Ink (dark)" } as const;
-export const LAYOUT_CHOICES = LAYOUTS.map((value) => ({ value, label: LAYOUT_LABEL[value] }));
-
 type Source = NonNullable<Scene["sources"]>[number];
 type Step = NonNullable<Scene["steps"]>[number];
 
