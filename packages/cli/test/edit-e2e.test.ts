@@ -609,6 +609,104 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  describe("a chart on the slide", () => {
+    const bar = (row: number) => page.locator(`.ed-frame [data-id='chart-demand'] .dc-bar >> nth=${row}`);
+    const chartOnDisk = () => {
+      const block = disk().scenes.demand?.blocks.find((candidate) => candidate.id === "chart-demand");
+      if (block?.type !== "bar-chart") throw new Error("the chart should be on disk");
+      return block.data;
+    };
+    const openDemand = async () => {
+      await open();
+      await page.locator(".ed-scene[data-scene='demand']").click();
+      await bar(0).waitFor();
+    };
+    const pixelsPerUnit = async () => {
+      const wide = await bar(1).boundingBox();
+      if (!wide) throw new Error("the largest bar should be drawn");
+      return wide.width / 60;
+    };
+
+    it("drags a bar with the mouse, even once the pointer leaves it, and Ctrl+Z puts it back", async () => {
+      await openDemand();
+      const perUnit = await pixelsPerUnit();
+      const box = await bar(0).boundingBox();
+      if (!box) throw new Error("the bar should be drawn");
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      // Up and away from the bar, as a hand does, while going along.
+      await page.mouse.move(x + perUnit * 5, y + 120, { steps: 6 });
+      await page.mouse.move(x + perUnit * 10, y + 240, { steps: 6 });
+      await page.mouse.up();
+      await saved();
+      expect(chartOnDisk()[0]?.value).toBeGreaterThanOrEqual(49);
+      expect(chartOnDisk()[0]?.value).toBeLessThanOrEqual(51);
+      expect(chartOnDisk()[1]?.value).toBe(60);
+      expect(await read(page.locator(".ed-frame [data-id='chart-demand'] .dc-value >> nth=0"))).toMatch(
+        /^5[01]%$/,
+      );
+
+      await page.keyboard.press("Control+z");
+      await page.waitForFunction(
+        () => document.querySelector(".ed-frame .dc-bar")?.getAttribute("aria-valuenow") === "40",
+      );
+      await saved();
+      expect(chartOnDisk()[0]?.value).toBe(40);
+      expect(problems).toEqual([]);
+    });
+
+    it("moves a bar with the arrow keys, five at a time with Shift, and the keyboard stays on it", async () => {
+      await openDemand();
+      await bar(0).focus();
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("Shift+ArrowRight");
+      await saved();
+      expect(chartOnDisk()[0]?.value).toBe(47);
+      expect(
+        await page.evaluate(() => {
+          const active = document.activeElement as HTMLElement | null;
+          return [
+            active?.dataset.slider !== undefined,
+            active?.dataset.row,
+            active?.getAttribute("aria-valuetext"),
+          ];
+        }),
+      ).toEqual([true, "0", "47%"]);
+
+      // The whole visit is one undo step, and the keyboard is still on the bar afterwards.
+      await page.keyboard.press("Control+z");
+      await saved();
+      expect(chartOnDisk()[0]?.value).toBe(40);
+      expect(await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.row)).toBe(
+        "0",
+      );
+      expect(problems).toEqual([]);
+    });
+
+    it("renames a bar where it is drawn, adds a bar and sorts from the toolbar, and the folder follows", async () => {
+      await openDemand();
+      const label = page.locator(".ed-frame [data-id='chart-demand'] th[scope='row'] >> nth=0");
+      await label.click();
+      await page.keyboard.press("Control+a");
+      await page.keyboard.type("Direct");
+      await page.keyboard.press("Enter");
+      await saved();
+      expect(chartOnDisk()[0]).toEqual({ label: "Direct", value: 40 });
+
+      await page.locator(".ed-toolbar [data-tb='add-bar']").click();
+      await saved();
+      expect(chartOnDisk().map((row) => row.label)).toEqual(["Direct", "Channel B", "Item 3"]);
+
+      await page.locator(".ed-toolbar [data-tb='sort-bars']").click();
+      await saved();
+      expect(chartOnDisk().map((row) => row.value)).toEqual([60, 40, 0]);
+      expect(problems).toEqual([]);
+    });
+  });
+
   it("takes in a change made on disk while nothing is unsaved", async () => {
     await open();
     external([retitle("Rewritten by an agent")]);

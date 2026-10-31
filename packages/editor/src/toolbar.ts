@@ -8,9 +8,10 @@ import {
 } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { type Canvas, SUMMARY_LIMIT } from "./canvas.ts";
+import { addedRow, CHART_ROWS_MAX, sortedRows } from "./chart.ts";
 import { buildChip, type Chip, fillChip, fitPopover, hidePopover, showPopover } from "./chip.ts";
 import { afterWhenMoving, removeBlock, removeClaim } from "./cleanup.ts";
-import { type Edits, problemOf } from "./fields.ts";
+import { actionButton, type Edits, problemOf } from "./fields.ts";
 import {
   chartPanel,
   citePanel,
@@ -133,6 +134,8 @@ export function createToolbar(
   let label: HTMLElement | undefined;
   let chips: Chip[] = [];
   let moves: HTMLButtonElement[] = [];
+  /** A chart's Add bar and Sort buttons, which are built only for a chart. */
+  let barTools: { add: HTMLButtonElement; sort: HTMLButtonElement } | undefined;
   let open: Chip | undefined;
 
   const scene = (id: string) => session.doc.scenes[id];
@@ -220,6 +223,23 @@ export function createToolbar(
     return node;
   }
 
+  /** Adds a bar to a chart, or sorts its bars: the two chart changes that do not need a popover. */
+  function barButtons(id: string) {
+    const rowsOf = () => {
+      const block = scene(sceneId)?.blocks.find((candidate) => candidate.id === id);
+      return block?.type === "bar-chart" ? block.data : [];
+    };
+    const change = (data: ReturnType<typeof rowsOf>) =>
+      report(hooks.edits.act([{ op: "block.set", scene: sceneId, id, set: { data } }]));
+    return {
+      add: actionButton("Add bar", () => change(addedRow(rowsOf())), { "data-tb": "add-bar" }),
+      sort: actionButton("Sort", () => change(sortedRows(rowsOf())), {
+        "data-tb": "sort-bars",
+        title: "Sort the bars by value, largest first; again for smallest first",
+      }),
+    };
+  }
+
   function removeButton(id: string, what: string) {
     const node = h("button", {
       type: "button",
@@ -253,6 +273,7 @@ export function createToolbar(
     closePop();
     role = count = label = undefined;
     moves = [];
+    barTools = undefined;
     const id = idOf(target);
     const controls: HTMLElement[] = [];
     const inScene = target.scene.id;
@@ -295,7 +316,14 @@ export function createToolbar(
     } else {
       label = h("span", { class: "ed-tb-label" }, describeBlock(target.block, 28));
       moves = [moveButton(id, -1), moveButton(id, 1)];
-      controls.push(label, ...moves, ...chips.map((chip) => chip.wrap), removeButton(id, "this block"));
+      barTools = target.block.type === "bar-chart" ? barButtons(id) : undefined;
+      controls.push(
+        label,
+        ...(barTools ? [barTools.add, barTools.sort] : []),
+        ...moves,
+        ...chips.map((chip) => chip.wrap),
+        removeButton(id, "this block"),
+      );
     }
     element.setAttribute(
       "aria-label",
@@ -320,6 +348,12 @@ export function createToolbar(
       showCount(target.scene.summary?.text.length ?? 0, SUMMARY_LIMIT);
     } else if (label) {
       label.textContent = describeBlock(target.block, 28);
+    }
+    if (barTools && target.kind === "block" && target.block.type === "bar-chart") {
+      const full = target.block.data.length >= CHART_ROWS_MAX;
+      barTools.add.disabled = full;
+      barTools.add.title = full ? `A chart holds at most ${CHART_ROWS_MAX} bars.` : "";
+      barTools.sort.disabled = target.block.data.length < 2;
     }
     // The first block cannot move earlier and the last cannot move later.
     if (target.kind !== "claim") {

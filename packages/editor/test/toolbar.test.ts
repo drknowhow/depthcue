@@ -602,6 +602,91 @@ describe("a chart's toolbar", () => {
     expect(control<HTMLButtonElement>("chart:addrow").disabled).toBe(true);
   });
 
+  it("adds a bar from the toolbar, without opening the data", () => {
+    part<HTMLButtonElement>("add-bar").click();
+    expect(chart().data[2]).toEqual({ label: "Item 3", value: 0 });
+    expect(popOf("data").hidden).toBe(true);
+    expect(blockNode("chart-demand").querySelectorAll(".dc-bar")).toHaveLength(3);
+  });
+
+  it("sorts from the toolbar, largest first and then smallest first", () => {
+    part<HTMLButtonElement>("sort-bars").click();
+    expect(chart().data.map((row) => row.value)).toEqual([60, 40]);
+    part<HTMLButtonElement>("sort-bars").click();
+    expect(chart().data.map((row) => row.value)).toEqual([40, 60]);
+  });
+
+  it("keeps the keyboard on the toolbar button it used, so a bar can be added again", () => {
+    const add = part<HTMLButtonElement>("add-bar");
+    add.focus();
+    add.click();
+    add.click();
+    expect(labels()).toEqual(["Channel A", "Channel B", "Item 3", "Item 4"]);
+    expect(document.activeElement).toBe(add);
+  });
+
+  it("stops offering bars at the most a chart holds, and sorting when there is nothing to sort", () => {
+    expect(part<HTMLButtonElement>("add-bar").disabled).toBe(false);
+    expect(part<HTMLButtonElement>("sort-bars").disabled).toBe(false);
+    const many = Array.from({ length: 24 }, (_, index) => ({ label: `Row ${index}`, value: index }));
+    store.session.apply([{ op: "block.set", scene: "demand", id: "chart-demand", set: { data: many } }]);
+    expect(part<HTMLButtonElement>("add-bar").disabled).toBe(true);
+    expect(part<HTMLButtonElement>("add-bar").title).toContain("at most 24");
+    store.session.apply([
+      { op: "block.set", scene: "demand", id: "chart-demand", set: { data: [{ label: "Only", value: 1 }] } },
+    ]);
+    expect(part<HTMLButtonElement>("add-bar").disabled).toBe(false);
+    expect(part<HTMLButtonElement>("sort-bars").disabled).toBe(true);
+  });
+
+  it("has no bar buttons on a block that is not a chart", () => {
+    editor.select("method");
+    blockNode("method-diagram").click();
+    expect(toolbar().querySelector("[data-tb='add-bar']")).toBeNull();
+    expect(toolbar().querySelector("[data-tb='sort-bars']")).toBeNull();
+  });
+
+  it("changes a value from the keyboard on its bar, which stays where it is and keeps the keyboard", () => {
+    const bar = blockNode("chart-demand").querySelector<HTMLElement>(".dc-bar") as HTMLElement;
+    bar.focus();
+    press(bar, "ArrowRight", { shiftKey: true });
+    expect(chart().data[0]?.value).toBe(45);
+    const same = blockNode("chart-demand").querySelector(".dc-bar");
+    expect(same).toBe(bar);
+    expect(document.activeElement).toBe(bar);
+    expect(bar.getAttribute("aria-valuetext")).toBe("45%");
+  });
+
+  it("shows a bar's new value in the open data as well", () => {
+    part<HTMLButtonElement>("data").click();
+    const bar = blockNode("chart-demand").querySelector<HTMLElement>(".dc-bar") as HTMLElement;
+    bar.focus();
+    press(bar, "ArrowRight");
+    expect(control("chart:row0:value").value).toBe("41");
+  });
+
+  it("undoes a bar's change with the editor's own undo, and the keyboard stays on that bar", () => {
+    const bar = blockNode("chart-demand").querySelector<HTMLElement>(".dc-bar") as HTMLElement;
+    bar.focus();
+    press(bar, "ArrowRight", { shiftKey: true });
+    press(document.body, "z", { ctrlKey: true });
+    expect(chart().data[0]?.value).toBe(40);
+    const again = blockNode("chart-demand").querySelector(".dc-bar");
+    expect(document.activeElement).toBe(again);
+    expect(again?.getAttribute("aria-valuenow")).toBe("40");
+  });
+
+  it("changes a label where it is drawn, and the data and the toolbar follow", () => {
+    part<HTMLButtonElement>("data").click();
+    const cell = blockNode("chart-demand").querySelector<HTMLElement>('th[scope="row"]') as HTMLElement;
+    cell.focus();
+    cell.textContent = "Direct";
+    cell.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(chart().data[0]?.label).toBe("Direct");
+    expect(control("chart:row0:label").value).toBe("Direct");
+    expect(blockNode("chart-demand").querySelector('th[scope="row"]')).toBe(cell);
+  });
+
   it("draws the rows again after an undo, without closing", () => {
     part<HTMLButtonElement>("data").click();
     control<HTMLButtonElement>("chart:addrow").click();
