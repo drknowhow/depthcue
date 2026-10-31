@@ -66,7 +66,7 @@ const TOOLS = [
   {
     name: "deck_apply",
     description:
-      "Edit the deck. Applies `ops` as one atomic transaction against `base_rev`, the `rev` from deck_get or from your last deck_apply. If any op is invalid, or base_rev is stale, nothing is written and the reply says how to fix the call. A stale revision is never merged: read the deck again and redo the edit. Ids never change; to rename something, add the new item and remove the old one. After a successful edit, call deck_render on the scenes it changed.",
+      "Edit the deck. Applies `ops` atomically against `base_rev`, the `rev` from deck_get or your last deck_apply. If any op is invalid or base_rev is stale, nothing is written and the reply says how to fix it; a stale revision is never merged: read again and redo. `set` replaces each key it names whole: send whole arrays (chart data, steps). null deletes an optional key. deck.set keys: title, language, theme, modules. scene.set keys: title, layout, lead, summary, sources, reading, steps, notes. scene.add and block.add take a whole scene or block. `after` is a sibling id, null for first, omitted for last. Ids never change: add the new item, remove the old. Then deck_render changed scenes.",
     inputSchema: {
       type: "object",
       properties: {
