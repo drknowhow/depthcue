@@ -1,0 +1,26 @@
+{
+  "depthcue": {
+    "firstExit": 0,
+    "secondExit": 3,
+    "secondReply": "{\n  \"ok\": false,\n  \"errors\": 1,\n  \"warnings\": 0,\n  \"applied\": false,\n  \"code\": \"stale-revision\",\n  \"rev\": \"e131d4287d711793\",\n  \"diagnostics\": [\n    {\n      \"severity\": \"error\",\n      \"code\": \"stale-revision\",\n      \"file\": \"ops\",\n      \"path\": \"\",\n      \"message\": \"The deck is at revision e131d4287",
+    "firstEditKept": true,
+    "secondEditKept": false,
+    "secondWasWarned": true
+  },
+  "slidev": {
+    "firstExit": 0,
+    "secondExit": 0,
+    "secondReply": "",
+    "firstEditKept": false,
+    "secondEditKept": true,
+    "secondWasWarned": false
+  },
+  "stagecraft": {
+    "firstExit": 0,
+    "secondExit": 0,
+    "secondReply": "",
+    "firstEditKept": false,
+    "secondEditKept": true,
+    "secondWasWarned": false
+  }
+}

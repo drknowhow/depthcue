@@ -1,0 +1,32 @@
+{
+  "tool": "stagecraft",
+  "opens": true,
+  "snapshots": 10,
+  "blockedRequests": 0,
+  "failedRequests": 0,
+  "problems": [
+    "console: WebSocket connection to 'ws://localhost:3000/stagecraft' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED"
+  ],
+  "content": {
+    "title": true,
+    "titleLine": true,
+    "chartHeadingRevised": true,
+    "staleHeadingVisible": false,
+    "staleTextInFolder": false,
+    "chartNumbers": true,
+    "chartLabel": true,
+    "sourceLine": true,
+    "method": true,
+    "risksHeading": true,
+    "risksHeadingExact": true,
+    "risksPoints": true,
+    "nextSteps": true,
+    "sources": true
+  },
+  "offViewport": [],
+  "notes": {
+    "found": 6,
+    "inDeliverable": 6,
+    "visibleOnSlides": 0
+  }
+}

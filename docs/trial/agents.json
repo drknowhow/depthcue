@@ -1,0 +1,118 @@
+{
+  "agent": "Claude Sonnet 5.5, one run per tool, the three runs in parallel on one machine",
+  "source": "Each agent's own trial-log.md: tool calls as it counted them, seconds from its date +%s stamps. Total seconds run from the first stamp to the last, so they include the gaps between tasks.",
+  "tasks": [
+    { "id": "create", "title": "Create the six-scene deck" },
+    { "id": "revise", "title": "Revise the claim to 45 and 55" },
+    { "id": "check", "title": "Find and fix what does not fit" },
+    { "id": "deliver", "title": "Deliver an offline folder with notes" },
+    { "id": "recover", "title": "Say whether the copy is stale" }
+  ],
+  "tools": {
+    "depthcue": {
+      "totalSeconds": 266,
+      "results": {
+        "create": {
+          "result": "partly",
+          "calls": 14,
+          "seconds": 82,
+          "note": "The brief's 138-character heading fails check (headings stop at 90), so nothing could render until it was shortened."
+        },
+        "revise": {
+          "result": "done",
+          "calls": 4,
+          "seconds": 12,
+          "note": "rev and apply refuse a deck with a check error, so the heading was fixed by hand outside apply first."
+        },
+        "check": {
+          "result": "done",
+          "calls": 11,
+          "seconds": 28,
+          "note": "The tool's measurements found nothing. Looking at the images found the source line printed three times; one op removed the extra."
+        },
+        "deliver": {
+          "result": "done",
+          "calls": 7,
+          "seconds": 51,
+          "note": "export made a three-file folder that opens from file:// with no network. Notes show in the same window, no presenter view."
+        },
+        "recover": {
+          "result": "done",
+          "calls": 2,
+          "seconds": 0,
+          "note": "A stale base revision was refused with exit 3 and nothing was written."
+        }
+      }
+    },
+    "slidev": {
+      "totalSeconds": 466,
+      "results": {
+        "create": {
+          "result": "done",
+          "calls": 17,
+          "seconds": 101,
+          "note": "No chart element, so a Vue and SVG component was written by hand. The Google Fonts default was switched off in the config."
+        },
+        "revise": {
+          "result": "done",
+          "calls": 4,
+          "seconds": 22,
+          "note": "A speaker note still said sixty to forty; the agent left it because the brief said to change nothing else."
+        },
+        "check": {
+          "result": "no check",
+          "calls": 9,
+          "seconds": 95,
+          "note": "Slidev has no overflow check. The agent wrote its own measuring script; nothing overflowed."
+        },
+        "deliver": {
+          "result": "workaround",
+          "calls": 17,
+          "seconds": 227,
+          "note": "The documented build is blank from file://. It opened after a Vite config plugin and a post-build script, neither in the docs."
+        },
+        "recover": {
+          "result": "answered",
+          "calls": 1,
+          "seconds": 16,
+          "note": "No revision or conflict signal; the agent proposed hashing the file."
+        }
+      }
+    },
+    "stagecraft": {
+      "totalSeconds": 573,
+      "results": {
+        "create": {
+          "result": "done",
+          "calls": 31,
+          "seconds": 186,
+          "note": "No component gives a heading with bullets or a labelled chart, so three slide builders were written by hand."
+        },
+        "revise": {
+          "result": "done",
+          "calls": 4,
+          "seconds": 13,
+          "note": "One edit to one slide file."
+        },
+        "check": {
+          "result": "partly",
+          "calls": 13,
+          "seconds": 211,
+          "note": "No check command. The agent's own render scripts found the presenter window cropping slides, and fixed it in CSS."
+        },
+        "deliver": {
+          "result": "done",
+          "calls": 7,
+          "seconds": 43,
+          "note": "No export-to-folder command; a script the agent wrote assembled the folder. The deck opens on a welcome screen that waits for a key."
+        },
+        "recover": {
+          "result": "answered",
+          "calls": 6,
+          "seconds": 71,
+          "note": "No revision; last write wins. The agent proposed hashing the file."
+        }
+      }
+    }
+  }
+}
