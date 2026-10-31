@@ -16,6 +16,7 @@ interface Agent {
   renew(input: unknown): RenewResult;
   submit(input: unknown): Promise<CommandResult>;
   release(): boolean;
+  position(): { scene: string; step: number; steps: number };
 }
 type Handle = { depthcue: { lease?: Agent } };
 
@@ -114,7 +115,7 @@ describe("the control lease in a real browser", () => {
     expect(await pill().textContent()).toBe("You present");
     expect(
       await page.evaluate(() => Object.keys((window as unknown as Handle).depthcue.lease ?? {}).sort()),
-    ).toEqual(["release", "renew", "state", "submit"]);
+    ).toEqual(["position", "release", "renew", "state", "submit"]);
     expect(problems).toEqual([]);
   });
 

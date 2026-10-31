@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { checkDeckFiles, type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
 import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./clip.ts";
 import { applyToFolder, openDeck } from "./deck-api.ts";
+import { writeLink } from "./link.ts";
 import { loadDeckDir } from "./loader.ts";
 import { openRenderer, type RenderOptions } from "./render.ts";
 import { builtEditorDir, builtPlayerDir, startServer } from "./serve.ts";
@@ -213,6 +214,8 @@ async function serve(folder: string, port: number, edit: boolean, io: Io): Promi
     }
     throw error;
   }
+  // An agent working on this folder finds the page and the secret for its lease calls through this file.
+  const unlink = writeLink(folder, { url: server.url, token: server.agentToken, pid: process.pid });
   io.out(`${edit ? "Editing" : "Serving"} ${folder} at ${server.url}`);
   if (errors > 0)
     io.out(`The deck has ${errors} error${errors === 1 ? "" : "s"}; run \`depthcue check\` for details.`);
@@ -225,6 +228,7 @@ async function serve(folder: string, port: number, edit: boolean, io: Io): Promi
     process.once("SIGINT", () => done());
     process.once("SIGTERM", () => done());
   });
+  unlink();
   await server.close();
   return 0;
 }

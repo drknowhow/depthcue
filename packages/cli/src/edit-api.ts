@@ -1,9 +1,10 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
 import { openDeck } from "./deck-api.ts";
+import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
 import { loadDeckDir } from "./loader.ts";
 import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
 
@@ -19,15 +20,6 @@ export interface EditContext {
 export const MAX_SAVE_BYTES = 8 * 1024 * 1024;
 export const MAX_ASSET_BYTES = 15 * 1024 * 1024;
 
-const send = (response: ServerResponse, status: number, body: unknown) => {
-  response.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff",
-  });
-  response.end(JSON.stringify(body));
-};
-
 const plain = (d: Diagnostic) => ({
   code: d.code,
   at: `${d.file}${d.path}`,
@@ -35,13 +27,6 @@ const plain = (d: Diagnostic) => ({
   message: d.message,
   ...(d.fix === undefined ? {} : { fix: d.fix }),
 });
-
-function sameToken(given: string | undefined, expected: string): boolean {
-  if (given === undefined) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 /**
  * A page on another origin can send a request to a loopback server, so every call has to prove it came from the
@@ -52,35 +37,8 @@ function authorized(request: IncomingMessage, ctx: EditContext): string | undefi
   if (!sameToken(request.headers["x-depthcue-token"] as string | undefined, ctx.token)) {
     return "Missing or wrong editor token. Reload the editor page.";
   }
-  const origin = request.headers.origin;
-  if (origin !== undefined && !ctx.origins().includes(origin)) return "Cross-origin request refused.";
-  const site = request.headers["sec-fetch-site"];
-  if (site !== undefined && site !== "same-origin" && site !== "none") return "Cross-origin request refused.";
-  return undefined;
+  return crossOrigin(request, ctx.origins());
 }
-
-class TooLarge extends Error {}
-
-function readBody(request: IncomingMessage, limit: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    request.on("data", (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > limit) {
-        reject(new TooLarge());
-        request.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    request.on("end", () => resolve(Buffer.concat(chunks)));
-    request.on("error", reject);
-  });
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const SAVEABLE = /^(deck\.json|scenes\/[^/\\]+\.json)$/;
 

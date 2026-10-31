@@ -42,7 +42,9 @@ async function start(host: HTMLElement) {
   }
 
   if (host.dataset.live !== undefined && typeof EventSource === "function") {
-    const events = new EventSource("/_depthcue/events");
+    // A page with a lease says so, so the server knows which page an agent's calls go to.
+    const events = new EventSource(lease ? "/_depthcue/events?lease=1" : "/_depthcue/events");
+    lease?.link(events);
     events.addEventListener("change", async () => {
       try {
         const next = await loadDeck(base);

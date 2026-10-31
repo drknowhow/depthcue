@@ -20,6 +20,10 @@
       "types": "./dist/render.d.ts",
       "default": "./dist/render.js"
     },
+    "./link": {
+      "types": "./dist/link.d.ts",
+      "default": "./dist/link.js"
+    },
     "./layout": {
       "types": "./dist/layout.d.ts",
       "default": "./dist/layout.js"

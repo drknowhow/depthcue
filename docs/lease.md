@@ -111,8 +111,48 @@ edited address, takes control back as soon as the player has followed it; Chrome
 for those first, so they cannot be caught earlier. Moves the agent makes itself never count.
 
 **What the agent can call.** `window.depthcue.lease` has `state()`, `renew()`, `submit()` and `release()`, and
-nothing that grants. The player writes a history entry only when the scene changes, so the back button steps
-through scenes, not the agent's steps.
+nothing that grants, plus `position()`, which names the scene on screen, the step shown and the scene's step
+count. The player writes a history entry only when the scene changes, so the back button steps through scenes, not
+the agent's steps.
+
+## The agent link
+
+An agent is not in the browser, so the server carries its calls to the page. `depthcue serve` writes a link file
+with the server's address and a secret, and the agent posts to `/_depthcue/lease/<call>` where `<call>` is `state`,
+`renew`, `submit` or `release`:
+
+```
+POST /_depthcue/lease/submit
+X-Depthcue-Token: <secret from the link file>
+Content-Type: application/json
+
+{"leaseId": "...", "epoch": 1, "sequence": 1, "expectedRev": 0, "action": "next"}
+```
+
+The server sends the call to the open page as a `lease` event on the page's event stream, the page runs it against
+its lease, and the server returns what the page answered. The server decides nothing. A refusal, an expiry or a
+takeover reaches the agent as the page's own answer, with status 200 and the usual `ok`, `code` and `message`.
+Every answer also carries `position`, so an agent need not ask where the deck is after each move.
+
+**Finding the server.** The link file is `depthcue-links/<hash>.json` in the operating system's temporary directory,
+named by a hash of the deck folder's real path, so an agent that knows the folder finds the server without being
+told a port. It holds `url`, `token` and `pid`, is readable only by its owner where the system supports that, and is
+deleted when the server stops, unless a newer server has replaced it. Nothing secret is written into the deck
+folder, where it could be committed. `@depthcue/cli/link` exports `readLink(folder)`.
+
+**What the link refuses.** A call without the secret gets 401. A call that a web page on another origin sent gets
+403 even with the secret, because the server checks `Origin` and `Sec-Fetch-Site`. Only POST with a JSON body of up
+to 64 KB is accepted (405, 415, 413, 400). The page's own answers go to `/_depthcue/lease/reply` and need a custom
+header that a web page on another origin cannot send without a preflight, which the server never answers; the page
+never holds the secret.
+
+**When the link cannot reach the page.** 503 `no-page` means no page with the lease is open, or the page closed
+while the call waited. 504 `page-timeout` means the page did not answer within 3 s (8 s for `submit`, since a
+command can run for 5 s). These errors come from the link, not the lease: the lease is unchanged, and if the page
+is gone the lease expires on its own after three seconds without a renewal.
+
+**One page.** The newest page that opens the event stream gets the calls, and an older one gets them again when the
+newest closes. A second tab therefore takes the link from the first. Nothing is shared between pages.
 
 ## How it is tested
 
@@ -123,16 +163,21 @@ simulates a 30-minute presentation with a fault every minute and checks that the
 cause, that control always returns to the human, and that the deck never moves without a lease or the human. A
 failing session replays from its seed.
 
-The page has 58 tests in `packages/player/test/lease.test.ts` (happy-dom): the chip, hand-over, what each action
-does to the player, every takeover key and the keys that must not take over, expiry and renewal on a fake clock,
-and a deck edit under a lease. `packages/cli/test/lease-e2e.test.ts` drives the served page in headless Chrome with
-real clicks and key presses, including four seconds of real renewals followed by a real expiry, and the back
-button.
+The page is tested in `packages/player/test/lease.test.ts` (happy-dom): the chip, hand-over, what each action does
+to the player, every takeover key and the keys that must not take over, expiry and renewal on a fake clock, and a
+deck edit under a lease. `lease-link.test.ts` there covers the page's side of the link: each relayed call, calls it
+must drop, a failed reply, and letting go of the event stream. `packages/cli/test/lease-e2e.test.ts` drives the
+served page in headless Chrome with real clicks and key presses, including four seconds of real renewals followed
+by a real expiry, and the back button.
+
+The link has `lease-relay.test.ts` (a stand-in page on a real server: secret, origin, size, timeouts, concurrent
+calls, closing pages, shutdown, forged replies), `link.test.ts` (the link file) and `lease-link-e2e.test.ts`, where
+Node makes the agent's calls over HTTP and Chrome holds the page: a real click hands over, the agent moves the
+deck, four seconds of renewals through the link keep the lease, Escape takes it back, and a closed page answers 503.
 
 ## Not yet
 
-- There is no agent link, so nothing outside the page can reach `window.depthcue.lease`. That arrives with the MCP
-  tools.
+- The MCP tool that makes these calls for an agent is next. Until then an agent calls the HTTP link itself.
 - A second window has its own lease. Nothing is shared between tabs.
 - The full presenter window (multi-screen, notes, timer) is v0.2 work, as the plan says. A minimal one comes after
   the agent link.

@@ -12,7 +12,7 @@ import {
 } from "@depthcue/core";
 import { h } from "./dom.ts";
 import type { PlayerSource } from "./load.ts";
-import { nextPosition, previousPosition, samePosition } from "./model.ts";
+import { nextPosition, previousPosition, samePosition, stepCount } from "./model.ts";
 import type { Player, PlayerState } from "./player.ts";
 
 /** What an agent may call on the page. There is no grant here: only a person hands over control. */
@@ -22,6 +22,8 @@ export interface AgentApi {
   submit(input: unknown): Promise<CommandResult>;
   /** The agent is finished or leaving. */
   release(): boolean;
+  /** Where the deck is: the scene on screen, the step shown and how many steps the scene has. */
+  position(): { scene: string; step: number; steps: number };
 }
 
 export interface LeaseOptions {
@@ -38,6 +40,8 @@ export interface LeaseMount {
   agent: AgentApi;
   /** The page calls this whenever the player's state changes, whoever changed it. */
   changed(state: PlayerState): void;
+  /** Answers the calls that the server relays from an agent, which arrive as `lease` events on `events`. */
+  link(events: EventSource): void;
   destroy(): void;
 }
 
@@ -248,18 +252,61 @@ export function mountLease(options: LeaseOptions): LeaseMount {
   document.addEventListener("keydown", onKey, true);
   paint();
 
+  const position = () => {
+    const at = player.state.position;
+    const scene = scenes()[at.scene];
+    return { scene: scene?.id ?? "", step: at.step, steps: scene ? stepCount(scene) : 0 };
+  };
+
   const agent: AgentApi = {
     state: () => controller.state(),
     renew: (input) => controller.renew(input),
     submit: (input) => controller.submit(input),
     release: () => controller.disconnect(),
+    position,
   };
+
+  /** Runs one relayed call against the lease. Every answer says where the deck is, so the agent need not ask. */
+  async function perform(op: unknown, input: unknown): Promise<unknown> {
+    if (op === "state") return { ...controller.state(), position: position() };
+    if (op === "renew") return { ...controller.renew(input), position: position() };
+    if (op === "submit") return { ...(await controller.submit(input)), position: position() };
+    if (op === "release") {
+      const released = controller.disconnect();
+      return { released, ...controller.state(), position: position() };
+    }
+    return { ok: false, code: "unknown-call", message: "That call is not one the page knows." };
+  }
+
+  async function onCall(event: Event) {
+    let call: { id?: unknown; op?: unknown; input?: unknown } | null = null;
+    try {
+      call = JSON.parse(String((event as MessageEvent).data));
+    } catch {
+      // Not JSON, so not a call; the id check below drops it.
+    }
+    if (typeof call?.id !== "string") return;
+    const result = await perform(call.op, call.input);
+    await fetch("/_depthcue/lease/reply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Depthcue-Reply": "1" },
+      body: JSON.stringify({ id: call.id, result }),
+    }).catch(() => undefined);
+  }
+
+  let linked: EventSource | undefined;
 
   return {
     controller,
     agent,
     changed,
+    link(events) {
+      linked?.removeEventListener("lease", onCall);
+      linked = events;
+      events.addEventListener("lease", onCall);
+    },
     destroy() {
+      linked?.removeEventListener("lease", onCall);
       clearNotice();
       unsubscribe();
       controller.destroy();

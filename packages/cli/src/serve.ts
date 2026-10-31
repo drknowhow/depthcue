@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { type EditContext, handleEditApi } from "./edit-api.ts";
+import { createLeaseRelay, RELAY_PREFIX } from "./lease-relay.ts";
 
 export interface ServeOptions {
   /** The deck folder: deck.json, scenes/, assets/. */
@@ -13,6 +14,8 @@ export interface ServeOptions {
   playerDir: string;
   port: number;
   host?: string;
+  /** Replaces how long a lease call waits for the page. For tests. */
+  leaseWaitMs?: Parameters<typeof createLeaseRelay>[0]["waitMs"];
   /**
    * Directory holding the built editor. When set the server is in edit mode: `/` is the editor, the player moves
    * to `/present`, and the token-protected write calls under `/_depthcue/api/` are answered.
@@ -25,6 +28,8 @@ export interface RunningServer {
   port: number;
   /** The secret the editor page sends with every write call; only set in edit mode. */
   token: string | undefined;
+  /** The secret an agent sends with its lease calls. */
+  agentToken: string;
   close(): Promise<void>;
 }
 
@@ -157,19 +162,19 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   const playerDir = realpathSync(resolve(options.playerDir));
   const editorDir = options.editorDir === undefined ? undefined : realpathSync(resolve(options.editorDir));
   const token = editorDir === undefined ? undefined : randomBytes(24).toString("base64url");
+  const agentToken = randomBytes(24).toString("base64url");
   const host = options.host ?? "127.0.0.1";
   const listeners = new Set<ServerResponse>();
   let boundPort = 0;
 
-  const edit: EditContext | undefined =
-    token === undefined
-      ? undefined
-      : {
-          folder,
-          token,
-          origins: () =>
-            LOOPBACK_NAMES.map((name) => `http://${name === "::1" ? "[::1]" : name}:${boundPort}`),
-        };
+  const origins = () =>
+    LOOPBACK_NAMES.map((name) => `http://${name === "::1" ? "[::1]" : name}:${boundPort}`);
+  const edit: EditContext | undefined = token === undefined ? undefined : { folder, token, origins };
+  const relay = createLeaseRelay({
+    token: agentToken,
+    origins,
+    ...(options.leaseWaitMs ? { waitMs: options.leaseWaitMs } : {}),
+  });
 
   const page = (request: IncomingMessage, response: ServerResponse, html: string) => {
     response.writeHead(200, {
@@ -202,6 +207,11 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       });
       return undefined;
     }
+    // The agent's lease calls and the page's answers. Each checks its own method, secret and origin.
+    if (url.pathname.startsWith(RELAY_PREFIX)) {
+      void relay.handle(request, response, url);
+      return undefined;
+    }
     if (request.method !== "GET" && request.method !== "HEAD") return send(response, 405, "Use GET.");
 
     if (path === "/" || path === "/index.html") {
@@ -224,6 +234,8 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       response.write("retry: 1000\n\n");
       listeners.add(response);
       request.on("close", () => listeners.delete(response));
+      // A page that has the lease says so, and is the one an agent's calls go to.
+      if (url.searchParams.get("lease") === "1") relay.attach(response);
       return undefined;
     }
 
@@ -263,14 +275,17 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       resolveStart({
         port,
         token,
+        agentToken,
         url: `http://${host === "::1" ? "[::1]" : host}:${port}/`,
         close: () =>
           new Promise<void>((done) => {
             clearTimeout(pending);
+            relay.close();
             watcher.close();
             for (const client of listeners) client.end();
             server.close(() => done());
-            server.closeAllConnections();
+            // A call that is waiting gets its answer first ("the server is shutting down"), not a reset.
+            setImmediate(() => server.closeAllConnections());
           }),
       });
     });

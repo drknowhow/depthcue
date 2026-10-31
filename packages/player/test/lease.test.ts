@@ -217,7 +217,13 @@ describe("handing over", () => {
 
   it("gives an agent nothing to call that would hand over control", () => {
     mount();
-    expect(Object.keys((lease as LeaseMount).agent).sort()).toEqual(["release", "renew", "state", "submit"]);
+    expect(Object.keys((lease as LeaseMount).agent).sort()).toEqual([
+      "position",
+      "release",
+      "renew",
+      "state",
+      "submit",
+    ]);
   });
 });
 
