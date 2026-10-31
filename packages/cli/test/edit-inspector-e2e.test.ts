@@ -80,6 +80,8 @@ const saved = () => page.locator(".ed-status[data-state='saved']").waitFor();
 async function open() {
   await page.goto(server.url);
   await page.locator(".ed-frame").waitFor();
+  // The details panel starts closed; these tests work in it.
+  await page.locator("[data-action='details']").click();
 }
 
 async function save() {
