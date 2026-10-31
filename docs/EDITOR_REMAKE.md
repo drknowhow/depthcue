@@ -116,18 +116,25 @@ area takes no blocks, and a refused drop says why while the pointer is over it. 
 needs room beside its block, so a narrow slide (a phone, or a small window) shows none. The keyboard and a phone
 reorder with the toolbar's earlier and later buttons, and cite with the Evidence chip.
 
+An area that holds nothing gets a dashed place on the slide, drawn by the editor only, never by the player or the
+export: Evidence while the claim cites nothing, Support when every block is cited, Media on a slide of text, Text on
+a slide of pictures, and the claim itself where a slide has none. A click opens a menu of the kinds the area takes
+(Text, Image, Chart, Clip), or adds text at once where text is the only kind. A block dragged over a place drops
+into that area. The new block goes after the last one there, and in Evidence the claim cites it in the same step
+(`addBlock` in `slots.ts`). A scene needs one block, so a title slide never has an empty area.
+
 ## Phases
 
-| Phase | What lands                                                              | PRs |
-| ----- | ----------------------------------------------------------------------- | --- |
-| 1     | Shell: slim top bar, thumbnail strip, large stage, autosave             | 2   |
-| 2     | Selection, floating toolbars per block type, notes sheet, old panel out | 3   |
-| 3     | Done: chart bars, image drop, clip cues, slot grips. Next: ghosts       | 4   |
-| 4     | Schema 0.2, player and checks, pinning, layout interplay                | 4   |
-| 5     | Quick bar, shortcuts, problem ribbon, Ctrl K palette                    | 2   |
-| 6     | Comments: model, agent side, editor                                     | 3   |
-| 7     | Review of agent changes, storyboard                                     | 3   |
-| 8     | Docs, final measurements, walkthrough                                   | 1   |
+| Phase | What lands                                                                           | PRs |
+| ----- | ------------------------------------------------------------------------------------ | --- |
+| 1     | Shell: slim top bar, thumbnail strip, large stage, autosave                          | 2   |
+| 2     | Selection, floating toolbars per block type, notes sheet, old panel out              | 3   |
+| 3     | Done: chart bars, image drop, clip cues, slot grips, empty places. Next: build order | 6   |
+| 4     | Schema 0.2, player and checks, pinning, layout interplay                             | 4   |
+| 5     | Quick bar, shortcuts, problem ribbon, Ctrl K palette                                 | 2   |
+| 6     | Comments: model, agent side, editor                                                  | 3   |
+| 7     | Review of agent changes, storyboard                                                  | 3   |
+| 8     | Docs, final measurements, walkthrough                                                | 1   |
 
 ## Done when
 

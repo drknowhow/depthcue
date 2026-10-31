@@ -208,6 +208,14 @@ describe("taking hold of a grip", () => {
     fire(gripOf("one"), "dragend", {});
     expect(node("one").hasAttribute("data-dragging")).toBe(false);
     expect(canvas.element.querySelector("[data-dragging]")).toBeNull();
+    expect(canvas.element.hasAttribute("data-dragging")).toBe(false);
+  });
+
+  it("marks the whole slide while a block is carried, so its empty areas can show", () => {
+    canvas.render("plain");
+    expect(canvas.element.hasAttribute("data-dragging")).toBe(false);
+    pick("one");
+    expect(canvas.element.hasAttribute("data-dragging")).toBe(true);
   });
 });
 

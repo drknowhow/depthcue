@@ -3,15 +3,7 @@ import { h } from "@depthcue/player";
 import { popoverChip } from "./chip.ts";
 import { actionButton, type Edits, fileButton, problemOf } from "./fields.ts";
 import { notesPanel, panelHost } from "./panels.ts";
-import {
-  BLOCK_KINDS,
-  IMAGE_ACCEPT,
-  idsInScene,
-  type NewBlockKind,
-  newBlock,
-  uniqueId,
-  VIDEO_FILE,
-} from "./templates.ts";
+import { BLOCK_KINDS, IMAGE_ACCEPT, type NewBlockKind, newBlock, newClaim, VIDEO_FILE } from "./templates.ts";
 
 export interface QuickBarHooks {
   /** How the bar changes the deck: `act` for a click, `type` for a keystroke in the notes. */
@@ -81,19 +73,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     () => {
       const target = scene();
       if (!target || target.summary) return;
-      run([
-        {
-          op: "scene.set",
-          id: current,
-          set: {
-            summary: {
-              id: uniqueId(`${target.id}-claim`, idsInScene(target)),
-              text: "State the claim here.",
-              evidenceIds: [],
-            },
-          },
-        },
-      ]);
+      run([{ op: "scene.set", id: current, set: { summary: newClaim(target) } }]);
     },
     { "data-quick": "claim" },
   );

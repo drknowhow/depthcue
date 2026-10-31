@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  addBlock,
   applyOps,
+  type Block,
   type Doc,
   type Placement,
   placeBlock,
   revisionOf,
   type Scene,
+  type SlotName,
   slotOf,
   slotsOf,
 } from "../src/index.ts";
@@ -56,7 +59,41 @@ function deckWith(...scenes: object[]): Doc {
   return result.doc;
 }
 
-const doc = deckWith(titleScene, claimScene, bareClaimScene, claimWithHeadingScene, mediaScene);
+// A scene needs one block, so an empty slot is one of the others: these have a claim and nothing cited, a claim and
+// nothing left for support, text and no media, and media and no text.
+const hollowClaimScene = {
+  id: "t-hollow",
+  title: "Hollow",
+  layout: "claim-evidence",
+  summary: { id: "t-hollow-text", text: "A claim", evidenceIds: [] },
+  blocks: [text("o-one")],
+};
+const wholeClaimScene = {
+  id: "t-whole",
+  title: "Whole",
+  layout: "claim-evidence",
+  summary: { id: "t-whole-text", text: "A claim", evidenceIds: ["w-one"] },
+  blocks: [text("w-one")],
+};
+const hollowMediaScene = {
+  id: "t-hollow-media",
+  title: "Hollow media",
+  layout: "text-media",
+  blocks: [text("p-one")],
+};
+const picturesScene = { id: "t-pictures", title: "Pictures", layout: "text-media", blocks: [chart("q-one")] };
+
+const doc = deckWith(
+  titleScene,
+  claimScene,
+  bareClaimScene,
+  claimWithHeadingScene,
+  mediaScene,
+  hollowClaimScene,
+  wholeClaimScene,
+  hollowMediaScene,
+  picturesScene,
+);
 const sceneOf = (id: string) => doc.scenes[id] as Scene;
 const names = (scene: Scene) => Object.fromEntries(slotsOf(scene).map((slot) => [slot.name, slot.blocks]));
 
@@ -318,4 +355,101 @@ describe("every move that is allowed", () => {
       expect(allowed).toBeGreaterThan(0);
     });
   }
+});
+
+describe("adding a block to a slot", () => {
+  const added = (id: string, to: SlotName, block: Block) => {
+    const placed = addBlock(sceneOf(id), to, block);
+    if (!placed.ok) throw new Error(placed.message);
+    const result = applyOps(doc, placed.ops, revisionOf(doc));
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    return { ops: placed.ops, scene: result.doc.scenes[id] as Scene };
+  };
+  const refused = (id: string, to: SlotName, block: Block) => {
+    const placed = addBlock(sceneOf(id), to, block);
+    if (placed.ok) throw new Error("expected a refusal");
+    return placed.message;
+  };
+  const note = text("new-note") as Block;
+  const picture = { id: "new-picture", type: "image", asset: "assets/method.svg", alt: "A" } as Block;
+
+  it("puts the block after the last one in the slot", () => {
+    const { ops, scene } = added("t-claim", "support", note);
+    expect(ops).toEqual([{ op: "block.add", scene: "t-claim", block: note, after: "c-extra" }]);
+    expect(names(scene).support).toEqual(["c-aside", "c-chart", "c-extra", "new-note"]);
+  });
+
+  it("puts a block into an empty slot at the end of the scene", () => {
+    const { ops, scene } = added("t-pictures", "text", note);
+    expect(ops).toEqual([{ op: "block.add", scene: "t-pictures", block: note }]);
+    expect(names(scene)).toEqual({ text: ["new-note"], media: ["q-one"] });
+  });
+
+  it("cites a block added to Evidence, in the same step", () => {
+    const { ops, scene } = added("t-claim", "evidence", note);
+    expect(ops).toEqual([
+      { op: "block.add", scene: "t-claim", block: note, after: "c-proof" },
+      {
+        op: "scene.set",
+        id: "t-claim",
+        set: { summary: { id: "t-claim-text", text: "A claim", evidenceIds: ["c-proof", "new-note"] } },
+      },
+    ]);
+    expect(names(scene).evidence).toEqual(["c-proof", "new-note"]);
+  });
+
+  it("fills an empty Evidence area, and an empty Support area", () => {
+    expect(names(added("t-hollow", "evidence", note).scene)).toEqual({
+      claim: [],
+      evidence: ["new-note"],
+      support: ["o-one"],
+    });
+    expect(names(added("t-whole", "support", note).scene)).toEqual({
+      claim: [],
+      evidence: ["w-one"],
+      support: ["new-note"],
+    });
+  });
+
+  it("sends a picture to the media area that a text-only scene does not draw yet", () => {
+    expect(names(added("t-hollow-media", "media", picture).scene)).toEqual({
+      text: ["p-one"],
+      media: ["new-picture"],
+    });
+  });
+
+  it("refuses what the layout would draw somewhere else, with the reason", () => {
+    expect(refused("t-hollow-media", "media", note)).toMatch(/Text goes in the text area/);
+    expect(refused("t-hollow-media", "text", picture)).toMatch(/Only text goes in the text area/);
+    expect(refused("t-bare", "evidence", note)).toMatch(/Add a claim first/);
+    expect(refused("t-claim", "claim", note)).toMatch(/claim area holds the claim/);
+    expect(refused("t-title", "evidence", note)).toMatch(/no such area/);
+  });
+
+  it("is a valid deck whatever the layout, slot and kind", () => {
+    let allowed = 0;
+    for (const id of [
+      "t-title",
+      "t-claim",
+      "t-bare",
+      "t-both",
+      "t-media",
+      "t-hollow",
+      "t-whole",
+      "t-hollow-media",
+      "t-pictures",
+    ]) {
+      for (const slot of slotsOf(sceneOf(id))) {
+        for (const block of [note, picture]) {
+          const placed = addBlock(sceneOf(id), slot.name, block);
+          if (!placed.ok) continue;
+          allowed += 1;
+          const result = applyOps(doc, placed.ops, revisionOf(doc));
+          if (!result.ok) throw new Error(`${id} ${slot.name}: ${JSON.stringify(result.diagnostics)}`);
+          expect(slotOf(result.doc.scenes[id] as Scene, block.id)).toBe(slot.name);
+        }
+      }
+    }
+    expect(allowed).toBeGreaterThan(10);
+  });
 });

@@ -725,6 +725,77 @@ body {
   outline-offset: 4px;
 }
 
+/*
+ * A place for an area of the slide that holds nothing, to add to or drop on. It shows when the pointer is over the
+ * slide, and always while a block is being dragged. The sizes are in the slide's own unit, so it scales with it.
+ */
+.ed-ghost {
+  display: grid;
+  gap: 0.6em;
+  align-content: center;
+  min-height: 5em;
+  padding: 0.9em 1.1em;
+  border: 2px dashed var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  color: var(--dc-muted);
+  font-size: 0.8em;
+  opacity: 0.55;
+  transition: opacity 0.12s;
+}
+
+.ed-canvas-host:hover .ed-ghost,
+.ed-canvas-host[data-dragging] .ed-ghost,
+.ed-ghost:focus-within {
+  opacity: 1;
+}
+
+.ed-ghost-open {
+  justify-self: start;
+  padding: 0.3em 0.2em;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: 500 1em / 1.2 var(--dc-font-mono);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.ed-ghost-open:hover {
+  color: var(--dc-action);
+}
+
+.ed-ghost-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+
+.ed-ghost-menu[hidden] {
+  display: none;
+}
+
+.ed-ghost-choice,
+.ed-ghost-menu .ed-button {
+  padding: 0.4em 0.9em;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-sm);
+  background: var(--dc-surface);
+  color: var(--dc-text);
+  font: inherit;
+  min-height: 0;
+  cursor: pointer;
+}
+
+.ed-ghost-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ed-ghost-choice:hover:not(:disabled),
+.ed-ghost-menu .ed-button:hover {
+  border-color: var(--dc-action);
+}
+
 /* The layer over the slide. It takes no clicks itself, so the slide under it still gets them. */
 .ed-overlay {
   position: absolute;

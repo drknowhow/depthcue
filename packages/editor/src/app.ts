@@ -1,5 +1,6 @@
 import type { ApplyOptions, Op } from "@depthcue/core";
 import { h } from "@depthcue/player";
+import { createAdder } from "./adder.ts";
 import { createCanvas } from "./canvas.ts";
 import { popoverChip } from "./chip.ts";
 import { createCueBook } from "./cues.ts";
@@ -71,8 +72,23 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       toolbar.render(selected, selectedBlock);
     },
   });
+  const adder = createAdder(session, {
+    scene: () => selected,
+    act: (ops) => session.apply(ops),
+    problem: showProblem,
+    upload: (file) => store.upload(file),
+    added(id) {
+      selectBlock(id);
+      canvas.focusBlock(id);
+    },
+  });
   const canvas = createCanvas(session, {
     cues,
+    ghosts: {
+      add: (slot, kind, file) => void adder.add(slot, kind, file),
+      claim: () => adder.claim(),
+      hasVideo: () => adder.hasVideo(),
+    },
     // The count of a field is in the toolbar; this line is for what was refused.
     hint: (text, problem) => showProblem(problem ? text : undefined),
     select: (id) => selectBlock(id),

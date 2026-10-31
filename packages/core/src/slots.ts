@@ -115,6 +115,27 @@ function evidenceChange(scene: Scene, ids: readonly string[]): Op[] {
 }
 
 /**
+ * The operations that put a new block in an area: the block goes after the last one there, and in Evidence it is
+ * cited by the claim in the same step. The same refusals apply as for a move, so a layout never ends up holding a
+ * block it would draw somewhere else.
+ */
+export function addBlock(scene: Scene, to: SlotName, block: Block): Placed {
+  const into = slotsOf(scene).find((slot) => slot.name === to);
+  if (!into) return refuse("This layout has no such area.");
+  const bad = turnedAway(scene, into, block.type);
+  if (bad) return refuse(bad);
+  const last = into.blocks[into.blocks.length - 1];
+  const cited = scene.summary?.evidenceIds ?? [];
+  return {
+    ok: true,
+    ops: [
+      { op: "block.add", scene: scene.id, block, ...(last === undefined ? {} : { after: last }) },
+      ...evidenceChange(scene, to === "evidence" ? [...cited, block.id] : cited),
+    ],
+  };
+}
+
+/**
  * The operations that move a block between areas, within one, or swap two blocks. They are ordinary core operations
  * and are applied as one step, so one undo takes the move back. Putting a block in Evidence adds it to the claim's
  * evidence, and taking it out of Evidence removes it, because that is what the layout draws. A move that changes
