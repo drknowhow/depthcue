@@ -52,6 +52,12 @@ Type scales with the slide's width, so a frame holds the same text on a laptop a
 narrower than 640 px a slide would be too small to read, so the pinned blocks follow the template in the flow
 instead. The reading view ignores frames.
 
+Three checks look at frames. `depthcue check` warns with `frame-outside-safe-area` when a text or chart frame reaches
+into the 4% margin at any edge; a picture or a clip may bleed. `depthcue render` and `deck_render` measure the real
+page: a pinned block that overlaps another block is a `frame-overlap` warning, since a label over a picture can be
+on purpose, and a pinned block whose content is larger than its frame is a `frame-overflow` error. Two blocks in the
+template that overlap stay an `overlap` error.
+
 ### Comments
 
 `comments.json` sits beside the deck and has its own revision, so a comment never changes the deck revision.

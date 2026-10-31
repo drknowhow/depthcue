@@ -160,6 +160,68 @@ describe("finding real problems", () => {
   );
 });
 
+describe("pinned blocks", () => {
+  /** A scene whose note is pinned over the template's heading and whose long text does not fit its frame. */
+  const pinnedScene = {
+    schemaVersion: "0.2",
+    id: "pins",
+    title: "Pins",
+    layout: "text-media",
+    blocks: [
+      { id: "pins-heading", type: "text", role: "heading", text: "A heading in the template" },
+      {
+        id: "pins-note",
+        type: "text",
+        role: "body",
+        text: "A note pinned across the middle.",
+        frame: { x: 5, y: 35, w: 90, h: 30 },
+      },
+      {
+        id: "pins-long",
+        type: "text",
+        role: "body",
+        // Fonts differ between machines, so the text takes a third of the frame it is moved to, not nearly all of it.
+        text: Array.from({ length: 30 }, (_, i) => `word${i}`).join(" "),
+        frame: { x: 60, y: 75, w: 30, h: 6 },
+      },
+    ],
+  };
+
+  it(
+    "reports an overlap and an overflow with the frame to change, and clears once the frames are fixed",
+    withRenderer(async (r) => {
+      const added = applyToFolder(folder, [{ op: "scene.add", scene: pinnedScene }], rev());
+      expect(added, JSON.stringify(added)).toMatchObject({ ok: true });
+      try {
+        const crowded = await r.render("pins", { screenshot: false });
+        const overlap = crowded.diagnostics.find((d) => d.code === "frame-overlap");
+        expect(overlap).toMatchObject({ severity: "warning", file: "scenes/pins.json", path: "/blocks/1" });
+        expect(overlap?.message).toContain("pins-heading");
+        expect(overlap?.fix).toContain('frame of "pins-note"');
+        const spill = crowded.diagnostics.find((d) => d.code === "frame-overflow");
+        expect(spill).toMatchObject({ severity: "error", path: "/blocks/2" });
+        expect(spill?.message).toMatch(/"pins-long" is \d+px taller than its frame/);
+        expect(crowded.diagnostics.some((d) => d.code === "overlap")).toBe(false);
+
+        const edit = applyToFolder(
+          folder,
+          [
+            { op: "block.unframe", scene: "pins", id: "pins-note" },
+            { op: "block.frame", scene: "pins", id: "pins-long", frame: { x: 5, y: 66, w: 90, h: 29 } },
+          ],
+          rev(),
+        );
+        expect(edit, JSON.stringify(edit)).toMatchObject({ ok: true });
+        const fixed = await r.render("pins", { screenshot: false });
+        expect(fixed.diagnostics).toEqual([]);
+      } finally {
+        applyToFolder(folder, [{ op: "scene.remove", id: "pins" }], rev());
+      }
+    }),
+    60_000,
+  );
+});
+
 describe("bad requests", () => {
   it(
     "names the scenes when the scene does not exist",
@@ -184,6 +246,42 @@ describe("bad requests", () => {
 });
 
 describe("the measuring function", () => {
+  it(
+    "sees which blocks are pinned in an overlap, and a pinned block that is larger than its frame",
+    withRenderer(async () => {
+      const browser = await launchBrowser();
+      try {
+        const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
+        await page.setContent(`
+          <style>
+            body { margin: 0; }
+            .dc-view { position: absolute; inset: 0; overflow: auto; }
+            .dc-scene { position: relative; min-height: 100%; }
+            .box { position: absolute; width: 200px; height: 100px; background: #ddd; }
+          </style>
+          <div class="dc-view"><section class="dc-scene">
+            <div class="dc-block box" data-id="plain" style="left:10px;top:10px">plain</div>
+            <div class="dc-block dc-pinned box" data-id="over" style="left:100px;top:50px">over</div>
+            <div class="dc-block dc-pinned box" data-id="spills" style="left:400px;top:10px;height:30px">
+              <div style="height:90px;width:260px">tall and wide inside</div>
+            </div>
+            <div class="dc-block dc-pinned box" data-id="fits" style="left:400px;top:200px"><div>fits</div></div>
+            <div class="dc-block dc-pinned box" data-id="later" style="left:600px;top:200px;height:30px;visibility:hidden">
+              <div style="height:90px">not shown yet</div>
+            </div>
+          </section></div>`);
+        const measure = await page.evaluate(measureLayout);
+        expect(measure.overlaps).toEqual([
+          expect.objectContaining({ a: "plain", b: "over", pinned: ["over"] }),
+        ]);
+        expect(measure.spills).toEqual([{ id: "spills", x: 60, y: 60 }]);
+      } finally {
+        await browser.close();
+      }
+    }),
+    60_000,
+  );
+
   it(
     "sees overlap, clipping, a cut-off block and a missing image in a hand-built page",
     withRenderer(async () => {

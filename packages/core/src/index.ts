@@ -40,7 +40,7 @@ export { attachAutosave, DRAFT_FORMAT, memoryDraftStore, recoverDraft, serialize
 export type { ExportData } from "./exported.ts";
 export { EXPORT_FORMAT } from "./exported.ts";
 export type { Frame } from "./frames.ts";
-export { checkFrames, FRAME_MIN, frameOf, hasFrames } from "./frames.ts";
+export { checkFrames, FRAME_MIN, frameOf, hasFrames, SAFE_MARGIN } from "./frames.ts";
 export type {
   CommandResult,
   Lease,
