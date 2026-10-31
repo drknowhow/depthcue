@@ -108,6 +108,50 @@ describe("the top bar", () => {
   });
 });
 
+describe("the details panel", () => {
+  const panel = () => host.querySelector<HTMLElement>(".ed-inspector") as HTMLElement;
+  const app = () => host.querySelector<HTMLElement>(".ed-app") as HTMLElement;
+  const pick = (id: string) =>
+    [...host.querySelectorAll<HTMLElement>("[data-pick]")].find((node) => node.dataset.id === id);
+
+  it("starts closed so the slide gets the room, and the button opens and closes it", () => {
+    expect(panel().hidden).toBe(true);
+    expect(app().dataset.details).toBe("closed");
+    expect(button("details").getAttribute("aria-expanded")).toBe("false");
+    expect(button("details").getAttribute("aria-controls")).toBe(panel().id);
+    button("details").click();
+    expect(panel().hidden).toBe(false);
+    expect(app().dataset.details).toBe("open");
+    expect(button("details").getAttribute("aria-expanded")).toBe("true");
+    button("details").click();
+    expect(panel().hidden).toBe(true);
+    expect(app().dataset.details).toBe("closed");
+  });
+
+  it("opens by itself when a block with no text on the slide is picked", () => {
+    sceneButtons()[1]?.click();
+    expect(panel().hidden).toBe(true);
+    pick("chart-demand")?.click();
+    expect(editor.blockId).toBe("chart-demand");
+    expect(panel().hidden).toBe(false);
+    expect(button("details").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("stays closed when text is picked, since the slide edits it", () => {
+    const heading = host.querySelector<HTMLElement>("[data-id='opening-title'] [data-edit], [data-edit]");
+    heading?.dispatchEvent(new FocusEvent("focus"));
+    expect(editor.blockId).not.toBeUndefined();
+    expect(panel().hidden).toBe(true);
+  });
+
+  it("keeps the panel's content current while it is closed", () => {
+    store.session.apply([{ op: "scene.set", id: "opening", set: { title: "Edited while closed" } }]);
+    button("details").click();
+    const field = host.querySelector<HTMLInputElement>("[data-field='scene:title']");
+    expect(field?.value).toBe("Edited while closed");
+  });
+});
+
 describe("typing into the preview", () => {
   it("edits in place without redrawing the field under the caret, and updates the bar", () => {
     const node = host.querySelector<HTMLElement>(".ed-frame [data-edit]") as HTMLElement;

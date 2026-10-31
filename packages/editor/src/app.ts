@@ -32,9 +32,9 @@ export interface Editor {
 }
 
 /**
- * Mounts the editor into `host`: a top bar, the scene list, the selected scene with its text editable in place,
- * and the inspector with every other property. All state lives in the store's session; this only reflects it and
- * sends edits back through it.
+ * Mounts the editor into `host`: a slim top bar, the scene strip, the selected scene filling the rest with its
+ * text editable in place, and a details panel with every other property that stays closed until it is asked for.
+ * All state lives in the store's session; this only reflects it and sends edits back through it.
  */
 export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const { session } = store;
@@ -42,6 +42,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   let selectedBlock: string | undefined;
   // True while the inspector is applying a keystroke, so it is not rebuilt under the caret.
   let typingInInspector = false;
+  let detailsOpen = false;
 
   const edits: Edits = {
     type(ops: readonly Op[], options?: ApplyOptions) {
@@ -78,6 +79,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const undo = button("undo", "Undo", () => session.undo());
   const redo = button("redo", "Redo", () => session.redo());
   const save = button("save", "Save", () => void store.save(), { class: "ed-primary" });
+  const details = button("details", "Details", () => setDetails(!detailsOpen), {
+    "aria-expanded": "false",
+    "aria-controls": "ed-details",
+  });
   const present = h(
     "a",
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
@@ -87,7 +92,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     "header",
     { class: "ed-bar" },
     deckTitle,
-    h("div", { class: "ed-actions" }, undo, redo, status, save, present),
+    h("div", { class: "ed-actions" }, undo, redo, status, save, details, present),
   );
   const notices = h("div", { class: "ed-notices" });
   const sceneList = h("ol", { class: "ed-scene-list" });
@@ -113,8 +118,18 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     railProblem,
   );
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
+  inspector.element.id = "ed-details";
   const root = h("div", { class: "ed-app" }, bar, notices, rail, stage, inspector.element);
   host.replaceChildren(root);
+
+  /** The details panel holds every property the slide cannot edit yet. It stays closed so the slide gets the room. */
+  function setDetails(open: boolean) {
+    detailsOpen = open;
+    root.dataset.details = open ? "open" : "closed";
+    inspector.element.hidden = !open;
+    details.setAttribute("aria-expanded", String(open));
+  }
+  setDetails(false);
 
   function renderScenes() {
     const { deck, scenes } = session.doc;
@@ -241,8 +256,11 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
 
   function selectBlock(id: string | undefined) {
     const blocks = session.doc.scenes[selected]?.blocks ?? [];
-    const next = id !== undefined && blocks.some((block) => block.id === id) ? id : undefined;
+    const picked = blocks.find((block) => block.id === id);
+    const next = picked ? id : undefined;
     canvas.mark(next);
+    // Only text can be edited on the slide so far. Picking anything else opens the panel that edits it.
+    if (picked && picked.type !== "text") setDetails(true);
     if (next === selectedBlock) return;
     selectedBlock = next;
     inspector.render();

@@ -156,9 +156,12 @@ describe("an exported deck opened from a folder with the network off", () => {
     await scene("opening").waitFor();
     await page.keyboard.press("ArrowRight");
     await scene("demand").waitFor();
+    // page.url() can trail the page's own history write, so wait for it rather than read it once.
+    await page.waitForURL((url) => url.hash === "#/demand");
     expect(position()).toBe("#/demand");
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("ArrowRight");
+    await page.waitForURL((url) => url.hash === "#/demand/2");
     expect(position()).toBe("#/demand/2");
     await page.keyboard.press("ArrowRight");
     await scene("method").waitFor();

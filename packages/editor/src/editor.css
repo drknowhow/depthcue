@@ -19,9 +19,14 @@ body {
 
 .ed-app {
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr) 22rem;
+  grid-template-columns: 10.5rem minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr);
   height: 100dvh;
+}
+
+/* The details panel is closed until it is asked for (or a block that has no text is picked), so the slide gets the room. */
+.ed-app[data-details="open"] {
+  grid-template-columns: 10.5rem minmax(0, 1fr) 22rem;
 }
 
 .ed-app *,
@@ -43,7 +48,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--dc-space-4);
-  padding: var(--dc-space-3) var(--dc-space-6);
+  padding: var(--dc-space-2) var(--dc-space-4);
   border-bottom: 1px solid var(--dc-line);
   background: var(--dc-surface);
 }
@@ -53,7 +58,7 @@ body {
   min-width: 0;
   overflow: hidden;
   font-family: var(--dc-font-display);
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 400;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -181,6 +186,7 @@ body {
 /* Scene list */
 
 .ed-scenes {
+  grid-column: 1;
   grid-row: 3;
   overflow: auto;
   padding: var(--dc-space-3);
@@ -198,14 +204,37 @@ body {
 
 .ed-app .ed-scene {
   display: grid;
-  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  grid-template-areas:
+    "num title"
+    "num lead";
   align-items: center;
-  gap: var(--dc-space-2);
+  column-gap: var(--dc-space-2);
   width: 100%;
-  min-height: 2.75rem;
+  min-height: 3rem;
+  padding: var(--dc-space-2);
   border-color: transparent;
   background: transparent;
   text-align: left;
+}
+
+.ed-scene .ed-num {
+  grid-area: num;
+  align-self: start;
+}
+
+.ed-scene .ed-title {
+  grid-area: title;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.ed-scene .ed-lead {
+  grid-area: lead;
 }
 
 .ed-app .ed-scene[aria-current="true"] {
@@ -240,18 +269,21 @@ body {
 /* Canvas */
 
 .ed-main {
+  grid-column: 2;
   grid-row: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: var(--dc-space-3);
   min-width: 0;
   overflow: auto;
-  padding: var(--dc-space-6);
+  padding: var(--dc-space-4);
 }
 
+/* The slide takes the width it is given, unless the height runs out first: the bar, the hint and the padding are about 8.5rem. */
 .ed-canvas-host {
-  width: min(100%, calc((100dvh - 11rem) * 16 / 9));
+  width: min(100%, calc((100dvh - 8.5rem) * 16 / 9));
 }
 
 .ed-app .ed-frame.dc-player {
@@ -303,17 +335,16 @@ body {
 
 .ed-add-scene {
   display: flex;
+  flex-direction: column;
   gap: var(--dc-space-2);
   margin-top: var(--dc-space-3);
 }
 
 .ed-add-scene select {
-  flex: 1 1 auto;
   min-width: 0;
 }
 
 .ed-app .ed-add-scene button {
-  flex: 0 0 auto;
   white-space: nowrap;
 }
 
@@ -340,6 +371,7 @@ body {
 /* Inspector */
 
 .ed-inspector {
+  grid-column: 3;
   grid-row: 3;
   overflow: auto;
   padding: var(--dc-space-2) var(--dc-space-3) var(--dc-space-6);
@@ -553,8 +585,25 @@ body {
   outline-offset: 4px;
 }
 
+/* On a narrow screen the open panel floats over the slide instead of squeezing it. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .ed-app[data-details="open"] {
+    grid-template-columns: 10.5rem minmax(0, 1fr);
+  }
+
+  .ed-app[data-details="open"] .ed-inspector {
+    grid-column: 2;
+    grid-row: 3;
+    z-index: 2;
+    justify-self: end;
+    width: min(22rem, 100%);
+    box-shadow: -12px 0 28px rgb(0 0 0 / 12%);
+  }
+}
+
 @media (max-width: 760px) {
-  .ed-app {
+  .ed-app,
+  .ed-app[data-details="open"] {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: none;
     grid-auto-rows: auto;
@@ -565,6 +614,7 @@ body {
   .ed-scenes,
   .ed-main,
   .ed-inspector {
+    grid-column: auto;
     grid-row: auto;
   }
 
