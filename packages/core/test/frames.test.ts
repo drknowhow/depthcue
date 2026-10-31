@@ -541,6 +541,21 @@ describe("block.frame and block.unframe", () => {
 });
 
 describe("a frame written some other way", () => {
+  it("survives an edit of the text of its block, since block.set changes only what it names", () => {
+    const pinnedDoc = success(
+      run(demoDoc(), [{ op: "block.frame", scene: "opening", id: "opening-title", frame: box }]),
+    ).doc;
+    const edited = success(
+      run(pinnedDoc, [
+        { op: "block.set", scene: "opening", id: "opening-title", set: { text: "A new first line" } },
+      ]),
+    ).doc;
+    expect(blockOf(edited, "opening", "opening-title")).toMatchObject({
+      text: "A new first line",
+      frame: box,
+    });
+  });
+
   it("is set and cleared by block.set, as a property of the block", () => {
     const set = success(
       run(demoDoc(), [{ op: "block.set", scene: "opening", id: "opening-title", set: { frame: box } }]),
