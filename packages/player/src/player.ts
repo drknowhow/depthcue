@@ -4,6 +4,7 @@ import type { PlayerSource } from "./load.ts";
 import {
   clampPosition,
   formatRoute,
+  LEAD_LABEL,
   nextPosition,
   type Position,
   parseRoute,
@@ -55,8 +56,6 @@ export interface Player {
   moduleStates(): Readonly<Record<string, ModuleState>>;
   destroy(): void;
 }
-
-const LEAD_LABEL = { human: "Human-led", agent: "Agent-led", shared: "Shared" } as const;
 
 function button(action: string, label: string, ...children: Array<Node | string>): HTMLButtonElement {
   return h(

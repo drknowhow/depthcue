@@ -1,5 +1,5 @@
 {
-  "$comment": "Speed budgets from docs/PLAN.md; the player script and styles limits add up to its 150 KB Brotli player budget; the editor's add up to 120 KB. A module row carries the budget its manifest promises, and a test keeps the two equal. The lease script is loaded only by a page that asks for it, and the core code row is the part of @depthcue/core that the player bundles for it and for the clip module. CI fails when a measured size exceeds its limit. A budget whose file is missing also fails, so a renamed output cannot silently pass.",
+  "$comment": "Speed budgets from docs/PLAN.md; the player script and styles limits add up to its 150 KB Brotli player budget; the editor's add up to 120 KB. A module row carries the budget its manifest promises, and a test keeps the two equal. The lease, broadcast and presenter scripts are loaded only by a page that asks for them, and the core code row is the part of @depthcue/core that the player bundles for it and for the clip module. CI fails when a measured size exceeds its limit. A budget whose file is missing also fails, so a renamed output cannot silently pass.",
   "budgets": [
     {
       "name": "core runtime",
@@ -36,6 +36,18 @@
       "file": "packages/player/dist/lease.js",
       "metric": "brotli",
       "limitBytes": 3072
+    },
+    {
+      "name": "broadcast script",
+      "file": "packages/player/dist/broadcast.js",
+      "metric": "brotli",
+      "limitBytes": 1024
+    },
+    {
+      "name": "presenter script",
+      "file": "packages/player/dist/presenter.js",
+      "metric": "brotli",
+      "limitBytes": 2304
     },
     {
       "name": "core code in the player",

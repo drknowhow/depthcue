@@ -684,6 +684,217 @@
   opacity: 0.7;
 }
 
+/* Presenter view: the second window, with notes, a timer, what comes next and the moves */
+
+.dc-presenter {
+  --dc-focus: var(--dc-evidence);
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head head"
+    "now next"
+    "clock moves";
+  background: var(--dc-bg);
+  color: var(--dc-text);
+  font-family: var(--dc-font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+.dc-presenter[data-theme="ink"] {
+  color-scheme: dark;
+}
+
+.dc-presenter *,
+.dc-presenter *::before,
+.dc-presenter *::after {
+  box-sizing: border-box;
+}
+
+.dc-presenter :focus-visible {
+  outline: 3px solid var(--dc-focus);
+  outline-offset: 2px;
+}
+
+.dc-presenter [hidden] {
+  display: none;
+}
+
+.dc-pv-head {
+  grid-area: head;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--dc-line);
+}
+
+.dc-pv-deck {
+  flex: 1 1 12rem;
+  margin: 0;
+  font: 600 1rem var(--dc-font-ui);
+}
+
+.dc-pv-holder {
+  margin: 0;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--dc-line);
+  border-radius: 999px;
+  color: var(--dc-muted);
+  font: 0.72rem var(--dc-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The same shapes as the lead pill and the lease chip: a circle for the person, a diamond for the agent */
+.dc-pv-holder::before {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 0.55em;
+  background: currentcolor;
+  border-radius: 50%;
+}
+
+.dc-presenter[data-holder="agent"] .dc-pv-holder {
+  border-color: var(--dc-action);
+  color: var(--dc-text);
+}
+
+.dc-presenter[data-holder="agent"] .dc-pv-holder::before {
+  border-radius: 0;
+  transform: rotate(45deg) scale(0.9);
+}
+
+.dc-pv-now,
+.dc-pv-next {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 1.5rem;
+  overflow: auto;
+}
+
+.dc-pv-now {
+  grid-area: now;
+}
+
+.dc-pv-next {
+  grid-area: next;
+  border-left: 1px solid var(--dc-line);
+  background: var(--dc-surface);
+}
+
+.dc-pv-where,
+.dc-pv-label {
+  margin: 0;
+  color: var(--dc-muted);
+  font: 0.75rem var(--dc-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dc-pv-scene,
+.dc-pv-next-title {
+  margin: 0;
+  font-family: var(--dc-font-display);
+  font-weight: 400;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.dc-pv-scene {
+  font-size: 2rem;
+}
+
+.dc-pv-next-title {
+  font-size: 1.4rem;
+}
+
+.dc-pv-detail {
+  margin: 0;
+  color: var(--dc-muted);
+  line-height: 1.5;
+}
+
+.dc-pv-notes {
+  max-width: 40em;
+  font-size: 1.35rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.dc-pv-notes[data-empty="true"] {
+  color: var(--dc-muted);
+  font-style: italic;
+}
+
+.dc-pv-clock,
+.dc-pv-moves {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1.5rem;
+  border-top: 1px solid var(--dc-line);
+}
+
+.dc-pv-clock {
+  grid-area: clock;
+}
+
+.dc-pv-moves {
+  grid-area: moves;
+  justify-content: flex-end;
+}
+
+.dc-pv-time {
+  font: 2rem var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-pv-moves .dc-btn {
+  min-height: 3.25rem;
+  padding: 0 1.6rem;
+}
+
+.dc-pv-moves [data-pv="next"] {
+  border-color: var(--dc-text);
+  background: var(--dc-text);
+  color: var(--dc-bg);
+}
+
+@media (max-width: 900px) {
+  .dc-presenter {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+      "head"
+      "now"
+      "next"
+      "clock"
+      "moves";
+  }
+
+  .dc-pv-next {
+    border-top: 1px solid var(--dc-line);
+    border-left: 0;
+  }
+
+  .dc-pv-moves {
+    justify-content: stretch;
+  }
+
+  .dc-pv-moves .dc-btn {
+    flex: 1;
+  }
+}
+
 /* Notes */
 
 .dc-notes {
@@ -768,6 +979,7 @@
 @media (max-width: 640px) {
   .dc-lead,
   .dc-lease-text,
+  .dc-presenter-open,
   .dc-cue {
     display: none;
   }
