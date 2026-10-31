@@ -7,6 +7,7 @@ import { FakeServer, openingTitle, retitle } from "./helpers.ts";
 let session: Session;
 let canvas: Canvas;
 let hints: Array<{ text: string; problem: boolean }>;
+let picked: string[];
 
 function start() {
   const server = new FakeServer();
@@ -14,7 +15,11 @@ function start() {
   if (!doc) throw new Error("the demo should load");
   session = createSession(doc);
   hints = [];
-  canvas = createCanvas(session, { hint: (text, problem) => hints.push({ text, problem }) });
+  picked = [];
+  canvas = createCanvas(session, {
+    hint: (text, problem) => hints.push({ text, problem }),
+    select: (id) => picked.push(id),
+  });
   document.body.replaceChildren(canvas.element);
 }
 

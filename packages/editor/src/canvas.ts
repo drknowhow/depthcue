@@ -1,16 +1,22 @@
 import { type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
 import { h, renderScene } from "@depthcue/player";
+import { describeBlock } from "./templates.ts";
 
 export interface CanvasHooks {
   /** A short line about the field being edited, such as "Heading 42 of 90". `problem` marks a refused edit. */
   hint(text: string, problem: boolean): void;
+  /** A block, or the claim, was chosen by focusing its text or activating it. */
+  select(id: string): void;
 }
 
 export interface Canvas {
   readonly element: HTMLElement;
   /** True while a keystroke is being applied, so the caller does not re-render under the caret. */
   readonly typing: boolean;
-  render(sceneId: string): void;
+  /** Draws a scene, with `selectedId` marked when it is one of the scene's blocks. */
+  render(sceneId: string, selectedId?: string): void;
+  /** Moves the selection mark without redrawing. */
+  mark(id: string | undefined): void;
 }
 
 /** One piece of text on a scene that can be edited where it appears. */
@@ -137,6 +143,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     node.addEventListener("focus", () => {
       visit = ++visits;
       hooks.hint(`${field.label} ${current().length} of ${field.limit}`, false);
+      hooks.select(field.id);
     });
     node.addEventListener("input", update);
     node.addEventListener("beforeinput", (event) => {
@@ -177,19 +184,52 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     });
   }
 
+  /** Images, charts and clips have no text to type into, so they are chosen by clicking or pressing Enter. */
+  function wirePicker(scene: Scene, root: HTMLElement) {
+    for (const block of scene.blocks) {
+      if (block.type === "text") continue;
+      const node = [...root.querySelectorAll<HTMLElement>(".dc-block")].find(
+        (candidate) => candidate.dataset.id === block.id,
+      );
+      if (!node) continue;
+      node.dataset.pick = "";
+      node.setAttribute("role", "button");
+      node.setAttribute("aria-label", `${describeBlock(block, 60)}. Select to edit.`);
+      node.tabIndex = 0;
+      node.addEventListener("click", () => hooks.select(block.id));
+      node.addEventListener("keydown", (event) => {
+        if (event.target !== node || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        hooks.select(block.id);
+      });
+    }
+  }
+
+  function mark(id: string | undefined) {
+    for (const node of element.querySelectorAll<HTMLElement>("[data-selected]")) {
+      node.removeAttribute("data-selected");
+    }
+    if (id === undefined) return;
+    const found = [...element.querySelectorAll<HTMLElement>("[data-id]")].find(
+      (node) => node.dataset.id === id,
+    );
+    found?.setAttribute("data-selected", "");
+  }
+
   return {
     element,
+    mark,
     get typing() {
       return typing;
     },
-    render(sceneId) {
+    render(sceneId, selectedId) {
       const scene = session.doc.scenes[sceneId];
       if (!scene) {
         element.replaceChildren();
         return;
       }
-      const focused = element.querySelector<HTMLElement>("[data-edit]:focus");
-      const focusedId = focused?.closest<HTMLElement>("[data-id]")?.dataset.id;
+      const focused = element.querySelector<HTMLElement>("[data-edit]:focus, [data-pick]:focus");
+      const focusedId = (focused?.closest<HTMLElement>("[data-id]") ?? focused)?.dataset.id;
 
       const view = h("div", { class: "dc-view" }, renderScene(scene, { assetBase: "" }));
       for (const node of view.querySelectorAll<HTMLElement>("[data-gated]")) node.dataset.revealed = "true";
@@ -199,18 +239,20 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         h("div", { class: "dc-stage" }, view),
       );
       for (const field of fieldsOf(scene, view)) wire(field, sceneId);
+      wirePicker(scene, view);
       element.replaceChildren(frame);
+      mark(selectedId);
 
       if (focusedId) {
         const again = [...element.querySelectorAll<HTMLElement>("[data-id]")].find(
           (node) => node.dataset.id === focusedId,
         );
-        const target = again?.matches("[data-edit]")
+        const target = again?.matches("[data-edit], [data-pick]")
           ? again
           : again?.querySelector<HTMLElement>("[data-edit]");
         if (target) {
           target.focus();
-          placeCaretAtEnd(target);
+          if (target.matches("[data-edit]")) placeCaretAtEnd(target);
         }
       }
     },

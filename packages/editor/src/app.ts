@@ -1,7 +1,11 @@
-import type { Scene } from "@depthcue/core";
+import type { ApplyOptions, Op, Scene } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { createCanvas } from "./canvas.ts";
+import { type Edits, problemOf } from "./fields.ts";
+import { createInspector, LAYOUT_CHOICES } from "./inspector.ts";
+import { sortable } from "./sortable.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
+import { type Layout, newScene } from "./templates.ts";
 
 const LEAD = { human: "Human", agent: "Agent", shared: "Shared" } as const;
 
@@ -21,17 +25,35 @@ function button(action: string, label: string, onClick: () => void, extra: Recor
 export interface Editor {
   /** The scene being edited. */
   readonly sceneId: string;
+  /** The selected block of that scene, if any. */
+  readonly blockId: string | undefined;
   select(sceneId: string): void;
   destroy(): void;
 }
 
 /**
- * Mounts the editor into `host`: a top bar, the scene list, and the selected scene with its text editable in
- * place. All state lives in the store's session; this only reflects it and sends edits back through it.
+ * Mounts the editor into `host`: a top bar, the scene list, the selected scene with its text editable in place,
+ * and the inspector with every other property. All state lives in the store's session; this only reflects it and
+ * sends edits back through it.
  */
 export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const { session } = store;
   let selected = session.doc.deck.scenes[0] as string;
+  let selectedBlock: string | undefined;
+  // True while the inspector is applying a keystroke, so it is not rebuilt under the caret.
+  let typingInInspector = false;
+
+  const edits: Edits = {
+    type(ops: readonly Op[], options?: ApplyOptions) {
+      typingInInspector = true;
+      try {
+        return session.apply(ops, options);
+      } finally {
+        typingInInspector = false;
+      }
+    },
+    act: (ops: readonly Op[], options?: ApplyOptions) => session.apply(ops, options),
+  };
 
   const hint = h("p", { class: "ed-hint", "aria-live": "polite" });
   const canvas = createCanvas(session, {
@@ -39,6 +61,16 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       hint.textContent = text;
       hint.toggleAttribute("data-problem", problem);
     },
+    select: (id) => selectBlock(id),
+  });
+  const inspector = createInspector({
+    session,
+    edits,
+    scene: () => selected,
+    block: () => selectedBlock,
+    selectBlock: (id) => selectBlock(id),
+    selectScene: (id) => select(id),
+    upload: (file) => store.upload(file),
   });
 
   const deckTitle = h("h1", { class: "ed-deck" });
@@ -59,32 +91,60 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   );
   const notices = h("div", { class: "ed-notices" });
   const sceneList = h("ol", { class: "ed-scene-list" });
-  const rail = h("nav", { class: "ed-scenes", "aria-label": "Scenes" }, sceneList);
+
+  const layoutChoice = h(
+    "select",
+    { "aria-label": "Layout for the new scene", "data-field": "rail:layout" },
+    ...LAYOUT_CHOICES.map((choice) => h("option", { value: choice.value }, choice.label)),
+  );
+  const railProblem = h("p", { class: "ed-problem", role: "alert", hidden: true });
+  const addScene = button("add-scene", "Add scene", () => {
+    const scene = newScene(session.doc, layoutChoice.value as Layout);
+    const result = edits.act([{ op: "scene.add", scene, after: selected }]);
+    railProblem.hidden = result.ok;
+    railProblem.textContent = result.ok ? "" : problemOf(result);
+    if (result.ok) select(scene.id);
+  });
+  const rail = h(
+    "nav",
+    { class: "ed-scenes", "aria-label": "Scenes" },
+    sceneList,
+    h("div", { class: "ed-add-scene" }, layoutChoice, addScene),
+    railProblem,
+  );
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
-  const root = h("div", { class: "ed-app" }, bar, notices, rail, stage);
+  const root = h("div", { class: "ed-app" }, bar, notices, rail, stage, inspector.element);
   host.replaceChildren(root);
 
   function renderScenes() {
     const { deck, scenes } = session.doc;
-    sceneList.replaceChildren(
-      ...deck.scenes.map((id, index) => {
-        const scene = scenes[id] as Scene;
-        const item = h(
-          "button",
-          {
-            type: "button",
-            class: "ed-scene",
-            "data-scene": id,
-            "aria-current": id === selected ? "true" : "false",
-          },
-          h("span", { class: "ed-num" }, String(index + 1)),
-          h("span", { class: "ed-title" }, scene.title),
-          h("span", { class: "ed-lead", "data-lead": scene.lead ?? "human" }, LEAD[scene.lead ?? "human"]),
-        );
-        item.addEventListener("click", () => select(id));
-        return h("li", {}, item);
-      }),
-    );
+    const items = new Map<string, HTMLElement>();
+    for (const [index, id] of deck.scenes.entries()) {
+      const scene = scenes[id] as Scene;
+      const item = h(
+        "button",
+        {
+          type: "button",
+          class: "ed-scene",
+          "data-scene": id,
+          "aria-current": id === selected ? "true" : "false",
+        },
+        h("span", { class: "ed-num" }, String(index + 1)),
+        h("span", { class: "ed-title" }, scene.title),
+        h("span", { class: "ed-lead", "data-lead": scene.lead ?? "human" }, LEAD[scene.lead ?? "human"]),
+      );
+      item.addEventListener("click", () => select(id));
+      items.set(id, h("li", {}, item));
+    }
+    sceneList.replaceChildren(...items.values());
+    // `flex-direction` is "row" even on a grid, so it only counts when the list really is a flex container.
+    const layout = getComputedStyle(sceneList);
+    sceneList.dataset.axis =
+      layout.display.includes("flex") && layout.flexDirection.startsWith("row") ? "x" : "y";
+    sortable(sceneList, items, {
+      ids: () => session.doc.deck.scenes,
+      move: (id, after) => void edits.act([{ op: "scene.move", id, after }]),
+    });
   }
 
   function renderBar() {
@@ -156,17 +216,36 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     );
   }
 
+  /** Keeps the selection pointing at things that exist after the document changed under it. */
   function ensureSelection() {
     const ids = session.doc.deck.scenes;
-    if (!ids.includes(selected)) selected = (ids[0] as string) ?? selected;
+    if (!ids.includes(selected)) {
+      selected = (ids[0] as string) ?? selected;
+      selectedBlock = undefined;
+    }
+    const blocks = session.doc.scenes[selected]?.blocks ?? [];
+    if (selectedBlock !== undefined && !blocks.some((block) => block.id === selectedBlock)) {
+      selectedBlock = undefined;
+    }
   }
 
   function select(sceneId: string) {
     if (!session.doc.scenes[sceneId]) return;
+    if (sceneId !== selected) selectedBlock = undefined;
     selected = sceneId;
     renderScenes();
     renderBar();
-    canvas.render(selected);
+    canvas.render(selected, selectedBlock);
+    inspector.render();
+  }
+
+  function selectBlock(id: string | undefined) {
+    const blocks = session.doc.scenes[selected]?.blocks ?? [];
+    const next = id !== undefined && blocks.some((block) => block.id === id) ? id : undefined;
+    canvas.mark(next);
+    if (next === selectedBlock) return;
+    selectedBlock = next;
+    inspector.render();
   }
 
   const onKey = (event: KeyboardEvent) => {
@@ -190,7 +269,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     ensureSelection();
     renderScenes();
     renderBar();
-    if (!canvas.typing) canvas.render(selected);
+    if (!canvas.typing) canvas.render(selected, selectedBlock);
+    if (!typingInInspector) inspector.render();
   });
   const unsubscribeStore = store.subscribe(() => {
     renderBar();
@@ -200,11 +280,15 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   renderScenes();
   renderBar();
   renderNotices();
-  canvas.render(selected);
+  canvas.render(selected, selectedBlock);
+  inspector.render();
 
   return {
     get sceneId() {
       return selected;
+    },
+    get blockId() {
+      return selectedBlock;
     },
     select,
     destroy() {
