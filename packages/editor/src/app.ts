@@ -40,10 +40,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   let selected = session.doc.deck.scenes[0] as string;
   let selectedBlock: string | undefined;
   // The form that is applying a keystroke right now, so that one is not rebuilt under the caret.
-  let typingIn: "inspector" | "toolbar" | undefined;
+  let typingIn: "inspector" | "toolbar" | "scene" | undefined;
   let detailsOpen = false;
 
-  const editsFor = (form: "inspector" | "toolbar"): Edits => ({
+  const editsFor = (form: NonNullable<typeof typingIn>): Edits => ({
     type(ops: readonly Op[], options?: ApplyOptions) {
       typingIn = form;
       try {
@@ -80,7 +80,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       canvas.focusBlock(id);
     },
     focusBlock: (id) => canvas.focusBlock(id),
-    openDetails: () => setDetails(true),
+    openSources: () => sceneBar.open("sources"),
   });
   canvas.overlay.append(toolbar.element);
   const inspector = createInspector({
@@ -108,7 +108,11 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
     "Present",
   );
-  const sceneBar = createSceneBar(session, { act: edits.act, problem: showProblem });
+  const sceneBar = createSceneBar(session, {
+    edits: editsFor("scene"),
+    problem: showProblem,
+    upload: (file) => store.upload(file),
+  });
   const bar = h(
     "header",
     { class: "ed-bar" },
@@ -150,7 +154,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
           ? `${SAVE_LABEL[state.save]}. ${state.message}`
           : SAVE_LABEL[state.save];
     present.setAttribute("href", `/present#/${encodeURIComponent(selected)}`);
-    sceneBar.render(selected);
+    sceneBar.render(selected, typingIn === "scene");
   }
 
   function renderNotices() {
@@ -305,6 +309,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       unsubscribeSession();
       unsubscribeStore();
       strip.destroy();
+      sceneBar.destroy();
       toolbar.destroy();
       host.replaceChildren();
     },

@@ -1,9 +1,8 @@
 import type { ApplyOptions, Op, Scene, Session } from "@depthcue/core";
 import { h, renderScene } from "@depthcue/player";
 import { problemOf } from "./fields.ts";
-import { LAYOUT_CHOICES } from "./inspector.ts";
 import { sortableItems } from "./sortable.ts";
-import { type Layout, LEAD_LABEL, newScene, uniqueId } from "./templates.ts";
+import { LAYOUT_CHOICES, type Layout, LEAD_LABEL, newScene, uniqueId } from "./templates.ts";
 
 /** A thumbnail draws the real slide at this width and scales it down, so it shows the true layout. editor.css sets the same size. */
 const STAGE_WIDTH = 1280;

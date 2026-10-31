@@ -223,9 +223,9 @@ describe("the inspector in a real browser", () => {
   it("adds a step and a source, and the saved deck passes its own checks", async () => {
     await open();
     await scene("demand").click();
-    await page.locator("[data-section='steps'] summary").click();
+    await page.locator(".ed-inspector [data-section='steps'] summary").click();
     await field("step:add").click();
-    await page.locator("[data-section='sources'] summary").click();
+    await page.locator(".ed-inspector [data-section='sources'] summary").click();
     await field("source:add").click();
     await field("source:demand-source:title").fill("Raw export");
     await field("source:demand-source:url").fill("https://example.com/raw");
@@ -245,7 +245,7 @@ describe("the inspector in a real browser", () => {
 
   it("changes the deck theme and language from the inspector", async () => {
     await open();
-    await page.locator("[data-section='deck'] summary").click();
+    await page.locator(".ed-inspector [data-section='deck'] summary").click();
     await field("deck:theme").selectOption("ink");
     expect(await page.locator(".ed-frame").getAttribute("data-theme")).toBe("ink");
     await field("deck:language").fill("pt-BR");

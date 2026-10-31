@@ -782,6 +782,31 @@ body {
   gap: 2px;
 }
 
+/* The scene popover sits in the top bar, which the strip and the slide are drawn under. */
+.ed-bar .ed-tb-pop {
+  z-index: 5;
+}
+
+/* Steps and sources fold away under the title so a short popover stays short. */
+.ed-tb-section {
+  display: grid;
+  gap: var(--dc-space-3);
+  padding-top: var(--dc-space-2);
+  border-top: 1px solid var(--dc-line);
+}
+
+.ed-tb-section > summary {
+  display: flex;
+  align-items: center;
+  min-height: 2.25rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ed-tb-section[open] > summary {
+  margin-bottom: var(--dc-space-2);
+}
+
 .ed-app .ed-tb-mini {
   min-width: 1.75rem;
   min-height: 2.25rem;
@@ -910,6 +935,12 @@ body {
     flex-wrap: wrap;
     flex-shrink: 1;
     width: 100%;
+  }
+
+  /* With the Scene chip beside the two button groups the row is wider than a phone, so it may wrap. */
+  .ed-scene-tools {
+    flex-shrink: 1;
+    max-width: 100%;
   }
 
   .ed-status {

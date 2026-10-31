@@ -351,6 +351,100 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  it("adds a source from the scene popover, then cites it from a text's toolbar, and the folder follows", async () => {
+    await open();
+    await page.locator(".ed-scene[data-scene='method']").click();
+    const tools = page.locator(".ed-scene-tools");
+    await tools.locator("[data-tb='scene']").click();
+    await tools.locator("details[data-section='sources'] > summary").click();
+    await tools.locator("[data-field='panel:source:add']").click();
+    await tools.locator("[data-field^='panel:source:'][data-field$=':title']").fill("Annual report");
+    await tools
+      .locator("[data-field^='panel:source:'][data-field$=':url']")
+      .fill("https://example.org/report");
+    await saved();
+    const sources = () => disk().scenes.method?.sources ?? [];
+    expect(sources()).toMatchObject([{ title: "Annual report", url: "https://example.org/report" }]);
+
+    await page.locator(".ed-frame [data-id='method-body']").click();
+    const bar = page.locator(".ed-toolbar");
+    await bar.locator("[data-tb='cite']").click();
+    await bar.locator("input[data-tb='source']").check();
+    await saved();
+    const body = disk().scenes.method?.blocks.find((block) => block.id === "method-body");
+    expect(body && "sourceIds" in body ? body.sourceIds : []).toEqual([sources()[0]?.id]);
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps the scene popover inside the window on a phone", async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open();
+    const chip = page.locator(".ed-scene-tools [data-tb='scene']");
+    await chip.click();
+    await page.locator(".ed-scene-tools details[data-section='sources'] > summary").click();
+    const pop = page.locator(".ed-scene-tools .ed-tb-pop:not([hidden])");
+    await pop.waitFor();
+    const box = await pop.boundingBox();
+    if (!box) throw new Error("the popover should be on screen");
+    expect(box.x, "left").toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, "right").toBeLessThanOrEqual(390 + 1);
+    expect(box.y + box.height, "bottom").toBeLessThanOrEqual(844 + 1);
+    const wide = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(wide, "sideways scrolling").toBe(false);
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps a tall scene popover on the window and scrolled where it was when an edit redraws it", async () => {
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await open();
+    const tools = page.locator(".ed-scene-tools");
+    await tools.locator("[data-tb='scene']").click();
+    await tools.locator("details[data-section='steps'] > summary").click();
+    await tools.locator("[data-field='panel:step:add']").click();
+    await tools.locator("details[data-section='sources'] > summary").click();
+    await tools.locator("[data-field='panel:source:add']").click();
+    const pop = tools.locator(".ed-tb-pop:not([hidden])");
+    await pop.waitFor();
+    const box = await pop.boundingBox();
+    if (!box) throw new Error("the popover should be on screen");
+    expect(box.y + box.height, "bottom").toBeLessThanOrEqual(600 + 1);
+    await pop.evaluate((node) => {
+      node.scrollTop = 150;
+    });
+    const before = await pop.evaluate((node) => node.scrollTop);
+    expect(before, "the popover has something to scroll").toBeGreaterThan(0);
+    // The field is changed in the page, because clicking into it would scroll it into view first.
+    await page.evaluate(() => {
+      const field = document.querySelector<HTMLInputElement>("[data-field='panel:title']");
+      if (!field) throw new Error("the title field is missing");
+      field.value = "A new title";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await saved();
+    expect(await pop.evaluate((node) => node.scrollTop)).toBe(before);
+    expect(problems).toEqual([]);
+  });
+
+  it("chooses which blocks a claim rests on from its toolbar, and the folder follows", async () => {
+    await open();
+    await page.locator(".ed-scene[data-scene='demand']").click();
+    await page
+      .locator(".ed-frame [data-id='claim-shift'] [data-edit], .ed-frame [data-edit][data-id='claim-shift']")
+      .first()
+      .click();
+    const bar = page.locator(".ed-toolbar");
+    await bar.locator("[data-tb='evidence']").click();
+    await bar.locator("input[data-field='panel:evidence:chart-demand']").uncheck();
+    await saved();
+    expect(disk().scenes.demand?.summary?.evidenceIds).toEqual([]);
+    await bar.locator("input[data-field='panel:evidence:chart-demand']").check();
+    await saved();
+    expect(disk().scenes.demand?.summary?.evidenceIds).toEqual(["chart-demand"]);
+    expect(problems).toEqual([]);
+  });
+
   it("follows the slide when the window is resized", async () => {
     await open();
     await headline().click();
