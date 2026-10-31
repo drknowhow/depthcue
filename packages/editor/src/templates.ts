@@ -1,6 +1,25 @@
 import type { Block, Doc, NewScene, Scene } from "@depthcue/core";
 
 export type Layout = Scene["layout"];
+export type Lead = NonNullable<Scene["lead"]>;
+export type TextRole = Extract<Block, { type: "text" }>["role"];
+
+/*
+ * What each layout, lead and text role is called on screen. Each is a `Record` over the core's own union, so a
+ * value added to the core does not compile until it has a name here.
+ */
+export const LAYOUT_LABEL: Record<Layout, string> = {
+  title: "Title",
+  "claim-evidence": "Claim and evidence",
+  "text-media": "Text and media",
+};
+export const LEAD_LABEL: Record<Lead, string> = { human: "Human", agent: "Agent", shared: "Shared" };
+export const ROLE_LABEL: Record<TextRole, string> = {
+  heading: "Heading",
+  body: "Body",
+  caption: "Caption",
+  quote: "Quote",
+};
 
 const slug = (text: string): string => {
   const cleaned = text

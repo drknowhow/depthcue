@@ -397,12 +397,12 @@ describe("the block list", () => {
     expect(section("block").open).toBe(true);
   });
 
-  it("selects nothing when the claim is focused, since the claim is not a block", () => {
+  it("selects the claim when it is focused, and shows no block form since the claim is not a block", () => {
     goTo("demand");
     host.querySelector<HTMLElement>(".ed-frame [data-id='chart-demand']")?.click();
     expect(editor.blockId).toBe("chart-demand");
     host.querySelector<HTMLElement>("[data-id='claim-shift'][data-edit]")?.focus();
-    expect(editor.blockId).toBeUndefined();
+    expect(editor.blockId).toBe("claim-shift");
     expect(section("block")).toBeNull();
   });
 

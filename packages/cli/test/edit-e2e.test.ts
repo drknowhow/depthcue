@@ -223,6 +223,91 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  it("floats a toolbar against the chosen text, changes its role, and the folder follows", async () => {
+    await open();
+    await headline().click();
+    const bar = page.locator(".ed-toolbar");
+    await bar.waitFor();
+    // It sits against the block without covering it: above, or below when the block is too near the top.
+    await page.waitForFunction(() => document.querySelector(".ed-toolbar")?.getAttribute("data-side"));
+    const [box, block] = await Promise.all([bar.boundingBox(), headline().boundingBox()]);
+    if (!box || !block) throw new Error("the toolbar and the heading should both be on screen");
+    expect(box.y + box.height <= block.y + 1 || box.y >= block.y + block.height - 1).toBe(true);
+    expect(await read(bar.locator("[data-tb='count']"))).toBe("26 / 90");
+
+    await bar.locator("[data-tb='role']").selectOption("caption");
+    await saved();
+    expect(disk().scenes.opening?.blocks[0]).toMatchObject({ id: "opening-title", role: "caption" });
+    expect(await read(bar.locator("[data-tb='count']"))).toBe("26 / 160");
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps the toolbar inside the slide and off the chosen block, for every text on the demo deck", async () => {
+    await open();
+    const texts: Array<[string, string]> = [
+      ["opening", "opening-title"],
+      ["opening", "opening-sub"],
+      ["demand", "claim-shift"],
+      ["method", "method-heading"],
+      ["method", "method-body"],
+    ];
+    for (const [sceneId, id] of texts) {
+      await page.locator(`.ed-scene[data-scene='${sceneId}']`).click();
+      await page.locator(`.ed-frame [data-id='${id}']`).first().click();
+      await page.waitForFunction(() => document.querySelector(".ed-toolbar")?.getAttribute("data-side"));
+      const [frame, bar, block, side] = await Promise.all([
+        page.locator(".ed-frame").boundingBox(),
+        page.locator(".ed-toolbar").boundingBox(),
+        page.locator(`.ed-frame [data-id='${id}']`).first().boundingBox(),
+        page.locator(".ed-toolbar").getAttribute("data-side"),
+      ]);
+      if (!frame || !bar || !block) throw new Error(`${id} should be on screen`);
+      expect(bar.x, id).toBeGreaterThanOrEqual(frame.x - 1);
+      expect(bar.x + bar.width, id).toBeLessThanOrEqual(frame.x + frame.width + 1);
+      expect(bar.y, id).toBeGreaterThanOrEqual(frame.y - 1);
+      if (side === "above") expect(bar.y + bar.height, id).toBeLessThanOrEqual(block.y + 1);
+      if (side === "below") expect(bar.y, id).toBeGreaterThanOrEqual(block.y + block.height - 1);
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it("is reached from the keyboard, and Escape steps back out and then lets go of the block", async () => {
+    await open();
+    await headline().click();
+    await page.keyboard.press("Alt+F10");
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-tb"))).toBe("role");
+    await page.keyboard.press("Escape");
+    expect(
+      await page.evaluate(() => document.activeElement?.closest("[data-id]")?.getAttribute("data-id")),
+    ).toBe("opening-title");
+
+    // Tab moves on to the next block, and the toolbar follows it.
+    await page.keyboard.press("Tab");
+    await page.waitForFunction(
+      () => (document.querySelector("[data-tb='role']") as HTMLSelectElement | null)?.value === "body",
+    );
+    await page.keyboard.press("Escape");
+    await page.locator(".ed-toolbar").waitFor({ state: "hidden" });
+    expect(problems).toEqual([]);
+  });
+
+  it("removes a block with Delete, and Ctrl+Z brings it back", async () => {
+    await open();
+    await page.locator(".ed-scene[data-scene='method']").click();
+    const diagram = page.locator(".ed-frame [data-id='method-diagram']");
+    await diagram.focus();
+    await page.keyboard.press("Delete");
+    await diagram.waitFor({ state: "detached" });
+    await saved();
+    expect(disk().scenes.method?.blocks.map((block) => block.id)).toEqual(["method-heading", "method-body"]);
+
+    await page.keyboard.press("Control+z");
+    await diagram.waitFor();
+    await saved();
+    expect(disk().scenes.method?.blocks).toHaveLength(3);
+    expect(problems).toEqual([]);
+  });
+
   it("takes in a change made on disk while nothing is unsaved", async () => {
     await open();
     external([retitle("Rewritten by an agent")]);

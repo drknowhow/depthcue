@@ -6,6 +6,7 @@ import { createInspector } from "./inspector.ts";
 import { createSceneBar } from "./scenebar.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
 import { createStrip } from "./strip.ts";
+import { createToolbar } from "./toolbar.ts";
 
 const SAVE_LABEL = {
   saved: "Saved",
@@ -55,13 +56,31 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   };
 
   const hint = h("p", { class: "ed-hint", "aria-live": "polite" });
+  const showProblem = (text: string | undefined) => {
+    hint.textContent = text ?? "";
+    hint.toggleAttribute("data-problem", text !== undefined);
+  };
   const canvas = createCanvas(session, {
-    hint(text, problem) {
-      hint.textContent = text;
-      hint.toggleAttribute("data-problem", problem);
-    },
+    // The count of a field is in the toolbar; this line is for what was refused.
+    hint: (text, problem) => showProblem(problem ? text : undefined),
     select: (id) => selectBlock(id),
+    deselect: () => selectBlock(undefined),
+    remove: (id) => toolbar.remove(id),
+    typed: (id, length, limit) => toolbar.typed(id, length, limit),
+    changed: () => toolbar.place(),
   });
+  const toolbar = createToolbar(session, canvas, {
+    act: edits.act,
+    problem: showProblem,
+    deselect: () => selectBlock(undefined),
+    goTo(id) {
+      selectBlock(id);
+      canvas.focusBlock(id);
+    },
+    focusBlock: (id) => canvas.focusBlock(id),
+    openDetails: () => setDetails(true),
+  });
+  canvas.overlay.append(toolbar.element);
   const inspector = createInspector({
     session,
     edits,
@@ -87,13 +106,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
     "Present",
   );
-  const sceneBar = createSceneBar(session, {
-    act: edits.act,
-    problem(text) {
-      hint.textContent = text ?? "";
-      hint.toggleAttribute("data-problem", text !== undefined);
-    },
-  });
+  const sceneBar = createSceneBar(session, { act: edits.act, problem: showProblem });
   const bar = h(
     "header",
     { class: "ed-bar" },
@@ -192,10 +205,13 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       selected = (ids[0] as string) ?? selected;
       selectedBlock = undefined;
     }
-    const blocks = session.doc.scenes[selected]?.blocks ?? [];
-    if (selectedBlock !== undefined && !blocks.some((block) => block.id === selectedBlock)) {
-      selectedBlock = undefined;
-    }
+    if (selectedBlock !== undefined && !hasItem(selected, selectedBlock)) selectedBlock = undefined;
+  }
+
+  /** A block of the scene, or its claim: the things the slide lets you choose. */
+  function hasItem(sceneId: string, id: string) {
+    const current = session.doc.scenes[sceneId];
+    return current?.summary?.id === id || current?.blocks.some((block) => block.id === id) === true;
   }
 
   function select(sceneId: string) {
@@ -205,22 +221,29 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderScenes();
     renderBar();
     canvas.render(selected, selectedBlock);
+    toolbar.render(selected, selectedBlock);
     inspector.render();
   }
 
   function selectBlock(id: string | undefined) {
     const blocks = session.doc.scenes[selected]?.blocks ?? [];
     const picked = blocks.find((block) => block.id === id);
-    const next = picked ? id : undefined;
+    const next = id !== undefined && hasItem(selected, id) ? id : undefined;
     canvas.mark(next);
     // Only text can be edited on the slide so far. Picking anything else opens the panel that edits it.
     if (picked && picked.type !== "text") setDetails(true);
     if (next === selectedBlock) return;
     selectedBlock = next;
+    toolbar.render(selected, selectedBlock);
     inspector.render();
   }
 
   const onKey = (event: KeyboardEvent) => {
+    // Alt+F10 moves the keyboard into the toolbar of the chosen block.
+    if (event.key === "F10" && event.altKey && toolbar.focus()) {
+      event.preventDefault();
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
     const key = event.key.toLowerCase();
     if (key === "s") {
@@ -244,6 +267,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderScenes();
     renderBar();
     if (!canvas.typing) canvas.render(selected, selectedBlock);
+    toolbar.render(selected, selectedBlock);
     if (!typingInInspector) inspector.render();
   });
   const unsubscribeStore = store.subscribe(() => {
@@ -251,10 +275,23 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderNotices();
   });
 
+  // A click on the stage that lands on no block, and not on the toolbar, lets go of the choice.
+  // This runs while the click is still on its way down, before the target's own handler. A button in the toolbar can
+  // be gone by the time the click bubbles back up, because the removal it caused redrew the toolbar.
+  stage.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target;
+      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar")) selectBlock(undefined);
+    },
+    true,
+  );
+
   renderScenes();
   renderBar();
   renderNotices();
   canvas.render(selected, selectedBlock);
+  toolbar.render(selected, selectedBlock);
   inspector.render();
 
   return {
@@ -270,6 +307,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       unsubscribeSession();
       unsubscribeStore();
       strip.destroy();
+      toolbar.destroy();
       host.replaceChildren();
     },
   };

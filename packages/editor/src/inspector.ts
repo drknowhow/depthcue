@@ -28,9 +28,12 @@ import {
   describeBlock,
   IMAGE_FILE,
   idsInScene,
+  LAYOUT_LABEL,
   type Layout,
+  LEAD_LABEL,
   type NewBlockKind,
   newBlock,
+  ROLE_LABEL,
   uniqueId,
   VIDEO_FILE,
 } from "./templates.ts";
@@ -53,14 +56,7 @@ export interface Inspector {
   render(): void;
 }
 
-const LAYOUT_LABEL: Record<Layout, string> = {
-  title: "Title",
-  "claim-evidence": "Claim and evidence",
-  "text-media": "Text and media",
-};
-const LEAD_LABEL = { human: "Human", agent: "Agent", shared: "Shared" } as const;
 const THEME_LABEL = { paper: "Paper (light)", ink: "Ink (dark)" } as const;
-const ROLE_LABEL = { heading: "Heading", body: "Body", caption: "Caption", quote: "Quote" } as const;
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 
 export const LAYOUT_CHOICES = LAYOUTS.map((value) => ({ value, label: LAYOUT_LABEL[value] }));
