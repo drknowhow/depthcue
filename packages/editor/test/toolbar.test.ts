@@ -76,6 +76,16 @@ describe("where the toolbar goes", () => {
     expect(toolbar().dataset.side).toMatch(/^(above|below|inside)$/);
     expect(toolbar().style.left).toMatch(/px$/);
   });
+
+  it("does not report the last block's side while it still has to be placed for the next one", async () => {
+    textBox("method-heading").focus();
+    await frames();
+    expect(toolbar().dataset.side).toBeDefined();
+    textBox("method-body").focus();
+    expect(toolbar().dataset.side).toBeUndefined();
+    await frames();
+    expect(toolbar().dataset.side).toBeDefined();
+  });
 });
 
 describe("choosing text", () => {

@@ -336,6 +336,7 @@ export function createToolbar(
     closePop();
     element.hidden = true;
     shown = undefined;
+    delete element.dataset.side;
   }
 
   element.addEventListener("keydown", (event) => {
@@ -363,6 +364,8 @@ export function createToolbar(
       if (!shown || shown.id !== idOf(target) || shown.kind !== target.kind) {
         build(target);
         shown = { id: idOf(target), kind: target.kind };
+        // The side is only known once the new target is placed, a frame from now. Until then it is not the old one.
+        delete element.dataset.side;
       }
       sync(target);
       element.hidden = false;
