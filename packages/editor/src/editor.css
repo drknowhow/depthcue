@@ -699,8 +699,11 @@ body {
 }
 
 .ed-tb-label {
+  min-width: 0;
+  overflow: hidden;
   font-size: 0.8125rem;
   font-weight: 600;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -718,7 +721,7 @@ body {
   font-weight: 600;
 }
 
-.ed-tb-cite-wrap {
+.ed-tb-chip-wrap {
   position: relative;
 }
 
@@ -750,6 +753,40 @@ body {
 
 .ed-tb-pop[hidden] {
   display: none;
+}
+
+/* Near the bottom of the slide the popover opens upward, over the block, so it is not cut off. */
+.ed-tb-pop[data-up] {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+/* A popover that holds a form: the fields are the ones the details panel uses, in less room. */
+.ed-tb-form {
+  display: grid;
+  gap: var(--dc-space-3);
+  width: min(20rem, calc(100vw - 4rem));
+}
+
+.ed-tb-pop:has(.ed-tb-form) {
+  max-width: none;
+  overflow: auto;
+}
+
+.ed-tb-form .ed-chart-row {
+  grid-template-columns: minmax(0, 1fr) 4.5rem auto;
+}
+
+.ed-tb-rowtools {
+  display: flex;
+  gap: 2px;
+}
+
+.ed-app .ed-tb-mini {
+  min-width: 1.75rem;
+  min-height: 2.25rem;
+  padding: 0;
+  justify-content: center;
 }
 
 .ed-tb-sources {

@@ -271,6 +271,102 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  it("edits a chart's title and rows in a popover that stays on the slide, and the folder follows", async () => {
+    await open();
+    await page.locator(".ed-scene[data-scene='demand']").click();
+    await page.locator(".ed-frame [data-id='chart-demand']").click();
+    const bar = page.locator(".ed-toolbar");
+    await bar.locator("[data-tb='data']").click();
+    const pop = bar.locator(".ed-tb-pop:not([hidden])");
+    await pop.waitFor();
+    await bar.locator("[data-field='chart:title']").fill("Orders by channel");
+    await bar.locator("[data-field='chart:row0:value']").fill("45");
+    await bar.locator("[data-field='chart:addrow']").click();
+    await saved();
+    const chart = disk().scenes.demand?.blocks.find((block) => block.id === "chart-demand");
+    expect(chart).toMatchObject({ title: "Orders by channel" });
+    expect(chart && "data" in chart ? chart.data : []).toEqual([
+      { label: "Channel A", value: 45 },
+      { label: "Channel B", value: 60 },
+      { label: "Item 3", value: 0 },
+    ]);
+    // The new row has the keyboard, so its label can be typed straight away.
+    await page.keyboard.type("Channel C");
+    await saved();
+    const typed = disk().scenes.demand?.blocks.find((block) => block.id === "chart-demand");
+    expect(typed && "data" in typed ? typed.data[2]?.label : undefined).toBe("Item 3Channel C");
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps a chart's popover inside the slide on a phone", async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open();
+    await page.locator(".ed-scene[data-scene='demand']").click();
+    await page.locator(".ed-frame [data-id='chart-demand']").click();
+    const bar = page.locator(".ed-toolbar");
+    await bar.locator("[data-tb='data']").click();
+    const pop = bar.locator(".ed-tb-pop:not([hidden])");
+    await pop.waitFor();
+    // Placement settles a frame after the popover opens.
+    await page.waitForFunction(() => document.querySelector(".ed-toolbar")?.getAttribute("data-side"));
+    const [host, box] = await Promise.all([page.locator(".ed-canvas-host").boundingBox(), pop.boundingBox()]);
+    if (!host || !box) throw new Error("the slide and the popover should both be on screen");
+    expect(box.x, "left").toBeGreaterThanOrEqual(host.x - 1);
+    expect(box.x + box.width, "right").toBeLessThanOrEqual(host.x + host.width + 1);
+    expect(box.y, "top").toBeGreaterThanOrEqual(host.y - 1);
+    expect(box.y + box.height, "bottom").toBeLessThanOrEqual(host.y + host.height + 1);
+    expect(problems).toEqual([]);
+  });
+
+  it("changes an image's alt text and caption, and uploads a replacement, from its toolbar", async () => {
+    await open();
+    await page.locator(".ed-scene[data-scene='method']").click();
+    await page.locator(".ed-frame [data-id='method-diagram']").click();
+    const bar = page.locator(".ed-toolbar");
+    await bar.locator("[data-tb='edit']").click();
+    await bar.locator("[data-field='image:alt']").fill("How the method runs");
+    await bar.locator("[data-field='image:caption']").fill("Figure 1");
+    await saved();
+    const image = () => disk().scenes.method?.blocks.find((block) => block.id === "method-diagram");
+    expect(image()).toMatchObject({ alt: "How the method runs", caption: "Figure 1" });
+
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    await bar
+      .locator("[data-field='image:upload']")
+      .setInputFiles({ name: "new.png", mimeType: "image/png", buffer: png });
+    // The server adds a hash to the name of an upload, so the new path is matched rather than spelled out.
+    await page.waitForFunction(() =>
+      /^assets\/new-[0-9a-f]+\.png$/.test(
+        document.querySelector<HTMLSelectElement>(".ed-toolbar [data-field='image:asset']")?.value ?? "",
+      ),
+    );
+    await saved();
+    const uploaded = image();
+    const asset = uploaded && "asset" in uploaded ? uploaded.asset : "";
+    expect(asset).toMatch(/^assets\/new-[0-9a-f]+\.png$/);
+    expect(existsSync(join(folder, asset))).toBe(true);
+    expect(problems).toEqual([]);
+  });
+
+  it("follows the slide when the window is resized", async () => {
+    await open();
+    await headline().click();
+    await page.waitForFunction(() => document.querySelector(".ed-toolbar")?.getAttribute("data-side"));
+    const before = await headline().boundingBox();
+    await page.setViewportSize({ width: 700, height: 800 });
+    // The heading moves as the slide scales, and the toolbar stays lined up with its left edge.
+    await page.waitForFunction(() => {
+      const bar = document.querySelector(".ed-toolbar")?.getBoundingClientRect();
+      const block = document.querySelector(".ed-frame [data-id='opening-title']")?.getBoundingClientRect();
+      return bar && block && Math.abs(bar.x - block.x) <= 2;
+    });
+    expect((await headline().boundingBox())?.x).not.toBe(before?.x);
+    expect(problems).toEqual([]);
+  });
+
   it("is reached from the keyboard, and Escape steps back out and then lets go of the block", async () => {
     await open();
     await headline().click();

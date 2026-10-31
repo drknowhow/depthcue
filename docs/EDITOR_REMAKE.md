@@ -71,6 +71,25 @@ resolve, through the same core commands the editor uses. A stale revision is ref
 - An update during a drag changes the dragged element in place. Redrawing the whole stage stops the drag.
 - Overflow is measured on a block's content, not on the selection handles drawn around it.
 
+## Where each property is edited
+
+Every property the schema defines gets a control on the slide or in a floating toolbar. The details panel keeps
+all of them until phase 2 takes it out. This table says where each one is edited now, and each change that moves
+a property updates it. The schema-walk test replaces it once phase 2 lands.
+
+| Property                                               | Where                                              |
+| ------------------------------------------------------ | -------------------------------------------------- |
+| text: `role`, `text`                                   | Role menu in the toolbar; text typed on the slide  |
+| text, chart, image, clip: `sourceIds`                  | Cite chip in the toolbar                           |
+| chart: `title`, `unit`, `data`                         | Data popover: fields, add, remove, move, sort      |
+| image: `asset`, `alt`, `caption`                       | Edit popover: file menu, upload, alt text, caption |
+| clip: `source`, `poster`, `alt`                        | Edit popover: video menu, poster menu, alt text    |
+| scene: `layout`, `lead`                                | Buttons in the top bar                             |
+| claim: `text`                                          | Typed on the slide                                 |
+| claim: `evidenceIds`                                   | Details panel                                      |
+| scene: `title`, `notes`, `reading`, `steps`, `sources` | Details panel                                      |
+| deck: `title`, `language`, `theme`, `modules`          | Details panel                                      |
+
 ## Phases
 
 | Phase | What lands                                                              | PRs |
