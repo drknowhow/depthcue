@@ -6,8 +6,7 @@ human has control again, with the deck exactly where it was.
 
 `createLeaseController` in `@depthcue/core` is the whole protocol as plain logic. It takes a host (what scene is
 on screen, what a command would touch, how to run it) and a clock, so the page, the tests and a replayed fault
-all run the same rules. The page and the agent link are built on it in the next changes. This page describes the
-controller.
+all run the same rules. The page uses it, as described below; the agent link is built on it in the next change.
 
 ## What a lease covers
 
@@ -92,6 +91,29 @@ controller.changed(); // the host calls this after every position change
 
 `REVOKE_TEXT` has a sentence for each reason, written for the presenter to read.
 
+## On the page
+
+A deck that `depthcue serve` shows loads the lease; an exported deck does not, because the script is fetched only
+when the page's root element has `data-lease`. The controls bar gets a chip that says who is presenting, a
+**Hand to agent** button, and, while an agent holds control, **Take over** with the Escape key. When control comes
+back the chip says why for six seconds (You took over, Agent timed out, Agent left, Agent error, Section ended),
+and a screen reader hears the full sentence from `REVOKE_TEXT`.
+
+**Hand-over.** The agent gets every action over the run of neighbouring scenes that share the lead of the scene on
+screen. A scene with no lead counts as human-led. Only a real click or key press hands over: the page ignores a
+click that a script made with `element.click()`, so a script cannot give itself control. A browser driver that
+sends real input events can still press the button, so this stops accidents and not a hostile page.
+
+**Takeover.** Escape, the arrow, Page Up and Page Down keys, Space and Enter (unless focus is on a control or a
+video), Home, End and `r` take control back before the key moves the deck. So does a click on the previous, next
+or read button. The notes key does not. Any other move that the lease did not make, such as the back button or an
+edited address, takes control back as soon as the player has followed it; Chrome runs the player's own listener
+for those first, so they cannot be caught earlier. Moves the agent makes itself never count.
+
+**What the agent can call.** `window.depthcue.lease` has `state()`, `renew()`, `submit()` and `release()`, and
+nothing that grants. The player writes a history entry only when the scene changes, so the back button steps
+through scenes, not the agent's steps.
+
 ## How it is tested
 
 `packages/core/test/lease.test.ts` covers each rule one at a time. `lease-faults.test.ts` runs 400 seeded sessions
@@ -101,8 +123,16 @@ simulates a 30-minute presentation with a fault every minute and checks that the
 cause, that control always returns to the human, and that the deck never moves without a lease or the human. A
 failing session replays from its seed.
 
+The page has 58 tests in `packages/player/test/lease.test.ts` (happy-dom): the chip, hand-over, what each action
+does to the player, every takeover key and the keys that must not take over, expiry and renewal on a fake clock,
+and a deck edit under a lease. `packages/cli/test/lease-e2e.test.ts` drives the served page in headless Chrome with
+real clicks and key presses, including four seconds of real renewals followed by a real expiry, and the back
+button.
+
 ## Not yet
 
-- The page does not use the controller yet: no status chip, no takeover keys, no hand-over button.
-- There is no agent link, so no agent can reach a lease. That arrives with the MCP tools.
-- The full presenter window (multi-screen, notes, timer) is v0.2 work, as the plan says; a minimal one comes with the page integration.
+- There is no agent link, so nothing outside the page can reach `window.depthcue.lease`. That arrives with the MCP
+  tools.
+- A second window has its own lease. Nothing is shared between tabs.
+- The full presenter window (multi-screen, notes, timer) is v0.2 work, as the plan says. A minimal one comes after
+  the agent link.

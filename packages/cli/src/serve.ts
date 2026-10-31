@@ -74,7 +74,7 @@ const SHELL = `<!doctype html>
 <link rel="stylesheet" href="/_depthcue/player.css">
 </head>
 <body>
-<div id="depthcue" data-deck="" data-live></div>
+<div id="depthcue" data-deck="" data-live data-lease></div>
 <script type="module" src="/_depthcue/app.js"></script>
 </body>
 </html>
