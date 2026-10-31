@@ -123,18 +123,26 @@ a slide of pictures, and the claim itself where a slide has none. A click opens 
 into that area. The new block goes after the last one there, and in Evidence the claim cites it in the same step
 (`addBlock` in `slots.ts`). A scene needs one block, so a title slide never has an empty area.
 
+The Build order button under the slide puts a badge beside the claim and each block. A filled badge shows the step
+that reveals the part (the first one that names it); a ring with a dot means the part is there from the start. A
+badge opens a short list: From the start, each step of the scene, or A new step. The core decides (`placeInBuild`
+in `build.ts`): a part goes to one step only, a step it leaves empty is removed so the steps after it count one
+less, and a scene that ends with no steps drops the `steps` list. One choice is one step of Undo. A scene holds at
+most 24 steps, and the editor says so when a new one would be the 25th. The badges are drawn by the editor only, and
+the Scene popover's Steps section stays for putting steps in a different order and for removing one.
+
 ## Phases
 
-| Phase | What lands                                                                           | PRs |
-| ----- | ------------------------------------------------------------------------------------ | --- |
-| 1     | Shell: slim top bar, thumbnail strip, large stage, autosave                          | 2   |
-| 2     | Selection, floating toolbars per block type, notes sheet, old panel out              | 3   |
-| 3     | Done: chart bars, image drop, clip cues, slot grips, empty places. Next: build order | 6   |
-| 4     | Schema 0.2, player and checks, pinning, layout interplay                             | 4   |
-| 5     | Quick bar, shortcuts, problem ribbon, Ctrl K palette                                 | 2   |
-| 6     | Comments: model, agent side, editor                                                  | 3   |
-| 7     | Review of agent changes, storyboard                                                  | 3   |
-| 8     | Docs, final measurements, walkthrough                                                | 1   |
+| Phase | What lands                                                                     | PRs |
+| ----- | ------------------------------------------------------------------------------ | --- |
+| 1     | Shell: slim top bar, thumbnail strip, large stage, autosave                    | 2   |
+| 2     | Selection, floating toolbars per block type, notes sheet, old panel out        | 3   |
+| 3     | Done: chart bars, image drop, clip cues, slot grips, empty places, build order | 6   |
+| 4     | Schema 0.2, player and checks, pinning, layout interplay                       | 4   |
+| 5     | Quick bar, shortcuts, problem ribbon, Ctrl K palette                           | 2   |
+| 6     | Comments: model, agent side, editor                                            | 3   |
+| 7     | Review of agent changes, storyboard                                            | 3   |
+| 8     | Docs, final measurements, walkthrough                                          | 1   |
 
 ## Done when
 

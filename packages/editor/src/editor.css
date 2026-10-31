@@ -796,6 +796,108 @@ body {
   border-color: var(--dc-action);
 }
 
+/*
+ * Build order: a badge beside each part of the slide, filled and numbered for the step that shows it, a ring and a
+ * dot for a part that is there from the start. The layer takes no clicks, so only the badges and the list do.
+ */
+.ed-build {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ed-app .ed-badge {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  min-width: 1.75rem;
+  min-height: 0;
+  height: 1.75rem;
+  padding: 0 0.35rem;
+  border: 2px solid var(--dc-action);
+  border-radius: 999px;
+  background: var(--dc-action);
+  color: var(--dc-bg);
+  font: 600 0.8125rem / 1 var(--dc-font-mono);
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.ed-app .ed-badge[hidden] {
+  display: none;
+}
+
+.ed-app .ed-badge:not([data-step]) {
+  border-color: var(--dc-line);
+  background: var(--dc-surface);
+  color: var(--dc-muted);
+}
+
+.ed-app .ed-badge:hover:not(:disabled),
+.ed-app .ed-badge[aria-expanded="true"] {
+  border-color: var(--dc-action);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dc-action) 28%, transparent);
+}
+
+.ed-build-menu {
+  position: absolute;
+  display: grid;
+  gap: 2px;
+  min-width: 9.5rem;
+  padding: var(--dc-space-1);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
+  pointer-events: auto;
+}
+
+.ed-build-title {
+  margin: 0;
+  padding: var(--dc-space-1) var(--dc-space-2);
+  color: var(--dc-muted);
+  font-size: 0.75rem;
+}
+
+.ed-app .ed-build-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--dc-space-2);
+  min-height: 2rem;
+  padding: 0 var(--dc-space-2);
+  border: 0;
+  border-radius: var(--dc-radius-sm);
+  background: none;
+  color: var(--dc-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ed-app .ed-build-choice::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid var(--dc-muted);
+  border-radius: 50%;
+}
+
+.ed-app .ed-build-choice[aria-checked="true"]::before {
+  border-color: var(--dc-action);
+  background: var(--dc-action);
+}
+
+.ed-app .ed-build-choice:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dc-action) 10%, transparent);
+}
+
+.ed-quick-build[aria-pressed="true"] {
+  border-color: var(--dc-action);
+  color: var(--dc-action);
+}
+
 /* The layer over the slide. It takes no clicks itself, so the slide under it still gets them. */
 .ed-overlay {
   position: absolute;

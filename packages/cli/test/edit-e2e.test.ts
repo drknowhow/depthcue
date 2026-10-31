@@ -1309,3 +1309,130 @@ describe("empty areas of the slide in a real browser", () => {
     expect(problems).toEqual([]);
   });
 });
+
+describe("build order in a real browser", () => {
+  const badge = (id: string) => page.locator(`.ed-badge[data-badge='${id}']`);
+  const toggle = () => page.locator("[data-quick='build']");
+  const stepsOnDisk = (id: string) =>
+    (disk().scenes[id]?.steps ?? []).map((step) => [step.id, ...step.reveal]);
+  const note = (id: string, text: string): Block => ({ id, type: "text", role: "body", text });
+
+  /** A scene added by something other than the editor: its file, and its place in the deck. */
+  function addScene(scene: NewScene) {
+    const doc = disk();
+    const result = applyOps(doc, [{ op: "scene.add", scene }], revisionOf(doc));
+    if (!result.ok) throw new Error(result.diagnostics[0]?.message);
+    const text = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+    writeFileSync(join(folder, "deck.json"), text(result.doc.deck));
+    for (const id of result.changed)
+      writeFileSync(join(folder, "scenes", `${id}.json`), text(result.doc.scenes[id]));
+  }
+
+  async function openScene(id: string, anchor: string) {
+    await page.goto(url());
+    await page.locator(`.ed-scene[data-scene='${id}']`).click();
+    await page.locator(`.ed-frame [data-id='${anchor}']`).waitFor();
+  }
+
+  const numbers = () =>
+    page.locator(".ed-badge").evaluateAll((nodes) => nodes.map((node) => node.textContent));
+
+  it("shows the steps beside the parts of the demo scene and moves one with a choice, and Undo puts it back", async () => {
+    await openScene("demand", "claim-shift");
+    expect(await page.locator(".ed-badge").count()).toBe(0);
+    expect(await toggle().getAttribute("aria-pressed")).toBe("false");
+
+    await toggle().click();
+    expect(await toggle().getAttribute("aria-pressed")).toBe("true");
+    expect(await numbers()).toEqual(["1", "2"]);
+
+    // Each badge sits inside the slide, level with its part.
+    const host = await page.locator(".ed-canvas-host").boundingBox();
+    for (const id of ["claim-shift", "chart-demand"]) {
+      const [part, mark] = await Promise.all([
+        page.locator(`.ed-frame [data-id='${id}']`).boundingBox(),
+        badge(id).boundingBox(),
+      ]);
+      if (!host || !part || !mark) throw new Error(`${id} and its badge should both be drawn`);
+      expect(mark.x).toBeGreaterThanOrEqual(host.x);
+      expect(mark.x + mark.width).toBeLessThanOrEqual(host.x + host.width + 1);
+      expect(Math.abs(mark.y - part.y)).toBeLessThan(4);
+    }
+
+    await badge("chart-demand").click();
+    expect(await page.locator(".ed-build-menu [role='menuitemradio']").allTextContents()).toEqual([
+      "From the start",
+      "Step 1",
+      "Step 2",
+      "A new step",
+    ]);
+    await page.locator(".ed-build-menu").getByText("Step 1", { exact: true }).click();
+    await saved();
+    expect(stepsOnDisk("demand")).toEqual([["show-claim", "claim-shift", "chart-demand"]]);
+    expect(await numbers()).toEqual(["1", "1"]);
+
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(stepsOnDisk("demand")).toEqual([
+      ["show-claim", "claim-shift"],
+      ["show-evidence", "chart-demand"],
+    ]);
+    expect(await numbers()).toEqual(["1", "2"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("gives a part a step of its own, takes another back to the start, and lets Escape close the list", async () => {
+    addScene({
+      id: "order",
+      title: "Order",
+      layout: "claim-evidence",
+      summary: { id: "order-claim", text: "A claim", evidenceIds: ["order-a"] },
+      blocks: [note("order-a", "A."), note("order-b", "B."), note("order-c", "C.")],
+      steps: [
+        { id: "order-s1", reveal: ["order-claim"] },
+        { id: "order-s2", reveal: ["order-a", "order-b"] },
+      ],
+    });
+    await openScene("order", "order-c");
+    await toggle().click();
+    expect(await numbers()).toEqual(["1", "2", "2", "•"]);
+
+    await badge("order-a").click();
+    await page.keyboard.press("Escape");
+    expect(await page.locator(".ed-build-menu").count()).toBe(0);
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-badge"))).toBe("order-a");
+
+    await badge("order-a").click();
+    await page.locator(".ed-build-menu").getByText("A new step", { exact: true }).click();
+    await saved();
+    expect(stepsOnDisk("order")).toEqual([
+      ["order-s1", "order-claim"],
+      ["order-s2", "order-b"],
+      ["order-step-3", "order-a"],
+    ]);
+    expect(await numbers()).toEqual(["1", "3", "2", "•"]);
+
+    await badge("order-claim").click();
+    await page.locator(".ed-build-menu").getByText("From the start", { exact: true }).click();
+    await saved();
+    expect(stepsOnDisk("order")).toEqual([
+      ["order-s2", "order-b"],
+      ["order-step-3", "order-a"],
+    ]);
+    expect(await numbers()).toEqual(["•", "2", "1", "•"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("stays on for the next scene and writes nothing to the deck by being looked at", async () => {
+    await openScene("demand", "claim-shift");
+    const before = readFileSync(join(folder, "scenes", "demand.json"), "utf8");
+    await toggle().click();
+    await page.locator(".ed-scene").first().click();
+    await page.locator(".ed-frame [data-id='opening-title']").waitFor();
+    expect(await page.locator(".ed-badge").count()).toBeGreaterThan(0);
+    await toggle().click();
+    expect(await page.locator(".ed-badge").count()).toBe(0);
+    expect(readFileSync(join(folder, "scenes", "demand.json"), "utf8")).toBe(before);
+    expect(problems).toEqual([]);
+  });
+});

@@ -164,6 +164,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       selectBlock(id);
       canvas.focusBlock(id);
     },
+    build: (on) => canvas.setBuild(on),
   });
   const stage = h(
     "main",
@@ -337,7 +338,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     "click",
     (event) => {
       const target = event.target;
-      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar, .ed-quick"))
+      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar, .ed-quick, .ed-build"))
         selectBlock(undefined);
     },
     true,
