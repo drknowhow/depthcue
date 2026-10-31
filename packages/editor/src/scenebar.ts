@@ -2,9 +2,7 @@ import { LEADS, type Op, type Session } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { problemOf } from "./fields.ts";
 import { LAYOUT_CHOICES } from "./inspector.ts";
-import type { Layout } from "./templates.ts";
-
-const LEAD_LABEL = { human: "Human", agent: "Agent", shared: "Shared" } as const;
+import { type Layout, LEAD_LABEL } from "./templates.ts";
 
 type Shape = readonly [tag: "rect" | "path", attributes: Readonly<Record<string, string>>];
 

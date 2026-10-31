@@ -3,9 +3,7 @@ import { h, renderScene } from "@depthcue/player";
 import { problemOf } from "./fields.ts";
 import { LAYOUT_CHOICES } from "./inspector.ts";
 import { sortableItems } from "./sortable.ts";
-import { type Layout, newScene, uniqueId } from "./templates.ts";
-
-const LEAD = { human: "Human", agent: "Agent", shared: "Shared" } as const;
+import { type Layout, LEAD_LABEL, newScene, uniqueId } from "./templates.ts";
 
 /** A thumbnail draws the real slide at this width and scales it down, so it shows the true layout. editor.css sets the same size. */
 const STAGE_WIDTH = 1280;
@@ -204,7 +202,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       const item = items.get(id) ?? create(id);
       items.set(id, item);
       const label = `scene ${index + 1}, ${scene.title}`;
-      const text = { num: String(index + 1), title: scene.title, lead: LEAD[scene.lead ?? "human"] };
+      const text = { num: String(index + 1), title: scene.title, lead: LEAD_LABEL[scene.lead ?? "human"] };
       if (item.num.textContent !== text.num) item.num.textContent = text.num;
       if (item.title.textContent !== text.title) item.title.textContent = text.title;
       if (item.lead.textContent !== text.lead) item.lead.textContent = text.lead;

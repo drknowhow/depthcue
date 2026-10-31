@@ -7,16 +7,30 @@ export interface CanvasHooks {
   hint(text: string, problem: boolean): void;
   /** A block, or the claim, was chosen by focusing its text or activating it. */
   select(id: string): void;
+  /** Escape was pressed on a block: nothing should stay chosen. */
+  deselect?(): void;
+  /** Delete was pressed on a block that has no text to delete: take the block out of the scene. */
+  remove?(id: string): void;
+  /** The text of a field changed as it was typed. `length` counts what is on the slide, applied or not. */
+  typed?(id: string, length: number, limit: number): void;
+  /** The slide was drawn again, or its text grew or shrank, so anything placed against a block should move. */
+  changed?(): void;
 }
 
 export interface Canvas {
   readonly element: HTMLElement;
+  /** A layer over the slide that is never redrawn with it, for the toolbar and later for handles and pins. */
+  readonly overlay: HTMLElement;
   /** True while a keystroke is being applied, so the caller does not re-render under the caret. */
   readonly typing: boolean;
   /** Draws a scene, with `selectedId` marked when it is one of the scene's blocks. */
   render(sceneId: string, selectedId?: string): void;
   /** Moves the selection mark without redrawing. */
   mark(id: string | undefined): void;
+  /** The element a block, or the claim, is drawn in. */
+  nodeOf(id: string): HTMLElement | undefined;
+  /** Puts the keyboard on a block: the caret at the end of its text, or the block itself when it has none. */
+  focusBlock(id: string): void;
 }
 
 /** One piece of text on a scene that can be edited where it appears. */
@@ -29,7 +43,8 @@ interface Field {
   write(scene: Scene, text: string): Op;
 }
 
-const SUMMARY_LIMIT = 280;
+/** The claim holds this many characters. The schema says so too; the core does not export it. */
+export const SUMMARY_LIMIT = 280;
 
 const supportsPlaintext = (() => {
   let answer: boolean | undefined;
@@ -102,7 +117,9 @@ function placeCaretAtEnd(node: HTMLElement) {
  * the field. Text the schema would refuse, empty or too long, is held back and shown as a problem, never applied.
  */
 export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
-  const element = h("div", { class: "ed-canvas-host" });
+  const slot = h("div", { class: "ed-canvas-slot" });
+  const overlay = h("div", { class: "ed-overlay" });
+  const element = h("div", { class: "ed-canvas-host" }, slot, overlay);
   let typing = false;
   let visits = 0;
 
@@ -131,6 +148,8 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       const problem = check(text);
       node.toggleAttribute("data-invalid", problem !== undefined);
       hooks.hint(problem ?? `${field.label} ${text.length} of ${field.limit}`, problem !== undefined);
+      hooks.typed?.(field.id, text.length, field.limit);
+      hooks.changed?.();
       if (problem !== undefined || text === current()) return;
       typing = true;
       try {
@@ -143,6 +162,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     node.addEventListener("focus", () => {
       visit = ++visits;
       hooks.hint(`${field.label} ${current().length} of ${field.limit}`, false);
+      hooks.typed?.(field.id, current().length, field.limit);
       hooks.select(field.id);
     });
     node.addEventListener("input", update);
@@ -169,6 +189,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         node.textContent = current();
         node.removeAttribute("data-invalid");
         node.blur();
+        hooks.deselect?.();
       }
     });
     node.addEventListener("blur", () => {
@@ -198,37 +219,58 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       node.tabIndex = 0;
       node.addEventListener("click", () => hooks.select(block.id));
       node.addEventListener("keydown", (event) => {
-        if (event.target !== node || (event.key !== "Enter" && event.key !== " ")) return;
-        event.preventDefault();
-        hooks.select(block.id);
+        if (event.target !== node) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          hooks.select(block.id);
+        } else if (event.key === "Escape") {
+          hooks.deselect?.();
+        } else if (event.key === "Delete" || event.key === "Backspace") {
+          event.preventDefault();
+          hooks.remove?.(block.id);
+        }
       });
     }
   }
 
+  const nodeOf = (id: string) =>
+    [...slot.querySelectorAll<HTMLElement>("[data-id]")].find((node) => node.dataset.id === id);
+
   function mark(id: string | undefined) {
-    for (const node of element.querySelectorAll<HTMLElement>("[data-selected]")) {
+    for (const node of slot.querySelectorAll<HTMLElement>("[data-selected]")) {
       node.removeAttribute("data-selected");
     }
     if (id === undefined) return;
-    const found = [...element.querySelectorAll<HTMLElement>("[data-id]")].find(
-      (node) => node.dataset.id === id,
-    );
-    found?.setAttribute("data-selected", "");
+    nodeOf(id)?.setAttribute("data-selected", "");
+  }
+
+  function focusBlock(id: string) {
+    const node = nodeOf(id);
+    const target = node?.matches("[data-edit], [data-pick]")
+      ? node
+      : node?.querySelector<HTMLElement>("[data-edit]");
+    if (!target) return;
+    target.focus();
+    if (target.matches("[data-edit]")) placeCaretAtEnd(target);
   }
 
   return {
     element,
+    overlay,
     mark,
+    nodeOf,
+    focusBlock,
     get typing() {
       return typing;
     },
     render(sceneId, selectedId) {
       const scene = session.doc.scenes[sceneId];
       if (!scene) {
-        element.replaceChildren();
+        slot.replaceChildren();
+        hooks.changed?.();
         return;
       }
-      const focused = element.querySelector<HTMLElement>("[data-edit]:focus, [data-pick]:focus");
+      const focused = slot.querySelector<HTMLElement>("[data-edit]:focus, [data-pick]:focus");
       const focusedId = (focused?.closest<HTMLElement>("[data-id]") ?? focused)?.dataset.id;
 
       const view = h("div", { class: "dc-view" }, renderScene(scene, { assetBase: "" }));
@@ -240,21 +282,10 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       );
       for (const field of fieldsOf(scene, view)) wire(field, sceneId);
       wirePicker(scene, view);
-      element.replaceChildren(frame);
+      slot.replaceChildren(frame);
       mark(selectedId);
-
-      if (focusedId) {
-        const again = [...element.querySelectorAll<HTMLElement>("[data-id]")].find(
-          (node) => node.dataset.id === focusedId,
-        );
-        const target = again?.matches("[data-edit], [data-pick]")
-          ? again
-          : again?.querySelector<HTMLElement>("[data-edit]");
-        if (target) {
-          target.focus();
-          if (target.matches("[data-edit]")) placeCaretAtEnd(target);
-        }
-      }
+      if (focusedId) focusBlock(focusedId);
+      hooks.changed?.();
     },
   };
 }

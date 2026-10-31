@@ -74,7 +74,9 @@ describe("showing a scene", () => {
   it("shows nothing for a scene that does not exist", () => {
     canvas.render("opening");
     canvas.render("gone");
-    expect(canvas.element.childElementCount).toBe(0);
+    expect(canvas.element.querySelector(".ed-frame")).toBeNull();
+    // The overlay is not part of the slide, so it is still there for the toolbar.
+    expect(canvas.element.contains(canvas.overlay)).toBe(true);
   });
 
   it("makes the claim of a claim-and-evidence scene editable, and nothing that is not text", () => {

@@ -351,6 +351,7 @@ body {
 
 /* The slide takes the width it is given, unless the height runs out first: the bar, the hint and the padding are about 8.5rem. */
 .ed-canvas-host {
+  position: relative;
   width: min(100%, calc((100dvh - 8.5rem) * 16 / 9));
 }
 
@@ -434,48 +435,6 @@ body {
 
 .ed-scene-list[data-axis="x"] [data-drop="lower"] {
   box-shadow: 3px 0 0 var(--dc-evidence);
-}
-
-/* Scene tools: who leads and which layout, for the scene being edited. They sit in the top bar. */
-.ed-scene-tools {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--dc-space-2);
-}
-
-.ed-seg {
-  display: inline-flex;
-  overflow: hidden;
-  border: 1px solid var(--dc-line);
-  border-radius: var(--dc-radius-md);
-}
-
-.ed-app .ed-seg button {
-  min-height: 2.25rem;
-  justify-content: center;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.ed-app .ed-seg button + button {
-  border-left: 1px solid var(--dc-line);
-}
-
-.ed-app .ed-seg button[aria-pressed="true"] {
-  background: var(--dc-text);
-  color: var(--dc-bg);
-}
-
-.ed-seg svg {
-  width: 1.5rem;
-  height: 1rem;
-  fill: none;
-  stroke: currentcolor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
 }
 
 /* Inspector */
@@ -693,6 +652,178 @@ body {
 .ed-frame [data-pick]:hover {
   outline: 2px dashed color-mix(in srgb, var(--dc-evidence) 55%, transparent);
   outline-offset: 4px;
+}
+
+/* The layer over the slide. It takes no clicks itself, so the slide under it still gets them. */
+.ed-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* The toolbar floats against the chosen block, above it or below it when the block is near the top of the slide. */
+.ed-toolbar {
+  position: absolute;
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  gap: var(--dc-space-2);
+  padding: var(--dc-space-1) var(--dc-space-2);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
+  pointer-events: auto;
+}
+
+.ed-toolbar[hidden] {
+  display: none;
+}
+
+.ed-app .ed-toolbar button,
+.ed-app .ed-toolbar select {
+  min-height: 2rem;
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.ed-app .ed-toolbar select {
+  width: auto;
+  padding: 0 var(--dc-space-2);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-sm);
+  background: var(--dc-bg);
+  color: var(--dc-text);
+}
+
+.ed-tb-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ed-tb-count {
+  min-width: 4.25rem;
+  color: var(--dc-muted);
+  font-family: var(--dc-font-mono);
+  font-size: 0.75rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ed-tb-count[data-over] {
+  color: var(--dc-action);
+  font-weight: 600;
+}
+
+.ed-tb-cite-wrap {
+  position: relative;
+}
+
+.ed-tb-n:not(:empty) {
+  margin-left: var(--dc-space-2);
+  padding: 0 var(--dc-space-1);
+  border-radius: var(--dc-radius-sm);
+  background: var(--dc-text);
+  color: var(--dc-bg);
+  font-size: 0.6875rem;
+}
+
+.ed-tb-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1;
+  display: grid;
+  gap: var(--dc-space-2);
+  min-width: 14rem;
+  max-width: 20rem;
+  padding: var(--dc-space-3);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
+  font-size: 0.8125rem;
+}
+
+.ed-tb-pop[hidden] {
+  display: none;
+}
+
+.ed-tb-sources {
+  display: grid;
+  gap: var(--dc-space-2);
+}
+
+.ed-tb-sources p {
+  margin: 0;
+  color: var(--dc-muted);
+}
+
+.ed-tb-source {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--dc-space-2);
+}
+
+.ed-app .ed-tb-remove {
+  width: 2rem;
+  padding: 0;
+  justify-content: center;
+}
+
+.ed-tb-remove::before {
+  content: "";
+  width: 0.875rem;
+  height: 0.875rem;
+  background: currentcolor;
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M2.5 4.5h11M6.5 4.5v-2h3v2M4 4.5l.6 9h6.8l.6-9'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+/* Scene tools: who leads and which layout, for the scene being edited. They sit in the top bar. */
+.ed-scene-tools {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-2);
+}
+
+.ed-seg {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+}
+
+.ed-app .ed-seg button {
+  min-height: 2.25rem;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ed-app .ed-seg button + button {
+  border-left: 1px solid var(--dc-line);
+}
+
+.ed-app .ed-seg button[aria-pressed="true"] {
+  background: var(--dc-text);
+  color: var(--dc-bg);
+}
+
+.ed-seg svg {
+  width: 1.5rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
 }
 
 /* On a narrow screen the open panel floats over the slide instead of squeezing it. */
