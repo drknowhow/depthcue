@@ -1578,4 +1578,140 @@ describe("pinning in a real browser", () => {
     expect(frameOnDisk("method", "method-body")).toBeDefined();
     expect(problems).toEqual([]);
   });
+
+  /** The slide pinned blocks sit on, in pixels. */
+  const slideBox = async () => {
+    const box = await page.locator(".ed-frame .dc-pins").boundingBox();
+    if (!box) throw new Error("the slide should be drawn");
+    return box;
+  };
+
+  async function pinPicture() {
+    await openScene("method", "method-diagram");
+    await block("method-diagram").click();
+    await page.keyboard.press("p");
+    await saved();
+    const start = frameOnDisk("method", "method-diagram");
+    if (!start) throw new Error("the picture should be pinned");
+    return start;
+  }
+
+  /** Presses in the middle of a block and moves the pointer by `dx` and `dy` pixels, then lets go unless told not to. */
+  async function dragBy(id: string, dx: number, dy: number, release = true) {
+    const box = await boxOf(id);
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 12 });
+    if (release) await page.mouse.up();
+  }
+
+  /** Percent of a slide, as a distance a frame may be off by when a snap line was in reach. */
+  const REACH = 1.3;
+
+  it("moves a pinned picture by dragging it, as one undo step, and keeps it chosen", async () => {
+    const start = await pinPicture();
+    const slide = await slideBox();
+    await dragBy("method-diagram", slide.width * 0.05, 0);
+    await saved();
+    const moved = frameOnDisk("method", "method-diagram");
+    expect(moved?.x).toBeGreaterThan(start.x);
+    expect(Math.abs((moved?.x ?? 0) - Math.min(start.x + 5, 100 - start.w))).toBeLessThan(REACH);
+    expect(moved?.y).toBeCloseTo(start.y, 0);
+    expect(await block("method-diagram").getAttribute("data-selected")).not.toBeNull();
+
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(frameOnDisk("method", "method-diagram")).toEqual(start);
+    expect(problems).toEqual([]);
+  });
+
+  it("draws a guide while an edge is on a line, and pulls the block onto the safe margin", async () => {
+    await pinPicture();
+    const slide = await slideBox();
+    await dragBy("method-diagram", slide.width * 0.1, 0);
+    await saved();
+    const box = await boxOf("method-diagram");
+    const reach = slide.x + slide.width * 0.045 - box.x;
+    await dragBy("method-diagram", reach, 0, false);
+    expect(await page.locator(".ed-guide[data-axis='x']").count()).toBeGreaterThan(0);
+    await page.mouse.up();
+    await saved();
+    expect(frameOnDisk("method", "method-diagram")?.x).toBe(4);
+    expect(await page.locator(".ed-guide").count()).toBe(0);
+    expect(problems).toEqual([]);
+  });
+
+  it("moves freely while Alt is held, and Escape puts the block back", async () => {
+    const start = await pinPicture();
+    const slide = await slideBox();
+    const box = await boxOf("method-diagram");
+    const reach = slide.x + slide.width * 0.045 - box.x;
+    await page.keyboard.down("Alt");
+    await dragBy("method-diagram", reach, 0, false);
+    expect(await page.locator(".ed-guide").count()).toBe(0);
+    await page.keyboard.up("Alt");
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+    await expectSameBox("method-diagram", box);
+    expect(frameOnDisk("method", "method-diagram")).toEqual(start);
+    expect(await block("method-diagram").getAttribute("data-selected")).not.toBeNull();
+    expect(problems).toEqual([]);
+  });
+
+  it("stays chosen when the pointer is let go far from the block", async () => {
+    await pinPicture();
+    const slide = await slideBox();
+    await dragBy("method-diagram", slide.width * 0.9, slide.height * 0.9);
+    await saved();
+    const moved = frameOnDisk("method", "method-diagram");
+    expect(moved && moved.x + moved.w).toBeCloseTo(100, 0);
+    expect(await block("method-diagram").getAttribute("data-selected")).not.toBeNull();
+    expect(await page.locator(".ed-toolbar").isVisible()).toBe(true);
+    expect(problems).toEqual([]);
+  });
+
+  it("resizes from a corner handle and keeps the opposite corner", async () => {
+    const start = await pinPicture();
+    const slide = await slideBox();
+    const handle = page.locator(".ed-handle[data-handle='se']");
+    const spot = await handle.boundingBox();
+    if (!spot) throw new Error("the handle should be drawn");
+    const x = spot.x + spot.width / 2;
+    const y = spot.y + spot.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - slide.width * 0.05, y - slide.height * 0.03, { steps: 12 });
+    await page.mouse.up();
+    await saved();
+    const resized = frameOnDisk("method", "method-diagram");
+    expect(resized?.x).toBeCloseTo(start.x, 0);
+    expect(resized?.y).toBeCloseTo(start.y, 0);
+    expect(Math.abs((resized?.w ?? 0) - (start.w - 5))).toBeLessThan(REACH);
+    expect(Math.abs((resized?.h ?? 0) - (start.h - 3))).toBeLessThan(REACH);
+
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(frameOnDisk("method", "method-diagram")).toEqual(start);
+    expect(problems).toEqual([]);
+  });
+
+  it("moves a pinned text by pressing and dragging it, without putting a caret in it", async () => {
+    await openScene("method", "method-body");
+    await block("method-body").click();
+    await free().click();
+    await saved();
+    const start = frameOnDisk("method", "method-body");
+    if (!start) throw new Error("the text should be pinned");
+    const slide = await slideBox();
+    await dragBy("method-body", slide.width * 0.05, slide.height * 0.05);
+    await saved();
+    const moved = frameOnDisk("method", "method-body");
+    expect(moved?.y).toBeGreaterThan(start.y);
+    expect(await block("method-body").getAttribute("contenteditable")).toBeNull();
+    const body = blockOnDisk("method", "method-body");
+    expect(body && "text" in body ? body.text : "").not.toBe("");
+    expect(problems).toEqual([]);
+  });
 });
