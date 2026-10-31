@@ -2,6 +2,7 @@ import { isMarker, type Op, type Scene, type Session, TEXT_LIMITS } from "@depth
 import { h, renderScene } from "@depthcue/player";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
 import { type CueBook, clock } from "./cues.ts";
+import { createSlotDrag } from "./slotdrag.ts";
 import { describeBlock, IMAGE_FILE, needsAlt } from "./templates.ts";
 
 export interface CanvasHooks {
@@ -39,6 +40,8 @@ export interface Canvas {
   focusBlock(id: string): void;
   /** Draws the rows of cue chips again from the cue book, without redrawing the slide or resetting a video. */
   refreshCues(): void;
+  /** Stops watching the size of the slide. */
+  destroy(): void;
 }
 
 /** One piece of text on a scene that can be edited where it appears. */
@@ -162,6 +165,11 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
   const element = h("div", { class: "ed-canvas-host" }, slot, overlay);
   let typing = false;
   let visits = 0;
+  /** The blocks moved or changed size, so the grips and the toolbar move with them. */
+  const changed = () => {
+    drag.place();
+    hooks.changed?.();
+  };
 
   function wire(field: Field, sceneId: string) {
     const { node } = field;
@@ -189,7 +197,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       node.toggleAttribute("data-invalid", problem !== undefined);
       hooks.hint(problem ?? `${field.label} ${text.length} of ${field.limit}`, problem !== undefined);
       hooks.typed?.(field.id, text.length, field.limit);
-      hooks.changed?.();
+      changed();
       if (problem !== undefined || text === current()) return;
       typing = true;
       try {
@@ -394,9 +402,16 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     for (const node of slot.querySelectorAll<HTMLElement>("[data-selected]")) {
       node.removeAttribute("data-selected");
     }
+    drag.mark(id);
     if (id === undefined) return;
     nodeOf(id)?.setAttribute("data-selected", "");
   }
+
+  const drag = createSlotDrag(session, element, overlay, nodeOf, {
+    select: (id) => hooks.select(id),
+    hint: (text, problem) => hooks.hint(text, problem),
+    act: (ops) => session.apply(ops),
+  });
 
   function focusBlock(id: string) {
     const node = nodeOf(id);
@@ -418,8 +433,9 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       const scene = drawn === undefined ? undefined : session.doc.scenes[drawn];
       if (!scene) return;
       wireCues(scene, slot);
-      hooks.changed?.();
+      changed();
     },
+    destroy: () => drag.destroy(),
     get typing() {
       return typing;
     },
@@ -428,6 +444,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       const scene = session.doc.scenes[sceneId];
       if (!scene) {
         slot.replaceChildren();
+        drag.draw(undefined);
         hooks.changed?.();
         return;
       }
@@ -448,6 +465,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       wirePicker(scene, view);
       wireCues(scene, view);
       slot.replaceChildren(frame);
+      drag.draw(scene);
       mark(selectedId);
       if (focusedId) {
         // After an undo or a redo the keyboard stays on the bar it was on.
@@ -458,7 +476,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         if (bar) bar.focus();
         else focusBlock(focusedId);
       }
-      hooks.changed?.();
+      changed();
     },
   };
 }

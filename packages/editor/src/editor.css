@@ -656,6 +656,75 @@ body {
   opacity: 0.7;
 }
 
+/* A grip beside each block, to drag it between the areas of the layout. It shows when the pointer is over the slide. */
+.ed-grips {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ed-grip {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.75rem;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-sm);
+  background: var(--dc-surface);
+  color: var(--dc-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: grab;
+  opacity: 0;
+  pointer-events: auto;
+  user-select: none;
+  transition: opacity 0.12s;
+}
+
+.ed-grip[hidden] {
+  display: none;
+}
+
+.ed-canvas-host:hover .ed-grip {
+  opacity: 0.55;
+}
+
+.ed-grip[data-chosen],
+.ed-grip:hover,
+.ed-grips[data-dragging] .ed-grip {
+  opacity: 1;
+}
+
+.ed-grip:active {
+  cursor: grabbing;
+}
+
+/* The block being dragged, and where a drop of it would land. */
+.ed-frame [data-dragging] {
+  opacity: 0.45;
+}
+
+.ed-frame [data-place="before"] {
+  box-shadow: 0 -0.3rem 0 0 var(--dc-action);
+}
+
+.ed-frame [data-place="after"] {
+  box-shadow: 0 0.3rem 0 0 var(--dc-action);
+}
+
+.ed-frame [data-place="swap"],
+.ed-frame [data-place="into"] {
+  outline: 3px dashed var(--dc-action);
+  outline-offset: 4px;
+  background: color-mix(in srgb, var(--dc-action) 10%, transparent);
+}
+
+.ed-frame [data-place="refused"] {
+  outline: 3px solid color-mix(in srgb, var(--dc-muted) 50%, transparent);
+  outline-offset: 4px;
+}
+
 /* The layer over the slide. It takes no clicks itself, so the slide under it still gets them. */
 .ed-overlay {
   position: absolute;
