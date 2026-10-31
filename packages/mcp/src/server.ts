@@ -8,6 +8,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
+import { createPresent, presentArgs } from "./present.ts";
 
 const detail = z
   .enum(["concise", "detailed"])
@@ -90,6 +91,19 @@ const TOOLS = [
     inputSchema: jsonSchema(renderArgs),
     annotations: { title: "Render a scene", readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   },
+  {
+    name: "deck_present",
+    description:
+      "Present the deck while the presenter has handed you control; you cannot take it (they press Hand to agent on the page). `status` shows who holds control, where the deck is (scene, step, steps) and, if you hold it, your scenes and actions. Then `next`, `previous`, `goto` (scene, step) and `invoke` (block, command, args) move the deck within your scenes, and `release` hands control back. Control is renewed while you keep calling, and let go after two idle minutes. If holder is 'human', the presenter took over: stop, never retry, wait to be handed control again. Needs `depthcue serve` running on this folder with its page open.",
+    inputSchema: jsonSchema(presentArgs),
+    annotations: {
+      title: "Present the deck",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
 ] as const;
 
 export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
@@ -123,14 +137,16 @@ export interface DepthcueServer {
 }
 
 /**
- * An MCP server over one deck folder. Three tools, because every tool an agent can see costs it tokens on every
- * turn: deck_get reads, deck_apply edits, deck_render checks the result with a screenshot and measurements.
+ * An MCP server over one deck folder. Four tools, because every tool an agent can see costs it tokens on every
+ * turn: deck_get reads, deck_apply edits, deck_render checks the result with a screenshot and measurements,
+ * deck_present drives the deck while the presenter has handed over control.
  * The browser starts on the first render and is kept until `close()`.
  */
 export function createDepthcueServer(folder: string, version = "0.0.0"): DepthcueServer {
   const server = new Server({ name: "depthcue", version }, { capabilities: { tools: {} } });
   let renderer: Promise<Renderer> | undefined;
   let queue: Promise<unknown> = Promise.resolve();
+  const present = createPresent(folder);
 
   /** Renders one at a time: a headless browser per request would swamp a laptop. */
   const renderOnce = (task: (r: Renderer) => Promise<SceneRender>): Promise<SceneRender> => {
@@ -239,6 +255,7 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
       if (name === "deck_get") return get(args);
       if (name === "deck_apply") return apply(args);
       if (name === "deck_render") return await render(args);
+      if (name === "deck_present") return await present.run(args);
       return failure(`There is no tool "${name}". The tools are: ${TOOL_NAMES.join(", ")}.`);
     } catch (error) {
       return failure(`${name} failed: ${(error as Error).message}`);
@@ -248,6 +265,7 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
   return {
     server,
     async close() {
+      present.close();
       await server.close();
       if (renderer) await (await renderer).close();
     },

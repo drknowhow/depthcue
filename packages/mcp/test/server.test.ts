@@ -63,10 +63,11 @@ async function call(name: string, args: Record<string, unknown> = {}): Promise<R
 const revision = async () => (await call("deck_get")).json.rev as string;
 
 describe("the tool list", () => {
-  it("offers exactly three tools, and keeps their definitions small", async () => {
+  it("offers exactly four tools, and keeps their definitions small", async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(["deck_get", "deck_apply", "deck_render"]);
-    expect(TOOL_NAMES).toEqual(["deck_get", "deck_apply", "deck_render"]);
+    const names = ["deck_get", "deck_apply", "deck_render", "deck_present"];
+    expect(tools.map((tool) => tool.name)).toEqual(names);
+    expect(TOOL_NAMES).toEqual(names);
     // Every tool definition is in the agent's context on every turn.
     expect(JSON.stringify(tools).length).toBeLessThan(9000);
     for (const tool of tools) expect(tool.description?.length).toBeLessThan(700);
@@ -80,10 +81,15 @@ describe("the tool list", () => {
     expect(schema.additionalProperties).toBe(false);
   });
 
-  it("marks reads as read-only and the edit as not", async () => {
+  it("marks reads as read-only, and the edit and presenting as not", async () => {
     const { tools } = await client.listTools();
     const hint = (name: string) => tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint;
-    expect([hint("deck_get"), hint("deck_apply"), hint("deck_render")]).toEqual([true, false, true]);
+    expect([hint("deck_get"), hint("deck_apply"), hint("deck_render"), hint("deck_present")]).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
   });
 });
 
@@ -300,7 +306,7 @@ describe("the built binary", () => {
     const remote = new Client({ name: "stdio-test", version: "0.0.0" });
     await remote.connect(stdio);
     try {
-      expect((await remote.listTools()).tools).toHaveLength(3);
+      expect((await remote.listTools()).tools).toHaveLength(4);
       const outline = (await remote.callTool({ name: "deck_get", arguments: {} })) as {
         content: Array<{ text: string }>;
       };

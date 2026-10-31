@@ -154,6 +154,33 @@ is gone the lease expires on its own after three seconds without a renewal.
 **One page.** The newest page that opens the event stream gets the calls, and an older one gets them again when the
 newest closes. A second tab therefore takes the link from the first. Nothing is shared between pages.
 
+## The MCP tool
+
+`deck_present` is the one tool an agent needs for presenting. Its `action` is one of:
+
+- `status` (the default) says who holds control, the position (`scene`, `step`, `steps`) and, when the agent holds
+  control, the `scenes` and `actions` it was given.
+- `next`, `previous`, `goto` (`scene`, optional `step`) and `invoke` (`block`, `command`, optional `args`) move the
+  deck within those scenes.
+- `release` hands control back.
+
+The tool finds the server through the link file for the MCP server's folder, so it needs `depthcue serve` running on
+that folder with its page open. It asks the page for the lease once, then numbers its own commands and passes back
+the revision each answer carries, so the agent never handles lease ids, epochs or sequence numbers. Each reply says
+where the deck is now.
+
+**Renewing.** While the agent holds control, the tool renews the lease every second from the MCP process, so the
+agent does not have to. It stops when the lease ends, when a renewal cannot be sent, when the MCP server closes,
+on `release` (which also ends the lease at once) and after two minutes with no call to the tool. Apart from
+`release`, stopping leaves the lease to run out three seconds later. If the MCP process dies, control is back with
+the presenter in three seconds. If the agent only stops calling, it is back after two minutes. A presenter can take
+it back at any moment with Escape.
+
+**Never retried.** A command that fails is reported once, in the page's words, and not sent again. A rejection that
+means the agent's view was a revision behind (`stale-state`) still updates the tool's revision, so the agent's own
+next try can work. When the answer says `holder: "human"`, the presenter took over; the reply adds `next`, which
+tells the agent to stop and wait to be handed control again, and nothing the agent calls can take it back.
+
 ## How it is tested
 
 `packages/core/test/lease.test.ts` covers each rule one at a time. `lease-faults.test.ts` runs 400 seeded sessions
@@ -175,9 +202,12 @@ calls, closing pages, shutdown, forged replies), `link.test.ts` (the link file) 
 Node makes the agent's calls over HTTP and Chrome holds the page: a real click hands over, the agent moves the
 deck, four seconds of renewals through the link keep the lease, Escape takes it back, and a closed page answers 503.
 
+The tool has `packages/mcp/test/present.test.ts`, which runs the real lease controller as a stand-in page and
+checks the numbering, the renewals on a fake clock, the idle limit, takeover, release and every failure of the link.
+`present-e2e.test.ts` starts `depthcue serve` as a separate process, finds it through the link file, and drives it
+with the tool and a real click and key press in headless Chrome, including 4.5 s with no call from the agent.
+
 ## Not yet
 
-- The MCP tool that makes these calls for an agent is next. Until then an agent calls the HTTP link itself.
 - A second window has its own lease. Nothing is shared between tabs.
-- The full presenter window (multi-screen, notes, timer) is v0.2 work, as the plan says. A minimal one comes after
-  the agent link.
+- The full presenter window (multi-screen, notes, timer) is v0.2 work, as the plan says. A minimal one comes next.
