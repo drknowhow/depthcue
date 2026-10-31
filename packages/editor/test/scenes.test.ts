@@ -34,7 +34,9 @@ describe("adding a scene", () => {
     expect(editor.sceneId).toBe("new-scene");
     expect(store.session.doc.scenes["new-scene"]?.layout).toBe("claim-evidence");
     expect(sceneButtons()[2]?.getAttribute("aria-current")).toBe("true");
-    expect(host.querySelector<HTMLInputElement>("[data-field='scene:title']")?.value).toBe("New scene");
+    expect(sceneButtons()[2]?.textContent).toContain("New scene");
+    host.querySelector<HTMLButtonElement>(".ed-scene-tools [data-tb='scene']")?.click();
+    expect(host.querySelector<HTMLInputElement>("[data-field='panel:title']")?.value).toBe("New scene");
     expect(railProblem().hidden).toBe(true);
   });
 
@@ -211,31 +213,5 @@ describe("dragging scenes", () => {
     expect(sceneOrder()).toEqual(["demand", "method", "opening"]);
     store.session.undo();
     expect(sceneOrder()).toEqual(["opening", "demand", "method"]);
-  });
-});
-
-describe("dragging blocks", () => {
-  const blockItems = () => [...host.querySelectorAll<HTMLElement>(".ed-block-item")];
-  const order = () => store.session.doc.scenes.method?.blocks.map((block) => block.id);
-  function drag(type: string, node: Element, y = 0) {
-    const event = new Event(type, { bubbles: true, cancelable: true });
-    Object.defineProperty(event, "clientY", { value: y });
-    node.dispatchEvent(event);
-  }
-  beforeEach(() => sceneButtons()[2]?.click());
-
-  it("reorders blocks by dragging, and keeps the selection", () => {
-    const [heading, , diagram] = blockItems() as [HTMLElement, HTMLElement, HTMLElement];
-    host.querySelector<HTMLButtonElement>("[data-field='pick:method-heading']")?.click();
-    diagram.getBoundingClientRect = () => ({ top: 0, left: 0, width: 100, height: 100 }) as DOMRect;
-    drag("dragstart", heading);
-    drag("drop", diagram, 90);
-    expect(order()).toEqual(["method-body", "method-diagram", "method-heading"]);
-    expect(editor.blockId).toBe("method-heading");
-  });
-
-  it("makes each block draggable", () => {
-    expect(blockItems().every((node) => node.draggable)).toBe(true);
-    expect(blockItems()).toHaveLength(3);
   });
 });

@@ -134,58 +134,30 @@ describe("autosave in the bar", () => {
     expect(document.activeElement).toBe(node);
   });
 
-  it("does not rebuild a details field being typed in when the save lands", async () => {
-    button("details").click();
-    const field = host.querySelector<HTMLInputElement>("[data-field='scene:title']") as HTMLInputElement;
+  it("does not rebuild a popover field being typed in when the save lands", async () => {
+    host.querySelector<HTMLButtonElement>(".ed-scene-tools [data-tb='scene']")?.click();
+    const field = host.querySelector<HTMLInputElement>("[data-field='panel:title']") as HTMLInputElement;
     field.focus();
     field.value = "Retitled while typing";
     field.dispatchEvent(new Event("input", { bubbles: true }));
     await new Promise((done) => setTimeout(done, 80));
     expect(server.saves).toHaveLength(1);
-    expect(host.querySelector("[data-field='scene:title']")).toBe(field);
+    expect(host.querySelector("[data-field='panel:title']")).toBe(field);
     expect(document.activeElement).toBe(field);
   });
 });
 
-describe("the details panel", () => {
-  const panel = () => host.querySelector<HTMLElement>(".ed-inspector") as HTMLElement;
-  const app = () => host.querySelector<HTMLElement>(".ed-app") as HTMLElement;
-  const pick = (id: string) =>
-    [...host.querySelectorAll<HTMLElement>("[data-pick]")].find((node) => node.dataset.id === id);
-
-  it("starts closed so the slide gets the room, and the button opens and closes it", () => {
-    expect(panel().hidden).toBe(true);
-    expect(app().dataset.details).toBe("closed");
-    expect(button("details").getAttribute("aria-expanded")).toBe("false");
-    expect(button("details").getAttribute("aria-controls")).toBe(panel().id);
-    button("details").click();
-    expect(panel().hidden).toBe(false);
-    expect(app().dataset.details).toBe("open");
-    expect(button("details").getAttribute("aria-expanded")).toBe("true");
-    button("details").click();
-    expect(panel().hidden).toBe(true);
-    expect(app().dataset.details).toBe("closed");
+describe("the layout", () => {
+  it("has no column of details: every property is edited on the slide, in its toolbar or in a popover", () => {
+    expect(host.querySelector("[data-action='details']")).toBeNull();
+    expect(host.querySelector(".ed-inspector")).toBeNull();
+    expect(host.querySelector(".ed-app")?.hasAttribute("data-details")).toBe(false);
   });
 
-  it("stays closed when a block with no text on the slide is picked, since its toolbar edits it", () => {
-    sceneButtons()[1]?.click();
-    pick("chart-demand")?.click();
-    expect(editor.blockId).toBe("chart-demand");
-    expect(panel().hidden).toBe(true);
-    expect(button("details").getAttribute("aria-expanded")).toBe("false");
-  });
-
-  it("stays closed when text is picked, since the slide edits it", () => {
-    const heading = host.querySelector<HTMLElement>("[data-id='opening-title'] [data-edit], [data-edit]");
-    heading?.dispatchEvent(new FocusEvent("focus"));
-    expect(editor.blockId).not.toBeUndefined();
-    expect(panel().hidden).toBe(true);
-  });
-
-  it("keeps the panel's content current while it is closed", () => {
+  it("keeps a popover content current while it is closed", () => {
     store.session.apply([{ op: "scene.set", id: "opening", set: { title: "Edited while closed" } }]);
-    button("details").click();
-    const field = host.querySelector<HTMLInputElement>("[data-field='scene:title']");
+    host.querySelector<HTMLButtonElement>(".ed-scene-tools [data-tb='scene']")?.click();
+    const field = host.querySelector<HTMLInputElement>("[data-field='panel:title']");
     expect(field?.value).toBe("Edited while closed");
   });
 });

@@ -468,7 +468,7 @@ describe("the keyboard", () => {
   });
 });
 
-// Typing and choosing in the toolbar's own forms, which are the details panel's fields in a popover.
+// Typing and choosing in the toolbar's own forms, which open as popovers over the slide.
 const control = <T extends HTMLElement = HTMLInputElement>(key: string): T => {
   const found = toolbar().querySelector<T>(`[data-field="${key}"]`);
   if (!found) throw new Error(`no control with data-field ${key} in the toolbar`);
@@ -611,11 +611,10 @@ describe("a chart's toolbar", () => {
     expect(popOf("data").hidden).toBe(false);
   });
 
-  it("shows a typed change in the details panel too", () => {
+  it("shows a typed change on the slide as well", () => {
     part<HTMLButtonElement>("data").click();
     typeInto(control("chart:title"), "Seen in both");
-    const inspector = host.querySelector<HTMLInputElement>("[data-field='block:chart-demand:title']");
-    expect(inspector?.value).toBe("Seen in both");
+    expect(host.querySelector(".ed-frame")?.textContent).toContain("Seen in both");
   });
 
   it("closes with Escape and gives the keyboard to its chip, and then to the block", () => {

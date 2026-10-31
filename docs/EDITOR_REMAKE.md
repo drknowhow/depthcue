@@ -63,8 +63,9 @@ resolve, through the same core commands the editor uses. A stale revision is ref
 - Scene change time is re-measured when the player or layout code changes. At v0.1 it was a p95 of 66 ms with
   default motion and 49 ms with reduced motion, against a 50 ms budget. Report the number each time; do not
   hide a regression.
-- A test walks the core schema and fails when a shipped property has no editing control on the canvas or in a
-  floating toolbar. It arrives in phase 2 and guards every later addition.
+- A test walks the core schema and fails when a shipped property has no editing control on the canvas, in a
+  floating toolbar or in a popover (`packages/editor/test/coverage.test.ts`). It also looks for each control in
+  the mounted editor, so a control that was removed or renamed fails by the name of its property.
 - Look at the editor in a real browser at 1440 by 900 and 1024 by 768 before merging an editor change.
 - Keyboard shortcuts work when the pointer is over the editor or focus is inside it, and the panels keep focus
   when they redraw.
@@ -73,9 +74,10 @@ resolve, through the same core commands the editor uses. A stale revision is ref
 
 ## Where each property is edited
 
-Every property the schema defines gets a control on the slide or in a floating toolbar. The details panel keeps
-all of them until it is taken out. This table says where each one is edited now, and each change that moves
-a property updates it. The schema-walk test replaces it once phase 2 lands.
+Every property the schema defines gets a control on the slide, in a floating toolbar or in a popover. The details
+panel that once held all of them is gone. This table says where each one is edited, for people. The schema-walk
+test checks the same thing for the machine: its `WAYS` map names a control for each property, or says why a person
+never edits it (ids, kinds and format markers). A new property in the schema fails that test until it has a way.
 
 | Property                                      | Where                                                        |
 | --------------------------------------------- | ------------------------------------------------------------ |
@@ -85,6 +87,7 @@ a property updates it. The schema-walk test replaces it once phase 2 lands.
 | image: `asset`, `alt`, `caption`              | Edit popover: file menu, upload, alt text, caption           |
 | clip: `source`, `poster`, `alt`               | Edit popover: video menu, poster menu, alt text              |
 | block order                                   | Earlier and later buttons in the toolbar                     |
+| scenes: add, order, duplicate, delete         | Scene strip: Add scene, drag, and the buttons on each scene  |
 | new blocks, claim: `summary`                  | Add row under the slide: Text, Image, Chart, Clip, Claim     |
 | scene: `layout`, `lead`                       | Buttons in the top bar                                       |
 | scene: `title`, `steps`, `sources`            | Scene popover in the top bar: title, steps, sources          |

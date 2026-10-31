@@ -3,7 +3,6 @@ import { h } from "@depthcue/player";
 import { createCanvas } from "./canvas.ts";
 import { popoverChip } from "./chip.ts";
 import type { Edits } from "./fields.ts";
-import { createInspector } from "./inspector.ts";
 import { deckPanel, panelHost } from "./panels.ts";
 import { createQuickBar } from "./quickbar.ts";
 import { createSceneBar } from "./scenebar.ts";
@@ -35,7 +34,8 @@ export interface Editor {
 
 /**
  * Mounts the editor into `host`: a slim top bar, the scene strip, the selected scene filling the rest with its
- * text editable in place, and a details panel with every other property that stays closed until it is asked for.
+ * text editable in place, and the rest of its properties in a toolbar over the chosen block, an add row under the
+ * slide and the popovers of the top bar.
  * All state lives in the store's session; this only reflects it and sends edits back through it.
  */
 export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
@@ -43,8 +43,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   let selected = session.doc.deck.scenes[0] as string;
   let selectedBlock: string | undefined;
   // The form that is applying a keystroke right now, so that one is not rebuilt under the caret.
-  let typingIn: "inspector" | "toolbar" | "scene" | "quick" | "deck" | undefined;
-  let detailsOpen = false;
+  let typingIn: "toolbar" | "scene" | "quick" | "deck" | undefined;
 
   const editsFor = (form: NonNullable<typeof typingIn>): Edits => ({
     type(ops: readonly Op[], options?: ApplyOptions) {
@@ -57,7 +56,6 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     },
     act: (ops: readonly Op[], options?: ApplyOptions) => session.apply(ops, options),
   });
-  const edits = editsFor("inspector");
 
   const hint = h("p", { class: "ed-hint", "aria-live": "polite" });
   const showProblem = (text: string | undefined) => {
@@ -86,15 +84,6 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     openSources: () => sceneBar.open("sources"),
   });
   canvas.overlay.append(toolbar.element);
-  const inspector = createInspector({
-    session,
-    edits,
-    scene: () => selected,
-    block: () => selectedBlock,
-    selectBlock: (id) => selectBlock(id),
-    selectScene: (id) => select(id),
-    upload: (file) => store.upload(file),
-  });
 
   const deckTitle = h("h1", { class: "ed-deck" });
   const status = h("span", { class: "ed-status", role: "status", "aria-live": "polite" });
@@ -102,10 +91,6 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const redo = button("redo", "Redo", () => session.redo());
   const retry = button("retry", "Try again", () => void store.save());
   retry.hidden = true;
-  const details = button("details", "Details", () => setDetails(!detailsOpen), {
-    "aria-expanded": "false",
-    "aria-controls": "ed-details",
-  });
   const deckChip = popoverChip(
     deckPanel(
       panelHost(session, {
@@ -132,10 +117,13 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     { class: "ed-bar" },
     deckTitle,
     sceneBar.element,
-    h("div", { class: "ed-actions" }, undo, redo, status, retry, deckChip.chip.wrap, details, present),
+    h("div", { class: "ed-actions" }, undo, redo, status, retry, deckChip.chip.wrap, present),
   );
   const notices = h("div", { class: "ed-notices" });
-  const strip = createStrip(session, { select: (id) => select(id), act: edits.act });
+  const strip = createStrip(session, {
+    select: (id) => select(id),
+    act: (ops, options) => session.apply(ops, options),
+  });
   const quick = createQuickBar(session, {
     edits: editsFor("quick"),
     problem: showProblem,
@@ -153,22 +141,13 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     hint,
     quick.element,
   );
-  inspector.element.id = "ed-details";
-  const root = h("div", { class: "ed-app" }, bar, notices, strip.element, stage, inspector.element);
+  const root = h("div", { class: "ed-app" }, bar, notices, strip.element, stage);
   host.replaceChildren(root);
-
-  /** The details panel holds every property the slide cannot edit yet. It stays closed so the slide gets the room. */
-  function setDetails(open: boolean) {
-    detailsOpen = open;
-    root.dataset.details = open ? "open" : "closed";
-    inspector.element.hidden = !open;
-    details.setAttribute("aria-expanded", String(open));
-  }
-  setDetails(false);
 
   const renderScenes = () => strip.render(selected);
 
-  function renderBar() {
+  /** The part of the bar that follows the store: the title, undo, redo and how saving is going. */
+  function renderStatus() {
     const { deck } = session.doc;
     deckTitle.textContent = deck.title;
     document.title = `${deck.title} · Depthcue editor`;
@@ -184,6 +163,11 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
           ? `${SAVE_LABEL[state.save]}. ${state.message}`
           : SAVE_LABEL[state.save];
     present.setAttribute("href", `/present#/${encodeURIComponent(selected)}`);
+  }
+
+  /** The popovers and buttons of the bar, redrawn from the deck. Saving changes none of it, so a save skips this. */
+  function renderBar() {
+    renderStatus();
     sceneBar.render(selected, typingIn === "scene");
     quick.render(selected, typingIn === "quick");
     const live = session.doc.scenes[selected];
@@ -261,7 +245,6 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderBar();
     canvas.render(selected, selectedBlock);
     toolbar.render(selected, selectedBlock);
-    inspector.render();
   }
 
   function selectBlock(id: string | undefined) {
@@ -270,7 +253,6 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     if (next === selectedBlock) return;
     selectedBlock = next;
     toolbar.render(selected, selectedBlock);
-    inspector.render();
   }
 
   const onKey = (event: KeyboardEvent) => {
@@ -303,10 +285,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderBar();
     if (!canvas.typing) canvas.render(selected, selectedBlock);
     toolbar.render(selected, selectedBlock, typingIn === "toolbar");
-    if (typingIn !== "inspector") inspector.render();
   });
   const unsubscribeStore = store.subscribe(() => {
-    renderBar();
+    renderStatus();
     renderNotices();
   });
 
@@ -328,7 +309,6 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   renderNotices();
   canvas.render(selected, selectedBlock);
   toolbar.render(selected, selectedBlock);
-  inspector.render();
 
   return {
     get sceneId() {

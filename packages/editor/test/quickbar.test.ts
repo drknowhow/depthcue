@@ -193,6 +193,32 @@ describe("the notes", () => {
     expect(field("panel:notes").value).toBe(store.session.doc.scenes.demand?.notes ?? "");
   });
 
+  it("refuse text over the limit, say so, and keep what was there", () => {
+    notesChip().click();
+    typeInto(field("panel:notes"), "Short notes.");
+    typeInto(field("panel:notes"), "x".repeat(4001));
+    expect(method()?.notes).toBe("Short notes.");
+    expect(field("panel:notes").getAttribute("aria-invalid")).toBe("true");
+    field("panel:notes").dispatchEvent(new Event("blur"));
+    expect(field("panel:notes").value).toBe("Short notes.");
+  });
+
+  it("follow undo and redo", () => {
+    notesChip().click();
+    typeInto(field("panel:notes"), "Typed");
+    store.session.undo();
+    expect(field("panel:notes").value).toBe("");
+    store.session.redo();
+    expect(field("panel:notes").value).toBe("Typed");
+  });
+
+  it("follow a change of the files on disk", async () => {
+    notesChip().click();
+    server.external([{ op: "scene.set", id: "method", set: { notes: "Written elsewhere" } }]);
+    await store.syncFromDisk();
+    expect(field("panel:notes").value).toBe("Written elsewhere");
+  });
+
   it("close with Escape, giving the keyboard back to the chip, and on a press elsewhere", () => {
     notesChip().click();
     field("panel:notes").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));

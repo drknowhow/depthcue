@@ -185,6 +185,58 @@ describe("duplicating a scene", () => {
   });
 });
 
+describe("moving a scene with the buttons", () => {
+  const earlier = (id: string) =>
+    row(id)?.querySelector<HTMLButtonElement>("[data-action='move-scene-earlier']") as HTMLButtonElement;
+  const later = (id: string) =>
+    row(id)?.querySelector<HTMLButtonElement>("[data-action='move-scene-later']") as HTMLButtonElement;
+
+  it("moves a scene one place earlier or later, one undo step each", () => {
+    later("opening").click();
+    expect(order()).toEqual(["demand", "opening", "method"]);
+    earlier("method").click();
+    expect(order()).toEqual(["demand", "method", "opening"]);
+    store.session.undo();
+    expect(order()).toEqual(["demand", "opening", "method"]);
+    store.session.undo();
+    expect(order()).toEqual(["opening", "demand", "method"]);
+  });
+
+  it("moves a scene to the very start", () => {
+    earlier("demand").click();
+    expect(order()).toEqual(["demand", "opening", "method"]);
+  });
+
+  it("rests the button at each end, since it has nowhere to go", () => {
+    expect(earlier("opening").disabled).toBe(true);
+    expect(later("opening").disabled).toBe(false);
+    expect(later("method").disabled).toBe(true);
+    expect(earlier("method").disabled).toBe(false);
+    later("opening").click();
+    expect(earlier("opening").disabled).toBe(false);
+    expect(earlier("demand").disabled).toBe(true);
+  });
+
+  it("names the scene and the direction for a screen reader, with the number the scene has now", () => {
+    expect(later("opening").getAttribute("aria-label")).toMatch(/^Move scene 1, .+ later$/);
+    later("opening").click();
+    expect(later("opening").getAttribute("aria-label")).toMatch(/^Move scene 2, .+ later$/);
+  });
+
+  it("keeps the edited scene being edited while another one moves", () => {
+    editor.select("demand");
+    later("opening").click();
+    expect(editor.sceneId).toBe("demand");
+  });
+
+  it("keeps the keyboard on the button that was pressed", () => {
+    const button = later("opening");
+    button.focus();
+    button.click();
+    expect(document.activeElement).toBe(button);
+  });
+});
+
 describe("deleting a scene", () => {
   it("removes it, chooses its neighbour, and undoes", () => {
     editor.select("demand");

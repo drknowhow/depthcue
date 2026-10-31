@@ -78,14 +78,73 @@ describe("the scene popover", () => {
     expect(control("panel:title").getAttribute("aria-invalid")).toBe("true");
   });
 
-  it("keeps the field being typed in, and shows the change in the details panel too", () => {
+  it("keeps the field being typed in, and applies typing as it happens in one undo step", () => {
     openPanel();
     const input = control("panel:title");
+    const before = scene()?.title;
     typeInto(input, "A");
     typeInto(input, "AB");
+    typeInto(input, "ABC");
     expect(control("panel:title")).toBe(input);
     expect(document.activeElement).toBe(input);
-    expect(host.querySelector<HTMLInputElement>("[data-field='scene:title']")?.value).toBe("AB");
+    expect(scene()?.title).toBe("ABC");
+    store.session.undo();
+    expect(scene()?.title).toBe(before);
+  });
+
+  it("separates two visits to the field into two undo steps", () => {
+    openPanel();
+    typeInto(control("panel:title"), "First");
+    control("panel:title").blur();
+    typeInto(control("panel:title"), "Second");
+    store.session.undo();
+    expect(scene()?.title).toBe("First");
+  });
+
+  it("shows the real title again when the field is left with the text refused", () => {
+    const before = scene()?.title as string;
+    openPanel();
+    const input = control("panel:title");
+    typeInto(input, "");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    const message = input.closest(".ed-field")?.querySelector<HTMLElement>(".ed-problem");
+    expect(message?.hidden).toBe(false);
+    expect(input.getAttribute("aria-describedby")).toBe(message?.id);
+    input.dispatchEvent(new Event("blur"));
+    expect(input.value).toBe(before);
+    expect(input.hasAttribute("aria-invalid")).toBe(false);
+    typeInto(input, "");
+    typeInto(input, "Back");
+    expect(input.hasAttribute("aria-invalid")).toBe(false);
+    expect(scene()?.title).toBe("Back");
+  });
+
+  it("follows undo and redo", () => {
+    openPanel();
+    const before = scene()?.title as string;
+    typeInto(control("panel:title"), "Changed");
+    store.session.undo();
+    expect(control("panel:title").value).toBe(before);
+    store.session.redo();
+    expect(control("panel:title").value).toBe("Changed");
+  });
+
+  it("follows a change of the files on disk", async () => {
+    openPanel();
+    server.external([{ op: "scene.set", id: "method", set: { title: "Changed elsewhere" } }]);
+    await store.syncFromDisk();
+    expect(control("panel:title").value).toBe("Changed elsewhere");
+  });
+
+  it("takes Ctrl+Z from inside the field and undoes the deck, not the field", () => {
+    openPanel();
+    const before = scene()?.title;
+    const input = control("panel:title");
+    typeInto(input, "Changed");
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true }),
+    );
+    expect(scene()?.title).toBe(before);
   });
 
   it("follows the scene chosen in the strip", () => {

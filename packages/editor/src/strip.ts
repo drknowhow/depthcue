@@ -1,5 +1,6 @@
 import type { ApplyOptions, Op, Scene, Session } from "@depthcue/core";
 import { h, renderScene } from "@depthcue/player";
+import { afterWhenMoving } from "./cleanup.ts";
 import { problemOf } from "./fields.ts";
 import { sortableItems } from "./sortable.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL, newScene, uniqueId } from "./templates.ts";
@@ -33,6 +34,8 @@ interface Item {
   lead: HTMLElement;
   thumb: HTMLElement;
   pick: HTMLButtonElement;
+  earlier: HTMLButtonElement;
+  later: HTMLButtonElement;
   duplicate: HTMLButtonElement;
   remove: HTMLButtonElement;
   /** What the thumbnail was last drawn from. A different scene object, or theme, means it is out of date. */
@@ -50,8 +53,8 @@ function copyOf(scene: Scene, taken: ReadonlySet<string>) {
 }
 
 /**
- * The strip of scenes on the left: a thumbnail of each, its number, title and who leads it, with duplicate and
- * delete on the scene itself and the controls that add a scene below. Rows are kept between renders, so a
+ * The strip of scenes on the left: a thumbnail of each, its number, title and who leads it, with move, duplicate
+ * and delete on the scene itself and the controls that add a scene below. Rows are kept between renders, so a
  * keystroke on the slide updates one title and queues one thumbnail instead of rebuilding the list.
  */
 export function createStrip(session: Session, hooks: StripHooks): Strip {
@@ -102,6 +105,17 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     const thumb = h("div", { class: "ed-thumb", "aria-hidden": "true" });
     thumb.addEventListener("click", () => hooks.select(id));
 
+    // Dragging is for the mouse; these two are the way to reorder from the keyboard.
+    const mover = (direction: -1 | 1, action: string) => {
+      const button = h("button", { type: "button", "data-action": action });
+      button.addEventListener("click", () => {
+        const after = afterWhenMoving(session.doc.deck.scenes, id, direction);
+        if (after !== undefined) run([{ op: "scene.move", id, after }]);
+      });
+      return button;
+    };
+    const earlier = mover(-1, "move-scene-earlier");
+    const later = mover(1, "move-scene-later");
     const duplicate = h("button", { type: "button", "data-action": "duplicate-scene" });
     duplicate.addEventListener("click", () => {
       const scene = session.doc.scenes[id] as Scene;
@@ -124,10 +138,10 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       { "data-id": id },
       pick,
       thumb,
-      h("div", { class: "ed-scene-actions" }, duplicate, remove),
+      h("div", { class: "ed-scene-actions" }, earlier, later, duplicate, remove),
     );
     sortable.add(id, li);
-    return { li, num, title, lead, thumb, pick, duplicate, remove, drawn: undefined };
+    return { li, num, title, lead, thumb, pick, earlier, later, duplicate, remove, drawn: undefined };
   }
 
   // Thumbnails
@@ -208,6 +222,13 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       item.lead.dataset.lead = scene.lead ?? "human";
       item.pick.setAttribute("aria-current", id === selected ? "true" : "false");
       item.li.toggleAttribute("data-current", id === selected);
+      const at = index + 1;
+      item.earlier.setAttribute("aria-label", `Move ${label} earlier`);
+      item.earlier.title = "Move scene earlier";
+      item.earlier.toggleAttribute("disabled", index === 0);
+      item.later.setAttribute("aria-label", `Move ${label} later`);
+      item.later.title = "Move scene later";
+      item.later.toggleAttribute("disabled", at === total);
       item.duplicate.setAttribute("aria-label", `Duplicate ${label}`);
       item.duplicate.title = "Duplicate scene";
       item.remove.setAttribute("aria-label", `Delete ${label}`);
@@ -224,7 +245,11 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     const wanted = deck.scenes.map((id) => (items.get(id) as Item).li);
     const shown = [...list.children];
     if (wanted.length !== shown.length || wanted.some((li, index) => li !== shown[index])) {
+      // Putting the rows back drops the keyboard, so it is handed back to the control that had it.
+      const held = document.activeElement;
+      const keyboard = held instanceof HTMLElement && list.contains(held) ? held : undefined;
       list.replaceChildren(...wanted);
+      keyboard?.focus({ preventScroll: true });
     }
     // `flex-direction` is "row" even on a grid, so it only counts when the list really is a flex container.
     const layout = getComputedStyle(list);
