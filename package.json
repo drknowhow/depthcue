@@ -11,6 +11,7 @@
   "scripts": {
     "schema": "pnpm --filter @depthcue/core schema",
     "tokens": "node tools/build-tokens.mjs",
+    "brand": "node tools/build-brand.mjs",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
@@ -25,6 +26,7 @@
     "@biomejs/biome": "^2.6.4",
     "@types/node": "^26.6.6",
     "happy-dom": "^21.0.4",
+    "opentype.js": "^1.3.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
