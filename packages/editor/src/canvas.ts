@@ -1,5 +1,6 @@
 import { isMarker, type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
 import { h, renderScene } from "@depthcue/player";
+import { createBuildBadges } from "./buildbadges.ts";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
 import { type CueBook, clock } from "./cues.ts";
 import { drawGhosts, type GhostHooks } from "./ghosts.ts";
@@ -43,6 +44,8 @@ export interface Canvas {
   focusBlock(id: string): void;
   /** Draws the rows of cue chips again from the cue book, without redrawing the slide or resetting a video. */
   refreshCues(): void;
+  /** Shows or hides the build order: a badge beside each part that says which step reveals it. */
+  setBuild(on: boolean): void;
   /** Stops watching the size of the slide. */
   destroy(): void;
 }
@@ -171,6 +174,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
   /** The blocks moved or changed size, so the grips and the toolbar move with them. */
   const changed = () => {
     drag.place();
+    build.place();
     hooks.changed?.();
   };
 
@@ -416,6 +420,11 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     act: (ops) => session.apply(ops),
   });
 
+  const build = createBuildBadges(session, element, overlay, nodeOf, {
+    act: (ops) => session.apply(ops),
+    problem: (text) => hooks.hint(text ?? "", text !== undefined),
+  });
+
   function focusBlock(id: string) {
     const node = nodeOf(id);
     const target = node?.matches("[data-edit], [data-pick]")
@@ -438,7 +447,13 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       wireCues(scene, slot);
       changed();
     },
-    destroy: () => drag.destroy(),
+    setBuild(on) {
+      build.setOn(on);
+    },
+    destroy() {
+      drag.destroy();
+      build.destroy();
+    },
     get typing() {
       return typing;
     },
@@ -448,6 +463,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       if (!scene) {
         slot.replaceChildren();
         drag.draw(undefined);
+        build.draw(undefined);
         hooks.changed?.();
         return;
       }
@@ -470,6 +486,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       if (hooks.ghosts) drawGhosts(scene, view, hooks.ghosts);
       slot.replaceChildren(frame);
       drag.draw(scene);
+      build.draw(scene);
       mark(selectedId);
       if (focusedId) {
         // After an undo or a redo the keyboard stays on the bar it was on.

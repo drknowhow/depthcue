@@ -16,6 +16,8 @@ export interface QuickBarHooks {
   block(): string | undefined;
   /** A block was added: choose it. */
   added(id: string): void;
+  /** The Build order button was pressed: show the badges on the slide, or put them away. */
+  build?(on: boolean): void;
 }
 
 export interface QuickBar {
@@ -97,6 +99,17 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
   // The bar sits under the slide, so the notes open upward over it.
   const notes = popoverChip(panel, true);
 
+  // Build order is a view of the slide and not an addition to it, so it sits apart from the row of things to add.
+  const order = actionButton(
+    "Build order",
+    () => {
+      const on = order.getAttribute("aria-pressed") !== "true";
+      order.setAttribute("aria-pressed", String(on));
+      hooks.build?.(on);
+    },
+    { "data-quick": "build", "aria-pressed": "false", class: "ed-quick-build" },
+  );
+
   const element = h(
     "div",
     { class: "ed-quick", role: "group", "aria-label": "Add to this slide" },
@@ -104,6 +117,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     ...adders,
     claim,
     notes.chip.wrap,
+    order,
   );
 
   return {

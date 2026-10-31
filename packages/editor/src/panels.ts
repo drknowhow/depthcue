@@ -5,6 +5,7 @@ import {
   type Scene,
   type SceneChanges,
   type Session,
+  STEPS_MAX,
   THEMES,
 } from "@depthcue/core";
 import { firstPartyManifests, h } from "@depthcue/player";
@@ -492,8 +493,7 @@ export function evidencePanel(host: PanelHost, sceneId: string): Panel {
 type Step = NonNullable<Scene["steps"]>[number];
 type Source = NonNullable<Scene["sources"]>[number];
 
-/** The most steps and sources a scene holds. The schema says so too; the core does not export them. */
-const STEPS_MAX = 24;
+/** The most sources a scene holds. The schema says so too; the core does not export it. */
 const SOURCES_MAX = 32;
 
 export interface ScenePanel extends Panel {

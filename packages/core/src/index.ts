@@ -12,6 +12,8 @@ export type {
 export { applyOps } from "./apply.ts";
 export type { AssetRef } from "./assets.ts";
 export { assetRefs, assetsOf } from "./assets.ts";
+export type { BuildEntry, BuildTarget } from "./build.ts";
+export { buildOf, placeInBuild, revealable, STEPS_MAX } from "./build.ts";
 export type { Cue, CueBuild, CueMap } from "./cues.ts";
 export {
   CUE_MAP_FORMAT,
