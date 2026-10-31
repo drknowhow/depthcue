@@ -597,6 +597,33 @@ body {
   outline-offset: 4px;
 }
 
+/* An image or clip whose alt text still is the name of its file says so on the slide. The player never draws this. */
+.ed-frame [data-alt-missing] {
+  position: relative;
+}
+
+.ed-frame [data-alt-missing]::after {
+  content: "Add alt text";
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--dc-radius-sm);
+  background: var(--dc-action);
+  color: var(--dc-bg);
+  font:
+    600 0.75rem / 1.2 system-ui,
+    sans-serif;
+  pointer-events: none;
+}
+
+/* A picture dragged over an image, which it would replace. */
+.ed-frame [data-drop] {
+  outline: 3px dashed var(--dc-action);
+  outline-offset: 4px;
+  background: color-mix(in srgb, var(--dc-action) 10%, transparent);
+}
+
 /* A chart's bars are sliders. Each is dragged by its end, which has a grip wider than the bar is when it is empty. */
 .ed-frame .dc-bar[data-slider] {
   position: relative;

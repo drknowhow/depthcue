@@ -20,7 +20,16 @@ import {
   selectField,
   textField,
 } from "./fields.ts";
-import { describeBlock, IMAGE_ACCEPT, IMAGE_FILE, idsInScene, uniqueId, VIDEO_FILE } from "./templates.ts";
+import {
+  describeBlock,
+  IMAGE_ACCEPT,
+  IMAGE_FILE,
+  idsInScene,
+  needsAlt,
+  placeholderAlt,
+  uniqueId,
+  VIDEO_FILE,
+} from "./templates.ts";
 
 const optional = (value: string) => (value === "" ? null : value);
 
@@ -302,26 +311,51 @@ export function chartPanel(host: PanelHost, sceneId: string, id: string): Panel 
   return { name: "data", label: "Data", title: "Chart data", body: panel.body, fill: panel.fill };
 }
 
-/** Takes a file, stores it in the deck, and points the image at it. */
-function uploader(host: PanelHost, sceneId: string, id: string) {
-  return async (file: File) => {
-    host.problem(undefined);
-    try {
-      host.run([blockSet(sceneId, id, { asset: await host.upload(file) })]);
-    } catch (error) {
-      host.problem(error instanceof Error ? error.message : "The upload failed.");
-    }
-  };
+/**
+ * Points an image at another file. The alt text described the old picture, so it starts over as the new file's
+ * name, which the slide flags until somebody describes the picture. Both change as one undo step.
+ */
+const imageFile = (sceneId: string, id: string, asset: string): Op =>
+  blockSet(sceneId, id, { asset, alt: placeholderAlt(asset) });
+
+/** Stores a file in the deck and points the image at it. True when the image was replaced. */
+export async function replaceImage(
+  host: PanelHost,
+  sceneId: string,
+  id: string,
+  file: File,
+): Promise<boolean> {
+  host.problem(undefined);
+  try {
+    return host.run([imageFile(sceneId, id, await host.upload(file))]);
+  } catch (error) {
+    host.problem(error instanceof Error ? error.message : "The upload failed.");
+    return false;
+  }
 }
 
+/** The chip's mark for a block whose alt text still is the name of its file. */
+function altState(scene: Scene, id: string, title: string) {
+  const block = scene.blocks.find((candidate) => candidate.id === id);
+  const missing = block !== undefined && needsAlt(block);
+  return { badge: missing ? "!" : "", title: missing ? `${title}. Alt text is missing` : title };
+}
+
+export interface ImagePanel extends Panel {
+  /** Puts the keyboard on the alt text with its words selected, so the first thing typed replaces them. */
+  promptAlt(): void;
+}
+
+export const hasAltPrompt = (panel: Panel): panel is ImagePanel => "promptAlt" in panel;
+
 /** An image's file, with a way to upload another, its alt text and its caption. */
-export function imagePanel(host: PanelHost, sceneId: string, id: string): Panel {
+export function imagePanel(host: PanelHost, sceneId: string, id: string): ImagePanel {
   const image = () => {
     const block = blockOf(host, sceneId, id);
     return block?.type === "image" ? block : undefined;
   };
   const key = (name: string) => `image:${name}`;
-  const replace = uploader(host, sceneId, id);
+  const title = "Image file, alt text and caption";
 
   const panel = form(
     () => image() !== undefined,
@@ -331,9 +365,14 @@ export function imagePanel(host: PanelHost, sceneId: string, id: string): Panel 
         label: "Image file",
         options: assetOptions(host, IMAGE_FILE),
         read: () => image()?.asset ?? "",
-        commit: (value) => blockSet(sceneId, id, { asset: value }),
+        commit: (value) => imageFile(sceneId, id, value),
       }),
-      fileButton("Upload a new image", IMAGE_ACCEPT, key("upload"), (file) => void replace(file)),
+      fileButton(
+        "Upload a new image",
+        IMAGE_ACCEPT,
+        key("upload"),
+        (file) => void replaceImage(host, sceneId, id, file),
+      ),
       textField(host.edits, {
         key: key("alt"),
         label: "Alt text",
@@ -353,9 +392,15 @@ export function imagePanel(host: PanelHost, sceneId: string, id: string): Panel 
   return {
     name: "edit",
     label: "Edit",
-    title: "Image file, alt text and caption",
+    title,
     body: panel.body,
     fill: panel.fill,
+    state: (scene) => altState(scene, id, title),
+    promptAlt() {
+      const field = panel.body.querySelector<HTMLElement>(`[data-field="${key("alt")}"]`);
+      field?.focus({ preventScroll: true });
+      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.select();
+    },
   };
 }
 
@@ -375,7 +420,7 @@ export function clipPanel(host: PanelHost, sceneId: string, id: string): Panel {
         label: "Video file",
         options: assetOptions(host, VIDEO_FILE),
         read: () => clip()?.source ?? "",
-        commit: (value) => blockSet(sceneId, id, { source: value }),
+        commit: (value) => blockSet(sceneId, id, { source: value, alt: placeholderAlt(value) }),
       }),
       selectField(host.edits, {
         key: key("poster"),
@@ -395,12 +440,14 @@ export function clipPanel(host: PanelHost, sceneId: string, id: string): Panel {
     ],
   );
 
+  const title = "Clip file, poster and alt text";
   return {
     name: "edit",
     label: "Edit",
-    title: "Clip file, poster and alt text",
+    title,
     body: panel.body,
     fill: panel.fill,
+    state: (scene) => altState(scene, id, title),
   };
 }
 

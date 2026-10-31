@@ -1,7 +1,7 @@
 import { type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
 import { h, renderScene } from "@depthcue/player";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
-import { describeBlock } from "./templates.ts";
+import { describeBlock, IMAGE_FILE, needsAlt } from "./templates.ts";
 
 export interface CanvasHooks {
   /** A short line about the field being edited, such as "Heading 42 of 90". `problem` marks a refused edit. */
@@ -16,6 +16,8 @@ export interface CanvasHooks {
   typed?(id: string, length: number, limit: number): void;
   /** The slide was drawn again, or its text grew or shrank, so anything placed against a block should move. */
   changed?(): void;
+  /** A picture file was dropped on an image, or pasted while the image had the keyboard: use it in its place. */
+  replaceImage?(id: string, file: File): void;
 }
 
 export interface Canvas {
@@ -238,6 +240,47 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     });
   }
 
+  /** An image takes a picture dropped on it or pasted into it. A dropped file that is not a picture is told so. */
+  function wireDrop(node: HTMLElement, id: string) {
+    const pictureIn = (files: FileList | null | undefined) =>
+      [...(files ?? [])].find((file) => file.type.startsWith("image/") || IMAGE_FILE.test(file.name));
+    // dragenter and dragleave fire again for every child the pointer crosses, so they are counted.
+    let depth = 0;
+    const carriesFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
+    const over = (event: DragEvent) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    };
+    node.addEventListener("dragenter", (event) => {
+      if (!carriesFiles(event)) return;
+      depth++;
+      node.dataset.drop = "";
+      over(event);
+    });
+    node.addEventListener("dragover", over);
+    node.addEventListener("dragleave", (event) => {
+      if (!carriesFiles(event)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) node.removeAttribute("data-drop");
+    });
+    node.addEventListener("drop", (event) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      depth = 0;
+      node.removeAttribute("data-drop");
+      const file = pictureIn(event.dataTransfer?.files);
+      if (file) hooks.replaceImage?.(id, file);
+      else hooks.hint("That is not a picture file. Use PNG, JPEG, GIF, WebP or SVG.", true);
+    });
+    node.addEventListener("paste", (event) => {
+      const file = pictureIn(event.clipboardData?.files);
+      if (!file) return;
+      event.preventDefault();
+      hooks.replaceImage?.(id, file);
+    });
+  }
+
   /** Images, charts and clips have no text to type into, so they are chosen by clicking or pressing Enter. */
   function wirePicker(scene: Scene, root: HTMLElement) {
     for (const block of scene.blocks) {
@@ -249,8 +292,14 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       node.dataset.pick = "";
       // A chart holds sliders and text fields of its own, which a button may not contain.
       node.setAttribute("role", block.type === "bar-chart" ? "group" : "button");
-      node.setAttribute("aria-label", `${describeBlock(block, 60)}. Select to edit.`);
+      const missingAlt = needsAlt(block);
+      node.toggleAttribute("data-alt-missing", missingAlt);
+      node.setAttribute(
+        "aria-label",
+        `${describeBlock(block, 60)}.${missingAlt ? " Alt text is missing." : ""} Select to edit.`,
+      );
       node.tabIndex = 0;
+      if (block.type === "image") wireDrop(node, block.id);
       if (block.type === "bar-chart") {
         wireBars(node, block.id, {
           session,

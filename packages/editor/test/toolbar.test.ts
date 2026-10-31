@@ -762,6 +762,15 @@ describe("an image's toolbar", () => {
     expect(image().asset).toBe("assets/second.png");
   });
 
+  it("starts the alt text over with another file, because it described the picture that was there", () => {
+    server.assets.push("assets/second.png");
+    store.session.addAssets(["assets/second.png"]);
+    choose(control<HTMLSelectElement>("image:asset"), "assets/second.png");
+    expect(image().alt).toBe("second");
+    store.session.undo();
+    expect(image()).toMatchObject({ asset: "assets/method.svg", alt: expect.stringMatching(/^Diagram/) });
+  });
+
   it("requires alt text, and shows the new text on the toolbar's label", () => {
     typeInto(control("image:alt"), "");
     expect(image().alt).toMatch(/^Diagram/);
@@ -792,6 +801,235 @@ describe("an image's toolbar", () => {
     await flush();
     expect(image().asset).toBe("assets/method.svg");
     expect(hintText()).toBe("That file is not an image the editor accepts.");
+  });
+});
+
+/** What the browser hands over with a drag or a paste: the files, and for a drag the kinds of thing carried. */
+const transfer = (
+  files: File[],
+  types: string[] = files.length > 0 ? ["Files"] : [],
+  dropEffect = "none",
+) => ({ files, types, dropEffect });
+const fire = (node: Element, type: string, init: Record<string, unknown>) => {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  for (const [key, value] of Object.entries(init)) Object.defineProperty(event, key, { value });
+  node.dispatchEvent(event);
+  return event;
+};
+const picture = (name = "new.png") => new File(["x"], name, { type: "image/png" });
+const dropOn = (node: Element, files: File[]) => fire(node, "drop", { dataTransfer: transfer(files) });
+const pasteInto = (node: Element, files: File[]) =>
+  fire(node, "paste", { clipboardData: { files, getData: () => "" } });
+
+describe("a picture dropped or pasted on the slide", () => {
+  const image = () => {
+    const block = method()?.blocks.find((candidate) => candidate.id === "method-diagram");
+    if (block?.type !== "image") throw new Error("the image should be there");
+    return block;
+  };
+  const figure = () => blockNode("method-diagram");
+  const original = () => ({ asset: "assets/method.svg", alt: expect.stringMatching(/^Diagram/) });
+
+  it("replaces the image and starts its alt text over, as one undo step", async () => {
+    dropOn(figure(), [picture()]);
+    await flush();
+    expect(image()).toMatchObject({ asset: "assets/new.png", alt: "new" });
+    expect(store.session.undo()).toBe(true);
+    expect(image()).toMatchObject(original());
+    expect(store.session.canUndo).toBe(false);
+  });
+
+  it("chooses the image and opens its alt text with the old words selected", async () => {
+    dropOn(figure(), [picture()]);
+    await flush();
+    expect(editor.blockId).toBe("method-diagram");
+    expect(popOf("edit").hidden).toBe(false);
+    const alt = control("image:alt");
+    expect(document.activeElement).toBe(alt);
+    expect([alt.selectionStart, alt.selectionEnd]).toEqual([0, alt.value.length]);
+  });
+
+  it("flags the image on the slide and on its chip until the alt text is written", async () => {
+    expect(figure().hasAttribute("data-alt-missing")).toBe(false);
+    expect(part("edit")).toBeNull();
+    dropOn(figure(), [picture()]);
+    await flush();
+    expect(figure().hasAttribute("data-alt-missing")).toBe(true);
+    expect(figure().getAttribute("aria-label")).toContain("Alt text is missing");
+    expect(part("edit").textContent).toBe("Edit!");
+    expect(part("edit").getAttribute("aria-label")).toBe(
+      "Image file, alt text and caption. Alt text is missing",
+    );
+    typeInto(control("image:alt"), "The method in four steps");
+    expect(figure().hasAttribute("data-alt-missing")).toBe(false);
+    expect(figure().getAttribute("aria-label")).not.toContain("Alt text is missing");
+    expect(part("edit").textContent).toBe("Edit");
+    expect(part("edit").getAttribute("aria-label")).toBe("Image file, alt text and caption");
+  });
+
+  it("takes a pasted picture the same way, and leaves a paste with no picture in it alone", async () => {
+    expect(pasteInto(figure(), []).defaultPrevented).toBe(false);
+    await flush();
+    expect(image()).toMatchObject(original());
+    expect(pasteInto(figure(), [picture("shot.png")]).defaultPrevented).toBe(true);
+    await flush();
+    expect(image()).toMatchObject({ asset: "assets/shot.png", alt: "shot" });
+  });
+
+  it("uses the first picture among the files dropped", async () => {
+    const notes = new File(["x"], "notes.txt", { type: "text/plain" });
+    dropOn(figure(), [notes, picture("a.png"), picture("b.png")]);
+    await flush();
+    expect(image().asset).toBe("assets/a.png");
+    expect(server.uploads).toEqual(["assets/a.png"]);
+  });
+
+  it("recognizes a picture by its extension when the browser gives no type", async () => {
+    dropOn(figure(), [new File(["x"], "photo.webp")]);
+    await flush();
+    expect(image().asset).toBe("assets/photo.webp");
+  });
+
+  it("says what was wrong when the file is not a picture, and uploads nothing", async () => {
+    dropOn(figure(), [new File(["x"], "notes.txt", { type: "text/plain" })]);
+    await flush();
+    expect(image()).toMatchObject(original());
+    expect(hintText()).toContain("not a picture file");
+    expect(host.querySelector(".ed-hint")?.hasAttribute("data-problem")).toBe(true);
+    expect(server.uploads).toEqual([]);
+  });
+
+  it("says why an upload failed, and keeps the image with its alt text", async () => {
+    server.uploadAsset = async () => {
+      throw new Error("The server refused that file.");
+    };
+    dropOn(figure(), [picture()]);
+    await flush();
+    expect(image()).toMatchObject(original());
+    expect(hintText()).toBe("The server refused that file.");
+    expect(store.session.canUndo).toBe(false);
+  });
+
+  it("marks the image while a file is over it, through every child the pointer crosses", () => {
+    const data = transfer([picture()]);
+    fire(figure(), "dragenter", { dataTransfer: data });
+    fire(figure(), "dragenter", { dataTransfer: data });
+    fire(figure(), "dragleave", { dataTransfer: data });
+    expect(figure().hasAttribute("data-drop")).toBe(true);
+    fire(figure(), "dragleave", { dataTransfer: data });
+    expect(figure().hasAttribute("data-drop")).toBe(false);
+  });
+
+  it("clears the mark when a file is dropped, so the next drag is marked and cleared as usual", () => {
+    const data = transfer([picture()]);
+    fire(figure(), "dragenter", { dataTransfer: data });
+    fire(figure(), "dragenter", { dataTransfer: data });
+    const notes = new File(["x"], "notes.txt", { type: "text/plain" });
+    expect(dropOn(figure(), [notes]).defaultPrevented).toBe(true);
+    expect(figure().hasAttribute("data-drop")).toBe(false);
+    // Nothing was redrawn, so this is the same image, and its count of children crossed starts again at none.
+    fire(figure(), "dragenter", { dataTransfer: data });
+    expect(figure().hasAttribute("data-drop")).toBe(true);
+    fire(figure(), "dragleave", { dataTransfer: data });
+    expect(figure().hasAttribute("data-drop")).toBe(false);
+  });
+
+  it("accepts the drop as a copy, and ignores a drag that carries no file", () => {
+    const files = transfer([picture()]);
+    expect(fire(figure(), "dragover", { dataTransfer: files }).defaultPrevented).toBe(true);
+    expect(files.dropEffect).toBe("copy");
+    const text = transfer([], ["text/plain"]);
+    expect(fire(figure(), "dragover", { dataTransfer: text }).defaultPrevented).toBe(false);
+    fire(figure(), "dragenter", { dataTransfer: text });
+    expect(figure().hasAttribute("data-drop")).toBe(false);
+  });
+
+  /** Holds the upload until the returned function is called, so the person can go elsewhere while it runs. */
+  const slowUpload = () => {
+    let finish = () => {};
+    const gate = new Promise<void>((done) => {
+      finish = done;
+    });
+    const upload = server.uploadAsset.bind(server);
+    server.uploadAsset = async (file, name) => {
+      await gate;
+      return upload(file, name);
+    };
+    return () => finish();
+  };
+  const addImage = (scene: string, id: string) =>
+    store.session.apply([
+      {
+        op: "block.add",
+        scene,
+        block: { id, type: "image", asset: "assets/method.svg", alt: "Another picture" },
+      },
+    ]);
+
+  it("leaves the alt text alone when the person has gone on to a text during the upload", async () => {
+    const finish = slowUpload();
+    dropOn(figure(), [picture()]);
+    textBox("method-body").focus();
+    expect(editor.blockId).toBe("method-body");
+    finish();
+    await flush();
+    expect(image()).toMatchObject({ asset: "assets/new.png", alt: "new" });
+    expect(editor.blockId).toBe("method-body");
+    expect(part("edit")).toBeNull();
+    expect(document.activeElement).toBe(textBox("method-body"));
+  });
+
+  it("does not ask about the picture that was replaced once the person is on another image", async () => {
+    expect(addImage("method", "method-second").ok).toBe(true);
+    const finish = slowUpload();
+    dropOn(figure(), [picture()]);
+    blockNode("method-second").click();
+    expect(editor.blockId).toBe("method-second");
+    finish();
+    await flush();
+    expect(image()).toMatchObject({ asset: "assets/new.png", alt: "new" });
+    expect(popOf("edit").hidden).toBe(true);
+    expect(document.activeElement).not.toBe(control("image:alt"));
+  });
+
+  it("does not ask either when the person is on an image of the same id in another scene", async () => {
+    expect(addImage("demand", "method-diagram").ok).toBe(true);
+    const finish = slowUpload();
+    dropOn(figure(), [picture()]);
+    editor.select("demand");
+    blockNode("method-diagram").click();
+    expect(editor.sceneId).toBe("demand");
+    expect(editor.blockId).toBe("method-diagram");
+    finish();
+    await flush();
+    expect(image()).toMatchObject({ asset: "assets/new.png", alt: "new" });
+    expect(popOf("edit").hidden).toBe(true);
+    expect(document.activeElement).not.toBe(control("image:alt"));
+  });
+
+  it("refuses a file dropped anywhere else, so the browser does not open it in place of the editor", () => {
+    const data = transfer([picture()], ["Files"], "copy");
+    const stage = host.querySelector(".ed-main") as HTMLElement;
+    expect(fire(stage, "dragover", { dataTransfer: data }).defaultPrevented).toBe(true);
+    expect(data.dropEffect).toBe("none");
+    const strip = host.querySelector(".ed-scenes") as HTMLElement;
+    expect(dropOn(strip, [picture()]).defaultPrevented).toBe(true);
+    // Text dragged around the page is not a file, so it is left to the browser.
+    expect(fire(stage, "dragover", { dataTransfer: transfer([], ["text/plain"]) }).defaultPrevented).toBe(
+      false,
+    );
+  });
+
+  it("does not take a picture on a chart", async () => {
+    editor.select("demand");
+    const chart = blockNode("chart-demand");
+    const data = transfer([picture()], ["Files"], "copy");
+    fire(chart, "dragover", { dataTransfer: data });
+    expect(data.dropEffect).toBe("none");
+    dropOn(chart, [picture()]);
+    await flush();
+    expect(server.uploads).toEqual([]);
+    expect(chart.hasAttribute("data-drop")).toBe(false);
   });
 });
 
@@ -835,6 +1073,17 @@ describe("a clip's toolbar", () => {
     expect(clip().poster).toBe("assets/method.svg");
     choose(control<HTMLSelectElement>("clip:poster"), "");
     expect("poster" in clip()).toBe(false);
+  });
+
+  it("starts the alt text over with another video, and flags the clip until it is written", () => {
+    expect(blockNode("method-clip").hasAttribute("data-alt-missing")).toBe(false);
+    choose(control<HTMLSelectElement>("clip:source"), "assets/intro.webm");
+    expect(clip().alt).toBe("intro");
+    expect(blockNode("method-clip").hasAttribute("data-alt-missing")).toBe(true);
+    expect(part("edit").textContent).toBe("Edit!");
+    typeInto(control("clip:alt"), "A short intro");
+    expect(blockNode("method-clip").hasAttribute("data-alt-missing")).toBe(false);
+    expect(part("edit").textContent).toBe("Edit");
   });
 
   it("requires alt text", () => {

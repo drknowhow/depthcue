@@ -261,7 +261,7 @@ const WAYS: Record<string, Entry> = {
   "scene.blocks<image>.id": { never: NEVER_ID },
   "scene.blocks<image>.type": { never: NEVER_KIND },
   "scene.blocks<image>.asset": {
-    where: "Image toolbar, Edit chip, Image file and upload",
+    where: "Picture dropped or pasted on the image; Edit chip, Image file and upload",
     reach: () => {
       choose(blocks.image, "other");
       return field(openChip("edit") as HTMLElement, "image:asset");
