@@ -45,6 +45,13 @@ way the tool already sets the version of a new scene, so an agent never has to. 
 block id, `block.frame` (all four numbers) and `block.unframe`; `block.set` with a `frame` key also works. A scene
 stays at 0.2 after its last frame is cleared.
 
+The player and an exported page draw a scene with a pinned block as a 16 by 9 slide, centered in the window. A
+pinned block leaves the template's regions and sits at its frame in a layer over the slide, in block order; the
+template lays out the other blocks as if it were not there, and a media column left with nothing is dropped.
+Type scales with the slide's width, so a frame holds the same text on a laptop and a projector. In a window
+narrower than 640 px a slide would be too small to read, so the pinned blocks follow the template in the flow
+instead. The reading view ignores frames.
+
 ### Comments
 
 `comments.json` sits beside the deck and has its own revision, so a comment never changes the deck revision.
@@ -108,7 +115,7 @@ never edits it (ids, kinds and format markers). A new property in the schema fai
 | claim: `text`                                 | Typed on the slide                                            |
 | claim: `evidenceIds`                          | Evidence chip in the claim's toolbar                          |
 | deck: `title`, `language`, `theme`, `modules` | Deck popover in the top bar                                   |
-| any block: `frame`                            | Not yet: pinning is the next part of phase 4                  |
+| any block: `frame`                            | Not yet: drawn by the player, no editor control until step 12 |
 
 Clip markers are not part of the deck. They live in the cue map beside the video, so the schema-walk test does not
 see them and they are not in the deck's Undo. The editor writes a marker to the file as soon as it is made, after
