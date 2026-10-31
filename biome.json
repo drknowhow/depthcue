@@ -13,6 +13,8 @@
       "!packages/core/schema",
       "!brand/tokens.css",
       "!site/content",
+      "!docs/demo/demo.json",
+      "!docs/demo/transcript.json",
       "!pnpm-lock.yaml"
     ]
   },
