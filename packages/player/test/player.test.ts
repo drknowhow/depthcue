@@ -250,6 +250,26 @@ describe("motion", () => {
     }
   });
 
+  it("does not report the rejection of a view transition that a newer one skipped", async () => {
+    // Pressing a key before the last animation ends skips it, and the browser rejects its `ready` promise.
+    const start = vi.fn((render: () => void) => {
+      render();
+      return { ready: Promise.reject(new DOMException("Transition was skipped", "AbortError")) };
+    });
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", record);
+    Object.defineProperty(document, "startViewTransition", { value: start, configurable: true });
+    try {
+      mount({ reducedMotion: false }).next();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+      Reflect.deleteProperty(document, "startViewTransition");
+    }
+  });
+
   it("changes scenes directly under reduced motion", () => {
     const start = vi.fn();
     Object.defineProperty(document, "startViewTransition", { value: start, configurable: true });
