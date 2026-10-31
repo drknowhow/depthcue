@@ -49,7 +49,7 @@ export interface LayoutMeasure {
  */
 export async function measureLayout(): Promise<LayoutMeasure> {
   await document.fonts.ready;
-  const images = [...document.querySelectorAll<HTMLImageElement>(".dc-scene img")];
+  const images = [...document.querySelectorAll<HTMLImageElement>(".dc-scene img:not(.dc-ghost img)")];
   await Promise.all(images.map((image) => image.decode().catch(() => undefined)));
 
   const view = document.querySelector<HTMLElement>(".dc-view");

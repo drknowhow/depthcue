@@ -283,6 +283,38 @@ describe("the measuring function", () => {
   );
 
   it(
+    "leaves out the ghost a pinned block keeps in the template: no box, no overlap, no second picture",
+    withRenderer(async () => {
+      const browser = await launchBrowser();
+      try {
+        const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
+        await page.setContent(`
+          <style>
+            body { margin: 0; }
+            .dc-view { position: absolute; inset: 0; overflow: auto; }
+            .dc-scene { position: relative; min-height: 100%; }
+            .box { position: absolute; width: 200px; height: 100px; background: #ddd; }
+            .dc-ghost { visibility: hidden; }
+          </style>
+          <div class="dc-view"><section class="dc-scene">
+            <div class="dc-block box" data-id="plain" style="left:10px;top:10px">plain</div>
+            <div class="dc-ghost box" aria-hidden="true" style="left:100px;top:50px">the room of a pinned text</div>
+            <figure class="dc-ghost" aria-hidden="true" style="position:absolute;left:400px;top:200px">
+              <img src="data:image/png;base64,AAAA" alt="the room of a pinned picture">
+            </figure>
+          </section></div>`);
+        const measure = await page.evaluate(measureLayout);
+        expect(measure.boxes.map((box) => box.id)).toEqual(["plain"]);
+        expect(measure.overlaps).toEqual([]);
+        expect(measure.images).toEqual([]);
+      } finally {
+        await browser.close();
+      }
+    }),
+    60_000,
+  );
+
+  it(
     "sees overlap, clipping, a cut-off block and a missing image in a hand-built page",
     withRenderer(async () => {
       const browser = await launchBrowser();

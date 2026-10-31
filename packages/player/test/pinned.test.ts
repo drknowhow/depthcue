@@ -15,6 +15,12 @@ const chart = { id: "t-chart", type: "bar-chart", data: [{ label: "A", value: 1 
 const idsIn = (parent: Element | null | undefined) =>
   [...(parent?.children ?? [])].map((child) => (child as HTMLElement).dataset.id);
 
+/** What a region holds, in order: a block by its id, or "ghost" for the room a pinned block left. */
+const placesIn = (parent: Element | null | undefined) =>
+  [...(parent?.children ?? [])].map((child) =>
+    child.classList.contains("dc-ghost") ? "ghost" : (child as HTMLElement).dataset.id,
+  );
+
 describe("a scene with no frame", () => {
   it("is drawn as before: no slide, no layer for pins", () => {
     const section = renderScene(sceneWith({ schemaVersion: "0.2", blocks: [heading, body] }), ctx);
@@ -64,10 +70,63 @@ describe("a pinned block", () => {
     ]);
   });
 
-  it("leaves the template's regions, and the rest of the scene is laid out without it", () => {
+  it("leaves the template's regions, and keeps its place in them as a ghost, so nothing else moves", () => {
     const section = renderScene(scene, ctx);
-    expect(idsIn(section.querySelector(".dc-stack"))).toEqual(["t-heading"]);
+    expect(placesIn(section.querySelector(".dc-stack"))).toEqual(["t-heading", "ghost"]);
     expect(section.querySelector(".dc-stack [data-id='t-body']")).toBeNull();
+  });
+
+  it("leaves a ghost with its own content, so the room is the room it would have taken", () => {
+    const ghost = renderScene(scene, ctx).querySelector<HTMLElement>(".dc-stack .dc-ghost");
+    expect(ghost?.tagName).toBe("P");
+    expect(ghost?.className).toBe("dc-body dc-ghost");
+    expect(ghost?.textContent).toBe("Words");
+  });
+
+  it("leaves a ghost that has no id, is no block, and cannot be seen, heard, reached or found", () => {
+    const section = renderScene(
+      sceneWith({
+        schemaVersion: "0.2",
+        steps: [{ id: "step-one", reveal: ["t-body"] }],
+        blocks: [heading, { ...body, frame }],
+      }),
+      ctx,
+    );
+    const ghost = section.querySelector<HTMLElement>(".dc-ghost");
+    expect(ghost?.hasAttribute("data-id")).toBe(false);
+    expect(ghost?.hasAttribute("data-gated")).toBe(false);
+    expect(ghost?.hasAttribute("data-revealed")).toBe(false);
+    expect(ghost?.classList.contains("dc-block")).toBe(false);
+    expect(ghost?.getAttribute("aria-hidden")).toBe("true");
+    expect(ghost?.hasAttribute("inert")).toBe(true);
+    expect(section.querySelectorAll("[data-id='t-body']").length).toBe(1);
+    expect(section.querySelectorAll(".dc-block").length).toBe(2);
+  });
+
+  it("leaves a ghost in the place the block has in block order", () => {
+    const section = renderScene(
+      sceneWith({
+        schemaVersion: "0.2",
+        blocks: [{ ...body, id: "first", frame }, heading, { ...body, id: "third", frame }],
+      }),
+      ctx,
+    );
+    expect(placesIn(section.querySelector(".dc-stack"))).toEqual(["ghost", "t-heading", "ghost"]);
+  });
+
+  it("leaves a ghost of a picture with its picture, and of a chart with its table", () => {
+    const section = renderScene(
+      sceneWith({
+        schemaVersion: "0.2",
+        blocks: [
+          { ...image, frame },
+          { ...chart, frame },
+        ],
+      }),
+      ctx,
+    );
+    const ghosts = [...section.querySelectorAll<HTMLElement>(".dc-stack .dc-ghost")];
+    expect(ghosts.map((ghost) => ghost.querySelector("img, table")?.tagName)).toEqual(["IMG", "TABLE"]);
   });
 
   it("is a block like any other: identified, gated by a step, and cited", () => {
@@ -118,7 +177,7 @@ describe("a pinned block", () => {
 });
 
 describe("a pinned block in each template", () => {
-  it("leaves the evidence region of claim-evidence, though the claim still cites it", () => {
+  it("keeps its room in the evidence region of claim-evidence, though the claim still cites it", () => {
     const section = renderScene(
       sceneWith({
         schemaVersion: "0.2",
@@ -128,11 +187,11 @@ describe("a pinned block in each template", () => {
       }),
       ctx,
     );
-    expect(idsIn(section.querySelector(".dc-evidence-region"))).toEqual(["t-image"]);
+    expect(placesIn(section.querySelector(".dc-evidence-region"))).toEqual(["ghost", "t-image"]);
     expect(section.querySelector(".dc-pins [data-id='t-chart']")).not.toBeNull();
   });
 
-  it("leaves the support region of claim-evidence", () => {
+  it("keeps its room in the support region of claim-evidence", () => {
     const section = renderScene(
       sceneWith({
         schemaVersion: "0.2",
@@ -142,11 +201,11 @@ describe("a pinned block in each template", () => {
       }),
       ctx,
     );
-    expect(section.querySelector(".dc-support-region")?.children.length).toBe(0);
+    expect(placesIn(section.querySelector(".dc-support-region"))).toEqual(["ghost"]);
     expect(section.querySelector(".dc-pins [data-id='t-body']")).not.toBeNull();
   });
 
-  it("takes a pinned heading out of the claim region when there is no claim", () => {
+  it("keeps the room of a pinned heading in the claim region when there is no claim", () => {
     const section = renderScene(
       sceneWith({
         schemaVersion: "0.2",
@@ -155,11 +214,11 @@ describe("a pinned block in each template", () => {
       }),
       ctx,
     );
-    expect(section.querySelector(".dc-claim-region")?.children.length).toBe(0);
+    expect(placesIn(section.querySelector(".dc-claim-region"))).toEqual(["ghost"]);
     expect(section.querySelector(".dc-pins [data-id='t-heading']")).not.toBeNull();
   });
 
-  it("drops the media region of text-media when every picture is pinned", () => {
+  it("keeps the media region of text-media when every picture is pinned, with the room of the picture", () => {
     const section = renderScene(
       sceneWith({
         schemaVersion: "0.2",
@@ -168,12 +227,12 @@ describe("a pinned block in each template", () => {
       }),
       ctx,
     );
-    expect(section.querySelector(".dc-media-region")).toBeNull();
-    expect(idsIn(section.querySelector(".dc-text-region"))).toEqual(["t-heading"]);
+    expect(placesIn(section.querySelector(".dc-media-region"))).toEqual(["ghost"]);
+    expect(placesIn(section.querySelector(".dc-text-region"))).toEqual(["t-heading"]);
     expect(section.querySelector(".dc-pins img")).not.toBeNull();
   });
 
-  it("keeps the unpinned picture of text-media in its region", () => {
+  it("keeps the unpinned picture of text-media in its region, and the room of a pinned heading in its own", () => {
     const section = renderScene(
       sceneWith({
         schemaVersion: "0.2",
@@ -182,8 +241,30 @@ describe("a pinned block in each template", () => {
       }),
       ctx,
     );
-    expect(idsIn(section.querySelector(".dc-media-region"))).toEqual(["t-image"]);
-    expect(idsIn(section.querySelector(".dc-text-region"))).toEqual([]);
+    expect(placesIn(section.querySelector(".dc-media-region"))).toEqual(["t-image"]);
+    expect(placesIn(section.querySelector(".dc-text-region"))).toEqual(["ghost"]);
+  });
+
+  it("lays out every block as it would without a pin: the same places in the same regions", () => {
+    const blocks = [heading, body, image, chart];
+    const places = (layout: "stack" | "text-media" | "claim-evidence", pinned: boolean) => {
+      const section = renderScene(
+        sceneWith({
+          schemaVersion: "0.2",
+          layout,
+          summary: { id: "the-claim", text: "A claim.", evidenceIds: ["t-chart"] },
+          blocks: blocks.map((block) => (pinned ? { ...block, frame } : block)),
+        }),
+        ctx,
+      );
+      return [...section.querySelectorAll(".dc-region")].map((region) => [
+        region.className,
+        [...region.children].map((child) => child.tagName),
+      ]);
+    };
+    for (const layout of ["stack", "text-media", "claim-evidence"] as const) {
+      expect(places(layout, true)).toEqual(places(layout, false));
+    }
   });
 });
 

@@ -46,11 +46,13 @@ block id, `block.frame` (all four numbers) and `block.unframe`; `block.set` with
 stays at 0.2 after its last frame is cleared.
 
 The player and an exported page draw a scene with a pinned block as a 16 by 9 slide, centered in the window. A
-pinned block leaves the template's regions and sits at its frame in a layer over the slide, in block order; the
-template lays out the other blocks as if it were not there, and a media column left with nothing is dropped.
-Type scales with the slide's width, so a frame holds the same text on a laptop and a projector. In a window
-narrower than 640 px a slide would be too small to read, so the pinned blocks follow the template in the flow
-instead. The reading view ignores frames.
+pinned block sits at its frame in a layer over the slide, in block order, and keeps its place in the template: the
+template lays out every block as it would without the pins and leaves a gap where a pinned one was, so pinning a block
+moves nothing else. The gap closes when the block goes back to its slot or is deleted. A media column that holds only
+a pinned picture keeps its width. The gap is a copy of the block that has no id and is hidden from sight, readers and
+keyboard. Type scales with the slide's width, so a frame holds the same text on a laptop and a projector. In a window
+narrower than 640 px a slide would be too small to read, so the pinned blocks follow the template in the flow instead,
+and no gap is kept. The reading view ignores frames.
 
 Three checks look at frames. `depthcue check` warns with `frame-outside-safe-area` when a text or chart frame reaches
 into the 4% margin at any edge; a picture or a clip may bleed. `depthcue render` and `deck_render` measure the real
