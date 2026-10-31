@@ -8,7 +8,7 @@ both can present. A deck is typed JSON with stable ids, so it can be generated, 
 by hand, and read afterwards as a document.
 
 **Status: 0.1, before release.** Nothing is published to npm yet, so you run it from a clone. The deck schema is
-0.1 and can still change. [The plan](docs/PLAN.md) has the thesis, the architecture and the roadmap to 1.0.
+0.2 (decks written for 0.1 still load) and can still change. [The plan](docs/PLAN.md) has the thesis, the architecture and the roadmap to 1.0.
 
 ## What works today
 

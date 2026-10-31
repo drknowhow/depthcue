@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { deckSchema, sceneSchema } from "@depthcue/core";
+import { deckSchema, OP_NAMES, sceneSchema } from "@depthcue/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -78,7 +78,7 @@ describe("the tool list", () => {
     const apply = (await client.listTools()).tools.find((tool) => tool.name === "deck_apply");
     const schema = apply?.inputSchema as any;
     expect(schema.required).toEqual(["ops", "base_rev"]);
-    expect(schema.properties.ops.items.oneOf).toHaveLength(9);
+    expect(schema.properties.ops.items.oneOf).toHaveLength(OP_NAMES.length);
     expect(schema.additionalProperties).toBe(false);
   });
 

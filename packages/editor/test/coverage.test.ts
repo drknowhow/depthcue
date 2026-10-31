@@ -125,13 +125,29 @@ interface Way {
   where: string;
   reach(): Element | null | undefined;
 }
-type Entry = Way | { never: string };
+type Entry = Way | { never: string } | { pending: string };
 
 const NEVER_FORMAT = "A format marker the editor writes back as it found it.";
 const NEVER_ID = "Chosen when the thing is created, and other things point at it, so it does not change.";
 const NEVER_KIND = "The kind of a block is fixed when it is added.";
 
+/**
+ * The format has a block `frame` before the editor can draw one: schema 0.2 lands first, and pinning (the Free
+ * toggle, `P`, drag and resize on the slide) follows in the same phase of docs/EDITOR_REMAKE.md. Each entry here
+ * becomes a `where` when that lands; the test below keeps this list to frames so it cannot collect other gaps.
+ */
+const PENDING_FRAME = "Pinning, the next part of phase 4 in docs/EDITOR_REMAKE.md, adds the control.";
+const PENDING_FRAMES = Object.fromEntries(
+  ["text", "image", "bar-chart", "clip"].flatMap((kind) =>
+    ["frame", "frame.x", "frame.y", "frame.w", "frame.h"].map((name) => [
+      `scene.blocks<${kind}>.${name}`,
+      { pending: PENDING_FRAME },
+    ]),
+  ),
+) as Record<string, Entry>;
+
 const WAYS: Record<string, Entry> = {
+  ...PENDING_FRAMES,
   "deck.$schema": { never: NEVER_FORMAT },
   "deck.schemaVersion": { never: NEVER_FORMAT },
   "deck.id": { never: NEVER_ID },
@@ -375,6 +391,7 @@ describe("every property of a deck can be edited", () => {
         "scene.summary.evidenceIds",
         "scene.blocks<clip>.poster",
         "scene.blocks<bar-chart>.data[].value",
+        "scene.blocks<clip>.frame.w",
         "scene.steps[].reveal",
       ]),
     );
@@ -384,6 +401,17 @@ describe("every property of a deck can be edited", () => {
     for (const [path, entry] of Object.entries(WAYS)) {
       if ("never" in entry) expect(entry.never.length, path).toBeGreaterThan(10);
     }
+  });
+
+  it("lets only a block's frame wait for its control", () => {
+    const waiting = Object.entries(WAYS)
+      .filter(([, entry]) => "pending" in entry)
+      .map(([path]) => path);
+    expect(waiting.length).toBeGreaterThan(0);
+    expect(
+      waiting.filter((path) => !/^scene\.blocks<[a-z-]+>\.frame(\.[xywh])?$/.test(path)),
+      "Only frames may wait; every other property needs a control, or a reason a person never edits it.",
+    ).toEqual([]);
   });
 
   const edited = Object.entries(WAYS).filter((pair): pair is [string, Way] => "where" in pair[1]);

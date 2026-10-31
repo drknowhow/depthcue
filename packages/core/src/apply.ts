@@ -1,5 +1,6 @@
 import { closest, explain } from "./diagnostics.ts";
 import { checkChanges, type Doc, revisionOf, sceneRevision } from "./doc.ts";
+import { type Frame, hasFrames } from "./frames.ts";
 import { validateOps } from "./generated/validators.js";
 import { canonicalJson } from "./revision.ts";
 import { ID_PATTERN, opsSchema, SCHEMA_VERSION } from "./schema.ts";
@@ -27,7 +28,9 @@ export type Op =
   | { op: "block.add"; scene: string; block: Block; after?: string | null }
   | { op: "block.remove"; scene: string; id: string }
   | { op: "block.move"; scene: string; id: string; after: string | null }
-  | { op: "block.set"; scene: string; id: string; set: BlockChanges };
+  | { op: "block.set"; scene: string; id: string; set: BlockChanges }
+  | { op: "block.frame"; scene: string; id: string; frame: Frame }
+  | { op: "block.unframe"; scene: string; id: string };
 
 export type ApplyFailureCode =
   /** `baseRev` is not the document's current revision. Read it again and redo the edit. */
@@ -205,6 +208,34 @@ function sceneOf(work: Work, index: number, id: string): Scene | Diagnostic {
     : unknownId(index, "/scene", id, "scene", work.deck.scenes);
 }
 
+/** The scene and block an operation names, or what is wrong with naming them. */
+function blockOf(
+  work: Work,
+  index: number,
+  sceneId: string,
+  id: string,
+): { scene: Scene; block: Block } | Diagnostic {
+  const scene = sceneOf(work, index, sceneId);
+  if (isProblem(scene)) return scene;
+  const block = scene.blocks.find((candidate) => candidate.id === id);
+  if (block) return { scene, block };
+  return unknownId(
+    index,
+    "/id",
+    id,
+    "block",
+    scene.blocks.map((candidate) => candidate.id),
+  );
+}
+
+/** Puts `next` where `block` was in the scene. */
+function rewrite(work: Work, scene: Scene, block: Block, next: Block) {
+  work.scenes[scene.id] = {
+    ...scene,
+    blocks: scene.blocks.map((candidate) => (candidate === block ? next : candidate)),
+  };
+}
+
 function step(work: Work, op: Op, index: number): Diagnostic | undefined {
   switch (op.op) {
     case "deck.set": {
@@ -312,17 +343,8 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
       return undefined;
     }
     case "block.set": {
-      const scene = sceneOf(work, index, op.scene);
-      if (isProblem(scene)) return scene;
-      const found = scene.blocks.find((block) => block.id === op.id);
-      if (!found)
-        return unknownId(
-          index,
-          "/id",
-          op.id,
-          "block",
-          scene.blocks.map((block) => block.id),
-        );
+      const named = blockOf(work, index, op.scene, op.id);
+      if (isProblem(named)) return named;
       for (const key of ["id", "type"]) {
         if (has(op.set, key)) {
           return problem(
@@ -334,15 +356,27 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
           );
         }
       }
-      const next = patch(found, op.set);
-      work.scenes[op.scene] = {
-        ...scene,
-        blocks: scene.blocks.map((block) => (block === found ? next : block)),
-      };
+      rewrite(work, named.scene, named.block, patch(named.block, op.set));
+      return undefined;
+    }
+    case "block.frame":
+    case "block.unframe": {
+      const named = blockOf(work, index, op.scene, op.id);
+      if (isProblem(named)) return named;
+      rewrite(
+        work,
+        named.scene,
+        named.block,
+        patch(named.block, { frame: op.op === "block.frame" ? op.frame : null }),
+      );
       return undefined;
     }
   }
 }
+
+/** A scene that has a frame says schema 0.2. The tool writes that, as it does the version of a new scene. */
+const declareFrames = (scene: Scene): Scene =>
+  scene.schemaVersion === "0.1" && hasFrames(scene) ? { ...scene, schemaVersion: SCHEMA_VERSION } : scene;
 
 function fail(code: ApplyFailureCode, rev: string, diagnostics: Diagnostic[]): ApplyFailure {
   return { ok: false, code, rev, diagnostics };
@@ -377,6 +411,10 @@ export function applyOps(doc: Doc, ops: unknown, baseRev: string): ApplyResult {
   for (const [index, op] of (ops as Op[]).entries()) {
     const bad = step(work, op, index);
     if (bad) return fail("bad-op", prevRev, [bad]);
+  }
+
+  for (const [id, scene] of Object.entries(work.scenes)) {
+    if (scene !== doc.scenes[id]) work.scenes[id] = declareFrames(scene);
   }
 
   const next: Doc = { deck: work.deck, scenes: work.scenes, assets: doc.assets };

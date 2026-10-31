@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "urn:depthcue:schema:0.1:deck",
+  "$id": "urn:depthcue:schema:0.2:deck",
   "title": "Depthcue deck manifest",
   "type": "object",
   "additionalProperties": false,
@@ -18,7 +18,10 @@
       "maxLength": 300
     },
     "schemaVersion": {
-      "const": "0.1"
+      "enum": [
+        "0.1",
+        "0.2"
+      ]
     },
     "id": {
       "type": "string",
