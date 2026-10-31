@@ -807,6 +807,28 @@ body {
   margin-bottom: var(--dc-space-2);
 }
 
+/* The row under the slide that adds to it, and holds the scene's notes. Its popover opens upward. */
+.ed-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dc-space-2);
+}
+
+.ed-quick-label {
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.ed-quick .ed-tb-pop {
+  z-index: 5;
+}
+
+.ed-quick .ed-tb-form {
+  width: min(24rem, calc(100vw - 4rem));
+}
+
 .ed-app .ed-tb-mini {
   min-width: 1.75rem;
   min-height: 2.25rem;

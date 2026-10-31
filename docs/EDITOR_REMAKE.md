@@ -74,22 +74,24 @@ resolve, through the same core commands the editor uses. A stale revision is ref
 ## Where each property is edited
 
 Every property the schema defines gets a control on the slide or in a floating toolbar. The details panel keeps
-all of them until phase 2 takes it out. This table says where each one is edited now, and each change that moves
+all of them until it is taken out. This table says where each one is edited now, and each change that moves
 a property updates it. The schema-walk test replaces it once phase 2 lands.
 
-| Property                                      | Where                                               |
-| --------------------------------------------- | --------------------------------------------------- |
-| text: `role`, `text`                          | Role menu in the toolbar; text typed on the slide   |
-| text, chart, image, clip: `sourceIds`         | Cite chip in the toolbar                            |
-| chart: `title`, `unit`, `data`                | Data popover: fields, add, remove, move, sort       |
-| image: `asset`, `alt`, `caption`              | Edit popover: file menu, upload, alt text, caption  |
-| clip: `source`, `poster`, `alt`               | Edit popover: video menu, poster menu, alt text     |
-| scene: `layout`, `lead`                       | Buttons in the top bar                              |
-| scene: `title`, `steps`, `sources`            | Scene popover in the top bar: title, steps, sources |
-| claim: `text`                                 | Typed on the slide                                  |
-| claim: `evidenceIds`                          | Evidence chip in the claim's toolbar                |
-| scene: `notes`, `reading`                     | Details panel                                       |
-| deck: `title`, `language`, `theme`, `modules` | Details panel                                       |
+| Property                                      | Where                                                        |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| text: `role`, `text`                          | Role menu in the toolbar; text typed on the slide            |
+| text, chart, image, clip: `sourceIds`         | Cite chip in the toolbar                                     |
+| chart: `title`, `unit`, `data`                | Data popover: fields, add, remove, move, sort                |
+| image: `asset`, `alt`, `caption`              | Edit popover: file menu, upload, alt text, caption           |
+| clip: `source`, `poster`, `alt`               | Edit popover: video menu, poster menu, alt text              |
+| block order                                   | Earlier and later buttons in the toolbar                     |
+| new blocks, claim: `summary`                  | Add row under the slide: Text, Image, Chart, Clip, Claim     |
+| scene: `layout`, `lead`                       | Buttons in the top bar                                       |
+| scene: `title`, `steps`, `sources`            | Scene popover in the top bar: title, steps, sources          |
+| scene: `notes`, `reading`                     | Notes popover in the add row: speaker notes, reading version |
+| claim: `text`                                 | Typed on the slide                                           |
+| claim: `evidenceIds`                          | Evidence chip in the claim's toolbar                         |
+| deck: `title`, `language`, `theme`, `modules` | Deck popover in the top bar                                  |
 
 ## Phases
 

@@ -1,8 +1,11 @@
 import type { ApplyOptions, Op } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { createCanvas } from "./canvas.ts";
+import { popoverChip } from "./chip.ts";
 import type { Edits } from "./fields.ts";
 import { createInspector } from "./inspector.ts";
+import { deckPanel, panelHost } from "./panels.ts";
+import { createQuickBar } from "./quickbar.ts";
 import { createSceneBar } from "./scenebar.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
 import { createStrip } from "./strip.ts";
@@ -40,7 +43,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   let selected = session.doc.deck.scenes[0] as string;
   let selectedBlock: string | undefined;
   // The form that is applying a keystroke right now, so that one is not rebuilt under the caret.
-  let typingIn: "inspector" | "toolbar" | "scene" | undefined;
+  let typingIn: "inspector" | "toolbar" | "scene" | "quick" | "deck" | undefined;
   let detailsOpen = false;
 
   const editsFor = (form: NonNullable<typeof typingIn>): Edits => ({
@@ -103,6 +106,17 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     "aria-expanded": "false",
     "aria-controls": "ed-details",
   });
+  const deckChip = popoverChip(
+    deckPanel(
+      panelHost(session, {
+        edits: editsFor("deck"),
+        upload: (file) => store.upload(file),
+        problem: showProblem,
+        close: () => deckChip.close(),
+        openSources: () => sceneBar.open("sources"),
+      }),
+    ),
+  );
   const present = h(
     "a",
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
@@ -118,11 +132,27 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     { class: "ed-bar" },
     deckTitle,
     sceneBar.element,
-    h("div", { class: "ed-actions" }, undo, redo, status, retry, details, present),
+    h("div", { class: "ed-actions" }, undo, redo, status, retry, deckChip.chip.wrap, details, present),
   );
   const notices = h("div", { class: "ed-notices" });
   const strip = createStrip(session, { select: (id) => select(id), act: edits.act });
-  const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
+  const quick = createQuickBar(session, {
+    edits: editsFor("quick"),
+    problem: showProblem,
+    upload: (file) => store.upload(file),
+    block: () => selectedBlock,
+    added(id) {
+      selectBlock(id);
+      canvas.focusBlock(id);
+    },
+  });
+  const stage = h(
+    "main",
+    { class: "ed-main", "aria-label": "Scene preview" },
+    canvas.element,
+    hint,
+    quick.element,
+  );
   inspector.element.id = "ed-details";
   const root = h("div", { class: "ed-app" }, bar, notices, strip.element, stage, inspector.element);
   host.replaceChildren(root);
@@ -155,6 +185,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
           : SAVE_LABEL[state.save];
     present.setAttribute("href", `/present#/${encodeURIComponent(selected)}`);
     sceneBar.render(selected, typingIn === "scene");
+    quick.render(selected, typingIn === "quick");
+    const live = session.doc.scenes[selected];
+    if (live) deckChip.fill(live, typingIn === "deck");
   }
 
   function renderNotices() {
@@ -277,14 +310,15 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderNotices();
   });
 
-  // A click on the stage that lands on no block, and not on the toolbar, lets go of the choice.
+  // A click on the stage that lands on no block, and not on the toolbar or the add row, lets go of the choice.
   // This runs while the click is still on its way down, before the target's own handler. A button in the toolbar can
   // be gone by the time the click bubbles back up, because the removal it caused redrew the toolbar.
   stage.addEventListener(
     "click",
     (event) => {
       const target = event.target;
-      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar")) selectBlock(undefined);
+      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar, .ed-quick"))
+        selectBlock(undefined);
     },
     true,
   );
@@ -310,6 +344,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       unsubscribeStore();
       strip.destroy();
       sceneBar.destroy();
+      quick.destroy();
+      deckChip.destroy();
       toolbar.destroy();
       host.replaceChildren();
     },

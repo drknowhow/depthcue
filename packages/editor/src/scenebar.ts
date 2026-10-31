@@ -1,6 +1,6 @@
 import { LEADS, type Session } from "@depthcue/core";
 import { h } from "@depthcue/player";
-import { buildChip, fillChip, fitPopover, hidePopover, showPopover } from "./chip.ts";
+import { popoverChip } from "./chip.ts";
 import { type Edits, problemOf } from "./fields.ts";
 import { panelHost, scenePanel } from "./panels.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL } from "./templates.ts";
@@ -103,67 +103,34 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
     edits: hooks.edits,
     upload: hooks.upload,
     problem: hooks.problem,
-    close: () => close(),
+    close: () => popover.close(),
     openSources: () => open("sources"),
   });
   const panel = scenePanel(host, () => current);
-  const chip = buildChip(panel);
-  let isOpen = false;
-
-  function close(giveBack = false) {
-    if (!isOpen) return;
-    isOpen = false;
-    hidePopover(chip);
-    if (giveBack) chip.button.focus();
-  }
-
-  // The popover grows and shrinks as sections open and rows are added, so it is fitted again each time.
-  const fit = () =>
-    fitPopover(
-      chip.pop,
-      { left: 0, right: document.documentElement.clientWidth, top: 0, bottom: window.innerHeight },
-      false,
-    );
+  const popover = popoverChip(panel);
 
   function open(section?: "steps" | "sources") {
-    isOpen = true;
-    showPopover(chip, null, fit);
+    popover.open();
     if (section) panel.reveal(section);
   }
-  // A details element reports its own opening and closing, and that event does not bubble.
-  chip.pop.addEventListener("toggle", () => isOpen && fit(), true);
-
-  chip.button.addEventListener("click", () => (isOpen ? close() : open()));
-  chip.wrap.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || !isOpen) return;
-    event.stopPropagation();
-    close(true);
-  });
-  const onPointerDown = (event: PointerEvent) => {
-    if (isOpen && !(event.target instanceof Node && chip.wrap.contains(event.target))) close();
-  };
-  document.addEventListener("pointerdown", onPointerDown);
 
   const element = h(
     "div",
     { class: "ed-scene-tools" },
     h("div", { class: "ed-seg", role: "group", "aria-label": "Who leads this scene" }, ...leads),
     h("div", { class: "ed-seg", role: "group", "aria-label": "Layout of this scene" }, ...layouts),
-    chip.wrap,
+    popover.chip.wrap,
   );
 
   return {
     element,
     open,
-    destroy() {
-      document.removeEventListener("pointerdown", onPointerDown);
-    },
+    destroy: popover.destroy,
     render(sceneId, typing = false) {
       current = sceneId;
       const scene = session.doc.scenes[sceneId];
       if (!scene) return;
-      fillChip(chip, scene, typing);
-      if (isOpen) fit();
+      popover.fill(scene, typing);
       // A scene with no lead set is led by a human, which is what the strip and the player say too.
       const lead = scene.lead ?? "human";
       for (const node of leads) node.setAttribute("aria-pressed", String(node.dataset.lead === lead));
