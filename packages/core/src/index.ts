@@ -23,6 +23,7 @@ export {
   ID_PATTERN,
   LAYOUTS,
   LEADS,
+  MODULE_SETTING_PATTERN,
   OP_NAMES,
   opsSchema,
   SCHEMA_VERSION,

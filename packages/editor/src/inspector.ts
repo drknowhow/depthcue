@@ -10,7 +10,7 @@ import {
   TEXT_ROLES,
   THEMES,
 } from "@depthcue/core";
-import { h } from "@depthcue/player";
+import { firstPartyManifests, h } from "@depthcue/player";
 import { afterWhenMoving, removeBlock, removeClaim, removeSource } from "./cleanup.ts";
 import {
   actionButton,
@@ -181,7 +181,52 @@ export function createInspector(host: InspectorHost): Inspector {
         read: () => deck().theme,
         commit: (value) => ({ op: "deck.set", set: { theme: value as (typeof THEMES)[number] } }),
       }),
+      ...moduleFields(),
     );
+  }
+
+  /** What the deck asks of each module: nothing (automatic), off, or at least the installed version. */
+  function moduleFields() {
+    const settings = () => doc().deck.modules ?? {};
+    const setModules = (modules: Record<string, string>): Op => ({
+      op: "deck.set",
+      set: { modules: Object.keys(modules).length > 0 ? modules : null },
+    });
+    const without = (id: string) =>
+      Object.fromEntries(Object.entries(settings()).filter(([key]) => key !== id));
+    const installed = new Set(firstPartyManifests.map((manifest) => manifest.id));
+    const unknown = Object.keys(settings()).filter((id) => !installed.has(id));
+    return [
+      ...firstPartyManifests.map((manifest) =>
+        selectField(edits, {
+          key: `deck:module:${manifest.id}`,
+          label: manifest.title,
+          empty: "Automatic",
+          options: [
+            { value: "off", label: "Off: show it as a plain chart" },
+            { value: manifest.version, label: `Needs version ${manifest.version} or newer` },
+          ],
+          read: () => settings()[manifest.id] ?? "",
+          commit: (value) =>
+            setModules(value === "" ? without(manifest.id) : { ...settings(), [manifest.id]: value }),
+        }),
+      ),
+      ...unknown.map((id) =>
+        h(
+          "div",
+          { class: "ed-field", "data-module": id },
+          h(
+            "p",
+            { class: "ed-hint-text" },
+            `${id} (${settings()[id]}) is not installed here, so the player ignores it.`,
+          ),
+          actionButton("Remove", () => run([setModules(without(id))]), {
+            "data-field": `deck:module:${id}:remove`,
+            "aria-label": `Remove the setting for ${id}`,
+          }),
+        ),
+      ),
+    ];
   }
 
   // Scene

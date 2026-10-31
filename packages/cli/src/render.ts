@@ -130,6 +130,10 @@ export async function openRenderer(folder: string): Promise<Renderer> {
             `The player did not show scene "${scene}".${problems.length > 0 ? ` Page errors: ${problems.join("; ")}` : ""}`,
           );
         }
+        // Modules hydrate a moment after the scene shows; measure and photograph the settled page.
+        await page.evaluate(() =>
+          (window as { depthcue?: { settled(): Promise<void> } }).depthcue?.settled(),
+        );
         const measure = await page.evaluate(measureLayout);
         const png =
           options.screenshot === false

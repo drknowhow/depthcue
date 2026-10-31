@@ -8,6 +8,8 @@ export const ID_PATTERN = "^[a-z][a-z0-9-]{1,63}$";
 export const ASSET_PATTERN = "^assets/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*$";
 export const LANGUAGE_PATTERN = "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$";
 export const URL_PATTERN = "^https?://[^\\s]+$";
+/** What a deck says about a module: `off`, or the version it needs, such as `1` or `1.2`. */
+export const MODULE_SETTING_PATTERN = "^(off|[0-9]{1,4}(\\.[0-9]{1,4}){0,2})$";
 
 export const LAYOUTS = ["title", "claim-evidence", "text-media"] as const;
 export const THEMES = ["paper", "ink"] as const;
@@ -190,7 +192,7 @@ export const deckSchema = {
     modules: {
       type: "object",
       propertyNames: id,
-      additionalProperties: { type: "string", minLength: 1, maxLength: 64 },
+      additionalProperties: { type: "string", pattern: MODULE_SETTING_PATTERN, maxLength: 16 },
     },
   },
 } as const;

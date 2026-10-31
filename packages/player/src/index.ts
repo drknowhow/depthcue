@@ -15,6 +15,20 @@ export {
   revealedIds,
   stepCount,
 } from "./model.ts";
+export { firstPartyModules } from "./modules/index.ts";
+export { firstPartyManifests } from "./modules/manifests.ts";
+export type {
+  HydrateContext,
+  ModuleCode,
+  ModuleEntry,
+  ModuleEvent,
+  ModuleHost,
+  ModuleInstance,
+  ModuleManifest,
+  ModuleRegistry,
+  ModuleState,
+} from "./modules.ts";
+export { createModuleHost, satisfies, settingFor } from "./modules.ts";
 export type { Mode, Player, PlayerOptions, PlayerState } from "./player.ts";
 export { mountPlayer } from "./player.ts";
 export { renderReading } from "./reading.ts";

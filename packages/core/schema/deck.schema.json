@@ -58,8 +58,8 @@
       },
       "additionalProperties": {
         "type": "string",
-        "minLength": 1,
-        "maxLength": 64
+        "pattern": "^(off|[0-9]{1,4}(\\.[0-9]{1,4}){0,2})$",
+        "maxLength": 16
       }
     }
   }

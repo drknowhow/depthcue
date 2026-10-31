@@ -1,5 +1,6 @@
 import "./player.css";
 import { loadDeck } from "./load.ts";
+import { firstPartyModules } from "./modules/index.ts";
 import { mountPlayer, type Player } from "./player.ts";
 
 /**
@@ -12,7 +13,9 @@ async function start(host: HTMLElement) {
   try {
     const source = await loadDeck(base);
     document.title = source.deck.title;
-    player = mountPlayer(host, source);
+    player = mountPlayer(host, source, { modules: firstPartyModules });
+    // Tools that drive the page, such as the renderer, wait on `settled()` and run module commands through it.
+    Object.defineProperty(window, "depthcue", { value: player, configurable: true });
   } catch (error) {
     host.textContent = `The deck could not be loaded: ${(error as Error).message}`;
     host.classList.add("dc-failed");
