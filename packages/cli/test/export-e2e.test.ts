@@ -88,6 +88,53 @@ function exportTo(deck: string, name: string, notes = true): string {
   return pathToFileURL(join(result.summary.out, "index.html")).href;
 }
 
+const frames = {
+  "pin-body": { x: 56, y: 58, w: 38, h: 26 },
+  "pin-image": { x: 6, y: 56, w: 38, h: 38 },
+  "pin-quote": { x: 58, y: 12, w: 36, h: 16 },
+};
+
+/** Adds a scene to the deck whose body, picture and quote are pinned, and whose quote comes with the first step. */
+function addPinnedScene(deck: string): void {
+  const deckFile = join(deck, "deck.json");
+  const manifest = JSON.parse(readFileSync(deckFile, "utf8"));
+  writeFileSync(deckFile, JSON.stringify({ ...manifest, scenes: [...manifest.scenes, "pinned"] }));
+  writeFileSync(
+    join(deck, "scenes", "pinned.json"),
+    JSON.stringify({
+      schemaVersion: "0.2",
+      id: "pinned",
+      title: "Pinned",
+      layout: "text-media",
+      blocks: [
+        { id: "pin-heading", type: "text", role: "heading", text: "A heading that stays in the template" },
+        {
+          id: "pin-body",
+          type: "text",
+          role: "body",
+          text: "A paragraph pinned to the lower right.",
+          frame: frames["pin-body"],
+        },
+        {
+          id: "pin-image",
+          type: "image",
+          asset: "assets/method.svg",
+          alt: "A diagram of the method",
+          frame: frames["pin-image"],
+        },
+        {
+          id: "pin-quote",
+          type: "text",
+          role: "quote",
+          text: "Pinned over the top right.",
+          frame: frames["pin-quote"],
+        },
+      ],
+      steps: [{ id: "pin-s1", reveal: ["pin-quote"] }],
+    }),
+  );
+}
+
 beforeEach(async (test) => {
   if (!browser) {
     console.warn(`Skipped: ${skipReason}`);
@@ -277,5 +324,106 @@ describe("an exported deck opened from a folder with the network off", () => {
     await page.waitForTimeout(200);
     expect(await page.evaluate(() => (window as unknown as { owned?: number }).owned)).toBeUndefined();
     expect(await page.title()).toBe("</script><img src=x onerror=window.owned=1>");
+  });
+});
+
+describe("an exported scene with pinned blocks", () => {
+  const box = async (selector: string) => {
+    const found = await page.locator(selector).boundingBox();
+    if (!found) throw new Error(`${selector} has no box on the page`);
+    return found;
+  };
+
+  /** Where `id` should be, from the slide's own box and the block's frame. */
+  async function expectAtFrame(id: keyof typeof frames) {
+    const slide = await box(".dc-scene[data-scene='pinned']");
+    const frame = frames[id];
+    const found = await box(`[data-id='${id}']`);
+    expect(found.x).toBeCloseTo(slide.x + (frame.x / 100) * slide.width, 0);
+    expect(found.y).toBeCloseTo(slide.y + (frame.y / 100) * slide.height, 0);
+    expect(found.width).toBeCloseTo((frame.w / 100) * slide.width, 0);
+    expect(found.height).toBeCloseTo((frame.h / 100) * slide.height, 0);
+  }
+
+  async function openPinned(position = "#/pinned") {
+    addPinnedScene(folder);
+    await page.goto(`${exportTo(folder, "out")}${position}`);
+    await scene("pinned").waitFor();
+    await settled();
+  }
+
+  it("is a 16 by 9 slide, centered in the window, with each block at its frame", async () => {
+    await openPinned("#/pinned/1");
+    const slide = await box(".dc-scene[data-scene='pinned']");
+    expect(slide.width / slide.height).toBeCloseTo(16 / 9, 2);
+    expect(slide.x).toBeCloseTo(0, 0);
+    for (const id of Object.keys(frames) as (keyof typeof frames)[]) await expectAtFrame(id);
+    expect(blocked).toEqual([]);
+    expect(problems).toEqual([]);
+  });
+
+  it("stays 16 by 9 and centered in a window of another shape", async () => {
+    await page.setViewportSize({ width: 1800, height: 700 });
+    await openPinned("#/pinned/1");
+    const slide = await box(".dc-scene[data-scene='pinned']");
+    const stage = await box(".dc-stage");
+    expect(slide.width / slide.height).toBeCloseTo(16 / 9, 2);
+    expect(slide.width).toBeLessThan(1800);
+    expect(slide.x + slide.width / 2).toBeCloseTo(stage.x + stage.width / 2, 0);
+    for (const id of Object.keys(frames) as (keyof typeof frames)[]) await expectAtFrame(id);
+  });
+
+  it("shows a pinned block with its step and not before", async () => {
+    await openPinned();
+    const quote = page.locator("[data-id='pin-quote']");
+    expect(await quote.getAttribute("data-revealed")).toBe("false");
+    expect(await quote.isVisible()).toBe(false);
+    await page.keyboard.press("ArrowRight");
+    await settled();
+    expect(await quote.getAttribute("data-revealed")).toBe("true");
+    expect(await quote.isVisible()).toBe(true);
+    // The block slides in as it appears, so it is measured once that has finished.
+    await quote.evaluate((node) => Promise.all(node.getAnimations().map((animation) => animation.finished)));
+    await expectAtFrame("pin-quote");
+    expect(problems).toEqual([]);
+  });
+
+  it("loads a pinned picture from the folder", async () => {
+    await openPinned("#/pinned/1");
+    await page.waitForFunction(
+      () => document.querySelector<HTMLImageElement>("[data-id='pin-image'] img")?.complete === true,
+    );
+    expect(
+      await page
+        .locator("[data-id='pin-image'] img")
+        .evaluate((node) => (node as HTMLImageElement).naturalWidth),
+    ).toBeGreaterThan(0);
+    expect(problems).toEqual([]);
+  });
+
+  it("gives way to the flow in a window too narrow for a slide, with every block in reach", async () => {
+    await page.setViewportSize({ width: 600, height: 900 });
+    await openPinned("#/pinned/1");
+    for (const id of Object.keys(frames)) {
+      const found = await box(`[data-id='${id}']`);
+      expect(
+        await page.locator(`[data-id='${id}']`).evaluate((node) => getComputedStyle(node).position),
+      ).toBe("static");
+      expect(found.x).toBeGreaterThanOrEqual(0);
+      expect(found.x + found.width).toBeLessThanOrEqual(600);
+    }
+    // The picture keeps a real height instead of collapsing in the flow.
+    expect((await box("[data-id='pin-image'] img")).height).toBeGreaterThan(100);
+    expect(problems).toEqual([]);
+  });
+
+  it("is not pinned in the reading view, which holds the same words as one page", async () => {
+    await openPinned();
+    await page.locator("[data-action='read']").click();
+    await page.locator(".dc-reading").waitFor();
+    const reading = page.locator(".dc-reading-scene[data-scene='pinned']");
+    expect(await reading.textContent()).toContain("A paragraph pinned to the lower right.");
+    expect(await page.locator(".dc-reading .dc-pinned").count()).toBe(0);
+    expect(problems).toEqual([]);
   });
 });

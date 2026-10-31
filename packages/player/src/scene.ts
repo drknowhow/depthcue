@@ -143,12 +143,24 @@ function renderBlock(
 
 const isMedia = (block: Block) => block.type !== "text";
 
-/** One scene as DOM. Every block is present; the player shows and hides gated ones as steps advance. */
+/** Puts a pinned block at its frame: the stylesheet turns these four numbers into a box on the slide. */
+function pin(node: HTMLElement, frame: NonNullable<Block["frame"]>): HTMLElement {
+  node.classList.add("dc-pinned");
+  for (const key of ["x", "y", "w", "h"] as const) node.style.setProperty(`--${key}`, String(frame[key]));
+  return node;
+}
+
+/**
+ * One scene as DOM. Every block is present; the player shows and hides gated ones as steps advance. A pinned block
+ * (one with a `frame`) leaves the template's regions and sits at its frame, in a layer over a 16 by 9 slide, in
+ * block order. The template lays out whatever is left as if the pinned blocks were not there.
+ */
 export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
   const gated = gatedIds(scene);
   const blocks = scene.blocks.map((block) => ({ block, node: renderBlock(scene, block, ctx, gated) }));
   const nodes = (pick: (block: Block) => boolean) =>
-    blocks.filter((entry) => pick(entry.block)).map((e) => e.node);
+    blocks.filter((entry) => !entry.block.frame && pick(entry.block)).map((e) => e.node);
+  const pinned = blocks.flatMap(({ block, node }) => (block.frame ? [pin(node, block.frame)] : []));
 
   let body: HTMLElement[];
   if (scene.layout === "claim-evidence") {
@@ -177,7 +189,7 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
     body = [h("div", { class: "dc-region dc-text-region" }, ...text)];
     if (media.length > 0) body.push(h("div", { class: "dc-region dc-media-region" }, ...media));
   } else {
-    body = [h("div", { class: "dc-region dc-stack" }, ...blocks.map((entry) => entry.node))];
+    body = [h("div", { class: "dc-region dc-stack" }, ...nodes(() => true))];
   }
 
   return h(
@@ -186,11 +198,13 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
       class: "dc-scene",
       "data-layout": scene.layout,
       "data-lead": scene.lead ?? "human",
+      "data-framed": pinned.length > 0,
       "data-scene": scene.id,
       "aria-label": scene.title,
       tabindex: -1,
     },
     ...body,
+    pinned.length > 0 && h("div", { class: "dc-pins" }, ...pinned),
     renderSources(scene, ctx),
   );
 }

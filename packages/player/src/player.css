@@ -82,6 +82,91 @@
   line-height: 1.45;
 }
 
+/*
+ * A scene with a pinned block is a 16 by 9 slide, centered in the stage, and a pinned block is a percent of it. Type
+ * scales with the slide's width, with no floor or ceiling, so a frame holds the same text on a laptop and a projector.
+ * On a narrow stage the slide gives way: the pinned blocks follow the template in the flow, in block order.
+ */
+
+.dc-view:has(> .dc-scene[data-framed]) {
+  display: grid;
+  place-items: center;
+}
+
+.dc-scene[data-framed] {
+  --u: calc(min(100cqw, 100cqh * 16 / 9) * 0.014);
+  position: relative;
+  width: min(100cqw, 100cqh * 16 / 9);
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.dc-pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dc-pinned {
+  position: absolute;
+  left: calc(var(--x) * 1%);
+  top: calc(var(--y) * 1%);
+  width: calc(var(--w) * 1%);
+  height: calc(var(--h) * 1%);
+  margin: 0;
+  pointer-events: auto;
+}
+
+/* Media fills its frame and gives up height before the caption does. */
+.dc-pinned.dc-figure {
+  display: flex;
+  flex-direction: column;
+}
+
+.dc-pinned.dc-figure :is(img, video) {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  height: auto;
+}
+
+@container (max-width: 640px) {
+  .dc-view:has(> .dc-scene[data-framed]) {
+    display: block;
+  }
+
+  .dc-scene[data-framed] {
+    --u: clamp(13px, min(1.45cqw, 2.5cqh), 26px);
+    width: auto;
+    min-height: 100%;
+    aspect-ratio: auto;
+    overflow: visible;
+  }
+
+  .dc-pins {
+    position: static;
+    display: grid;
+    gap: 1.1em;
+    pointer-events: auto;
+  }
+
+  .dc-pinned {
+    position: static;
+    width: auto;
+    height: auto;
+  }
+
+  .dc-pinned.dc-figure {
+    display: block;
+  }
+
+  .dc-pinned.dc-figure :is(img, video) {
+    flex: none;
+    max-height: 62cqh;
+  }
+}
+
 .dc-region {
   display: grid;
   gap: 1.1em;
