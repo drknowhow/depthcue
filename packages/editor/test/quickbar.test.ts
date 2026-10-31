@@ -37,6 +37,12 @@ const typeInto = (node: HTMLTextAreaElement | HTMLInputElement, text: string) =>
   node.dispatchEvent(new Event("input", { bubbles: true }));
 };
 const hintText = () => host.querySelector(".ed-hint")?.textContent ?? "";
+/** What a button says, without the key written on it. */
+const nameOf = (node: Element) => {
+  const copy = node.cloneNode(true) as Element;
+  for (const key of copy.querySelectorAll(".ed-kbd")) key.remove();
+  return copy.textContent;
+};
 
 describe("adding to the slide", () => {
   it("floats at the foot of the stage, with a button for each kind of block and for the claim", () => {
@@ -44,9 +50,26 @@ describe("adding to the slide", () => {
     expect(bar().closest(".ed-stage")).not.toBeNull();
     expect(bar().closest(".ed-main")).toBeNull();
     expect(bar().getAttribute("aria-label")).toBe("Add to this slide");
-    const labels = [...bar().querySelectorAll("[data-quick], .ed-button")].map((node) => node.textContent);
-    expect(labels).toEqual(["Text", "Chart", "Image", "Clip", "Claim", "Build order"]);
+    // The `?` button is last, and what it is called is in its label and not in its text.
+    const labels = [...bar().querySelectorAll("[data-quick], .ed-button")].map(
+      (node) => node.getAttribute("aria-label") ?? nameOf(node),
+    );
+    expect(labels).toEqual(["Text", "Chart", "Image", "Clip", "Claim", "Build order", "Keyboard shortcuts"]);
     expect(bar().querySelector("input[type='file']")).not.toBeNull();
+  });
+
+  it("writes the key of Text, Chart and Image on their buttons, and tells assistive technology the same", () => {
+    const written = (node: Element) => node.querySelector(".ed-kbd")?.textContent;
+    expect(written(quick("text"))).toBe("T");
+    expect(written(quick("bar-chart"))).toBe("C");
+    expect(written(bar().querySelector<HTMLElement>("label.ed-button") as HTMLElement)).toBe("I");
+    expect(quick("text").getAttribute("aria-keyshortcuts")).toBe("T");
+    expect(quick("bar-chart").getAttribute("aria-keyshortcuts")).toBe("C");
+    expect(bar().querySelector("input[type='file']")?.getAttribute("aria-keyshortcuts")).toBe("I");
+    // Written for the eye only: the name a screen reader reads has no stray letter in it.
+    expect(bar().querySelector(".ed-kbd")?.getAttribute("aria-hidden")).toBe("true");
+    // Claim, Clip and Build order have no key.
+    for (const name of ["claim", "clip", "build"]) expect(quick(name).querySelector(".ed-kbd")).toBeNull();
   });
 
   it("adds a text after the last text of the slide when nothing is chosen, and chooses it", () => {

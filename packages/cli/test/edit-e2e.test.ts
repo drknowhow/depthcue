@@ -1993,3 +1993,107 @@ describe("the quick bar in a real browser", () => {
     expect(problems).toEqual([]);
   });
 });
+
+describe("keyboard shortcuts in a real browser", () => {
+  const bar = () => page.locator(".ed-quick");
+  const sheet = () => page.locator(".ed-sheet");
+  const focused = () =>
+    page.evaluate(() => {
+      const node = document.activeElement as HTMLElement | null;
+      return node?.getAttribute("role") ?? node?.getAttribute("data-quick") ?? node?.tagName ?? null;
+    });
+
+  it("adds a text with T and a chart with C from the page, and one Undo takes each back", async () => {
+    addScene({ id: "ks", title: "Keys", layout: "text-media", blocks: [note("ks-words", "Words.")] });
+    await openScene("ks", "ks-words");
+    await page.keyboard.press("c");
+    await saved();
+    expect(idsOnDisk("ks")).toEqual(["ks-words", "ks-chart"]);
+    // The new chart has the keyboard now, and T still adds.
+    await page.keyboard.press("t");
+    await saved();
+    expect(idsOnDisk("ks")).toEqual(["ks-words", "ks-text", "ks-chart"]);
+    await page.keyboard.press("Control+z");
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(idsOnDisk("ks")).toEqual(["ks-words"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("types a t into a text being edited, and adds nothing", async () => {
+    addScene({ id: "kt", title: "Typing", layout: "text-media", blocks: [note("kt-words", "Words.")] });
+    await openScene("kt", "kt-words");
+    await page.locator("[data-id='kt-words'] [data-edit], [data-id='kt-words'][data-edit]").click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("tci?");
+    await saved();
+    expect(idsOnDisk("kt")).toEqual(["kt-words"]);
+    const written = sceneOnDisk("kt")?.blocks[0];
+    expect(written?.type === "text" ? written.text : undefined).toBe("Words.tci?");
+    expect(await sheet().isHidden()).toBe(true);
+    expect(problems).toEqual([]);
+  });
+
+  it("clicks the Image button's file input on I, on the key press's own user activation", async () => {
+    addScene({ id: "ki", title: "Image", layout: "text-media", blocks: [note("ki-words", "Words.")] });
+    await openScene("ki", "ki-words");
+    const input = page.locator("[data-field='quick:image']");
+    // A test cannot answer the browser's chooser, and the browser shows one only for a click made on a user
+    // activation. So the click is stopped here and the activation it came with is what gets read.
+    await input.evaluate((node) => {
+      node.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          node.setAttribute("data-clicked", String(navigator.userActivation.isActive));
+        },
+        { once: true },
+      );
+    });
+    await page.keyboard.press("i");
+    await page.waitForSelector("[data-field='quick:image'][data-clicked]");
+    expect(await input.getAttribute("data-clicked")).toBe("true");
+    expect(problems).toEqual([]);
+  });
+
+  for (const [width, height] of [
+    [1440, 900],
+    [1024, 768],
+    [1024, 360],
+    [390, 844],
+  ] as const) {
+    it(`opens the list of keys with ? inside the window at ${width} by ${height}, and Escape gives the keyboard back`, async () => {
+      await page.setViewportSize({ width, height });
+      await page.goto(url());
+      await bar().waitFor();
+      await bar().locator("[data-quick='text']").focus();
+      await page.keyboard.press("?");
+      await sheet().waitFor();
+      expect(await focused()).toBe("dialog");
+      const box = await page.locator(".ed-sheet-card").boundingBox();
+      if (!box) throw new Error("the sheet should be drawn");
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      expect(box.y + box.height).toBeLessThanOrEqual(height);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+      // Behind the sheet a letter adds nothing.
+      await page.keyboard.press("t");
+      await page.keyboard.press("Escape");
+      await sheet().waitFor({ state: "hidden" });
+      expect(await focused()).toBe("text");
+      expect(problems).toEqual([]);
+    });
+  }
+
+  it("opens from the ? button in the bar, which has a name for a screen reader", async () => {
+    await page.goto(url());
+    const button = bar().locator("[data-quick='keys']");
+    expect(await button.getAttribute("aria-label")).toBe("Keyboard shortcuts");
+    await button.click();
+    await sheet().waitFor();
+    await page.locator("[data-action='close-shortcuts']").click();
+    await sheet().waitFor({ state: "hidden" });
+    expect(problems).toEqual([]);
+  });
+});

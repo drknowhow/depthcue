@@ -179,6 +179,18 @@ the slide has a claim, and a block added there is cited in the same step (`addBl
 block to go after). The new block is chosen and has the keyboard, and one Undo takes it back. In a window narrower than
 760 px the bar sits under the slide in the page's flow. The notes open upward and keep 8 px from the window's edge.
 
+The keys the editor answers are one table in `shortcuts.ts`, and the key handler and the shortcut sheet both read it.
+`T`, `C` and `I` add a text, a chart or an image (`I` opens the file chooser) just as the bar's buttons do, and each
+button has its key written on it. `Ctrl+Z`, `Ctrl+Shift+Z` or `Ctrl+Y`, `Ctrl+S`, `P` and `Alt+F10` are in the table
+too. `?`, or the `?` button at the end of the bar, opens the sheet: a dialog that lists every key, takes the keyboard
+while it is open, gives it back on `Escape`, `?`, Close or a press outside the card, and lets no other key act behind
+it. A letter key is a letter in a field or in text being edited on the slide, it acts once when held down, and a key
+with Ctrl, Alt or Command that the table does not list is left to the browser. The keys are the editor's when the
+keyboard is inside it, and also when the keyboard is nowhere in particular and the pointer was last over the editor (or
+has not been seen). A page that holds the editor beside other things keeps its own keys. The keys that act where they
+are pressed (Enter, Delete, the arrows and `Escape` on a block, the arrows on a chart bar) are in the table only so the
+sheet is the whole list, and each one has a test that presses it.
+
 An area that holds nothing gets a dashed place on the slide, drawn by the editor only, never by the player or the
 export: Evidence while the claim cites nothing, Support when every block is cited, Media on a slide of text, Text on
 a slide of pictures, and the claim itself where a slide has none. A click opens a menu of the kinds the area takes
