@@ -180,7 +180,8 @@ describe("pinned blocks", () => {
         id: "pins-long",
         type: "text",
         role: "body",
-        text: Array.from({ length: 60 }, (_, i) => `word${i}`).join(" "),
+        // Fonts differ between machines, so the text takes a third of the frame it is moved to, not nearly all of it.
+        text: Array.from({ length: 30 }, (_, i) => `word${i}`).join(" "),
         frame: { x: 60, y: 75, w: 30, h: 6 },
       },
     ],
@@ -206,7 +207,7 @@ describe("pinned blocks", () => {
           folder,
           [
             { op: "block.unframe", scene: "pins", id: "pins-note" },
-            { op: "block.frame", scene: "pins", id: "pins-long", frame: { x: 5, y: 60, w: 90, h: 35 } },
+            { op: "block.frame", scene: "pins", id: "pins-long", frame: { x: 5, y: 66, w: 90, h: 29 } },
           ],
           rev(),
         );
