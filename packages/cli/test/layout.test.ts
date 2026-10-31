@@ -32,6 +32,7 @@ function measure(overrides: Partial<LayoutMeasure> = {}): LayoutMeasure {
     boxes: [],
     clipped: [],
     overlaps: [],
+    spills: [],
     text: [],
     images: [],
     words: 0,
@@ -145,11 +146,79 @@ describe("layoutDiagnostics", () => {
           { id: "intro", axis: "y", by: 12 },
           { id: "intro", axis: "x", by: 5 },
         ],
-        overlaps: [{ a: "intro", b: "the-chart", width: 40, height: 10 }],
+        overlaps: [{ a: "intro", b: "the-chart", width: 40, height: 10, pinned: [] }],
       }),
     );
     expect(found.map((d) => d.code)).toEqual(["clipped", "clipped", "overlap"]);
     expect(found[2]?.message).toContain('"intro" and "the-chart" overlap by 40x10px');
+  });
+
+  describe("pinned blocks", () => {
+    it("treats an overlap in the template as an error, as before", () => {
+      const [found] = layoutDiagnostics(
+        scene,
+        measure({ overlaps: [{ a: "intro", b: "the-chart", width: 40, height: 10, pinned: [] }] }),
+      );
+      expect(found).toMatchObject({ severity: "error", code: "overlap" });
+    });
+
+    it("warns about an overlap with a pinned block, and points at the pinned block", () => {
+      const [found, ...rest] = layoutDiagnostics(
+        scene,
+        measure({ overlaps: [{ a: "intro", b: "the-chart", width: 40, height: 10, pinned: ["the-chart"] }] }),
+      );
+      expect(rest).toEqual([]);
+      expect(found).toMatchObject({
+        severity: "warning",
+        code: "frame-overlap",
+        file: "scenes/tall.json",
+        path: "/blocks/1",
+      });
+      expect(found?.message).toBe('"intro" and "the-chart" overlap by 40x10px.');
+      expect(found?.fix).toBe(
+        'Move or resize the frame of "the-chart", or unpin it to put it back in the template. Leave it if the overlap is on purpose.',
+      );
+    });
+
+    it("names both frames when both blocks are pinned, and has nothing to unpin to", () => {
+      const [found] = layoutDiagnostics(
+        scene,
+        measure({
+          overlaps: [{ a: "intro", b: "the-chart", width: 40, height: 10, pinned: ["intro", "the-chart"] }],
+        }),
+      );
+      expect(found).toMatchObject({ severity: "warning", code: "frame-overlap", path: "/blocks/0" });
+      expect(found?.fix).toBe(
+        'Move or resize the frame of "intro" or "the-chart". Leave it if the overlap is on purpose.',
+      );
+    });
+
+    it("reports a block that is larger than its frame as an error, by how much", () => {
+      const [tall, wide, ...rest] = layoutDiagnostics(
+        scene,
+        measure({
+          spills: [
+            { id: "intro", x: 0, y: 42 },
+            { id: "the-chart", x: 17, y: 0 },
+          ],
+        }),
+      );
+      expect(rest).toEqual([]);
+      expect(tall).toMatchObject({
+        severity: "error",
+        code: "frame-overflow",
+        file: "scenes/tall.json",
+        path: "/blocks/0",
+      });
+      expect(tall?.message).toBe(
+        'The content of "intro" is 42px taller than its frame, so it runs out of the frame over whatever is next to it.',
+      );
+      expect(tall?.fix).toBe(
+        "Make the frame bigger, shorten the text, or unpin the block so the template lays it out.",
+      );
+      expect(wide).toMatchObject({ code: "frame-overflow", path: "/blocks/1" });
+      expect(wide?.message).toContain("17px wider than its frame");
+    });
   });
 
   it("flags text under the minimum size once per block, naming the smallest", () => {

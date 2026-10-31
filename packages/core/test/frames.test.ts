@@ -15,6 +15,7 @@ import {
   hasFrames,
   OP_NAMES,
   revisionOf,
+  SAFE_MARGIN,
   SCHEMA_VERSION,
   type Scene,
 } from "../src/index.ts";
@@ -138,14 +139,16 @@ describe("what the schema cannot state about a frame", () => {
       "scenes/a.json",
     );
 
+  const errors = (found: Diagnostic[]) => found.filter((d) => d.severity === "error");
+
   it("lets a frame touch the edges of the slide", () => {
-    expect(check({ x: 60, y: 50, w: 40, h: 50 })).toEqual([]);
+    expect(errors(check({ x: 60, y: 50, w: 40, h: 50 }))).toEqual([]);
   });
 
   it("forgives rounding past an edge but not a real overshoot", () => {
-    expect(check({ x: 60.0001, y: 50, w: 40, h: 50 })).toEqual([]);
+    expect(errors(check({ x: 60.0001, y: 50, w: 40, h: 50 }))).toEqual([]);
     expect(first(check({ x: 60.01, y: 50, w: 40, h: 50 })).code).toBe("frame-off-slide");
-    expect(check({ x: 10, y: 50.0001, w: 40, h: 50 })).toEqual([]);
+    expect(errors(check({ x: 10, y: 50.0001, w: 40, h: 50 }))).toEqual([]);
     expect(first(check({ x: 10, y: 50.01, w: 40, h: 50 })).code).toBe("frame-off-slide");
     expect(first(check({ x: 10, y: 50.5, w: 40, h: 50 })).code).toBe("frame-off-slide");
   });
@@ -183,6 +186,142 @@ describe("what the schema cannot state about a frame", () => {
       "/blocks/0/frame/w",
       "/blocks/0/frame/h",
     ]);
+  });
+
+  describe("the safe margin", () => {
+    const onlyFrame = (frame: Frame, block: Record<string, unknown> = {}) =>
+      checkFrames(
+        scene({
+          schemaVersion: "0.2",
+          blocks: [{ id: "a-block", type: "text", role: "body", text: "Words", ...block, frame }],
+        }) as unknown as Scene,
+        "scenes/a.json",
+      );
+
+    it("is 4 percent", () => {
+      expect(SAFE_MARGIN).toBe(4);
+    });
+
+    it("says nothing about a frame inside it, even one that touches it", () => {
+      expect(onlyFrame({ x: 4, y: 4, w: 92, h: 92 })).toEqual([]);
+      expect(onlyFrame({ x: 56, y: 14, w: 38, h: 44 })).toEqual([]);
+    });
+
+    it("forgives rounding at the margin but not a real step into it", () => {
+      expect(onlyFrame({ x: 3.9995, y: 4, w: 92, h: 92 })).toEqual([]);
+      expect(onlyFrame({ x: 4, y: 4, w: 92.0005, h: 92 })).toEqual([]);
+      expect(onlyFrame({ x: 3.99, y: 4, w: 92, h: 92 })).toHaveLength(1);
+      expect(onlyFrame({ x: 4, y: 4, w: 92.01, h: 92 })).toHaveLength(1);
+    });
+
+    it.each([
+      ["left", { x: 3, y: 10, w: 20, h: 20 }],
+      ["top", { x: 10, y: 3, w: 20, h: 20 }],
+      ["right", { x: 70, y: 10, w: 27, h: 20 }],
+      ["bottom", { x: 10, y: 70, w: 20, h: 27 }],
+    ])("warns about the %s edge, and only that one", (edge, frame) => {
+      const found = first(onlyFrame(frame));
+      expect(found).toMatchObject({
+        severity: "warning",
+        code: "frame-outside-safe-area",
+        file: "scenes/a.json",
+        path: "/blocks/0/frame",
+      });
+      expect(found.message).toBe(
+        `The frame reaches into the 4% margin at the ${edge} of the slide, where a projector can cut it off.`,
+      );
+    });
+
+    it("tells what to change, and that it may stay", () => {
+      expect(first(onlyFrame({ x: 3, y: 10, w: 20, h: 20 })).fix).toBe(
+        "Keep x and y at 4 or more, and x + w and y + h at 96 or less. Leave it as it is if the block should touch the edge.",
+      );
+    });
+
+    it("names every edge it reaches in one warning", () => {
+      const two = onlyFrame({ x: 1, y: 1, w: 20, h: 20 });
+      expect(two).toHaveLength(1);
+      expect(first(two).message).toContain("at the left and top of the slide");
+      expect(first(onlyFrame({ x: 1, y: 1, w: 98, h: 20 })).message).toContain(
+        "at the left, top and right of the slide",
+      );
+      expect(first(onlyFrame({ x: 0, y: 0, w: 100, h: 100 })).message).toContain(
+        "at the left, top, right and bottom of the slide",
+      );
+    });
+
+    it("holds text and charts to it, and lets a picture or a clip bleed", () => {
+      const bleed = { x: 0, y: 0, w: 100, h: 100 };
+      expect(first(onlyFrame(bleed, { type: "text", role: "body", text: "Words" }))).toMatchObject({
+        code: "frame-outside-safe-area",
+      });
+      expect(
+        first(
+          onlyFrame(bleed, {
+            type: "bar-chart",
+            data: [{ label: "A", value: 1 }],
+            role: undefined,
+            text: undefined,
+          }),
+        ),
+      ).toMatchObject({ code: "frame-outside-safe-area" });
+      expect(
+        onlyFrame(bleed, {
+          type: "image",
+          asset: "assets/a.png",
+          alt: "A",
+          role: undefined,
+          text: undefined,
+        }),
+      ).toEqual([]);
+      expect(
+        onlyFrame(bleed, {
+          type: "clip",
+          source: "assets/a.mp4",
+          alt: "A",
+          role: undefined,
+          text: undefined,
+        }),
+      ).toEqual([]);
+    });
+
+    it("leaves a frame that runs off the slide to the error alone", () => {
+      expect(onlyFrame({ x: 90, y: 10, w: 20, h: 20 }).map((d) => d.code)).toEqual(["frame-off-slide"]);
+      expect(onlyFrame({ x: 10, y: 90, w: 20, h: 20 }).map((d) => d.code)).toEqual(["frame-off-slide"]);
+    });
+
+    it("is reported for each block that needs it, at its own path", () => {
+      const found = checkFrames(
+        scene({
+          schemaVersion: "0.2",
+          blocks: [
+            { id: "a-text", type: "text", role: "body", text: "Words", frame: box },
+            { id: "b-text", type: "text", role: "body", text: "More", frame: { x: 1, y: 10, w: 20, h: 20 } },
+            { id: "c-text", type: "text", role: "body", text: "Last", frame: { x: 10, y: 80, w: 20, h: 19 } },
+          ],
+        }) as unknown as Scene,
+        "scenes/a.json",
+      );
+      expect(found.map((d) => d.path)).toEqual(["/blocks/1/frame", "/blocks/2/frame"]);
+    });
+
+    it("does not stop a deck from loading, or an operation from applying", () => {
+      const doc = demoDoc();
+      const placed = success(
+        run(doc, [
+          {
+            op: "block.frame",
+            scene: "opening",
+            id: "opening-title",
+            frame: { x: 0, y: 10, w: 40, h: 20 },
+          },
+        ]),
+      );
+      expect(placed.diagnostics.map((d) => [d.severity, d.code])).toEqual([
+        ["warning", "frame-outside-safe-area"],
+      ]);
+      expect(blockOf(placed.doc, "opening", "opening-title")?.frame).toEqual({ x: 0, y: 10, w: 40, h: 20 });
+    });
   });
 
   it("refuses a frame in a scene that says 0.1, and says what to set", () => {

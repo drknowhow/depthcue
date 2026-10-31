@@ -34,7 +34,10 @@ export interface LayoutMeasure {
   view: { width: number; height: number; scrollWidth: number; scrollHeight: number };
   boxes: Box[];
   clipped: Array<{ id: string; axis: "x" | "y"; by: number }>;
-  overlaps: Array<{ a: string; b: string; width: number; height: number }>;
+  /** `pinned` names those of the two that sit at a frame; it is empty when both are in the template. */
+  overlaps: Array<{ a: string; b: string; width: number; height: number; pinned: string[] }>;
+  /** Pinned blocks whose content is larger than their frame, by how many pixels. */
+  spills: Array<{ id: string; x: number; y: number }>;
   text: TextSample[];
   images: Array<{ id: string; src: string; ok: boolean }>;
   words: number;
@@ -143,9 +146,21 @@ export async function measureLayout(): Promise<LayoutMeasure> {
           b: b.dataset.id ?? "",
           width: round(width),
           height: round(height),
+          pinned: [a, b]
+            .filter((node) => node.classList.contains("dc-pinned"))
+            .map((node) => node.dataset.id ?? ""),
         });
       }
     }
+  }
+
+  // A pinned block is as big as its frame, so text that does not fit runs out of it over its neighbors.
+  const spills: LayoutMeasure["spills"] = [];
+  for (const pin of scene.querySelectorAll<HTMLElement>(".dc-pinned")) {
+    if (!visible(pin)) continue;
+    const x = pin.scrollWidth - pin.clientWidth;
+    const y = pin.scrollHeight - pin.clientHeight;
+    if (x > 1 || y > 1) spills.push({ id: pin.dataset.id ?? "", x: Math.max(0, x), y: Math.max(0, y) });
   }
 
   const clipped: LayoutMeasure["clipped"] = [];
@@ -193,6 +208,7 @@ export async function measureLayout(): Promise<LayoutMeasure> {
     boxes,
     clipped,
     overlaps,
+    spills,
     text,
     images: images.map((image) => ({
       id: owner(image),
@@ -269,8 +285,10 @@ export function layoutDiagnostics(
   const minFontPx = options.minFontPx ?? 12;
   const { width, height } = measure.viewport;
   const out: Diagnostic[] = [];
+  const report = (severity: Diagnostic["severity"], code: string, id: string, message: string, fix: string) =>
+    out.push({ severity, code, file, path: pointerFor(scene, id), message, fix });
   const error = (code: string, id: string, message: string, fix: string) =>
-    out.push({ severity: "error", code, file, path: pointerFor(scene, id), message, fix });
+    report("error", code, id, message, fix);
 
   const tall = measure.view.scrollHeight - measure.view.height;
   const wide = measure.view.scrollWidth - measure.view.width;
@@ -307,11 +325,34 @@ export function layoutDiagnostics(
   }
 
   for (const overlap of measure.overlaps) {
+    const message = `"${overlap.a}" and "${overlap.b}" overlap by ${overlap.width}x${overlap.height}px.`;
+    if (overlap.pinned.length === 0) {
+      error(
+        "overlap",
+        overlap.a,
+        message,
+        "Templates own the geometry, so an overlap means the content does not fit the template. Shorten the text or split the scene.",
+      );
+      continue;
+    }
+    // Someone put a block there, so it may be on purpose, such as a label on a picture: a warning, not an error.
+    const names = overlap.pinned.map((id) => `"${id}"`).join(" or ");
+    report(
+      "warning",
+      "frame-overlap",
+      overlap.pinned[0] ?? overlap.a,
+      message,
+      `Move or resize the frame of ${names}${overlap.pinned.length === 1 ? ", or unpin it to put it back in the template" : ""}. Leave it if the overlap is on purpose.`,
+    );
+  }
+
+  for (const spill of measure.spills) {
+    const by = spill.y > 1 ? `${spill.y}px taller` : `${spill.x}px wider`;
     error(
-      "overlap",
-      overlap.a,
-      `"${overlap.a}" and "${overlap.b}" overlap by ${overlap.width}x${overlap.height}px.`,
-      "Templates own the geometry, so an overlap means the content does not fit the template. Shorten the text or split the scene.",
+      "frame-overflow",
+      spill.id,
+      `The content of "${spill.id}" is ${by} than its frame, so it runs out of the frame over whatever is next to it.`,
+      "Make the frame bigger, shorten the text, or unpin the block so the template lays it out.",
     );
   }
 
