@@ -108,28 +108,28 @@ panel that once held all of them is gone. This table says where each one is edit
 test checks the same thing for the machine: its `WAYS` map names a control for each property, or says why a person
 never edits it (ids, kinds and format markers). A new property in the schema fails that test until it has a way.
 
-| Property                                      | Where                                                         |
-| --------------------------------------------- | ------------------------------------------------------------- |
-| text: `role`, `text`                          | Role menu in the toolbar; text typed on the slide             |
-| text, chart, image, clip: `sourceIds`         | Cite chip in the toolbar                                      |
-| chart: `title`, `unit`                        | Data popover: title and unit                                  |
-| chart: `data` values                          | Drag a bar, or arrow keys on it (Shift moves five steps)      |
-| chart: `data` labels                          | Typed on the slide, in the row's label                        |
-| chart: `data` rows                            | Add bar and Sort in the toolbar; Data popover: remove, move   |
-| image: `asset`                                | Drop or paste on the image; Edit popover: file, upload        |
-| image: `alt`, `caption`                       | Edit popover: alt text (flagged until written), caption       |
-| clip: `source`, `poster`, `alt`               | Edit popover: video menu, poster menu, alt text               |
-| clip: markers in `<video>.cues.json`          | Cues popover: add at the playhead, rename, retime, remove     |
-| block order                                   | Earlier and later buttons in the toolbar; the grip on a block |
-| scenes: add, order, duplicate, delete         | Scene strip: Add scene, drag, and the buttons on each scene   |
-| new blocks, claim: `summary`                  | Add row under the slide: Text, Image, Chart, Clip, Claim      |
-| scene: `layout`, `lead`                       | Buttons in the top bar                                        |
-| scene: `title`, `steps`, `sources`            | Scene popover in the top bar: title, steps, sources           |
-| scene: `notes`, `reading`                     | Notes popover in the add row: speaker notes, reading version  |
-| claim: `text`                                 | Typed on the slide                                            |
-| claim: `evidenceIds`                          | Evidence chip in the claim's toolbar                          |
-| deck: `title`, `language`, `theme`, `modules` | Deck popover in the top bar                                   |
-| any block: `frame`                            | Free button or P; drag, handles, Pinned popover, arrows       |
+| Property                                      | Where                                                               |
+| --------------------------------------------- | ------------------------------------------------------------------- |
+| text: `role`, `text`                          | Role menu in the toolbar; text typed on the slide                   |
+| text, chart, image, clip: `sourceIds`         | Cite chip in the toolbar                                            |
+| chart: `title`, `unit`                        | Data popover: title and unit                                        |
+| chart: `data` values                          | Drag a bar, or arrow keys on it (Shift moves five steps)            |
+| chart: `data` labels                          | Typed on the slide, in the row's label                              |
+| chart: `data` rows                            | Add bar and Sort in the toolbar; Data popover: remove, move         |
+| image: `asset`                                | Drop or paste on the image; Edit popover: file, upload              |
+| image: `alt`, `caption`                       | Edit popover: alt text (flagged until written), caption             |
+| clip: `source`, `poster`, `alt`               | Edit popover: video menu, poster menu, alt text                     |
+| clip: markers in `<video>.cues.json`          | Cues popover: add at the playhead, rename, retime, remove           |
+| block order                                   | Earlier and later buttons in the toolbar; the grip on a block       |
+| scenes: add, order, duplicate, delete         | Scene strip: Add scene, drag, and the buttons on each scene         |
+| new blocks, claim: `summary`                  | Quick bar at the foot of the stage: Text, Chart, Image, Clip, Claim |
+| scene: `layout`, `lead`                       | Buttons in the top bar                                              |
+| scene: `title`, `steps`, `sources`            | Scene popover in the top bar: title, steps, sources                 |
+| scene: `notes`, `reading`                     | Notes popover in the quick bar: speaker notes, reading version      |
+| claim: `text`                                 | Typed on the slide                                                  |
+| claim: `evidenceIds`                          | Evidence chip in the claim's toolbar                                |
+| deck: `title`, `language`, `theme`, `modules` | Deck popover in the top bar                                         |
+| any block: `frame`                            | Free button or P; drag, handles, Pinned popover, arrows             |
 
 The Layout and Free buttons in a block's toolbar say where the block is. Free pins it where it stands: the frame is
 measured from the block's box on the slide, so pinning does not move it, and Layout puts it back in its slot. `P`
@@ -169,6 +169,15 @@ moving it out removes it, because that is what the layout draws. Text and media 
 area takes no blocks, and a refused drop says why while the pointer is over it. One drop is one step of Undo. A grip
 needs room beside its block, so a narrow slide (a phone, or a small window) shows none. The keyboard and a phone
 reorder with the toolbar's earlier and later buttons, and cite with the Evidence chip.
+
+The quick bar floats at the foot of the stage, under the slide, so nothing of the slide is covered. It has a button
+for each kind of block (Text, Chart, Image, Clip), Claim, the Notes popover and Build order. A new block goes into the
+area of the chosen block, right after it, when that area takes the kind. With nothing chosen, or when the chosen
+block's area does not take the kind, it goes to the first area that holds nothing and takes the kind, and when every
+area holds something, to the end of the first one that takes it (`slotFor` in `adder.ts`). Evidence counts only while
+the slide has a claim, and a block added there is cited in the same step (`addBlock` in `slots.ts`, which takes the
+block to go after). The new block is chosen and has the keyboard, and one Undo takes it back. In a window narrower than
+760 px the bar sits under the slide in the page's flow. The notes open upward and keep 8 px from the window's edge.
 
 An area that holds nothing gets a dashed place on the slide, drawn by the editor only, never by the player or the
 export: Evidence while the claim cites nothing, Support when every block is cited, Media on a slide of text, Text on

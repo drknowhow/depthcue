@@ -358,8 +358,8 @@ describe("every move that is allowed", () => {
 });
 
 describe("adding a block to a slot", () => {
-  const added = (id: string, to: SlotName, block: Block) => {
-    const placed = addBlock(sceneOf(id), to, block);
+  const added = (id: string, to: SlotName, block: Block, after?: string) => {
+    const placed = addBlock(sceneOf(id), to, block, after);
     if (!placed.ok) throw new Error(placed.message);
     const result = applyOps(doc, placed.ops, revisionOf(doc));
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
@@ -377,6 +377,19 @@ describe("adding a block to a slot", () => {
     const { ops, scene } = added("t-claim", "support", note);
     expect(ops).toEqual([{ op: "block.add", scene: "t-claim", block: note, after: "c-extra" }]);
     expect(names(scene).support).toEqual(["c-aside", "c-chart", "c-extra", "new-note"]);
+  });
+
+  it("puts the block after a named block drawn in that slot", () => {
+    const { ops, scene } = added("t-claim", "support", note, "c-aside");
+    expect(ops).toEqual([{ op: "block.add", scene: "t-claim", block: note, after: "c-aside" }]);
+    expect(names(scene).support).toEqual(["c-aside", "new-note", "c-chart", "c-extra"]);
+  });
+
+  it("goes to the end of the slot when the named block is drawn in another slot or is not there", () => {
+    const elsewhere = added("t-claim", "support", note, "c-proof");
+    expect(elsewhere.ops).toEqual([{ op: "block.add", scene: "t-claim", block: note, after: "c-extra" }]);
+    const unknown = added("t-claim", "support", note, "nope");
+    expect(names(unknown.scene).support).toEqual(["c-aside", "c-chart", "c-extra", "new-note"]);
   });
 
   it("puts a block into an empty slot at the end of the scene", () => {
