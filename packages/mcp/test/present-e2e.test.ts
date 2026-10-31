@@ -212,12 +212,20 @@ describe("deck_present against a real server and page", () => {
   it("says no page is open once the page is closed", async () => {
     await handOver();
     await page.close();
+    // A call that is already waiting when the page goes is told so; the first call after that finds no page.
+    let first: string | undefined;
     for (let tries = 0; tries < 40; tries++) {
       const reply = await present();
-      if (reply.isError) return expect(reply.text).toContain("No page");
+      if (reply.isError) {
+        first ??= reply.text;
+        if (reply.text.includes("No page")) {
+          expect(first).toMatch(/No page|page closed before it answered/);
+          return;
+        }
+      }
       await new Promise((done) => setTimeout(done, 50));
     }
-    throw new Error("The server still believed the page was open.");
+    throw new Error(`The server never said no page was open. The first complaint was: ${first}`);
   });
 
   it("says the server is gone once it stops, and keeps no lease it cannot renew", async () => {
