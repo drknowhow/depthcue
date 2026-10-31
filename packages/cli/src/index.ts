@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { checkDeckFiles, type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
 import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./clip.ts";
 import { applyToFolder, openDeck } from "./deck-api.ts";
+import { ExportError, exportDeck } from "./export.ts";
 import { writeLink } from "./link.ts";
 import { loadDeckDir } from "./loader.ts";
 import { openRenderer, type RenderOptions } from "./render.ts";
@@ -19,6 +20,7 @@ const USAGE = `Usage:
   depthcue apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue serve <deck-folder> [--port <n>]
   depthcue edit <deck-folder> [--port <n>]
+  depthcue export <deck-folder> [--out <dir>] [--no-notes] [--json]
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
   depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
                       [--scale <0.1-1>] [--kine <path>] [--json]
@@ -34,6 +36,12 @@ serve  Shows the deck in the player at a loopback address and reloads the page w
 edit   Opens the editor at a loopback address. Changes go through the same operations an agent uses, save
        to the folder only when you ask, and a draft survives a closed tab. The deck must pass check.
        The player is at /present. Same default port as serve; keep one port to keep your drafts.
+
+export Writes a folder that opens by double-click: index.html with the deck inside it, the player beside it
+       and only the assets a scene names. It needs no server and no network, so it works from a USB stick.
+       The default folder is <deck-folder name>-export here; an earlier export is replaced, any other
+       folder with files in it is refused. Speaker notes go with the deck; --no-notes leaves them out.
+       A deck with errors writes nothing. Exports have no presenter view yet.
 
 render Renders scenes in a headless browser at the stage size (default 1280x720, controls hidden), measures
        the result, and reports overflow, clipping, overlap, text that is too small and low contrast. With
@@ -80,16 +88,21 @@ type ValueFlag = (typeof VALUE_FLAGS)[number];
 interface Parsed {
   positional: string[];
   json: boolean;
+  noNotes: boolean;
   values: Partial<Record<ValueFlag, string>>;
   unknown: string[];
 }
 
 function parse(args: readonly string[]): Parsed {
-  const parsed: Parsed = { positional: [], json: false, values: {}, unknown: [] };
+  const parsed: Parsed = { positional: [], json: false, noNotes: false, values: {}, unknown: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
     if (arg === "--json") {
       parsed.json = true;
+      continue;
+    }
+    if (arg === "--no-notes") {
+      parsed.noNotes = true;
       continue;
     }
     const flag = VALUE_FLAGS.find((name) => arg === `--${name}` || arg.startsWith(`--${name}=`));
@@ -338,6 +351,51 @@ async function clipBuildCommand(request: ClipRequest, json: boolean, io: Io): Pr
   }
 }
 
+const kilobytes = (bytes: number) => `${(bytes / 1024).toFixed(1)} KB`;
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** Writes the folder that opens by double-click, and says what went into it. */
+function exportCommand(
+  folder: string,
+  out: string | undefined,
+  notes: boolean,
+  json: boolean,
+  io: Io,
+): number {
+  try {
+    const result = exportDeck({ folder, notes, ...(out === undefined ? {} : { out }) });
+    if (!result.ok) {
+      report(io, result.diagnostics, json, { code: "deck-invalid" });
+      if (!json) {
+        io.out(summary(result.diagnostics));
+        io.out("Nothing was exported. Fix the errors and run it again.");
+      }
+      return 1;
+    }
+    const done = result.summary;
+    if (json) {
+      const { warnings, ...rest } = done;
+      report(io, warnings, true, rest);
+      return 0;
+    }
+    for (const diagnostic of done.warnings) for (const line of format(diagnostic)) io.out(line);
+    io.out(`Exported ${plural(done.scenes, "scene")} to ${done.out}`);
+    io.out(`  open ${done.index}`);
+    io.out(
+      `  ${plural(done.files, "file")}, ${kilobytes(done.bytes)}: ${plural(done.assets.length, "asset")}, ${plural(done.cueMaps.length, "cue map")}, notes ${done.notes ? "kept" : "left out"}`,
+    );
+    if (done.skipped.length > 0) {
+      io.out(`  left out because no scene names them: ${done.skipped.join(", ")}`);
+    }
+    return 0;
+  } catch (error) {
+    if (!(error instanceof ExportError)) throw error;
+    if (json) io.out(JSON.stringify({ ok: false, code: error.code, message: error.message }, null, 2));
+    else io.err(error.message);
+    return 2;
+  }
+}
+
 /** Test seams: the command that runs Kinescript, so a stand-in can be used where it is not installed. */
 export interface RunOptions {
   kine?: readonly string[];
@@ -345,7 +403,7 @@ export interface RunOptions {
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, values, unknown } = parse(rest);
+  const { positional, json, noNotes, values, unknown } = parse(rest);
   const baseRev = values["base-rev"];
   const portText = values.port;
   const port = portText === undefined ? undefined : Number(portText);
@@ -357,6 +415,7 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
     return 2;
   };
   if (unknown.length > 0) return usage(`Unknown option ${unknown[0]}.`);
+  if (noNotes && command !== "export") return usage("--no-notes belongs to export.");
 
   if (command === "clip") {
     const [sub, clipFolder, scene, ...more] = positional;
@@ -422,6 +481,18 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
         io.err(error.message);
         return 2;
       });
+    }
+    if (
+      command === "export" &&
+      folder &&
+      opsFile === undefined &&
+      baseRev === undefined &&
+      port === undefined &&
+      values.step === undefined &&
+      values.width === undefined &&
+      values.height === undefined
+    ) {
+      return exportCommand(folder, values.out, !noNotes, json, io);
     }
     if (command === "render" && folder && baseRev === undefined && port === undefined) {
       const step = wholeNumber(values.step, 0, 100);

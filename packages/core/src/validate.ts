@@ -1,3 +1,4 @@
+import { assetRefs } from "./assets.ts";
 import { explain } from "./diagnostics.ts";
 import { validateDeck, validateScene } from "./generated/validators.js";
 import { checkReferences } from "./references.ts";
@@ -36,21 +37,6 @@ function parse(text: string, file: string): { data?: unknown; diagnostic?: Diagn
       },
     };
   }
-}
-
-function assetRefs(scene: Scene): Array<{ path: string; asset: string }> {
-  const refs: Array<{ path: string; asset: string }> = [];
-  scene.blocks.forEach((block, i) => {
-    if (block.type === "image") refs.push({ path: `/blocks/${i}/asset`, asset: block.asset });
-    if (block.type === "clip") {
-      refs.push({ path: `/blocks/${i}/source`, asset: block.source });
-      if (block.poster) refs.push({ path: `/blocks/${i}/poster`, asset: block.poster });
-    }
-  });
-  scene.sources?.forEach((source, i) => {
-    if (source.asset) refs.push({ path: `/sources/${i}/asset`, asset: source.asset });
-  });
-  return refs;
 }
 
 /**

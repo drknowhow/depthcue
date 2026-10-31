@@ -15,7 +15,7 @@ import {
   settingFor,
 } from "../src/modules.ts";
 import { renderScene } from "../src/scene.ts";
-import { demoSource, sceneWith } from "./helpers.ts";
+import { demoSource, noFiles, sceneWith } from "./helpers.ts";
 
 const manifest = (over: Partial<ModuleManifest> = {}): ModuleManifest => ({
   id: "chart",
@@ -137,6 +137,7 @@ function setup(
     registry: [entry],
     deck: () => deck,
     assetBase: () => "/deck",
+    readJson: noFiles,
     reducedMotion: () => true,
     announce: (message) => announced.push(message),
     onEvent: (event) => events.push(event),

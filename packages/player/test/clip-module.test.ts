@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import type { Block, Scene } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readDeckJson } from "../src/load.ts";
 import { hydrate } from "../src/modules/clip.ts";
 import type { HydrateContext, ModuleInstance } from "../src/modules.ts";
 import { renderScene } from "../src/scene.ts";
@@ -59,6 +60,9 @@ const clipScene = (source = "assets/intro.mp4"): Scene =>
     blocks: [{ id: "intro-clip", type: "clip", source, poster: "assets/intro.png", alt: "The opening" }],
   });
 
+/** Reads files the way the player does, from beside the deck. */
+const read = (path: string) => readDeckJson({ ...demoSource(), assetBase: "/deck" }, path);
+
 /** Renders the clip as the player does, gives its video a clock the test controls, then hydrates. */
 async function mount(scene = clipScene()) {
   root.append(renderScene(scene, { assetBase: "/deck" }));
@@ -82,6 +86,7 @@ async function mount(scene = clipScene()) {
     scene,
     deck: demoSource().deck,
     assetBase: "/deck",
+    readJson: read,
     reducedMotion: true,
     announce: (message) => announced.push(message),
   };
@@ -103,6 +108,26 @@ describe("what hydrating adds", () => {
     expect(chips(node).map((chip) => chip.dataset.cue)).toEqual(["dot", "title", "sub"]);
     expect(node.querySelector(".dc-clip-cues")?.getAttribute("role")).toBe("group");
     expect(node.querySelector(".dc-clip-cues")?.getAttribute("aria-label")).toBe("Jump to");
+  });
+
+  it("takes the cue map the page already holds and makes no request", async () => {
+    answer(new Error("a held cue map needs no request"));
+    const held = { ...demoSource(), assetBase: "/deck", files: { "assets/intro.cues.json": cueMap } };
+    const scene = clipScene();
+    root.append(renderScene(scene, { assetBase: "/deck" }));
+    const node = root.querySelector<HTMLElement>("[data-id='intro-clip']") as HTMLElement;
+    instance = await hydrate({
+      block: scene.blocks.find((block) => block.id === "intro-clip") as Block,
+      node,
+      scene,
+      deck: held.deck,
+      assetBase: "/deck",
+      readJson: (path) => readDeckJson(held, path),
+      reducedMotion: true,
+      announce: () => {},
+    });
+    expect(fetched).toEqual([]);
+    expect(chips(node).map((chip) => chip.dataset.cue)).toEqual(["dot", "title", "sub"]);
   });
 
   it("names each chip by its cue and when it starts", async () => {
@@ -174,6 +199,14 @@ describe("a clip with no usable cue map", () => {
     expect(node.querySelector(".dc-clip-cues")).toBeNull();
   });
 
+  it("does not ask for the cue map when the node it is given holds no video", async () => {
+    answer({});
+    const block = clipScene().blocks[0] as Block;
+    instance = await hydrate(bare(block, document.createElement("figure")));
+    expect(instance).toEqual({});
+    expect(fetched).toEqual([]);
+  });
+
   it("gives a plain clip no commands", async () => {
     answer({ ok: false });
     await mount();
@@ -186,6 +219,7 @@ describe("a clip with no usable cue map", () => {
     scene: clipScene(),
     deck: demoSource().deck,
     assetBase: "/deck",
+    readJson: read,
     reducedMotion: true,
     announce: (message) => announced.push(message),
   });

@@ -1,6 +1,6 @@
 import type { Scene } from "@depthcue/core";
 import { h } from "./dom.ts";
-import type { PlayerSource } from "./load.ts";
+import { type PlayerSource, readDeckJson } from "./load.ts";
 import {
   clampPosition,
   formatRoute,
@@ -127,6 +127,7 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     registry: options.modules ?? [],
     deck: () => source.deck,
     assetBase: () => source.assetBase,
+    readJson: (path) => readDeckJson(source, path),
     reducedMotion,
     announce: (message) => {
       live.textContent = message;

@@ -14,5 +14,9 @@ export default defineConfig({
   },
   test: {
     include: ["packages/*/test/**/*.test.ts", "tools/**/*.test.mjs", "brand/**/*.test.mjs"],
+    // The browser tests share the machine with every other test file, and a window-to-window round trip in
+    // Chrome has taken longer than the 1 s poll and 5 s test defaults. A real hang still fails, just later.
+    testTimeout: 20_000,
+    expect: { poll: { timeout: 10_000 } },
   },
 });

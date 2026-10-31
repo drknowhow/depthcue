@@ -39,6 +39,11 @@ export function builtPlayerDir(): string {
   return join(dirname(require.resolve("@depthcue/player/package.json")), "dist");
 }
 
+/** The directory holding the single-script build of the player that an exported page loads. */
+export function builtStandaloneDir(): string {
+  return join(builtPlayerDir(), "standalone");
+}
+
 /** The directory holding the built editor, found through the editor package. */
 export function builtEditorDir(): string {
   const require = createRequire(import.meta.url);

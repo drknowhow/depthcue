@@ -32,6 +32,8 @@ export interface HydrateContext {
   scene: Scene;
   deck: Deck;
   assetBase: string;
+  /** Reads a JSON file of the deck, for example `assets/intro.cues.json`. Rejects when it cannot. */
+  readJson(path: string): Promise<unknown>;
   reducedMotion: boolean;
   /** Says something to screen readers through the player's polite live region. */
   announce(message: string): void;
@@ -84,6 +86,7 @@ export interface ModuleHostOptions {
   registry: ModuleRegistry;
   deck(): Deck;
   assetBase(): string;
+  readJson(path: string): Promise<unknown>;
   reducedMotion(): boolean;
   announce(message: string): void;
   onEvent?(event: ModuleEvent): void;
@@ -167,6 +170,7 @@ export function createModuleHost(options: ModuleHostOptions): ModuleHost {
         scene,
         deck: options.deck(),
         assetBase: options.assetBase(),
+        readJson: options.readJson,
         reducedMotion: options.reducedMotion(),
         announce: options.announce,
       });
