@@ -1,0 +1,30 @@
+{
+  "tool": "depthcue",
+  "opens": true,
+  "snapshots": 9,
+  "blockedRequests": 0,
+  "failedRequests": 0,
+  "problems": [],
+  "content": {
+    "title": true,
+    "titleLine": true,
+    "chartHeadingRevised": true,
+    "staleHeadingVisible": false,
+    "staleTextInFolder": true,
+    "chartNumbers": true,
+    "chartLabel": true,
+    "sourceLine": true,
+    "method": true,
+    "risksHeading": true,
+    "risksHeadingExact": false,
+    "risksPoints": true,
+    "nextSteps": true,
+    "sources": true
+  },
+  "offViewport": [],
+  "notes": {
+    "found": 6,
+    "inDeliverable": 6,
+    "visibleOnSlides": 0
+  }
+}

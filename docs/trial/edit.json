@@ -1,0 +1,160 @@
+{
+  "ops": {
+    "passed": 12,
+    "of": 12,
+    "chars": 1633,
+    "rows": [
+      {
+        "id": "chart-values",
+        "ok": true,
+        "reason": "",
+        "chars": 140
+      },
+      {
+        "id": "claim-text",
+        "ok": true,
+        "reason": "",
+        "chars": 144
+      },
+      {
+        "id": "speaker-notes",
+        "ok": true,
+        "reason": "",
+        "chars": 76
+      },
+      {
+        "id": "add-scene",
+        "ok": true,
+        "reason": "",
+        "chars": 468
+      },
+      {
+        "id": "remove-scene",
+        "ok": true,
+        "reason": "",
+        "chars": 37
+      },
+      {
+        "id": "move-scene",
+        "ok": true,
+        "reason": "",
+        "chars": 53
+      },
+      {
+        "id": "deck-title",
+        "ok": true,
+        "reason": "",
+        "chars": 65
+      },
+      {
+        "id": "add-bar",
+        "ok": true,
+        "reason": "",
+        "chars": 173
+      },
+      {
+        "id": "alt-text",
+        "ok": true,
+        "reason": "",
+        "chars": 116
+      },
+      {
+        "id": "lead",
+        "ok": true,
+        "reason": "",
+        "chars": 57
+      },
+      {
+        "id": "heading-text",
+        "ok": true,
+        "reason": "",
+        "chars": 100
+      },
+      {
+        "id": "add-step",
+        "ok": true,
+        "reason": "",
+        "chars": 204
+      }
+    ]
+  },
+  "rewrite": {
+    "passed": 12,
+    "of": 12,
+    "chars": 7224,
+    "rows": [
+      {
+        "id": "chart-values",
+        "ok": true,
+        "reason": "",
+        "chars": 869
+      },
+      {
+        "id": "claim-text",
+        "ok": true,
+        "reason": "",
+        "chars": 869
+      },
+      {
+        "id": "speaker-notes",
+        "ok": true,
+        "reason": "",
+        "chars": 545
+      },
+      {
+        "id": "add-scene",
+        "ok": true,
+        "reason": "",
+        "chars": 580
+      },
+      {
+        "id": "remove-scene",
+        "ok": true,
+        "reason": "",
+        "chars": 141
+      },
+      {
+        "id": "move-scene",
+        "ok": true,
+        "reason": "",
+        "chars": 150
+      },
+      {
+        "id": "deck-title",
+        "ok": true,
+        "reason": "",
+        "chars": 154
+      },
+      {
+        "id": "add-bar",
+        "ok": true,
+        "reason": "",
+        "chars": 902
+      },
+      {
+        "id": "alt-text",
+        "ok": true,
+        "reason": "",
+        "chars": 742
+      },
+      {
+        "id": "lead",
+        "ok": true,
+        "reason": "",
+        "chars": 780
+      },
+      {
+        "id": "heading-text",
+        "ok": true,
+        "reason": "",
+        "chars": 565
+      },
+      {
+        "id": "add-step",
+        "ok": true,
+        "reason": "",
+        "chars": 927
+      }
+    ]
+  }
+}

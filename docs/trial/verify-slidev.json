@@ -1,0 +1,32 @@
+{
+  "tool": "slidev",
+  "opens": true,
+  "snapshots": 9,
+  "blockedRequests": 0,
+  "failedRequests": 0,
+  "problems": [
+    "console: Failed to patch FloatingVue TypeError: Cannot read properties of undefined (reading 'Popper')\n    at e.component (file:///Y:/Projects/Depthcue/scratch/trial/slidev/deliver/assets/index-BcFU9hVt.js:70:57321)\n    at Object.Jk [as install] (file:///Y:/Projects/Depthcue/scratch/trial/slidev/deliver/assets/index-BcFU9hVt.js:70:32579)\n    at Object.use (file:///Y:/Projects/Depthcue/scratch/trial/slidev/deliver/assets/index-BcFU9hVt.js:4:11359)\n    at Object.install (file:///Y:/Projects/Depthcue/scratch/trial/slidev/deliver/assets/index-BcFU9hVt.js:70:57562)\n    at Object.use (file:///Y:/Projects/Depthcue/scratch/trial/slidev/deliver/assets/index-BcFU9hVt.js:4:11359)\n    at mJ (file:///Y:/Projects/Depthcue/scratch/trial/slidev/deliver/assets/index-BcFU9hVt.js:77:15290)\n    at hJ (file:///Y:/Projects/Depthcue/scratch/trial/slidev/deliver/assets/index-BcFU9hVt.js:77:15425)\n    at file:///Y:/Projects/Depthcue/scratch/trial/slidev/deliver/assets/index-BcFU9hVt.js:77:15447\n    at file:///Y:/Projects/Depthcue/scratch/trial/slidev/deliver/assets/index-BcFU9hVt.js:77:15453"
+  ],
+  "content": {
+    "title": true,
+    "titleLine": true,
+    "chartHeadingRevised": true,
+    "staleHeadingVisible": false,
+    "staleTextInFolder": false,
+    "chartNumbers": true,
+    "chartLabel": true,
+    "sourceLine": true,
+    "method": true,
+    "risksHeading": true,
+    "risksHeadingExact": true,
+    "risksPoints": true,
+    "nextSteps": true,
+    "sources": true
+  },
+  "offViewport": [],
+  "notes": {
+    "found": 6,
+    "inDeliverable": 6,
+    "visibleOnSlides": 0
+  }
+}
