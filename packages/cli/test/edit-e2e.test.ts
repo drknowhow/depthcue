@@ -890,19 +890,58 @@ describe("clip cues in a real browser", () => {
     page.evaluate(
       () => document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video")?.currentTime,
     );
-  /** Waits for the clip on the slide to be at `seconds`, which a loaded video reaches once its seek lands. */
-  const playheadIs = (seconds: number) =>
-    page.waitForFunction(
-      (to) =>
-        Math.abs(
-          (document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video")
-            ?.currentTime ?? Number.NaN) - to,
-        ) < 0.05,
-      seconds,
-      { timeout: 5000 },
-    );
+  /**
+   * Waits for the clip on the slide to be at `seconds`, which a loaded video reaches once its seek lands. A miss says
+   * what the video was doing and whether it is still the one the page held, so a slow machine can be told from a
+   * slide that was drawn again.
+   */
+  async function playheadIs(seconds: number) {
+    try {
+      await page.waitForFunction(
+        (to) =>
+          Math.abs(
+            (document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video")
+              ?.currentTime ?? Number.NaN) - to,
+          ) < 0.05,
+        seconds,
+        { timeout: 10000 },
+      );
+    } catch (error) {
+      const state = await page.evaluate(() => {
+        const video = document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video");
+        const held = (window as unknown as { held: Element | null }).held;
+        return {
+          time: video?.currentTime,
+          ready: video?.readyState,
+          seeking: video?.seeking,
+          network: video?.networkState,
+          failed: video?.error?.code,
+          sameVideo: video === held,
+        };
+      });
+      throw new Error(`The clip should be at ${seconds}s: ${JSON.stringify(state)}`, { cause: error });
+    }
+  }
 
-  beforeEach(() => {
+  /** What the page set the playhead of a video to since it loaded, whatever the browser then made of it. */
+  const seeks = () => page.evaluate(() => (window as unknown as { seeks: number[] }).seeks);
+
+  beforeEach(async () => {
+    await page.addInitScript(() => {
+      const seen: number[] = [];
+      (window as unknown as { seeks: number[] }).seeks = seen;
+      const own = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
+      if (!own?.get || !own.set) return;
+      const { get, set } = own;
+      Object.defineProperty(HTMLMediaElement.prototype, "currentTime", {
+        configurable: true,
+        get,
+        set(this: HTMLMediaElement, value: number) {
+          seen.push(value);
+          set.call(this, value);
+        },
+      });
+    });
     copyFileSync(
       fileURLToPath(new URL("./fixtures/tiny.webm", import.meta.url)),
       join(folder, "assets", "talk.webm"),
@@ -940,6 +979,9 @@ describe("clip cues in a real browser", () => {
     expect(map?.duration).toBeGreaterThan(1.9);
     expect(map?.cues).toEqual([{ id: "marker-1", type: "marker", in: 1, out: map?.duration }]);
 
+    // The server tells the page that assets/ changed, a moment after the file was written, and the page reads the
+    // deck again. That read used to count the new cue file as a new asset and draw the slide again.
+    await page.waitForTimeout(500);
     const same = await page.evaluate(
       () =>
         (window as unknown as { held: Element | null }).held ===
@@ -971,21 +1013,9 @@ describe("clip cues in a real browser", () => {
       "marker-2",
       "marker-1",
     ]);
-    // The slide does not fetch the video until it is played. Reading it first means a jump is a real seek in every
-    // browser, and not a start position that a late load may replace.
-    await page.evaluate(
-      () =>
-        new Promise<void>((done) => {
-          const video = document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video");
-          if (!video || video.readyState >= 1) return done();
-          video.addEventListener("loadedmetadata", () => done(), { once: true });
-          video.load();
-        }),
-    );
     await clipNode().locator("[data-cue='marker-1']").click();
-    await playheadIs(1);
     await clipNode().locator("[data-cue='marker-2']").click();
-    await playheadIs(0.5);
+    expect(await seeks()).toEqual([1, 0.5]);
 
     await page.locator(".ed-toolbar [data-tb='cues']").click();
     await pop().locator("[data-field='cue:name:marker-1']").fill("the reveal");
@@ -996,6 +1026,43 @@ describe("clip cues in a real browser", () => {
     await pop().locator(".ed-cue-row[data-cue='marker-2'] [data-tb='cue-remove']").click();
     await page.waitForFunction(() => !document.querySelector(".ed-frame [data-cue='marker-2']"));
     expect(mapOnDisk()?.cues.map((cue) => cue.id)).toEqual(["the reveal"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("takes a loaded video to a cue from its chip, forward and back", async () => {
+    writeFileSync(
+      cueFile(),
+      JSON.stringify({
+        format: "depthcue-cues/1",
+        source: "assets/talk.webm",
+        duration: 2,
+        width: 64,
+        height: 36,
+        fps: 30,
+        cues: [
+          { id: "early", type: "marker", in: 0.5, out: 2 },
+          { id: "late", type: "marker", in: 1.5, out: 2 },
+        ],
+      }),
+    );
+    await open();
+    await clipNode().locator(".dc-clip-cues [data-cue='late']").waitFor();
+    // The slide does not fetch the video until it is played, so this reads it first. A browser can seek a video it
+    // has read only when the server answers byte ranges, which is what this checks.
+    await page.evaluate(
+      () =>
+        new Promise<void>((done) => {
+          const video = document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video");
+          (window as unknown as { held: Element | null }).held = video;
+          if (!video || video.readyState >= 1) return done();
+          video.addEventListener("loadedmetadata", () => done(), { once: true });
+          video.load();
+        }),
+    );
+    await clipNode().locator("[data-cue='late']").click();
+    await playheadIs(1.5);
+    await clipNode().locator("[data-cue='early']").click();
+    await playheadIs(0.5);
     expect(problems).toEqual([]);
   });
 

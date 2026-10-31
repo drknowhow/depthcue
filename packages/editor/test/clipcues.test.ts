@@ -331,6 +331,24 @@ describe("a clip with no cue map", () => {
     expect(slideChips().map((chip) => chip.dataset.cue)).toEqual(["marker-1"]);
   });
 
+  it("keeps the video where it was when the new cue file turns up in the files of the deck", async () => {
+    playheadAt(2);
+    Object.defineProperties(video(), {
+      duration: { value: 8, configurable: true },
+      videoWidth: { value: 640, configurable: true },
+      videoHeight: { value: 360, configurable: true },
+    });
+    const before = video();
+    popover().querySelector<HTMLButtonElement>("[data-tb='cue-add']")?.click();
+    await flush();
+    expect(server.assets).toContain("assets/talk.cues.json");
+    // The server tells the page the files changed, and the page reads the deck again.
+    await store.syncFromDisk();
+    await flush();
+    expect(video()).toBe(before);
+    expect(video().currentTime).toBe(2);
+  });
+
   it("says so when the length of the video cannot be read, and writes nothing", async () => {
     playheadAt(2);
     // A file that will not load answers with an error from the video that asks about it.

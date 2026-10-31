@@ -73,6 +73,12 @@ export interface EditorStore {
   dispose(): void;
 }
 
+/**
+ * A cue map is kept beside its video, but no block names it, so a new one is not a new asset. The first marker of a
+ * clip creates its file, and counting that would redraw the slide a moment later and send the video back to its start.
+ */
+const isCueMap = (path: string) => path.endsWith(".cues.json");
+
 const docOf = (payload: DeckPayload): Doc | undefined =>
   loadDoc({ text: payload.text, assets: payload.assets }).doc ?? undefined;
 
@@ -305,7 +311,7 @@ export async function openStore(
       }
       const doc = docOf(fresh);
       if (!doc) return;
-      session.addAssets(fresh.assets);
+      session.addAssets(fresh.assets.filter((path) => !isCueMap(path)));
       if (fresh.rev === diskRev) return;
       if (fresh.rev === session.rev) {
         diskRev = fresh.rev;

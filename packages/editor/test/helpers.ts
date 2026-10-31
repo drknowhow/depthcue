@@ -1,6 +1,15 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { applyOps, type Cue, checkCues, docToFiles, loadDoc, type Op, revisionOf } from "@depthcue/core";
+import {
+  applyOps,
+  type Cue,
+  checkCues,
+  cueMapPath,
+  docToFiles,
+  loadDoc,
+  type Op,
+  revisionOf,
+} from "@depthcue/core";
 import type { Api, ClipSize, CueList, DeckPayload, SaveResult } from "../src/api.ts";
 
 // happy-dom replaces the global URL, so the path is built from dirname rather than from import.meta.url.
@@ -126,6 +135,8 @@ export class FakeServer implements Api {
     if (!checked.ok) throw new Error(checked.message);
     const { duration, width, height } = size;
     this.cueMaps[source] = { duration, width, height, cues: checked.cues };
+    // The real server lists every file under assets/, so the cue map shows up in the next read of the deck.
+    if (!this.assets.includes(cueMapPath(source))) this.assets.push(cueMapPath(source));
     return { cues: structuredClone(checked.cues), duration };
   }
 }
