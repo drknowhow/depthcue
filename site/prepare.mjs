@@ -36,6 +36,8 @@ const PAGES = {
 
 /** Docs that are left off, and why. A link to one of these goes to the file on GitHub. */
 const LEFT_OFF = {
+  "docs/EDITOR_REMAKE.md":
+    "It is the working plan for the editor remake. Replace it with user docs when the remake has landed.",
   "docs/RESEARCH.md": "It quotes forum posts by handle. Remove those before it is public.",
   "docs/TRIAL.md":
     "It compares Depthcue with two other projects from single runs. Check the claims for fairness before it is public.",

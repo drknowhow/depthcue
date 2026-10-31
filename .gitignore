@@ -16,3 +16,6 @@ site/src/styles/tokens.css
 site/src/styles/palette.css
 site/public/
 site/.astro/
+
+# Impeccable design-skill state; local to one checkout.
+.impeccable/

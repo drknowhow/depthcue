@@ -15,6 +15,7 @@
       "!site/content",
       "!docs/demo/demo.json",
       "!docs/demo/transcript.json",
+      "!docs/design",
       "!pnpm-lock.yaml"
     ]
   },
