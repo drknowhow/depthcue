@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hydrate } from "../src/modules/chart.ts";
 import type { HydrateContext, ModuleInstance } from "../src/modules.ts";
 import { renderScene } from "../src/scene.ts";
-import { demoSource, sceneWith } from "./helpers.ts";
+import { demoSource, noFiles, sceneWith } from "./helpers.ts";
 
 type Rows = Array<{ label: string; value: number }>;
 
@@ -41,6 +41,7 @@ function mount(scene: Scene, id: string): HTMLElement {
     scene,
     deck: demoSource().deck,
     assetBase: ".",
+    readJson: noFiles,
     reducedMotion: true,
     announce: () => {},
   };
@@ -375,6 +376,7 @@ describe("refusing a block it cannot handle", () => {
         scene,
         deck: demoSource().deck,
         assetBase: ".",
+        readJson: noFiles,
         reducedMotion: false,
         announce: () => {},
       }),
@@ -393,6 +395,7 @@ describe("refusing a block it cannot handle", () => {
         scene,
         deck: demoSource().deck,
         assetBase: ".",
+        readJson: noFiles,
         reducedMotion: false,
         announce: () => {},
       }),
@@ -413,6 +416,7 @@ describe("disposing", () => {
       scene,
       deck: demoSource().deck,
       assetBase: ".",
+      readJson: noFiles,
       reducedMotion: true,
       announce: () => {},
     }) as ModuleInstance;

@@ -12,11 +12,17 @@ const clock = (seconds: number) =>
  * a layer or sound of the scene it was made from. The video is the source of truth. A clip with no cue map, or
  * a cue map that cannot be read, stays exactly as it was rendered.
  */
-export async function hydrate({ block, node, assetBase, announce }: HydrateContext): Promise<ModuleInstance> {
+export async function hydrate({
+  block,
+  node,
+  assetBase,
+  readJson,
+  announce,
+}: HydrateContext): Promise<ModuleInstance> {
   if (block.type !== "clip") throw new Error("The clip module only takes clip blocks.");
   const video = node.querySelector("video");
-  const mapUrl = assetUrl(assetBase, cueMapPath(block.source));
-  if (!video || !mapUrl) return {};
+  const mapPath = cueMapPath(block.source);
+  if (!video || !assetUrl(assetBase, mapPath)) return {};
 
   const controller = new AbortController();
   const noCues = (): ModuleInstance => {
@@ -27,9 +33,7 @@ export async function hydrate({ block, node, assetBase, announce }: HydrateConte
 
   let map: ReturnType<typeof readCueMap>;
   try {
-    const response = await fetch(mapUrl);
-    if (!response.ok) return noCues();
-    map = readCueMap(await response.json());
+    map = readCueMap(await readJson(mapPath));
   } catch {
     // No cue map, or one that is not JSON: the clip plays as it always did.
     return noCues();

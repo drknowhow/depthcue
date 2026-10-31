@@ -10,6 +10,8 @@ export type {
   SceneChanges,
 } from "./apply.ts";
 export { applyOps } from "./apply.ts";
+export type { AssetRef } from "./assets.ts";
+export { assetRefs, assetsOf } from "./assets.ts";
 export type { Cue, CueBuild, CueMap } from "./cues.ts";
 export { CUE_MAP_FORMAT, cueMapPath, MAX_CUES, makeCue, readCueMap, tidyCues } from "./cues.ts";
 export type { RawError } from "./diagnostics.ts";
@@ -18,6 +20,8 @@ export type { Doc, LoadResult } from "./doc.ts";
 export { checkDoc, docToFiles, loadDoc, revisionOf, sceneRevision } from "./doc.ts";
 export type { Autosave, AutosaveOptions, DraftStore, Recovery, Timers } from "./draft.ts";
 export { attachAutosave, DRAFT_FORMAT, memoryDraftStore, recoverDraft, serializeDraft } from "./draft.ts";
+export type { ExportData } from "./exported.ts";
+export { EXPORT_FORMAT } from "./exported.ts";
 export type {
   CommandResult,
   Lease,

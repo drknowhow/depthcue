@@ -76,6 +76,6 @@ style that the page's content policy refuses.
 
 ## Not yet
 
-- Exported decks have no presenter view.
+- Exported decks have no presenter view. See [offline export](export.md).
 - No multi-screen placement, rehearsal mode, per-scene timings or speaker script.
 - The timer is for the whole talk. It does not warn when a scene runs long.

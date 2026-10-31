@@ -19,6 +19,9 @@ export function demoSource(): PlayerSource {
   return { deck, scenes, assetBase: "." };
 }
 
+/** A `readJson` for tests of modules that read no files. */
+export const noFiles = () => Promise.reject(new Error("This test reads no files."));
+
 export function sceneWith(overrides: Record<string, unknown>): Scene {
   return {
     schemaVersion: "0.1",
