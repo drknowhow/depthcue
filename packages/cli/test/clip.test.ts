@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CUE_MAP_FORMAT, type CueMap, MAX_CUES } from "@depthcue/core";
+import { CUE_MAP_FORMAT, type Cue, type CueMap, MARKER_TYPE, MAX_CUES } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildClip,
@@ -236,6 +236,64 @@ describe("a build that is already up to date", () => {
     await build({ scene: path });
     expect(ran("render")).toHaveLength(2);
     expect(cueMap().format).toBe(CUE_MAP_FORMAT);
+  });
+});
+
+describe("markers placed in the editor", () => {
+  const mark = (id: string, start: number): Cue => ({ id, type: MARKER_TYPE, in: start, out: 4.2 });
+  /** What the editor does: the map as built, with markers added to its cues. */
+  const addMarkers = (...markers: Cue[]) => {
+    const map = cueMap();
+    writeFileSync(
+      join(folder, "assets", "intro.cues.json"),
+      JSON.stringify({ ...map, cues: [...map.cues, ...markers] }),
+    );
+  };
+  const ids = () => cueMap().cues.map((cue) => cue.id);
+
+  it("survive a rebuild after the scene changed, next to the cues the scene now has", async () => {
+    await build({ scene: scene() });
+    addMarkers(mark("marker-1", 2));
+    const result = await build({ scene: scene({ title: "changed" }) });
+    expect(ran("render")).toHaveLength(2);
+    expect(ids()).toEqual(["dot", "voice", "title", "marker-1"]);
+    expect(result.cueCount).toBe(4);
+  });
+
+  it("are still there when nothing changed, and are counted", async () => {
+    const path = scene();
+    await build({ scene: path });
+    addMarkers(mark("marker-1", 2));
+    const again = await build({ scene: path });
+    expect(again.built).toBe(false);
+    expect(again.cueCount).toBe(4);
+    expect(ids()).toContain("marker-1");
+  });
+
+  it("do not keep a cue of the old scene alive", async () => {
+    await build({ scene: scene() });
+    addMarkers(mark("marker-1", 2));
+    const onlyDot = { ...probe, layers: [probe.layers[1]], audio: [] };
+    await build({ scene: scene({ probe: onlyDot }) });
+    expect(ids()).toEqual(["dot", "marker-1"]);
+  });
+
+  it("are dropped when the new video ends before them, and kept when it does not", async () => {
+    await build({ scene: scene() });
+    addMarkers(mark("early", 1), mark("late", 3));
+    const shorter = { ...probe, canvas: { ...probe.canvas, duration: 2, frames: 60 } };
+    await build({ scene: scene({ probe: shorter }) });
+    expect(ids()).toContain("early");
+    expect(ids()).not.toContain("late");
+  });
+
+  it("give way to a cue the scene now has under the same id", async () => {
+    const withoutTitle = { ...probe, layers: [probe.layers[1]], audio: [] };
+    await build({ scene: scene({ probe: withoutTitle }) });
+    addMarkers(mark("title", 3.5));
+    await build({ scene: scene() });
+    const title = cueMap().cues.find((cue) => cue.id === "title");
+    expect(title).toEqual({ id: "title", type: "text", in: 1, out: 4.2 });
   });
 });
 

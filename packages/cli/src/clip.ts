@@ -16,6 +16,7 @@ import {
   type Cue,
   type CueMap,
   cueMapPath,
+  keepMarkers,
   makeCue,
   readCueMap,
   tidyCues,
@@ -348,6 +349,8 @@ export async function buildClip(options: ClipBuildOptions): Promise<ClipBuildRes
 
     const width = finite(rendered.w) ? rendered.w : Math.round(probe.width * scale);
     const height = finite(rendered.h) ? rendered.h : Math.round(probe.height * scale);
+    // The markers a person placed in the editor are kept; the other cues are what the scene says now.
+    const cues = keepMarkers(probe.cues, previous, probe.duration);
     const map: CueMap = {
       format: CUE_MAP_FORMAT,
       source: files.source,
@@ -355,7 +358,7 @@ export async function buildClip(options: ClipBuildOptions): Promise<ClipBuildRes
       width,
       height,
       fps: probe.fps,
-      cues: probe.cues,
+      cues,
       build: { key, kinescript: version, quality, scale, scene: basename(sceneFile) },
     };
     const sidecar = join(work, "cues.json");
@@ -369,7 +372,7 @@ export async function buildClip(options: ClipBuildOptions): Promise<ClipBuildRes
       name,
       ...files,
       built: true,
-      cueCount: probe.cues.length,
+      cueCount: cues.length,
       duration: probe.duration,
       width,
       height,

@@ -12,7 +12,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { docToFiles, loadDoc, revisionOf } from "@depthcue/core";
+import { docToFiles, loadDoc, readCueMap, revisionOf } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assetName, sniffImage } from "../src/edit-api.ts";
 import { loadDeckDir } from "../src/loader.ts";
@@ -469,6 +469,171 @@ describe("adding images", () => {
     files["scenes/opening.json"] = JSON.stringify(scene);
     const saved = await call("/_depthcue/api/save", json({ baseRev: revisionOf(readDeck()), files }));
     expect(saved.status).toBe(200);
+  });
+});
+
+describe("clip cues", () => {
+  const SOURCE = "assets/talk.mp4";
+  const cueFile = () => join(folder, "assets", "talk.cues.json");
+  const clip = { duration: 10, width: 1280, height: 720 };
+  const marker = (id: string, start: number) => ({ id, type: "marker", in: start, out: 10 });
+  const getCues = (source: string, extra: Call = {}) =>
+    call(`/_depthcue/api/cues?source=${encodeURIComponent(source)}`, extra);
+  const putCues = (body: unknown, extra: Call = {}) =>
+    call("/_depthcue/api/cues", { ...json(body), ...extra });
+  const built = {
+    format: "depthcue-cues/1",
+    source: SOURCE,
+    duration: 10,
+    width: 1280,
+    height: 720,
+    fps: 24,
+    cues: [{ id: "dot", type: "circle", in: 0, out: 2 }],
+    build: { key: "abc", kinescript: "kinescript 1.2.0", quality: "draft", scale: 0.5, scene: "talk.json" },
+    note: "written by another tool",
+  };
+
+  beforeEach(() => {
+    mkdirSync(join(folder, "assets"), { recursive: true });
+    writeFileSync(join(folder, "assets", "talk.mp4"), Buffer.alloc(32));
+  });
+
+  it("reads a clip with no cue map as having none, and a built one as it is", async () => {
+    const none = await getCues(SOURCE);
+    expect(none.status).toBe(200);
+    expect(none.json).toEqual({ state: "none", cues: [] });
+    writeFileSync(cueFile(), JSON.stringify(built));
+    const found = await getCues(SOURCE);
+    expect(found.json).toEqual({ state: "ok", cues: built.cues, duration: 10 });
+  });
+
+  it("calls a cue file the player cannot read broken, and says no more", async () => {
+    writeFileSync(cueFile(), "{ not json");
+    expect((await getCues(SOURCE)).json).toEqual({ state: "broken", cues: [] });
+    writeFileSync(cueFile(), JSON.stringify({ ...built, format: "depthcue-cues/9" }));
+    expect((await getCues(SOURCE)).json).toEqual({ state: "broken", cues: [] });
+  });
+
+  it("answers only for a video of the deck, never for a path that leads elsewhere", async () => {
+    // Each path below names a file that exists, so only the rule about which paths may be named can refuse it.
+    mkdirSync(join(folder, "assets", "sub"));
+    for (const there of ["talk.mp4", "assets/sub/talk.mp4", "assets/photo.png"]) {
+      writeFileSync(join(folder, ...there.split("/")), Buffer.alloc(8));
+    }
+    writeFileSync(join(root, "talk.mp4"), Buffer.alloc(8));
+    const refused = [
+      "",
+      "talk.mp4",
+      "../talk.mp4",
+      "assets/../talk.mp4",
+      "assets/sub/talk.mp4",
+      "assets\\talk.mp4",
+      "assets/photo.png",
+      "assets/missing.mp4",
+    ];
+    for (const source of refused) {
+      expect((await getCues(source)).status, `read ${source}`).toBe(400);
+      expect((await putCues({ source, cues: [], clip })).status, `save ${source}`).toBe(400);
+    }
+    expect((await call("/_depthcue/api/cues")).status).toBe(400);
+    expect(readdirSync(join(folder, "assets")).filter((name) => name.includes("cues"))).toEqual([]);
+  });
+
+  it("starts a cue map for a clip that was never built, from what the editor measured", async () => {
+    const saved = await putCues({ source: SOURCE, cues: [marker("b", 6), marker("a", 2.5)], clip });
+    expect(saved.status).toBe(200);
+    expect((saved.json.cues as { id: string }[]).map((cue) => cue.id)).toEqual(["a", "b"]);
+    expect(saved.json.duration).toBe(10);
+    const map = readCueMap(JSON.parse(readFileSync(cueFile(), "utf8")));
+    expect(map).toMatchObject({ source: SOURCE, duration: 10, width: 1280, height: 720, fps: 30 });
+    expect(map?.build).toBeUndefined();
+    expect(map?.cues.map((cue) => `${cue.id}@${cue.in}`)).toEqual(["a@2.5", "b@6"]);
+    expect(readdirSync(join(folder, "assets")).some((name) => name.endsWith(".tmp"))).toBe(false);
+    expect((await getCues(SOURCE)).json).toMatchObject({ state: "ok", duration: 10 });
+  });
+
+  it("will not start a map without a measured clip, and writes nothing", async () => {
+    for (const measured of [undefined, {}, { duration: 10, width: 1280 }, { ...clip, duration: 0 }, "x"]) {
+      const answer = await putCues({ source: SOURCE, cues: [], clip: measured });
+      expect(answer.status, JSON.stringify(measured)).toBe(422);
+      expect(answer.json.error).toBe("needs-clip");
+    }
+    expect(existsSync(cueFile())).toBe(false);
+  });
+
+  it("changes only the cues of a map that is there, so the build record survives", async () => {
+    writeFileSync(cueFile(), JSON.stringify(built));
+    const saved = await putCues({ source: SOURCE, cues: [...built.cues, marker("marker-1", 4)] });
+    expect(saved.status).toBe(200);
+    const after = JSON.parse(readFileSync(cueFile(), "utf8"));
+    expect(after).toEqual({ ...built, cues: [...built.cues, marker("marker-1", 4)] });
+    expect(after.build).toEqual(built.build);
+    expect(after.fps).toBe(24);
+  });
+
+  it("holds an existing map to its own duration, whatever the editor says the clip measures", async () => {
+    writeFileSync(cueFile(), JSON.stringify(built));
+    const answer = await putCues({
+      source: SOURCE,
+      cues: [{ id: "late", type: "marker", in: 50, out: 60 }],
+      clip: { ...clip, duration: 99 },
+    });
+    expect(answer.status).toBe(422);
+    expect(answer.json.error).toBe("invalid");
+    expect(String(answer.json.message)).toContain("after the clip ends at 10 s");
+    expect(JSON.parse(readFileSync(cueFile(), "utf8"))).toEqual(built);
+  });
+
+  it("refuses cues the player would not take whole, and leaves the file as it was", async () => {
+    writeFileSync(cueFile(), JSON.stringify(built));
+    const before = readFileSync(cueFile(), "utf8");
+    const bad: [string, unknown][] = [
+      ["not a list", "nope"],
+      ["a cue that is not usable", [{ id: "", type: "marker", in: 1, out: 2 }]],
+      ["an end before the start", [{ id: "x", type: "marker", in: 3, out: 1 }]],
+      ["two cues with one id", [marker("same", 1), marker("same", 2)]],
+      ["too many", Array.from({ length: 65 }, (_, i) => marker(`m-${i}`, i % 10))],
+    ];
+    for (const [why, cues] of bad) {
+      const answer = await putCues({ source: SOURCE, cues });
+      expect(answer.status, why).toBe(422);
+      expect(answer.json.error, why).toBe("invalid");
+    }
+    expect(readFileSync(cueFile(), "utf8")).toBe(before);
+  });
+
+  it("never overwrites a file it cannot read as a cue map", async () => {
+    writeFileSync(cueFile(), "hand written notes");
+    const answer = await putCues({ source: SOURCE, cues: [marker("a", 1)], clip });
+    expect(answer.status).toBe(422);
+    expect(answer.json.error).toBe("broken");
+    expect(readFileSync(cueFile(), "utf8")).toBe("hand written notes");
+  });
+
+  it("needs the token, and only JSON of a sensible size", async () => {
+    expect((await getCues(SOURCE, { token: false })).status).toBe(403);
+    expect((await putCues({ source: SOURCE, cues: [], clip }, { token: false })).status).toBe(403);
+    expect(
+      (
+        await call("/_depthcue/api/cues", {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: "{}",
+        })
+      ).status,
+    ).toBe(415);
+    const garbled = await call("/_depthcue/api/cues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{ nope",
+    });
+    expect(garbled.status).toBe(400);
+    expect((await putCues([1, 2])).status).toBe(400);
+    const huge = await putCues({ source: SOURCE, cues: [], clip, padding: "x".repeat(300 * 1024) }).catch(
+      () => ({ status: 413 }),
+    );
+    expect(huge.status).toBe(413);
+    expect(existsSync(cueFile())).toBe(false);
   });
 });
 

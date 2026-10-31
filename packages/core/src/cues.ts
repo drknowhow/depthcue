@@ -7,6 +7,13 @@
 export const CUE_MAP_FORMAT = "depthcue-cues/1";
 /** More chips than this stop being a way to move around a clip. */
 export const MAX_CUES = 64;
+/** The longest a cue's id may be. */
+export const MAX_CUE_ID = 64;
+/**
+ * The type of a cue a person placed by hand. Every other cue comes from the scene the clip was built from and says
+ * what that video holds, so only a marker is ever edited by hand, and `depthcue clip build` keeps markers.
+ */
+export const MARKER_TYPE = "marker";
 
 export interface Cue {
   id: string;
@@ -44,7 +51,7 @@ const finite = (value: unknown): value is number => typeof value === "number" &&
 
 /** A cue, or nothing when the parts are not usable. The same rules apply to what a tool printed and to a file. */
 export function makeCue(id: unknown, type: unknown, start: unknown, end: unknown): Cue | undefined {
-  if (typeof id !== "string" || id === "" || id.length > 64) return undefined;
+  if (typeof id !== "string" || id === "" || id.length > MAX_CUE_ID) return undefined;
   if (!finite(start) || !finite(end) || start < 0 || end < start) return undefined;
   return { id, type: typeof type === "string" ? type.slice(0, 32) : "layer", in: start, out: end };
 }
@@ -56,6 +63,73 @@ export function tidyCues(found: readonly Cue[]): Cue[] {
     .filter((cue) => !seen.has(cue.id) && seen.add(cue.id))
     .sort((a, b) => a.in - b.in)
     .slice(0, MAX_CUES);
+}
+
+export const isMarker = (cue: Cue): boolean => cue.type === MARKER_TYPE;
+
+/** Whole milliseconds: a time typed or read from a playhead has no use for more. */
+export const roundedSeconds = (seconds: number): number => Math.round(seconds * 1000) / 1000;
+
+/** `marker-1`, `marker-2`: the first of these no cue has. */
+export function nextMarkerId(cues: readonly Cue[]): string {
+  const taken = new Set(cues.map((cue) => cue.id));
+  let n = 1;
+  while (taken.has(`marker-${n}`)) n++;
+  return `marker-${n}`;
+}
+
+/**
+ * A marker at `at` seconds, held inside the clip. It runs to the end of the clip, which is how the player picks the
+ * current cue: the one that started last and has not ended.
+ */
+export function newMarker(cues: readonly Cue[], at: number, duration: number): Cue | undefined {
+  const start = roundedSeconds(Math.min(Math.max(0, at), duration));
+  return makeCue(nextMarkerId(cues), MARKER_TYPE, start, roundedSeconds(duration));
+}
+
+/**
+ * What a person may send for a clip's cues: a list the player will take whole, with every marker inside the clip.
+ * Answers the cues in time order, or says what is wrong with the list in words the person can read.
+ */
+export function checkCues(
+  given: unknown,
+  duration: number,
+): { ok: true; cues: Cue[] } | { ok: false; message: string } {
+  if (!Array.isArray(given)) return { ok: false, message: "The cues must be a list." };
+  if (given.length > MAX_CUES) {
+    return { ok: false, message: `A clip holds at most ${MAX_CUES} cues, and this has ${given.length}.` };
+  }
+  const found: Cue[] = [];
+  const ids = new Set<string>();
+  for (const [index, item] of given.entries()) {
+    const raw = isRecord(item) ? item : {};
+    const cue = makeCue(raw.id, raw.type, raw.in, raw.out);
+    if (!cue) {
+      return {
+        ok: false,
+        message: `Cue ${index + 1} is not usable. It needs an id of 1 to ${MAX_CUE_ID} characters and a start and end in seconds, the end not before the start.`,
+      };
+    }
+    if (ids.has(cue.id)) return { ok: false, message: `Two cues are called "${cue.id}". Ids must differ.` };
+    ids.add(cue.id);
+    if (isMarker(cue) && cue.in > duration) {
+      return {
+        ok: false,
+        message: `"${cue.id}" starts at ${cue.in} s, after the clip ends at ${duration} s.`,
+      };
+    }
+    found.push(cue);
+  }
+  return { ok: true, cues: tidyCues(found) };
+}
+
+/**
+ * The cues of a rebuilt clip: what the scene says now, with the markers of the build it replaces kept. A marker
+ * past the end of the new video is dropped, and one whose id the scene now uses gives way to the scene's cue.
+ */
+export function keepMarkers(built: readonly Cue[], previous: CueMap | undefined, duration: number): Cue[] {
+  const kept = (previous?.cues ?? []).filter((cue) => isMarker(cue) && cue.in <= duration);
+  return tidyCues([...built, ...kept]);
 }
 
 /** Where a clip's cue map is kept: `assets/intro.mp4` has `assets/intro.cues.json`. */
