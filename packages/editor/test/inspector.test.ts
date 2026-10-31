@@ -216,6 +216,85 @@ describe("the deck form", () => {
     expect(host.querySelector(".ed-frame")?.getAttribute("data-theme")).toBe("ink");
   });
 
+  describe("module settings", () => {
+    const modules = () => doc().deck.modules;
+    const setModules = (value: Record<string, string> | null) =>
+      store.session.apply([{ op: "deck.set", set: { modules: value } }]);
+
+    it("lists each installed module by its title, on Automatic until the deck says otherwise", () => {
+      const select = field<HTMLSelectElement>("deck:module:chart");
+      expect(select.value).toBe("");
+      expect([...select.options].map((option) => option.textContent)).toEqual([
+        "Automatic",
+        "Off: show it as a plain chart",
+        "Needs version 1.0 or newer",
+      ]);
+      expect(select.closest("label")?.textContent).toContain("Explorable charts");
+      expect(modules()).toBeUndefined();
+    });
+
+    it("turns a module off, pins its version, and goes back to Automatic", () => {
+      const select = () => field<HTMLSelectElement>("deck:module:chart");
+      choose(select(), "off");
+      expect(modules()).toEqual({ chart: "off" });
+      expect(select().value).toBe("off");
+      choose(select(), "1.0");
+      expect(modules()).toEqual({ chart: "1.0" });
+      choose(select(), "");
+      expect(modules()).toBeUndefined();
+      expect(has(doc().deck, "modules")).toBe(false);
+    });
+
+    it("undoes a change as one step", () => {
+      choose(field<HTMLSelectElement>("deck:module:chart"), "off");
+      store.session.undo();
+      expect(modules()).toBeUndefined();
+      expect(field<HTMLSelectElement>("deck:module:chart").value).toBe("");
+    });
+
+    it("keeps the other modules' settings when one changes", () => {
+      setModules({ chart: "off", mystery: "2" });
+      choose(field<HTMLSelectElement>("deck:module:chart"), "");
+      expect(modules()).toEqual({ mystery: "2" });
+      choose(field<HTMLSelectElement>("deck:module:chart"), "1.0");
+      expect(modules()).toEqual({ mystery: "2", chart: "1.0" });
+    });
+
+    it("still shows a pinned version the list does not offer", () => {
+      setModules({ chart: "1" });
+      const select = field<HTMLSelectElement>("deck:module:chart");
+      expect(select.value).toBe("1");
+      expect([...select.options].map((option) => option.value)).toContain("1");
+    });
+
+    it("says when a deck names a module that is not installed, and removes just that setting", () => {
+      setModules({ chart: "off", mystery: "2" });
+      const note = host.querySelector<HTMLElement>("[data-module='mystery']");
+      expect(note?.textContent).toContain("mystery (2) is not installed here");
+      field<HTMLButtonElement>("deck:module:mystery:remove").click();
+      expect(modules()).toEqual({ chart: "off" });
+      expect(host.querySelector("[data-module='mystery']")).toBeNull();
+    });
+
+    it("clears the property when the last setting goes", () => {
+      setModules({ mystery: "2" });
+      field<HTMLButtonElement>("deck:module:mystery:remove").click();
+      expect(has(doc().deck, "modules")).toBe(false);
+    });
+
+    it("names the remove button for a screen reader", () => {
+      setModules({ mystery: "2" });
+      expect(field<HTMLButtonElement>("deck:module:mystery:remove").getAttribute("aria-label")).toBe(
+        "Remove the setting for mystery",
+      );
+    });
+
+    it("does not list an installed module as missing", () => {
+      setModules({ chart: "off" });
+      expect(host.querySelector("[data-module='chart']")).toBeNull();
+    });
+  });
+
   it("saves what the forms changed to the files", async () => {
     choose(field<HTMLSelectElement>("deck:theme"), "ink");
     typeInto(field("scene:title"), "Saved from the form");

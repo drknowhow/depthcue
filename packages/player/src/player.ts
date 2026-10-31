@@ -13,6 +13,7 @@ import {
   samePosition,
   stepCount,
 } from "./model.ts";
+import { createModuleHost, type ModuleEvent, type ModuleRegistry, type ModuleState } from "./modules.ts";
 import { renderReading } from "./reading.ts";
 import { assetUrl } from "./safe.ts";
 import { renderScene } from "./scene.ts";
@@ -31,6 +32,9 @@ export interface PlayerOptions {
   /** Force reduced motion on or off. Default: follow the visitor's setting. */
   reducedMotion?: boolean;
   onChange?: (state: PlayerState) => void;
+  /** Modules that may make blocks interactive once they show. Default none: every block stays static. */
+  modules?: ModuleRegistry;
+  onModule?: (event: ModuleEvent) => void;
 }
 
 export interface Player {
@@ -43,6 +47,12 @@ export interface Player {
   toggleNotes(): void;
   /** Swaps in changed deck content and keeps the place by scene id. For live reload and the editor. */
   update(source: PlayerSource): void;
+  /** Runs a command on a block's module, such as `highlight` on a chart. False when it did not run. */
+  invoke(blockId: string, command: string, args?: unknown): boolean;
+  /** Resolves once the modules that are in view have hydrated or failed. */
+  settled(): Promise<void>;
+  /** Where each block's module stands: pending, hydrated, failed, off or incompatible. */
+  moduleStates(): Readonly<Record<string, ModuleState>>;
   destroy(): void;
 }
 
@@ -114,6 +124,16 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
   );
   host.replaceChildren(root);
 
+  const modules = createModuleHost({
+    registry: options.modules ?? [],
+    deck: () => source.deck,
+    assetBase: () => source.assetBase,
+    reducedMotion,
+    announce: (message) => {
+      live.textContent = message;
+    },
+    ...(options.onModule ? { onEvent: options.onModule } : {}),
+  });
   const context = () => ({ assetBase: source.assetBase });
   const current = (): Scene => source.scenes[position.scene] as Scene;
 
@@ -174,12 +194,17 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
   }
 
   function renderView(focus: boolean) {
+    modules.detach();
     view.replaceChildren(
       mode === "read"
         ? renderReading(source.deck, source.scenes, context())
         : renderScene(current(), context()),
     );
-    if (mode === "present") applySteps();
+    if (mode === "present") {
+      applySteps();
+      // The reading view is one long page of static content; only a scene being presented gets modules.
+      modules.attach(view, current());
+    }
     updateChrome();
     if (focus) {
       const target = view.firstElementChild as HTMLElement | null;
@@ -281,7 +306,11 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
       renderView(false);
       options.onChange?.(state());
     },
+    invoke: (blockId, command, args) => modules.invoke(blockId, command, args),
+    settled: () => modules.settled(),
+    moduleStates: () => modules.states(),
     destroy() {
+      modules.detach();
       document.removeEventListener("keydown", onKey);
       removeEventListener("hashchange", onHash);
       removeEventListener("popstate", onHash);

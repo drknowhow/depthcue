@@ -283,4 +283,31 @@ describe("blocks and the deck", () => {
     const bad = failure(run(demoDoc(), [{ op: "deck.set", set: { theme: "neon" } }]));
     expect(bad.diagnostics[0]).toMatchObject({ file: "deck.json", path: "/theme", code: "bad-value" });
   });
+
+  it("records what a deck needs from a module: off, or a version", () => {
+    const set = success(
+      run(demoDoc(), [{ op: "deck.set", set: { modules: { chart: "off", kinescript: "1.2" } } }]),
+    );
+    expect(set.doc.deck.modules).toEqual({ chart: "off", kinescript: "1.2" });
+    expect(set.deckChanged).toBe(true);
+    const cleared = success(run(set.doc, [{ op: "deck.set", set: { modules: null } }]));
+    expect(cleared.doc.deck.modules).toBeUndefined();
+  });
+
+  it("rejects a module setting that is not off or a version", () => {
+    for (const setting of ["latest", "^1", "1.2.3.4", "", "Off"]) {
+      const bad = failure(run(demoDoc(), [{ op: "deck.set", set: { modules: { chart: setting } } }]));
+      expect(bad.diagnostics[0], setting).toMatchObject({
+        file: "deck.json",
+        path: "/modules/chart",
+        code: "bad-format",
+        fix: expect.stringContaining("off"),
+      });
+    }
+    for (const setting of ["off", "1", "1.2", "1.2.3", "0.1"]) {
+      expect(run(demoDoc(), [{ op: "deck.set", set: { modules: { chart: setting } } }]).ok, setting).toBe(
+        true,
+      );
+    }
+  });
 });

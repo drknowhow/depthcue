@@ -1,4 +1,10 @@
-import { ASSET_PATTERN, ID_PATTERN, LANGUAGE_PATTERN, URL_PATTERN } from "./schema.ts";
+import {
+  ASSET_PATTERN,
+  ID_PATTERN,
+  LANGUAGE_PATTERN,
+  MODULE_SETTING_PATTERN,
+  URL_PATTERN,
+} from "./schema.ts";
 import type { Diagnostic } from "./types.ts";
 
 /** The subset of an Ajv error that the explainer reads. */
@@ -58,13 +64,14 @@ function editDistance(a: string, b: string): number {
   return row[b.length] as number;
 }
 
-const PATTERN_HINTS: Record<string, string> = {
+export const PATTERN_HINTS: Record<string, string> = {
   [ID_PATTERN]:
     "Ids use lowercase letters, digits and hyphens, start with a letter, and are 2 to 64 characters long.",
   [ASSET_PATTERN]:
     'Asset paths start with "assets/", use letters, digits, ".", "-", "_" and "/", and never contain "..".',
   [LANGUAGE_PATTERN]: 'Use a language tag such as "en" or "pt-BR".',
   [URL_PATTERN]: "Use a full http or https URL.",
+  [MODULE_SETTING_PATTERN]: 'Write "off", or the version the deck needs, such as "1" or "1.2".',
 };
 
 function kind(value: Json): string {

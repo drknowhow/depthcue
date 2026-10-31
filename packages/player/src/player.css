@@ -347,6 +347,58 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Chart module: its toolbar sits in room reserved while it is pending, so hydrating moves nothing */
+
+.dc-chart-figure[data-module-state="pending"],
+.dc-chart-figure[data-module-state="hydrated"] {
+  position: relative;
+  padding-block-end: 2.75em;
+}
+
+.dc-chart-tools {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--dc-space-3);
+}
+
+.dc-chip {
+  padding: 0.3em 0.8em;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-sm);
+  background: var(--dc-surface);
+  color: var(--dc-text);
+  font: 500 0.8em var(--dc-font-mono);
+  cursor: pointer;
+}
+
+.dc-chip[aria-pressed="true"] {
+  border-color: var(--dc-text);
+  background: var(--dc-text);
+  color: var(--dc-bg);
+}
+
+.dc-chart-readout {
+  margin: 0;
+  color: var(--dc-muted);
+  font: 500 0.8em var(--dc-font-mono);
+}
+
+.dc-chart tbody tr {
+  transition: opacity var(--dc-motion-duration-fast) var(--dc-motion-easing-standard);
+}
+
+[data-chart-active] .dc-chart tbody tr:not([data-active]) {
+  opacity: 0.45;
+}
+
+.dc-chart tbody tr[data-active] .dc-bar {
+  outline: 2px solid var(--dc-action);
+  outline-offset: 2px;
+}
+
 @keyframes dc-grow {
   from {
     transform: scaleX(0);

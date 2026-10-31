@@ -11,7 +11,8 @@ export interface RenderContext {
 type Source = NonNullable<Scene["sources"]>[number];
 type BarChart = Extract<Block, { type: "bar-chart" }>;
 
-const unitText = (unit: string | undefined) => (unit === undefined ? "" : unit === "%" ? "%" : ` ${unit}`);
+export const unitText = (unit: string | undefined) =>
+  unit === undefined ? "" : unit === "%" ? "%" : ` ${unit}`;
 
 /**
  * The chart as a table with a bar in each row. This is the chart's static form: it reads correctly with no
