@@ -390,6 +390,84 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  describe("a picture dropped or pasted on an image", () => {
+    const PIXEL =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const figure = () => page.locator(".ed-frame [data-id='method-diagram']");
+    const flagged = () => page.locator(".ed-frame [data-id='method-diagram'][data-alt-missing]");
+    const imageOnDisk = () => {
+      const block = disk().scenes.method?.blocks.find((candidate) => candidate.id === "method-diagram");
+      if (block?.type !== "image") throw new Error("the image should be on disk");
+      return block;
+    };
+    /** What the browser does for a real drop or paste: one event carrying a file the page can read. */
+    const send = (kind: "drop" | "paste", file: { name: string; type: string }) =>
+      figure().evaluate(
+        (node, { kind, file, pixel }) => {
+          const data = new DataTransfer();
+          data.items.add(new File([Uint8Array.from(atob(pixel), (c) => c.charCodeAt(0))], file.name, file));
+          if (kind === "paste") {
+            node.dispatchEvent(
+              new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+            );
+            return;
+          }
+          for (const type of ["dragenter", "dragover", "drop"]) {
+            node.dispatchEvent(new DragEvent(type, { dataTransfer: data, bubbles: true, cancelable: true }));
+          }
+        },
+        { kind, file, pixel: PIXEL },
+      );
+    const openMethod = async () => {
+      await open();
+      await page.locator(".ed-scene[data-scene='method']").click();
+      await figure().waitFor();
+    };
+
+    it("replaces the image, asks for its alt text, and Ctrl+Z puts the old picture and words back", async () => {
+      await openMethod();
+      const before = imageOnDisk();
+      await send("drop", { name: "dropped.png", type: "image/png" });
+      await flagged().waitFor();
+      expect(await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.field)).toBe(
+        "image:alt",
+      );
+      // The file's name is selected, so typing replaces it.
+      await page.keyboard.type("The four steps");
+      await saved();
+      expect(imageOnDisk().asset).toMatch(/^assets\/dropped-[0-9a-f]+\.png$/);
+      expect(imageOnDisk().alt).toBe("The four steps");
+      expect(existsSync(join(folder, imageOnDisk().asset))).toBe(true);
+      await flagged().waitFor({ state: "detached" });
+
+      await page.keyboard.press("Control+z");
+      await page.keyboard.press("Control+z");
+      await saved();
+      expect(imageOnDisk()).toMatchObject({ asset: before.asset, alt: before.alt });
+      expect(problems).toEqual([]);
+    });
+
+    it("takes a pasted picture on the image that has the keyboard", async () => {
+      await openMethod();
+      await figure().focus();
+      await send("paste", { name: "image.png", type: "image/png" });
+      await flagged().waitFor();
+      await saved();
+      expect(imageOnDisk().asset).toMatch(/^assets\/image-[0-9a-f]+\.png$/);
+      expect(problems).toEqual([]);
+    });
+
+    it("says a text file is not a picture, and changes nothing", async () => {
+      await openMethod();
+      const before = imageOnDisk();
+      await send("drop", { name: "notes.txt", type: "text/plain" });
+      await page.locator(".ed-hint[data-problem]").filter({ hasText: "not a picture file" }).waitFor();
+      expect(await flagged().count()).toBe(0);
+      expect(imageOnDisk()).toMatchObject({ asset: before.asset, alt: before.alt });
+      expect(problems).toEqual([]);
+    });
+  });
+
   it("adds a source from the scene popover, then cites it from a text's toolbar, and the folder follows", async () => {
     await open();
     await page.locator(".ed-scene[data-scene='method']").click();

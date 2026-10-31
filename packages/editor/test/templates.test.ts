@@ -14,8 +14,10 @@ import {
   describeBlock,
   IMAGE_FILE,
   idsInScene,
+  needsAlt,
   newBlock,
   newScene,
+  placeholderAlt,
   uniqueId,
   VIDEO_FILE,
 } from "../src/templates.ts";
@@ -141,6 +143,39 @@ describe("newBlock", () => {
     expect(image.type === "image" && image.alt).toBe("q3 sales chart");
     const clip = newBlock(method, "clip", "assets/intro.mp4");
     expect(clip.type === "clip" && clip.alt).toBe("intro");
+  });
+});
+
+describe("alt text that nobody has written", () => {
+  const method = scene(demo(), "method");
+
+  it("is the words of the file's name, and never an empty string", () => {
+    expect(placeholderAlt("assets/q3_sales-chart.png")).toBe("q3 sales chart");
+    // The server's hash is not a word, but a name that merely looks like one in the middle is kept.
+    expect(placeholderAlt("assets/q3_sales-chart-1a2b3c4d.png")).toBe("q3 sales chart");
+    expect(placeholderAlt("assets/cafe-1a2b3c4d-menu.png")).toBe("cafe 1a2b3c4d menu");
+    expect(placeholderAlt("assets/deadbeef.png")).toBe("deadbeef");
+    expect(placeholderAlt("assets/__.png")).toBe("untitled");
+  });
+
+  it("flags a new image or clip until its alt text is changed", () => {
+    const image = newBlock(method, "image", "assets/method.svg");
+    const clip = newBlock(method, "clip", "assets/intro.mp4");
+    expect(needsAlt(image)).toBe(true);
+    expect(needsAlt(clip)).toBe(true);
+    expect(needsAlt({ ...image, alt: "The method in four steps" } as Block)).toBe(false);
+    expect(needsAlt({ ...clip, alt: "The intro" } as Block)).toBe(false);
+  });
+
+  it("flags only alt text that is the name of the file the block is on", () => {
+    const image = newBlock(method, "image", "assets/old.png");
+    expect(needsAlt({ ...image, asset: "assets/old.png" } as Block)).toBe(true);
+    expect(needsAlt({ ...image, asset: "assets/new.png" } as Block)).toBe(false);
+  });
+
+  it("is never asked of a block that has no alt text", () => {
+    expect(needsAlt(newBlock(method, "text"))).toBe(false);
+    expect(needsAlt(newBlock(method, "bar-chart"))).toBe(false);
   });
 });
 

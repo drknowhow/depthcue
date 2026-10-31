@@ -8,6 +8,7 @@ let session: Session;
 let canvas: Canvas;
 let hints: Array<{ text: string; problem: boolean }>;
 let picked: string[];
+let replaced: Array<{ id: string; file: File }>;
 
 function start() {
   const server = new FakeServer();
@@ -16,9 +17,11 @@ function start() {
   session = createSession(doc);
   hints = [];
   picked = [];
+  replaced = [];
   canvas = createCanvas(session, {
     hint: (text, problem) => hints.push({ text, problem }),
     select: (id) => picked.push(id),
+    replaceImage: (id, file) => replaced.push({ id, file }),
   });
   document.body.replaceChildren(canvas.element);
 }
@@ -274,5 +277,61 @@ describe("redrawing", () => {
     canvas.render("opening");
     canvas.render("opening");
     expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe("pictures on an image", () => {
+  const figure = () => canvas.nodeOf("method-diagram") as HTMLElement;
+  const transfer = (files: File[]) => ({
+    files,
+    types: files.length > 0 ? ["Files"] : [],
+    dropEffect: "none",
+  });
+  const fire = (node: Element, type: string, init: Record<string, unknown>) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    for (const [key, value] of Object.entries(init)) Object.defineProperty(event, key, { value });
+    node.dispatchEvent(event);
+    return event;
+  };
+  const picture = (name: string, type = "image/png") => new File(["x"], name, { type });
+
+  beforeEach(() => canvas.render("method"));
+
+  it("hands a dropped picture to the editor for the image it landed on, and takes the drop", () => {
+    const file = picture("shot.png");
+    expect(fire(figure(), "drop", { dataTransfer: transfer([file]) }).defaultPrevented).toBe(true);
+    expect(replaced).toEqual([{ id: "method-diagram", file }]);
+  });
+
+  it("hands over a pasted picture, and leaves a paste with no picture to the browser", () => {
+    const file = picture("shot.png");
+    expect(fire(figure(), "paste", { clipboardData: { files: [] } }).defaultPrevented).toBe(false);
+    expect(fire(figure(), "paste", { clipboardData: { files: [file] } }).defaultPrevented).toBe(true);
+    expect(replaced).toEqual([{ id: "method-diagram", file }]);
+  });
+
+  it("says a dropped file is not a picture, and hands over nothing", () => {
+    fire(figure(), "drop", { dataTransfer: transfer([picture("notes.txt", "text/plain")]) });
+    expect(replaced).toEqual([]);
+    expect(hints.at(-1)).toMatchObject({ problem: true });
+    expect(hints.at(-1)?.text).toContain("not a picture file");
+  });
+
+  it("marks an image whose alt text is its file's name, and no other block", () => {
+    session.apply([{ op: "block.set", scene: "method", id: "method-diagram", set: { alt: "method" } }]);
+    canvas.render("method");
+    expect(figure().hasAttribute("data-alt-missing")).toBe(true);
+    expect(figure().getAttribute("aria-label")).toContain("Alt text is missing.");
+    const marked = [...canvas.element.querySelectorAll("[data-alt-missing]")];
+    expect(marked).toEqual([figure()]);
+  });
+
+  it("does not mark an image that was described, or take drops on text", () => {
+    expect(figure().hasAttribute("data-alt-missing")).toBe(false);
+    const text = canvas.nodeOf("method-body") as HTMLElement;
+    const event = fire(text, "dragover", { dataTransfer: transfer([picture("shot.png")]) });
+    expect(event.defaultPrevented).toBe(false);
+    fire(text, "drop", { dataTransfer: transfer([picture("shot.png")]) });
+    expect(replaced).toEqual([]);
   });
 });

@@ -70,6 +70,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     remove: (id) => toolbar.remove(id),
     typed: (id, length, limit) => toolbar.typed(id, length, limit),
     changed: () => toolbar.place(),
+    replaceImage(id, file) {
+      selectBlock(id);
+      void toolbar.replaceImage(id, file);
+    },
   });
   const toolbar = createToolbar(session, canvas, {
     edits: editsFor("toolbar"),
@@ -143,6 +147,14 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   );
   const root = h("div", { class: "ed-app" }, bar, notices, strip.element, stage);
   host.replaceChildren(root);
+  // A file dropped anywhere but on an image would open in this tab and take the editor away.
+  const refuseFiles = (event: DragEvent) => {
+    if (event.defaultPrevented || event.dataTransfer?.types.includes("Files") !== true) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "none";
+  };
+  root.addEventListener("dragover", refuseFiles);
+  root.addEventListener("drop", refuseFiles);
 
   const renderScenes = () => strip.render(selected);
 

@@ -17,10 +17,12 @@ import {
   citePanel,
   clipPanel,
   evidencePanel,
+  hasAltPrompt,
   imagePanel,
   type Panel,
   type PanelHost,
   panelHost,
+  replaceImage,
 } from "./panels.ts";
 import { describeBlock, ROLE_LABEL, type TextRole } from "./templates.ts";
 
@@ -99,6 +101,11 @@ export interface Toolbar {
   typed(id: string, length: number, limit: number): void;
   /** Takes a block out of its scene as one undo step, and moves on to its neighbour. */
   remove(id: string): void;
+  /**
+   * Stores a file and points the image at it, which also starts its alt text over. When the person is still on that
+   * image afterwards, its Edit popover opens on the alt text. True when the image was replaced.
+   */
+  replaceImage(id: string, file: File): Promise<boolean>;
   /** Moves the keyboard into the toolbar. False when there is no toolbar to go to. */
   focus(): boolean;
   destroy(): void;
@@ -193,6 +200,19 @@ export function createToolbar(
       if (neighbour) hooks.goTo(neighbour);
       else hooks.deselect();
     }
+  }
+
+  async function replaceImageOf(id: string, file: File) {
+    const inScene = sceneId;
+    const replaced = await replaceImage(host, inScene, id, file);
+    // The upload takes a moment, and the person may have gone on to something else by then.
+    if (!replaced || shown?.id !== id || sceneId !== inScene) return replaced;
+    const chip = chips.find((candidate) => hasAltPrompt(candidate.panel));
+    if (chip && hasAltPrompt(chip.panel)) {
+      openPop(chip);
+      chip.panel.promptAlt();
+    }
+    return replaced;
   }
 
   /** Moves the block one place along the slide's order, which is also the order the layout fills its slots. */
@@ -437,6 +457,7 @@ export function createToolbar(
       if (shown?.id === id) showCount(length, limit);
     },
     remove,
+    replaceImage: replaceImageOf,
     focus() {
       if (element.hidden) return false;
       element.querySelector<HTMLElement>("select, button")?.focus();

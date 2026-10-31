@@ -87,7 +87,8 @@ never edits it (ids, kinds and format markers). A new property in the schema fai
 | chart: `data` values                          | Drag a bar, or arrow keys on it (Shift moves five steps)     |
 | chart: `data` labels                          | Typed on the slide, in the row's label                       |
 | chart: `data` rows                            | Add bar and Sort in the toolbar; Data popover: remove, move  |
-| image: `asset`, `alt`, `caption`              | Edit popover: file menu, upload, alt text, caption           |
+| image: `asset`                                | Drop or paste on the image; Edit popover: file, upload       |
+| image: `alt`, `caption`                       | Edit popover: alt text (flagged until written), caption      |
 | clip: `source`, `poster`, `alt`               | Edit popover: video menu, poster menu, alt text              |
 | block order                                   | Earlier and later buttons in the toolbar                     |
 | scenes: add, order, duplicate, delete         | Scene strip: Add scene, drag, and the buttons on each scene  |
@@ -105,7 +106,7 @@ never edits it (ids, kinds and format markers). A new property in the schema fai
 | ----- | ----------------------------------------------------------------------- | --- |
 | 1     | Shell: slim top bar, thumbnail strip, large stage, autosave             | 2   |
 | 2     | Selection, floating toolbars per block type, notes sheet, old panel out | 3   |
-| 3     | Chart bars (done), image and clip editing in place, slot swap, ghosts   | 3   |
+| 3     | Chart bars (done), image drop (done), clip cues, slot swap, ghosts      | 3   |
 | 4     | Schema 0.2, player and checks, pinning, layout interplay                | 4   |
 | 5     | Quick bar, shortcuts, problem ribbon, Ctrl K palette                    | 2   |
 | 6     | Comments: model, agent side, editor                                     | 3   |

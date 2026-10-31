@@ -79,6 +79,23 @@ export const BLOCK_KINDS: ReadonlyArray<{ kind: NewBlockKind; label: string }> =
 
 const stem = (path: string) => path.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
 
+/**
+ * The alt text a new image or clip starts with: the words of its file's name, which describe nothing. The server adds
+ * a hash of eight hex digits to the name of an upload, and that is not a word.
+ */
+export const placeholderAlt = (path: string) =>
+  stem(path)
+    .replace(/-[0-9a-f]{8}$/, "")
+    .replace(/[-_]+/g, " ")
+    .trim() || "untitled";
+
+/** True for an image or clip whose alt text is still the name of its file, so nobody has described it yet. */
+export function needsAlt(block: Block): boolean {
+  if (block.type === "image") return block.alt === placeholderAlt(block.asset);
+  if (block.type === "clip") return block.alt === placeholderAlt(block.source);
+  return false;
+}
+
 /** A new block of a kind. Images and clips need a file in the deck, so they take its path. */
 export function newBlock(scene: Scene, kind: NewBlockKind, asset?: string): Block {
   const id = uniqueId(`${scene.id}-${kind === "bar-chart" ? "chart" : kind}`, idsInScene(scene));
@@ -95,9 +112,9 @@ export function newBlock(scene: Scene, kind: NewBlockKind, asset?: string): Bloc
         ],
       };
     case "image":
-      return { id, type: "image", asset: asset as string, alt: stem(asset as string).replace(/[-_]+/g, " ") };
+      return { id, type: "image", asset: asset as string, alt: placeholderAlt(asset as string) };
     case "clip":
-      return { id, type: "clip", source: asset as string, alt: stem(asset as string).replace(/[-_]+/g, " ") };
+      return { id, type: "clip", source: asset as string, alt: placeholderAlt(asset as string) };
   }
 }
 
