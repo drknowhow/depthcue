@@ -108,6 +108,11 @@ const TOOLS = [
 
 export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
+/** What an agent is told about each tool. The docs site prints these, so the reference cannot drift from the server. */
+export const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = Object.fromEntries(
+  TOOLS.map((tool) => [tool.name, tool.description]),
+);
+
 const compact = (value: unknown): string => JSON.stringify(value);
 
 const plain = (d: Diagnostic) => ({

@@ -12,6 +12,7 @@
       "!**/src/generated",
       "!packages/core/schema",
       "!brand/tokens.css",
+      "!site/content",
       "!pnpm-lock.yaml"
     ]
   },

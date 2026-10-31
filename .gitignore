@@ -8,3 +8,11 @@ playwright-report/
 .env.*
 scratch/
 *.log
+
+# The docs site writes these before every build; see site/prepare.mjs.
+site/src/content/docs/
+site/src/assets/
+site/src/styles/tokens.css
+site/src/styles/palette.css
+site/public/
+site/.astro/

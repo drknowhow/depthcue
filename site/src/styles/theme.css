@@ -1,0 +1,79 @@
+/* Maps the brand tokens onto Starlight's variables. The colours are --dc-site-*, written for both themes by
+   site/prepare.mjs from brand/tokens.json, so a change to a token reaches the site without editing this file. */
+
+:root {
+  --sl-font: "Space Grotesk Variable", var(--dc-font-ui);
+  --sl-font-mono: "IBM Plex Mono", var(--dc-font-mono);
+
+  /* In each theme `white` is the strongest foreground and `black` the page itself, as in Starlight's own palette. */
+  --sl-color-white: var(--dc-site-text);
+  --sl-color-gray-1: color-mix(in srgb, var(--dc-site-text) 88%, var(--dc-site-bg));
+  --sl-color-gray-2: color-mix(in srgb, var(--dc-site-text) 76%, var(--dc-site-bg));
+  --sl-color-gray-3: var(--dc-site-muted);
+  --sl-color-gray-4: color-mix(in srgb, var(--dc-site-muted) 62%, var(--dc-site-bg));
+  --sl-color-gray-5: color-mix(in srgb, var(--dc-site-line) 70%, var(--dc-site-muted));
+  --sl-color-gray-6: var(--dc-site-line);
+  --sl-color-gray-7: var(--dc-site-surface);
+  --sl-color-black: var(--dc-site-bg);
+
+  /* Vermilion is the action colour, so links, buttons and the current page all use it. */
+  --sl-color-accent-high: var(--dc-site-action);
+  --sl-color-accent: var(--dc-site-action);
+  --sl-color-accent-low: color-mix(in srgb, var(--dc-site-action) 16%, var(--dc-site-bg));
+
+  --sl-content-width: 46rem;
+}
+
+/* Headings are the serif. It has one weight, so none is asked for and the browser never fakes a bold. */
+h1,
+h2,
+h3,
+.sl-markdown-content :is(h1, h2, h3, h4) {
+  font-family: var(--dc-font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: var(--sl-text-5xl);
+}
+
+.sl-markdown-content h2 {
+  font-size: var(--sl-text-3xl);
+}
+
+.sl-markdown-content h3 {
+  font-size: var(--sl-text-2xl);
+}
+
+/* The bars are the surface, in both themes, and not the line color Starlight starts from. */
+:root,
+:root[data-theme="light"] {
+  --sl-color-bg-nav: var(--dc-site-surface);
+  --sl-color-bg-sidebar: var(--dc-site-surface);
+}
+
+/* Color carries meaning here, and a card means nothing. Starlight cycles four hues through its cards, so each one is
+   set back to the same neutral. The selector is longer than Starlight's own so that it wins in any load order. */
+:root .card-grid .card:nth-child(n) {
+  --sl-card-border: var(--sl-color-gray-4);
+  --sl-card-bg: var(--sl-color-gray-7);
+}
+
+.hero h1 {
+  font-size: clamp(var(--sl-text-4xl), calc(1rem + 6vw), 5.5rem);
+  line-height: 1.02;
+}
+
+/* The mark in the hero is a shape and not a photograph, so it is drawn at its own size. */
+.hero > img,
+.hero > picture > img {
+  width: min(100%, 14rem);
+  height: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

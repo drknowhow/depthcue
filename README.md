@@ -43,6 +43,8 @@ depthcue export fixtures/decks/demo   # writes demo-export/, open its index.html
 
 On Windows, run `node packages/cli/dist/main.js` in place of `depthcue`.
 
+## Connect an agent
+
 To let an agent edit and render a deck, add the server to your MCP client with the deck folder as its argument:
 
 ```json
