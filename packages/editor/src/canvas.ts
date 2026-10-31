@@ -3,6 +3,7 @@ import { h, renderScene } from "@depthcue/player";
 import { createBuildBadges } from "./buildbadges.ts";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
 import { type CueBook, clock } from "./cues.ts";
+import { createFrameDrag } from "./framedrag.ts";
 import { drawGhosts, type GhostHooks } from "./ghosts.ts";
 import { frameOver, NUDGE, NUDGE_BIG, slideIn } from "./pin.ts";
 import { createSlotDrag } from "./slotdrag.ts";
@@ -187,6 +188,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
   /** The blocks moved or changed size, so the grips and the toolbar move with them. */
   const changed = () => {
     drag.place();
+    pins.place();
     build.place();
     hooks.changed?.();
   };
@@ -475,6 +477,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       node.removeAttribute("data-selected");
     }
     drag.mark(id);
+    pins.mark(id);
     if (id === undefined) return;
     nodeOf(id)?.setAttribute("data-selected", "");
   }
@@ -483,6 +486,13 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     select: (id) => hooks.select(id),
     hint: (text, problem) => hooks.hint(text, problem),
     act: (ops) => session.apply(ops),
+  });
+
+  const pins = createFrameDrag(session, element, overlay, nodeOf, {
+    select: (id) => hooks.select(id),
+    hint: (text, problem) => hooks.hint(text, problem),
+    act: (ops) => session.apply(ops),
+    changed,
   });
 
   const build = createBuildBadges(session, element, overlay, nodeOf, {
@@ -523,6 +533,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     },
     destroy() {
       drag.destroy();
+      pins.destroy();
       build.destroy();
     },
     get typing() {
@@ -534,6 +545,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       if (!scene) {
         slot.replaceChildren();
         drag.draw(undefined);
+        pins.draw(undefined);
         build.draw(undefined);
         hooks.changed?.();
         return;
@@ -558,6 +570,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       if (hooks.ghosts) drawGhosts(scene, view, hooks.ghosts);
       slot.replaceChildren(frame);
       drag.draw(scene);
+      pins.draw(scene);
       build.draw(scene);
       mark(selectedId);
       if (focusedId) {

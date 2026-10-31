@@ -126,15 +126,24 @@ never edits it (ids, kinds and format markers). A new property in the schema fai
 | claim: `text`                                 | Typed on the slide                                            |
 | claim: `evidenceIds`                          | Evidence chip in the claim's toolbar                          |
 | deck: `title`, `language`, `theme`, `modules` | Deck popover in the top bar                                   |
-| any block: `frame`                            | Free button in the toolbar, or P; Pinned popover; arrow keys  |
+| any block: `frame`                            | Free button or P; drag, handles, Pinned popover, arrows       |
 
 The Layout and Free buttons in a block's toolbar say where the block is. Free pins it where it stands: the frame is
 measured from the block's box on the slide, so pinning does not move it, and Layout puts it back in its slot. `P`
 does the same for the chosen block, except while a field has the keyboard. A pinned block gets a Pinned popover
 with its left, top, width and height in percent of the slide, and Align left, center and right buttons that keep to
 the 4% safe margin. The arrow keys move a chosen pinned block 1%, or 5% with Shift, and one run of presses is one
-Undo step. A pinned text is chosen like an image, because a press on it will start a move later: Enter or a double
-click types in it, and Enter or Escape gives the keyboard back to the block.
+Undo step. A pinned text is chosen like an image, because a press on it starts a move: Enter or a double click types
+in it, and Enter or Escape gives the keyboard back to the block.
+
+A pinned block is moved by pressing it anywhere that has no caret or control of its own, or by its grip, and the
+chosen one has a handle on each corner that resizes it from the opposite corner. While the pointer is down the block is
+only drawn at its new place, and one `block.frame` goes to the deck when it is let go, so a whole drag is one Undo step.
+Escape puts the block back. An edge or middle that comes within 1.1% of the slide's edge, a safe margin, its middle or
+an edge or middle of another block snaps there, and a line is drawn where it has. Alt turns snapping off. A press that
+moves less than 3 pixels is a click and changes nothing. On a slide narrower than 640 px, where pinned blocks flow
+instead of sitting at their frames, the handles are hidden and a press does not move anything. A pinned video is moved
+by its grip, because a press on the video belongs to its player.
 
 Clip markers are not part of the deck. They live in the cue map beside the video, so the schema-walk test does not
 see them and they are not in the deck's Undo. The editor writes a marker to the file as soon as it is made, after

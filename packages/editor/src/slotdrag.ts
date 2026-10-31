@@ -184,10 +184,18 @@ export function createSlotDrag(
     hooks.hint("", false);
   });
 
-  function grip(id: string): HTMLElement {
+  /** A pinned block's grip is pressed and moved over the slide by the frame drag; only the others are dragged to a slot. */
+  function grip(id: string, pinned: boolean): HTMLElement {
     const node = h(
       "span",
-      { class: "ed-grip", draggable: "true", "data-grip": id, title: "Drag to move", "aria-hidden": "true" },
+      {
+        class: "ed-grip",
+        draggable: pinned ? undefined : "true",
+        "data-grip": id,
+        "data-pinned": pinned ? "" : undefined,
+        title: "Drag to move",
+        "aria-hidden": "true",
+      },
       GRIP,
     );
     node.addEventListener("dragstart", (event) => {
@@ -254,7 +262,9 @@ export function createSlotDrag(
       dragging = undefined;
       clear();
       marked = undefined;
-      layer.replaceChildren(...(next?.blocks ?? []).map((block) => grip(block.id)));
+      layer.replaceChildren(
+        ...(next?.blocks ?? []).map((block) => grip(block.id, block.frame !== undefined)),
+      );
       place();
     },
     place,

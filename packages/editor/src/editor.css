@@ -700,6 +700,78 @@ body {
   cursor: grabbing;
 }
 
+/* A pinned block is moved by pressing it where there is no caret or control, so a touch there must not scroll the page. */
+.ed-frame .dc-pinned {
+  cursor: move;
+  touch-action: none;
+}
+
+.ed-frame .dc-pinned[data-edit],
+.ed-frame .dc-pinned [data-edit] {
+  cursor: text;
+}
+
+.ed-canvas-host[data-framing],
+.ed-canvas-host[data-framing] * {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* Corner handles on the chosen pinned block, and the lines it has snapped to while it is being moved. */
+.ed-handles,
+.ed-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ed-handles[hidden] {
+  display: none;
+}
+
+.ed-handle {
+  position: absolute;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--dc-action);
+  border-radius: 2px;
+  background: var(--dc-bg);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* The handle itself is small; the area that takes a press is larger, so a finger can find it. */
+.ed-handle::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.ed-handle[data-handle="nw"],
+.ed-handle[data-handle="se"] {
+  cursor: nwse-resize;
+}
+
+.ed-handle[data-handle="ne"],
+.ed-handle[data-handle="sw"] {
+  cursor: nesw-resize;
+}
+
+.ed-guide {
+  position: absolute;
+  background: var(--dc-action);
+  opacity: 0.8;
+}
+
+.ed-guide[data-axis="x"] {
+  width: 1px;
+}
+
+.ed-guide[data-axis="y"] {
+  height: 1px;
+}
+
 /* The block being dragged, and where a drop of it would land. */
 .ed-frame [data-dragging] {
   opacity: 0.45;
