@@ -20,6 +20,7 @@ import { demoSource, sceneWith } from "./helpers.ts";
 const manifest = (over: Partial<ModuleManifest> = {}): ModuleManifest => ({
   id: "chart",
   title: "Charts",
+  fallback: "a plain chart",
   version: "1.2",
   blocks: ["bar-chart"],
   activation: "visible",

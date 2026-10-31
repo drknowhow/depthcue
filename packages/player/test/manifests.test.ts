@@ -21,6 +21,7 @@ describe("the first-party modules", () => {
       expect(ids.has(manifest.id), `${manifest.id} is listed twice`).toBe(false);
       ids.add(manifest.id);
       expect(manifest.title.trim(), manifest.id).not.toBe("");
+      expect(manifest.fallback, manifest.id).toMatch(/^an? /);
       expect(manifest.version, manifest.id).toMatch(/^\d+\.\d+$/);
       expect(manifest.blocks.length, manifest.id).toBeGreaterThan(0);
       expect(["visible", "idle"]).toContain(manifest.activation);

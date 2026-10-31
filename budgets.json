@@ -26,6 +26,12 @@
       "limitBytes": 3072
     },
     {
+      "name": "module clip",
+      "file": "packages/player/dist/clip.js",
+      "metric": "brotli",
+      "limitBytes": 3072
+    },
+    {
       "name": "editor script",
       "file": "packages/editor/dist/editor.js",
       "metric": "brotli",

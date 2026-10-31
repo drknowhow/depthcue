@@ -233,6 +233,16 @@ describe("the deck form", () => {
       expect(modules()).toBeUndefined();
     });
 
+    it("says what each module's block falls back to, in the module's own words", () => {
+      const clip = field<HTMLSelectElement>("deck:module:clip");
+      expect(clip.closest("label")?.textContent).toContain("Clip cue points");
+      expect([...clip.options].map((option) => option.textContent)).toEqual([
+        "Automatic",
+        "Off: show it as a plain video",
+        "Needs version 1.0 or newer",
+      ]);
+    });
+
     it("turns a module off, pins its version, and goes back to Automatic", () => {
       const select = () => field<HTMLSelectElement>("deck:module:chart");
       choose(select(), "off");

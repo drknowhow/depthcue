@@ -374,10 +374,44 @@
   cursor: pointer;
 }
 
-.dc-chip[aria-pressed="true"] {
+/* Clip module: the cue chips sit in room reserved while the cue map is pending, and the room is given back
+   (data-cues="none") when the clip has none */
+
+.dc-clip[data-module-state="pending"]:not([data-cues="none"]),
+.dc-clip[data-module-state="hydrated"]:not([data-cues="none"]) {
+  position: relative;
+  padding-block-end: 2.75em;
+}
+
+.dc-clip-cues {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--dc-space-3);
+  overflow-x: auto;
+}
+
+.dc-clip-cues .dc-chip {
+  flex: none;
+}
+
+.dc-cue-time {
+  margin-inline-start: 0.6em;
+  color: var(--dc-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-chip[aria-pressed="true"],
+.dc-chip[aria-current="true"] {
   border-color: var(--dc-text);
   background: var(--dc-text);
   color: var(--dc-bg);
+}
+
+.dc-chip[aria-current="true"] .dc-cue-time {
+  color: inherit;
 }
 
 .dc-chart-readout {

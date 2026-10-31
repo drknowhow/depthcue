@@ -3,6 +3,7 @@ import type { ModuleManifest } from "../modules.ts";
 export const chartManifest: ModuleManifest = {
   id: "chart",
   title: "Explorable charts",
+  fallback: "a plain chart",
   version: "1.0",
   blocks: ["bar-chart"],
   activation: "visible",
