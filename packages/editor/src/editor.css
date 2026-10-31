@@ -24,11 +24,6 @@ body {
   height: 100dvh;
 }
 
-/* The details panel is closed until it is asked for (or a block that has no text is picked), so the slide gets the room. */
-.ed-app[data-details="open"] {
-  grid-template-columns: 10.5rem minmax(0, 1fr) 22rem;
-}
-
 .ed-app *,
 .ed-app *::before,
 .ed-app *::after {
@@ -280,6 +275,19 @@ body {
   mask: var(--icon) center / contain no-repeat;
 }
 
+.ed-scene-actions [data-action="move-scene-earlier"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 13V3M3.5 7.5 8 3l4.5 4.5'/%3E%3C/svg%3E");
+}
+
+.ed-scene-actions [data-action="move-scene-later"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 3v10M3.5 8.5 8 13l4.5-4.5'/%3E%3C/svg%3E");
+}
+
+/* In a row of scenes, earlier and later point left and right. */
+.ed-scene-list[data-axis="x"] .ed-scene-actions [data-action^="move-scene"]::before {
+  transform: rotate(-90deg);
+}
+
 .ed-scene-actions [data-action="duplicate-scene"] {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5'%3E%3Crect x='5.5' y='5.5' width='8' height='8' rx='1.5'/%3E%3Cpath d='M10.5 3.5v-1a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h1'/%3E%3C/svg%3E");
 }
@@ -437,44 +445,6 @@ body {
   box-shadow: 3px 0 0 var(--dc-evidence);
 }
 
-/* Inspector */
-
-.ed-inspector {
-  grid-column: 3;
-  grid-row: 3;
-  overflow: auto;
-  padding: var(--dc-space-2) var(--dc-space-3) var(--dc-space-6);
-  border-left: 1px solid var(--dc-line);
-  background: var(--dc-surface);
-}
-
-.ed-inspector-problem {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: var(--dc-space-2) var(--dc-space-3);
-  border: 1px solid var(--dc-action);
-  border-radius: var(--dc-radius-md);
-  background: var(--dc-surface);
-}
-
-.ed-section {
-  border-bottom: 1px solid var(--dc-line);
-}
-
-.ed-section > summary {
-  padding: var(--dc-space-3) var(--dc-space-1);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.ed-section-body {
-  display: grid;
-  gap: var(--dc-space-3);
-  padding: 0 var(--dc-space-1) var(--dc-space-4);
-}
-
 .ed-field {
   display: grid;
   gap: var(--dc-space-1);
@@ -552,33 +522,6 @@ body {
   gap: var(--dc-space-2);
   min-height: 1.75rem;
   font-size: 0.875rem;
-}
-
-.ed-block-list {
-  display: grid;
-  gap: var(--dc-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ed-block-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  gap: var(--dc-space-1);
-}
-
-.ed-app .ed-pick {
-  display: block;
-  overflow: hidden;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ed-app .ed-pick[aria-pressed="true"] {
-  border-color: var(--dc-text);
-  box-shadow: inset 3px 0 0 var(--dc-action);
 }
 
 .ed-app .ed-danger {
@@ -761,7 +704,7 @@ body {
   bottom: calc(100% + 6px);
 }
 
-/* A popover that holds a form: the fields are the ones the details panel uses, in less room. */
+/* A popover that holds a form. */
 .ed-tb-form {
   display: grid;
   gap: var(--dc-space-3);
@@ -910,25 +853,8 @@ body {
   stroke-linecap: round;
 }
 
-/* On a narrow screen the open panel floats over the slide instead of squeezing it. */
-@media (min-width: 761px) and (max-width: 1100px) {
-  .ed-app[data-details="open"] {
-    grid-template-columns: 10.5rem minmax(0, 1fr);
-  }
-
-  .ed-app[data-details="open"] .ed-inspector {
-    grid-column: 2;
-    grid-row: 3;
-    z-index: 2;
-    justify-self: end;
-    width: min(22rem, 100%);
-    box-shadow: -12px 0 28px rgb(0 0 0 / 12%);
-  }
-}
-
 @media (max-width: 760px) {
-  .ed-app,
-  .ed-app[data-details="open"] {
+  .ed-app {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: none;
     grid-auto-rows: auto;
@@ -937,15 +863,9 @@ body {
   }
 
   .ed-scenes,
-  .ed-main,
-  .ed-inspector {
+  .ed-main {
     grid-column: auto;
     grid-row: auto;
-  }
-
-  .ed-inspector {
-    border-top: 1px solid var(--dc-line);
-    border-left: 0;
   }
 
   .ed-bar {

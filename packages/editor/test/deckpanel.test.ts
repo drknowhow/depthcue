@@ -8,11 +8,13 @@ import { type EditorStore, openStore } from "../src/store.ts";
 import { FakeServer } from "./helpers.ts";
 
 let host: HTMLElement;
+let server: FakeServer;
 let store: EditorStore;
 let editor: Editor;
 
 beforeEach(async () => {
-  store = await openStore(new FakeServer(), () => memoryDraftStore());
+  server = new FakeServer();
+  store = await openStore(server, () => memoryDraftStore());
   host = document.createElement("div");
   document.body.replaceChildren(host);
   editor = mountEditor(host, store);
@@ -113,5 +115,78 @@ describe("the deck popover", () => {
     chip().click();
     document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     expect(pop().hidden).toBe(true);
+  });
+
+  it("is saved to the files", async () => {
+    chip().click();
+    choose(control<HTMLSelectElement>("panel:deck:theme"), "ink");
+    await store.save();
+    expect(JSON.parse(server.text["deck.json"] as string).theme).toBe("ink");
+  });
+});
+
+describe("module settings in the deck popover", () => {
+  const modules = () => deck().modules;
+  const setModules = (value: Record<string, string> | null) =>
+    store.session.apply([{ op: "deck.set", set: { modules: value } }]);
+  const select = (id: string) => control<HTMLSelectElement>(`panel:deck:module:${id}`);
+  beforeEach(() => chip().click());
+
+  it("lists each installed module by its title, on Automatic until the deck says otherwise", () => {
+    expect(select("chart").value).toBe("");
+    expect([...select("chart").options].map((option) => option.textContent)).toEqual([
+      "Automatic",
+      "Off: show it as a plain chart",
+      "Needs version 1.0 or newer",
+    ]);
+    expect(select("chart").closest("label")?.textContent).toContain("Explorable charts");
+    expect(modules()).toBeUndefined();
+  });
+
+  it("says what each module falls back to, in its own words", () => {
+    expect(select("clip").closest("label")?.textContent).toContain("Clip cue points");
+    expect([...select("clip").options].map((option) => option.textContent)).toEqual([
+      "Automatic",
+      "Off: show it as a plain video",
+      "Needs version 1.0 or newer",
+    ]);
+  });
+
+  it("undoes a change as one step", () => {
+    choose(select("chart"), "off");
+    store.session.undo();
+    expect(modules()).toBeUndefined();
+    expect(select("chart").value).toBe("");
+  });
+
+  it("keeps the other modules settings when one changes", () => {
+    setModules({ chart: "off", mystery: "2" });
+    choose(select("chart"), "");
+    expect(modules()).toEqual({ mystery: "2" });
+    choose(select("chart"), "1.0");
+    expect(modules()).toEqual({ mystery: "2", chart: "1.0" });
+  });
+
+  it("still shows a pinned version the list does not offer", () => {
+    setModules({ chart: "1" });
+    expect(select("chart").value).toBe("1");
+    expect([...select("chart").options].map((option) => option.value)).toContain("1");
+  });
+
+  it("removes just the setting of a module that is not installed, and names its button", () => {
+    setModules({ chart: "off", mystery: "2" });
+    expect(pop().querySelector("[data-module='mystery']")?.textContent).toContain(
+      "mystery (2) is not installed here",
+    );
+    const remove = control<HTMLButtonElement>("panel:deck:module:mystery:remove");
+    expect(remove.getAttribute("aria-label")).toBe("Remove the setting for mystery");
+    remove.click();
+    expect(modules()).toEqual({ chart: "off" });
+    expect(pop().querySelector("[data-module='mystery']")).toBeNull();
+  });
+
+  it("does not list an installed module as missing", () => {
+    setModules({ chart: "off" });
+    expect(pop().querySelector("[data-module='chart']")).toBeNull();
   });
 });

@@ -205,6 +205,45 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  it("moves a scene with the keyboard, which stays on the button, and the folder follows", async () => {
+    await open();
+    const later = page.locator("[data-id='opening'] [data-action='move-scene-later']");
+    await later.focus();
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(
+      () => document.querySelector(".ed-scene-list > li")?.getAttribute("data-id") === "demand",
+    );
+    await saved();
+    expect(disk().deck.scenes).toEqual(["demand", "opening", "method"]);
+    // The rows are put back in a new order, which would drop the keyboard if it were not handed back.
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-action"))).toBe(
+      "move-scene-later",
+    );
+    expect(await page.evaluate(() => document.activeElement?.closest("li")?.getAttribute("data-id"))).toBe(
+      "opening",
+    );
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(
+      () => document.querySelector(".ed-scene-list > li:last-child")?.getAttribute("data-id") === "opening",
+    );
+    await saved();
+    expect(disk().deck.scenes).toEqual(["demand", "method", "opening"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("adds a scene and renames it from the Scene popover, and the deck on disk is valid", async () => {
+    await open();
+    await page.locator("[data-action='add-scene']").click();
+    await page.locator("[data-id='new-scene']").waitFor();
+    await page.locator(".ed-scene-tools [data-tb='scene']").click();
+    const title = page.locator("[data-field='panel:title']");
+    await title.fill("Where we landed");
+    await saved();
+    expect(disk().scenes["new-scene"]?.title).toBe("Where we landed");
+    expect(disk().deck.scenes).toContain("new-scene");
+    expect(problems).toEqual([]);
+  });
+
   it("changes who leads a scene and its layout from the top bar, and the folder follows", async () => {
     await open();
     const tools = page.locator(".ed-bar .ed-scene-tools");

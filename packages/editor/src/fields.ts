@@ -51,7 +51,7 @@ const dataField = (control: HTMLElement, key: string) => {
 };
 
 export interface TextFieldOptions {
-  /** Names the control, so it can be found again after a redraw. Unique within the inspector. */
+  /** Names the control, so it can be found again after a redraw. Unique within the form it is in. */
   key: string;
   label: string;
   /** The document's current value; used to show it again when what was typed cannot be kept. */
