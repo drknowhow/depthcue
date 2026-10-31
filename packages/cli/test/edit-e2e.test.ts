@@ -379,6 +379,13 @@ describe("the editor in a real browser", () => {
   it("keeps the scene popover inside the window on a phone", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await open();
+    // Wide letters push the Scene chip toward the right end of the bar, where its popover has the least room.
+    // A browser without the page's fonts draws wide letters anyway, so this makes every machine see that case.
+    await page.evaluate(() => {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync("*{font-family:Verdana,'DejaVu Sans',sans-serif !important}");
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    });
     const chip = page.locator(".ed-scene-tools [data-tb='scene']");
     await chip.click();
     await page.locator(".ed-scene-tools details[data-section='sources'] > summary").click();
@@ -389,10 +396,17 @@ describe("the editor in a real browser", () => {
     expect(box.x, "left").toBeGreaterThanOrEqual(-1);
     expect(box.x + box.width, "right").toBeLessThanOrEqual(390 + 1);
     expect(box.y + box.height, "bottom").toBeLessThanOrEqual(844 + 1);
-    const wide = await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    );
-    expect(wide, "sideways scrolling").toBe(false);
+    // On failure the message names what reaches past the right edge, so a different browser's metrics can be read.
+    const overflow = await page.evaluate(() => {
+      const edge = document.documentElement.clientWidth;
+      const past = [...document.body.querySelectorAll("*")]
+        .map((node) => ({ node, right: Math.round(node.getBoundingClientRect().right) }))
+        .filter(({ right }) => right > edge)
+        .slice(0, 10)
+        .map(({ node, right }) => `${node.tagName.toLowerCase()}.${node.className || "-"} right=${right}`);
+      return { scroll: document.documentElement.scrollWidth, edge, past };
+    });
+    expect(overflow.scroll, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.edge);
     expect(problems).toEqual([]);
   });
 

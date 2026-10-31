@@ -43,11 +43,18 @@ export function fillChip(chip: Chip, scene: Scene, typing: boolean) {
   chip.button.setAttribute("aria-label", state?.title ?? chip.panel.title);
 }
 
-/** Opens a popover and puts the keyboard on its first control, or on `focus` when that is given. */
-export function showPopover(chip: Chip, focus?: HTMLElement | null) {
+/**
+ * Opens a popover and puts the keyboard on its first control, or on `focus` when that is given. `fit` runs once the
+ * popover is shown and before the keyboard moves into it: a popover that overhangs the window would otherwise make
+ * the browser scroll the page sideways to reach the control, and fitting would then measure a scrolled page.
+ */
+export function showPopover(chip: Chip, focus?: HTMLElement | null, fit?: () => void) {
   chip.pop.hidden = false;
   chip.button.setAttribute("aria-expanded", "true");
-  (focus ?? chip.pop.querySelector<HTMLElement>("input, select, textarea, button"))?.focus();
+  fit?.();
+  (focus ?? chip.pop.querySelector<HTMLElement>("input, select, textarea, button"))?.focus({
+    preventScroll: true,
+  });
 }
 
 export function hidePopover(chip: Chip) {

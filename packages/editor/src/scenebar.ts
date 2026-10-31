@@ -127,8 +127,7 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
 
   function open(section?: "steps" | "sources") {
     isOpen = true;
-    showPopover(chip);
-    fit();
+    showPopover(chip, null, fit);
     if (section) panel.reveal(section);
   }
   // A details element reports its own opening and closing, and that event does not bubble.
