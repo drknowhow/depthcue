@@ -8,6 +8,7 @@ import type { Edits } from "./fields.ts";
 import { deckPanel, panelHost } from "./panels.ts";
 import { createQuickBar } from "./quickbar.ts";
 import { createSceneBar } from "./scenebar.ts";
+import { createShortcuts } from "./shortcuts.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
 import { createStrip } from "./strip.ts";
 import { createToolbar } from "./toolbar.ts";
@@ -24,11 +25,6 @@ function button(action: string, label: string, onClick: () => void, extra: Recor
   node.addEventListener("click", onClick);
   return node;
 }
-
-/** True when a key pressed on this element goes into text: a field, or text being edited on the slide. */
-const typesInto = (target: EventTarget | null) =>
-  target instanceof Element &&
-  target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])") !== null;
 
 export interface Editor {
   /** The scene being edited. */
@@ -170,11 +166,27 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     claim: () => adder.claim(),
     hasVideo: () => adder.hasVideo(),
     build: (on) => canvas.setBuild(on),
+    keys: () => shortcuts.open(),
+  });
+  // Every key the editor answers is in one table, which also draws the sheet that the ? key and the bar open.
+  const shortcuts = createShortcuts(host, {
+    add: (kind) => void adder.quick(kind),
+    pickImage: () => quick.pickImage(),
+    undo: () => session.undo(),
+    redo: () => session.redo(),
+    save: () => void store.save(),
+    pin() {
+      if (selectedBlock === undefined) return false;
+      toolbar.togglePin(selectedBlock);
+      return true;
+    },
+    // Alt+F10 moves the keyboard into the toolbar of the chosen block.
+    toolbar: () => toolbar.focus(),
   });
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
   const floor = h("div", { class: "ed-stage" }, stage, quick.element);
-  const root = h("div", { class: "ed-app" }, bar, notices, strip.element, floor);
+  const root = h("div", { class: "ed-app" }, bar, notices, strip.element, floor, shortcuts.sheet);
   host.replaceChildren(root);
   // A file dropped anywhere but on an image would open in this tab and take the editor away.
   const refuseFiles = (event: DragEvent) => {
@@ -296,39 +308,6 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     toolbar.render(selected, selectedBlock);
   }
 
-  const onKey = (event: KeyboardEvent) => {
-    // Alt+F10 moves the keyboard into the toolbar of the chosen block.
-    if (event.key === "F10" && event.altKey && toolbar.focus()) {
-      event.preventDefault();
-      return;
-    }
-    // P pins the chosen block where it is, or puts it back in its slot. In a field it is a letter like any other.
-    if (
-      event.key.toLowerCase() === "p" &&
-      !(event.ctrlKey || event.metaKey || event.altKey || event.repeat) &&
-      selectedBlock !== undefined &&
-      !typesInto(event.target)
-    ) {
-      event.preventDefault();
-      toolbar.togglePin(selectedBlock);
-      return;
-    }
-    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-    const key = event.key.toLowerCase();
-    if (key === "s") {
-      event.preventDefault();
-      void store.save();
-    } else if (key === "z") {
-      event.preventDefault();
-      if (event.shiftKey) session.redo();
-      else session.undo();
-    } else if (key === "y") {
-      event.preventDefault();
-      session.redo();
-    }
-  };
-  document.addEventListener("keydown", onKey);
-
   const unsubscribeSession = session.subscribe((event) => {
     // A save changes no content, and the store tells the bar. Redrawing here would rebuild a field mid-keystroke.
     if (event.type === "saved") return;
@@ -372,7 +351,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     },
     select,
     destroy() {
-      document.removeEventListener("keydown", onKey);
+      shortcuts.destroy();
       unsubscribeSession();
       unsubscribeStore();
       strip.destroy();

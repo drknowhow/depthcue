@@ -1188,6 +1188,29 @@ body {
   background: color-mix(in srgb, var(--dc-bg) 25%, transparent);
 }
 
+/* The key a button answers to, written on it. */
+.ed-kbd,
+.ed-keys kbd {
+  padding: 0 0.35em;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: var(--dc-radius-sm);
+  font-family: var(--dc-font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+}
+
+.ed-kbd {
+  margin-left: var(--dc-space-2);
+  opacity: 0.7;
+}
+
+/* A touch screen has no key to press, so the buttons do not say which. */
+@media (hover: none) {
+  .ed-kbd {
+    display: none;
+  }
+}
+
 .ed-quick .ed-tb-pop {
   z-index: 5;
 }
@@ -1200,6 +1223,92 @@ body {
 
 .ed-quick .ed-tb-form {
   width: min(24rem, calc(100vw - 4rem));
+}
+
+/* The list of keyboard shortcuts, over a dimmed editor. It is hidden until ? or the bar's button opens it. */
+.ed-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: var(--dc-space-4);
+  background: color-mix(in srgb, var(--dc-text) 40%, transparent);
+}
+
+.ed-sheet[hidden] {
+  display: none;
+}
+
+.ed-sheet-card {
+  display: grid;
+  gap: var(--dc-space-4);
+  width: min(36rem, 100%);
+  max-height: calc(100dvh - 2 * var(--dc-space-4));
+  overflow: auto;
+  padding: var(--dc-space-4) var(--dc-space-6);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-lg);
+  background: var(--dc-surface);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 30%);
+  font-size: 0.875rem;
+}
+
+/* The card takes the keyboard when it opens, so a screen reader reads it. It is not a control, so it draws no ring. */
+.ed-sheet-card:focus {
+  outline: none;
+}
+
+.ed-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dc-space-4);
+}
+
+.ed-sheet-head h2,
+.ed-sheet-group h3 {
+  margin: 0;
+}
+
+.ed-sheet-head h2 {
+  font-size: 1.125rem;
+}
+
+.ed-sheet-group h3 {
+  margin-bottom: var(--dc-space-1);
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.ed-sheet-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ed-sheet-group li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dc-space-4);
+  padding: var(--dc-space-2) 0;
+  border-top: 1px solid var(--dc-line);
+}
+
+.ed-keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--dc-space-1);
+  flex-shrink: 0;
+}
+
+.ed-keys-or {
+  color: var(--dc-muted);
+  font-size: 0.75rem;
 }
 
 .ed-app .ed-tb-mini {
