@@ -597,6 +597,38 @@ body {
   outline-offset: 4px;
 }
 
+/* A chart's bars are sliders. Each is dragged by its end, which has a grip wider than the bar is when it is empty. */
+.ed-frame .dc-bar[data-slider] {
+  position: relative;
+  max-width: 100%;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.ed-frame .dc-bar[data-slider]:focus-visible {
+  outline: 2px solid var(--dc-action);
+  outline-offset: 2px;
+}
+
+.ed-frame .dc-bar[data-slider]::after {
+  content: "";
+  position: absolute;
+  top: -0.25em;
+  right: -0.6em;
+  bottom: -0.25em;
+  width: 1.2em;
+  background: linear-gradient(var(--dc-text), var(--dc-text)) center / 0.18em 100% no-repeat;
+  opacity: 0;
+}
+
+.ed-frame [data-selected] .dc-bar[data-slider]::after,
+.ed-frame .dc-bar[data-slider]:hover::after,
+.ed-frame .dc-bar[data-slider]:focus-visible::after,
+.ed-frame .dc-bar[data-slider][data-sliding]::after {
+  opacity: 0.7;
+}
+
 /* The layer over the slide. It takes no clicks itself, so the slide under it still gets them. */
 .ed-overlay {
   position: absolute;
@@ -611,6 +643,7 @@ body {
   display: flex;
   width: max-content;
   max-width: 100%;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--dc-space-2);
   padding: var(--dc-space-1) var(--dc-space-2);
@@ -630,6 +663,7 @@ body {
   min-height: 2rem;
   font: inherit;
   font-size: 0.8125rem;
+  white-space: nowrap;
 }
 
 .ed-app .ed-toolbar select {

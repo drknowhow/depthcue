@@ -1,5 +1,6 @@
 import { type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
 import { h, renderScene } from "@depthcue/player";
+import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
 import { describeBlock } from "./templates.ts";
 
 export interface CanvasHooks {
@@ -35,8 +36,15 @@ export interface Canvas {
 
 /** One piece of text on a scene that can be edited where it appears. */
 interface Field {
+  /** The block the field is in, or the claim. */
   id: string;
+  /** Tells fields of one block apart, for joining a visit's keystrokes into one undo step. Defaults to `id`. */
+  key?: string;
   label: string;
+  /** What assistive technology calls the field. Defaults to the label followed by "text". */
+  name?: string;
+  /** Said when the field is emptied, which the schema refuses. */
+  empty?: string;
   limit: number;
   node: HTMLElement;
   read(scene: Scene): string | undefined;
@@ -65,6 +73,31 @@ function fieldsOf(scene: Scene, root: HTMLElement): Field[] {
 
   const fields: Field[] = [];
   for (const block of scene.blocks) {
+    if (block.type === "bar-chart") {
+      const labels = nodes.get(block.id)?.querySelectorAll<HTMLElement>('th[scope="row"]') ?? [];
+      labels.forEach((node, index) => {
+        const rowsOf = (current: Scene) => {
+          const found = current.blocks.find((candidate) => candidate.id === block.id);
+          return found?.type === "bar-chart" ? found.data : [];
+        };
+        fields.push({
+          id: block.id,
+          key: `${block.id}:row${index}`,
+          label: `Bar ${index + 1} label`,
+          name: `Bar ${index + 1} label`,
+          empty: "A bar needs a label.",
+          limit: CHART_LABEL_MAX,
+          node,
+          read: (current) => rowsOf(current)[index]?.label,
+          write: (current, text) => ({
+            op: "block.set",
+            scene: current.id,
+            id: block.id,
+            set: { data: rowsOf(current).map((row, at) => (at === index ? { ...row, label: text } : row)) },
+          }),
+        });
+      });
+    }
     if (block.type !== "text") continue;
     const node = nodes.get(block.id);
     if (!node) continue;
@@ -127,7 +160,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     const { node } = field;
     node.dataset.edit = "";
     node.setAttribute("role", "textbox");
-    node.setAttribute("aria-label", `${field.label} text`);
+    node.setAttribute("aria-label", field.name ?? `${field.label} text`);
     node.setAttribute("aria-multiline", "false");
     node.contentEditable = supportsPlaintext() ? "plaintext-only" : "true";
     node.spellcheck = true;
@@ -138,7 +171,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     const current = () => field.read(scene()) ?? "";
 
     const check = (text: string): string | undefined => {
-      if (text === "") return "Text cannot be empty. Remove the block instead.";
+      if (text === "") return field.empty ?? "Text cannot be empty. Remove the block instead.";
       if (text.length > field.limit) return `${text.length - field.limit} over the limit of ${field.limit}.`;
       return undefined;
     };
@@ -153,7 +186,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       if (problem !== undefined || text === current()) return;
       typing = true;
       try {
-        session.apply([field.write(scene(), text)], { coalesce: `text:${field.id}:${visit}` });
+        session.apply([field.write(scene(), text)], { coalesce: `text:${field.key ?? field.id}:${visit}` });
       } finally {
         typing = false;
       }
@@ -214,9 +247,26 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       );
       if (!node) continue;
       node.dataset.pick = "";
-      node.setAttribute("role", "button");
+      // A chart holds sliders and text fields of its own, which a button may not contain.
+      node.setAttribute("role", block.type === "bar-chart" ? "group" : "button");
       node.setAttribute("aria-label", `${describeBlock(block, 60)}. Select to edit.`);
       node.tabIndex = 0;
+      if (block.type === "bar-chart") {
+        wireBars(node, block.id, {
+          session,
+          sceneId: scene.id,
+          quietly(change) {
+            typing = true;
+            try {
+              change();
+            } finally {
+              typing = false;
+            }
+          },
+          select: hooks.select,
+          deselect: hooks.deselect,
+        });
+      }
       node.addEventListener("click", () => hooks.select(block.id));
       node.addEventListener("keydown", (event) => {
         if (event.target !== node) return;
@@ -270,8 +320,11 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         hooks.changed?.();
         return;
       }
-      const focused = slot.querySelector<HTMLElement>("[data-edit]:focus, [data-pick]:focus");
+      const focused = slot.querySelector<HTMLElement>(
+        "[data-edit]:focus, [data-pick]:focus, [data-slider]:focus",
+      );
       const focusedId = (focused?.closest<HTMLElement>("[data-id]") ?? focused)?.dataset.id;
+      const focusedBar = focused?.dataset.slider === undefined ? undefined : focused.dataset.row;
 
       const view = h("div", { class: "dc-view" }, renderScene(scene, { assetBase: "" }));
       for (const node of view.querySelectorAll<HTMLElement>("[data-gated]")) node.dataset.revealed = "true";
@@ -284,7 +337,15 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       wirePicker(scene, view);
       slot.replaceChildren(frame);
       mark(selectedId);
-      if (focusedId) focusBlock(focusedId);
+      if (focusedId) {
+        // After an undo or a redo the keyboard stays on the bar it was on.
+        const bar =
+          focusedBar === undefined
+            ? undefined
+            : nodeOf(focusedId)?.querySelector<HTMLElement>(`[data-slider][data-row="${focusedBar}"]`);
+        if (bar) bar.focus();
+        else focusBlock(focusedId);
+      }
       hooks.changed?.();
     },
   };

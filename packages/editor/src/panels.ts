@@ -8,6 +8,7 @@ import {
   THEMES,
 } from "@depthcue/core";
 import { firstPartyManifests, h } from "@depthcue/player";
+import { addedRow, CHART_ROWS_MAX, sortedRows } from "./chart.ts";
 import { removeSource, swapped } from "./cleanup.ts";
 import {
   actionButton,
@@ -20,9 +21,6 @@ import {
   textField,
 } from "./fields.ts";
 import { describeBlock, IMAGE_ACCEPT, IMAGE_FILE, idsInScene, uniqueId, VIDEO_FILE } from "./templates.ts";
-
-/** The most rows a chart holds. The schema says so too; the core does not export it. */
-const CHART_ROWS_MAX = 24;
 
 const optional = (value: string) => (value === "" ? null : value);
 
@@ -264,14 +262,9 @@ export function chartPanel(host: PanelHost, sceneId: string, id: string): Panel 
       const addRow = () => {
         const at = rows().length;
         panel.focusNext(key(`row${at}:label`));
-        host.run([setRows([...rows(), { label: `Item ${at + 1}`, value: 0 }])]);
+        host.run([setRows(addedRow(rows()))]);
       };
-      // Largest first; pressed again, smallest first.
-      const sortRows = () => {
-        const down = [...rows()].sort((a, b) => b.value - a.value);
-        const same = JSON.stringify(down) === JSON.stringify(rows());
-        host.run([setRows(same ? [...down].reverse() : down)]);
-      };
+      const sortRows = () => host.run([setRows(sortedRows(rows()))]);
 
       return [
         textField(host.edits, {

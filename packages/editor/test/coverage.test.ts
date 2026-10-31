@@ -303,25 +303,19 @@ const WAYS: Record<string, Entry> = {
     },
   },
   "scene.blocks<bar-chart>.data": {
-    where: "Chart toolbar, Data chip, add and remove rows",
+    where: "Chart toolbar, Add bar and Sort; Data chip, remove and move rows",
     reach: () => {
       choose("chart-demand", "other");
-      return field(openChip("data") as HTMLElement, "chart:addrow");
+      return find(host, ".ed-toolbar [data-tb='add-bar']");
     },
   },
   "scene.blocks<bar-chart>.data[].label": {
-    where: "Chart toolbar, Data chip, row labels",
-    reach: () => {
-      choose("chart-demand", "other");
-      return field(openChip("data") as HTMLElement, "chart:row0:label");
-    },
+    where: "The slide, a bar's label typed in place; Data chip, row labels",
+    reach: () => find(host, ".ed-frame [data-id='chart-demand'] th[scope='row'][data-edit]"),
   },
   "scene.blocks<bar-chart>.data[].value": {
-    where: "Chart toolbar, Data chip, row values",
-    reach: () => {
-      choose("chart-demand", "other");
-      return field(openChip("data") as HTMLElement, "chart:row0:value");
-    },
+    where: "The slide, a bar dragged or moved with the arrow keys; Data chip, row values",
+    reach: () => find(host, ".ed-frame [data-id='chart-demand'] .dc-bar[role='slider']"),
   },
   "scene.blocks<bar-chart>.sourceIds": {
     where: "Chart toolbar, Cite chip",

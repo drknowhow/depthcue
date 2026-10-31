@@ -79,12 +79,14 @@ describe("showing a scene", () => {
     expect(canvas.element.contains(canvas.overlay)).toBe(true);
   });
 
-  it("makes the claim of a claim-and-evidence scene editable, and nothing that is not text", () => {
+  it("makes the claim of a claim-and-evidence scene editable, and in a chart only the labels", () => {
     canvas.render("demand");
     const summary = session.doc.scenes.demand?.summary;
     expect(summary).toBeDefined();
     expect(field((summary as { id: string }).id).textContent).toBe(summary?.text);
-    expect(editables().some((node) => node.closest("figure"))).toBe(false);
+    const inFigures = editables().filter((node) => node.closest("figure"));
+    expect(inFigures.length).toBeGreaterThan(0);
+    expect(inFigures.every((node) => node.matches('th[scope="row"]'))).toBe(true);
   });
 });
 
