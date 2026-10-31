@@ -405,6 +405,67 @@ describe("pinned blocks", () => {
     expect(await revision()).toBe(before);
   });
 
+  it("keeps the frame of a block when the agent rewrites its text", async () => {
+    expect(await noteFrame()).toEqual(frame);
+    const reply = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [{ op: "block.set", scene: "mcp-pins", id: "mcp-pins-note", set: { text: "A rewritten note." } }],
+    });
+    expect(reply.json.ok, reply.text).toBe(true);
+    const scene = await call("deck_get", { view: "scene", scene: "mcp-pins" });
+    expect(scene.json.scene.blocks[1]).toMatchObject({ text: "A rewritten note.", frame });
+  });
+
+  it("drops the frame of a block the agent removes and adds again, unless the new block has one", async () => {
+    const note = { id: "mcp-pins-note", type: "text", role: "body", text: "Added back." };
+    const bare = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [
+        { op: "block.remove", scene: "mcp-pins", id: "mcp-pins-note" },
+        { op: "block.add", scene: "mcp-pins", block: note },
+      ],
+    });
+    expect(bare.json.ok, bare.text).toBe(true);
+    expect(await noteFrame()).toBeUndefined();
+    const framed = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [
+        { op: "block.remove", scene: "mcp-pins", id: "mcp-pins-note" },
+        { op: "block.add", scene: "mcp-pins", block: { ...note, frame } },
+      ],
+    });
+    expect(framed.json.ok, framed.text).toBe(true);
+    expect(await noteFrame()).toEqual(frame);
+  });
+
+  it("rejects a stale revision on a pinned scene, and changes neither the text nor the frame", async () => {
+    const stale = await revision();
+    const moved = await call("deck_apply", {
+      base_rev: stale,
+      ops: [{ op: "block.frame", scene: "mcp-pins", id: "mcp-pins-note", frame: { ...frame, y: 20 } }],
+    });
+    expect(moved.json.ok, moved.text).toBe(true);
+    const now = await revision();
+    const late = await call("deck_apply", {
+      base_rev: stale,
+      ops: [
+        { op: "block.set", scene: "mcp-pins", id: "mcp-pins-note", set: { text: "Written on old news." } },
+        { op: "block.frame", scene: "mcp-pins", id: "mcp-pins-note", frame: { ...frame, y: 30 } },
+      ],
+    });
+    expect(late.isError).toBe(true);
+    expect(late.json).toMatchObject({ ok: false, code: "stale-revision", rev: now });
+    expect(await revision()).toBe(now);
+    const scene = await call("deck_get", { view: "scene", scene: "mcp-pins" });
+    expect(scene.json.scene.blocks[1]).toMatchObject({ frame: { ...frame, y: 20 } });
+    expect(scene.json.scene.blocks[1].text).not.toBe("Written on old news.");
+    const restored = await call("deck_apply", {
+      base_rev: now,
+      ops: [{ op: "block.frame", scene: "mcp-pins", id: "mcp-pins-note", frame }],
+    });
+    expect(restored.json.ok).toBe(true);
+  });
+
   it("renders a block pinned over another as a warning, which still leaves the scene done", async ({
     skip,
   }) => {

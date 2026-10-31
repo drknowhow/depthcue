@@ -33,9 +33,10 @@ Measured on v0.1 at 1440 by 900:
 ### Frames
 
 A pinned block has an optional `frame`: `{ "x": 56, "y": 14, "w": 38, "h": 44 }`, in percent of a 16 by 9
-slide. It is keyed by block id, so it survives an agent rewriting the scene as long as the id stays. Removing a
-block drops its frame. Reading order is block order, never frame position. Schema version 0.2 adds `frame`;
-v0.1 decks load unchanged.
+slide. The frame belongs to the block, so an operation that names other fields leaves it: `block.set` with new
+text, `block.move`, a change of the scene's layout. A block removed and added again is a new block and has no
+frame unless the add gives one. Reading order is block order, never frame position. Schema version 0.2 adds
+`frame`; v0.1 decks load unchanged.
 
 `x` and `y` run from 0 to 100, `w` and `h` from 5 to 100 (the smallest a person can still grab), and the box stays
 on the slide: `x + w` and `y + h` are at most 100, with a thousandth of slack for rounding. The schema checks the
