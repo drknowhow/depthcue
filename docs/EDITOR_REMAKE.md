@@ -147,6 +147,13 @@ moves less than 3 pixels is a click and changes nothing. On a slide narrower tha
 instead of sitting at their frames, the handles are hidden and a press does not move anything. A pinned video is moved
 by its grip, because a press on the video belongs to its player.
 
+Auto layout, in the top bar, shows only while the slide has a pinned block. It puts every pinned block of the slide
+back in its slot as one Undo step. The blocks slide from where they stood, as they do when one goes back with Layout
+or `P`, or when an Undo or a Redo pins or unpins one; a person who asks for less motion sees them jump. Auto layout is
+a control and not a property of the scene, so nothing in the deck records that it was used. Changing the scene's
+layout leaves the pins alone, because a frame belongs to its block. Deleting a pinned block takes its frame with it,
+and Undo brings both back.
+
 Clip markers are not part of the deck. They live in the cue map beside the video, so the schema-walk test does not
 see them and they are not in the deck's Undo. The editor writes a marker to the file as soon as it is made, after
 reading the file again so a rebuild since the last look is not overwritten. The Cues popover has its own Undo

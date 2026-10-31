@@ -28,6 +28,7 @@ import {
   replaceImage,
 } from "./panels.ts";
 import { nudged } from "./pin.ts";
+import { restingBox } from "./snap.ts";
 import { describeBlock, ROLE_LABEL, type TextRole } from "./templates.ts";
 
 /** How far the toolbar floats from the block it belongs to, in pixels. */
@@ -503,7 +504,7 @@ export function createToolbar(
     const anchor = canvas.nodeOf(shown.id);
     if (!anchor) return;
     const host = canvas.element.getBoundingClientRect();
-    const box = anchor.getBoundingClientRect();
+    const box = restingBox(anchor);
     const spot = placeToolbar(
       { left: box.left - host.left, top: box.top - host.top, width: box.width, height: box.height },
       { width: host.width, height: host.height },

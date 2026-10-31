@@ -1,4 +1,4 @@
-import { LEADS, type Session } from "@depthcue/core";
+import { LEADS, type Op, type Session } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { popoverChip } from "./chip.ts";
 import { type Edits, problemOf } from "./fields.ts";
@@ -64,7 +64,8 @@ export interface SceneBar {
 
 /**
  * Who leads the scene and which layout it has, as two short rows of buttons in the top bar. Each is one click and
- * one undo step. A button that is already pressed does nothing, so clicking it again never adds an edit. A Scene
+ * one undo step. A button that is already pressed does nothing, so clicking it again never adds an edit. Auto layout
+ * shows only while the scene has a pinned block, and puts all of them back in their slots as one undo step. A Scene
  * chip opens a popover with the scene's title, steps and sources.
  */
 export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar {
@@ -99,6 +100,25 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
     return node;
   });
 
+  const auto = h(
+    "button",
+    {
+      type: "button",
+      class: "ed-auto",
+      "data-auto": "",
+      hidden: true,
+      title: "Put every pinned block of this slide back in its layout's slot",
+    },
+    "Auto layout",
+  );
+  auto.addEventListener("click", () => {
+    const pinned = (session.doc.scenes[current]?.blocks ?? []).filter((block) => block.frame);
+    if (pinned.length === 0) return;
+    const ops = pinned.map((block): Op => ({ op: "block.unframe", scene: current, id: block.id }));
+    const result = hooks.edits.act(ops);
+    hooks.problem(result.ok ? undefined : problemOf(result));
+  });
+
   const host = panelHost(session, {
     edits: hooks.edits,
     upload: hooks.upload,
@@ -119,6 +139,7 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
     { class: "ed-scene-tools" },
     h("div", { class: "ed-seg", role: "group", "aria-label": "Who leads this scene" }, ...leads),
     h("div", { class: "ed-seg", role: "group", "aria-label": "Layout of this scene" }, ...layouts),
+    auto,
     popover.chip.wrap,
   );
 
@@ -136,6 +157,7 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
       for (const node of leads) node.setAttribute("aria-pressed", String(node.dataset.lead === lead));
       for (const node of layouts)
         node.setAttribute("aria-pressed", String(node.dataset.layout === scene.layout));
+      auto.hidden = !scene.blocks.some((block) => block.frame);
     },
   };
 }

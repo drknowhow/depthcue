@@ -1744,4 +1744,134 @@ describe("pinning in a real browser", () => {
     expect(body && "text" in body ? body.text : "").not.toBe("");
     expect(problems).toEqual([]);
   });
+
+  describe("after a change of layout, and Auto layout", () => {
+    const PINNED = ["method-body", "method-diagram"];
+    const autoLayout = () => page.locator(".ed-scene-tools [data-auto]");
+    /** Waits until nothing on the page is still sliding into place. */
+    const settled = () => page.waitForFunction(() => document.getAnimations().length === 0);
+
+    /** Pins the text and the picture of the method slide, then drags each well away from its slot. */
+    async function pinAndMove() {
+      for (const id of PINNED) {
+        await block(id).click();
+        await free().click();
+        await saved();
+      }
+      const slide = await slideBox();
+      await dragBy("method-body", slide.width * 0.02, slide.height * 0.3);
+      await saved();
+      await dragBy("method-diagram", -slide.width * 0.25, slide.height * 0.15);
+      await saved();
+    }
+
+    const boxesOf = async (ids: string[]) => {
+      const found = new Map<string, Awaited<ReturnType<typeof boxOf>>>();
+      for (const id of ids) found.set(id, await boxOf(id));
+      return found;
+    };
+
+    it("keeps pinned blocks where they are, and in the file, when the layout changes", async () => {
+      await openScene("method", "method-diagram");
+      await pinAndMove();
+      const frames = PINNED.map((id) => frameOnDisk("method", id));
+      const moved = await boxesOf(PINNED);
+
+      await page.locator(".ed-scene-tools [data-layout='title']").click();
+      await saved();
+      expect(await page.locator(".ed-scene-tools [data-layout='title']").getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      for (const [id, box] of moved) await expectSameBox(id, box);
+      expect(PINNED.map((id) => frameOnDisk("method", id))).toEqual(frames);
+      expect(problems).toEqual([]);
+    });
+
+    it("puts every pinned block back in its slot, and one Undo pins them all again", async () => {
+      await openScene("method", "method-diagram");
+      const slots = await boxesOf(["method-heading", ...PINNED]);
+      await autoLayout().waitFor({ state: "hidden" });
+      await pinAndMove();
+      const moved = await boxesOf(PINNED);
+      await autoLayout().waitFor();
+
+      await autoLayout().click();
+      await autoLayout().waitFor({ state: "hidden" });
+      await settled();
+      await saved();
+      for (const id of PINNED) expect(frameOnDisk("method", id)).toBeUndefined();
+      expect(await page.locator(".ed-frame .dc-pinned").count()).toBe(0);
+      for (const [id, box] of slots) await expectSameBox(id, box);
+
+      await page.keyboard.press("Control+z");
+      await autoLayout().waitFor();
+      await saved();
+      for (const id of PINNED) expect(frameOnDisk("method", id)).toBeDefined();
+      for (const [id, box] of moved) await expectSameBox(id, box);
+      expect(problems).toEqual([]);
+    });
+
+    /** Presses Auto layout and answers which blocks have started to slide by the time the slide is drawn. */
+    async function slidingOnAutoLayout(reducedMotion: boolean) {
+      if (reducedMotion) await page.emulateMedia({ reducedMotion: "reduce" });
+      await openScene("method", "method-diagram");
+      await pinAndMove();
+      return page.evaluate(async () => {
+        document.querySelector<HTMLElement>(".ed-scene-tools [data-auto]")?.click();
+        // The slide starts a microtask after it is drawn, which is this one.
+        await Promise.resolve();
+        // Only the slide counts. A transition from the stylesheet, cut to nothing by a reduced-motion rule, is not it.
+        return document.getAnimations().flatMap((animation) => {
+          const target = (animation.effect as KeyframeEffect | null)?.target;
+          const scripted = !(animation instanceof CSSTransition || animation instanceof CSSAnimation);
+          return scripted && target instanceof HTMLElement && target.matches(".dc-block[data-id]")
+            ? [target.dataset.id as string]
+            : [];
+        });
+      });
+    }
+
+    it("slides the blocks from where they stood to their slots instead of jumping", async () => {
+      expect((await slidingOnAutoLayout(false)).sort()).toEqual(PINNED);
+      await settled();
+      expect(problems).toEqual([]);
+    });
+
+    it("puts the toolbar where the chosen block is going, and leaves it there as the block arrives", async () => {
+      await openScene("method", "method-diagram");
+      await pinAndMove();
+      const toolbar = page.locator(".ed-toolbar");
+      await page.evaluate(() => {
+        document.querySelector<HTMLElement>(".ed-scene-tools [data-auto]")?.click();
+      });
+      // Two frames on, the block is still on its way and the toolbar has been placed against it.
+      const frames = (count: number) =>
+        page.evaluate(
+          (n) =>
+            new Promise<void>((resolve) => {
+              const step = (left: number) =>
+                left === 0 ? resolve() : requestAnimationFrame(() => step(left - 1));
+              step(n);
+            }),
+          count,
+        );
+      await frames(2);
+      await settled();
+      const placed = await toolbar.boundingBox();
+      // A change in the size of the window places the toolbar again, with nothing sliding.
+      await page.setViewportSize({ width: 1276, height: 800 });
+      await frames(3);
+      const fresh = await toolbar.boundingBox();
+      if (!placed || !fresh) throw new Error("the toolbar should be drawn");
+      expect(Math.abs(placed.x - fresh.x)).toBeLessThan(8);
+      expect(Math.abs(placed.y - fresh.y)).toBeLessThan(8);
+      expect(problems).toEqual([]);
+    });
+
+    it("jumps for a visitor who asks for less motion", async () => {
+      expect(await slidingOnAutoLayout(true)).toEqual([]);
+      expect(await page.locator(".ed-frame .dc-pinned").count()).toBe(0);
+      expect(problems).toEqual([]);
+    });
+  });
 });
