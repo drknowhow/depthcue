@@ -1107,3 +1107,97 @@ describe("clip cues in a real browser", () => {
     expect(problems).toEqual([]);
   });
 });
+
+describe("moving blocks between slots in a real browser", () => {
+  const grip = (id: string) => page.locator(`.ed-grip[data-grip='${id}']`);
+  const block = (id: string) => page.locator(`.ed-frame [data-id='${id}']`);
+  const sceneOnDisk = (id: string) => disk().scenes[id];
+  const orderOnDisk = (id: string) => sceneOnDisk(id)?.blocks.map((entry) => entry.id);
+  const hint = () => page.locator(".ed-hint");
+
+  async function openScene(id: string, anchor: string) {
+    await page.goto(url());
+    await page.locator(`.ed-scene[data-scene='${id}']`).click();
+    await block(anchor).waitFor();
+  }
+
+  /** Takes hold of a grip, as a hand does: the pointer goes to it first, which is what shows it. */
+  async function lift(id: string) {
+    await block(id).hover();
+    await grip(id).hover();
+    await page.mouse.down();
+  }
+
+  async function carryTo(id: string, where: { x: number; y: number }) {
+    const box = await block(id).boundingBox();
+    if (!box) throw new Error(`block ${id} should be drawn`);
+    await page.mouse.move(box.x + where.x, box.y + where.y, { steps: 8 });
+    // A hand never stops dead, and a browser reports a drag over a new element only with the next movement.
+    await page.mouse.move(box.x + where.x + 2, box.y + where.y + 1);
+  }
+
+  it("puts a block before another of its slot by dragging the grip, and one Undo puts it back", async () => {
+    await openScene("opening", "opening-sub");
+    await lift("opening-sub");
+    await carryTo("opening-title", { x: 20, y: 4 });
+    expect(await block("opening-title").getAttribute("data-place")).toBe("before");
+    await page.mouse.up();
+    await saved();
+    expect(orderOnDisk("opening")).toEqual(["opening-sub", "opening-title"]);
+    expect(await page.locator("[data-place], [data-dragging]").count()).toBe(0);
+
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(orderOnDisk("opening")).toEqual(["opening-title", "opening-sub"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("swaps a block of the evidence with one of the support, and the claim cites the one that took its place", async () => {
+    external([
+      {
+        op: "block.add",
+        scene: "demand",
+        block: { id: "demand-note", type: "text", role: "body", text: "A note." },
+      },
+    ]);
+    await openScene("demand", "demand-note");
+    await lift("demand-note");
+    await carryTo("chart-demand", { x: 30, y: 30 });
+    expect(await block("chart-demand").getAttribute("data-place")).toBe("swap");
+    await page.mouse.up();
+    await saved();
+    expect(orderOnDisk("demand")).toEqual(["demand-note", "chart-demand"]);
+    expect(sceneOnDisk("demand")?.summary?.evidenceIds).toEqual(["demand-note"]);
+    expect(
+      await page.evaluate(
+        () => document.querySelector(".ed-frame .dc-evidence-region [data-id='demand-note']") !== null,
+      ),
+    ).toBe(true);
+    expect(problems).toEqual([]);
+  });
+
+  it("says why text cannot go among the media, and changes nothing when it is dropped there", async () => {
+    await openScene("method", "method-diagram");
+    await lift("method-body");
+    await carryTo("method-diagram", { x: 30, y: 30 });
+    await page.waitForFunction(() => document.querySelector(".ed-hint[data-problem]") !== null);
+    expect(await read(hint())).toContain("Text goes in the text area");
+    expect(await block("method-diagram").getAttribute("data-place")).toBe("refused");
+    await page.mouse.up();
+    await page.waitForFunction(() => document.querySelector("[data-place]") === null);
+    expect(orderOnDisk("method")).toEqual(["method-heading", "method-body", "method-diagram"]);
+    expect(await read(status())).toBe("Saved");
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps the text of a field a person can type in when a block is dropped on it", async () => {
+    await openScene("opening", "opening-sub");
+    const before = await read(block("opening-title"));
+    await lift("opening-sub");
+    await carryTo("opening-title", { x: 20, y: 4 });
+    await page.mouse.up();
+    await saved();
+    expect(await read(block("opening-title"))).toBe(before);
+    expect(problems).toEqual([]);
+  });
+});

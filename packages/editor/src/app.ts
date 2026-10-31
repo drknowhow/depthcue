@@ -350,6 +350,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       quick.destroy();
       deckChip.destroy();
       toolbar.destroy();
+      canvas.destroy();
       host.replaceChildren();
     },
   };
