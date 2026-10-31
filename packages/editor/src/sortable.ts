@@ -17,6 +17,13 @@ export function sortable(
   items: ReadonlyMap<string, HTMLElement>,
   options: SortableOptions,
 ) {
+  const group = sortableItems(list, options);
+  for (const [id, node] of items) group.add(id, node);
+}
+
+/** The same, for a list whose entries are kept between renders: each one is added once, when it is made. */
+export function sortableItems(list: HTMLElement, options: SortableOptions) {
+  const items = new Map<string, HTMLElement>();
   let dragging: string | undefined;
 
   const clear = () => {
@@ -34,7 +41,8 @@ export function sortable(
     return before ? "upper" : "lower";
   };
 
-  for (const [id, node] of items) {
+  function add(id: string, node: HTMLElement) {
+    items.set(id, node);
     node.draggable = true;
     node.addEventListener("dragstart", (event) => {
       dragging = id;
@@ -69,4 +77,10 @@ export function sortable(
       clear();
     });
   }
+
+  return {
+    add,
+    /** Forgets an entry that left the list. */
+    remove: (id: string) => void items.delete(id),
+  };
 }

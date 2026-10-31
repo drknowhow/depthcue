@@ -186,11 +186,28 @@ body {
 }
 
 .ed-scene-list {
+  /* The scale that fits a thumbnail's width to the 1280px slide it draws; the strip measures and replaces it. */
+  --thumb-k: 0.1;
   display: grid;
-  gap: var(--dc-space-1);
+  gap: var(--dc-space-2);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.ed-scene-list > li {
+  position: relative;
+  display: grid;
+  gap: var(--dc-space-1);
+  padding: var(--dc-space-1);
+  border: 1px solid transparent;
+  border-radius: var(--dc-radius-md);
+}
+
+.ed-scene-list > li[data-current] {
+  border-color: var(--dc-line);
+  background: var(--dc-bg);
+  box-shadow: inset 3px 0 0 var(--dc-action);
 }
 
 .ed-app .ed-scene {
@@ -200,13 +217,74 @@ body {
     "num title"
     "num lead";
   align-items: center;
-  column-gap: var(--dc-space-2);
+  column-gap: var(--dc-space-1);
   width: 100%;
-  min-height: 3rem;
-  padding: var(--dc-space-2);
+  min-height: 2.5rem;
+  padding: var(--dc-space-1);
   border-color: transparent;
   background: transparent;
   text-align: left;
+}
+
+.ed-thumb {
+  position: relative;
+  order: -1;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-sm);
+  background: var(--dc-surface);
+  cursor: pointer;
+}
+
+.ed-app .ed-thumb-frame.dc-player {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 1280px;
+  height: 720px;
+  transform: scale(var(--thumb-k));
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+/* Duplicate and delete sit on the thumbnail's corner, and show for the scene being pointed at or edited. */
+.ed-scene-actions {
+  position: absolute;
+  top: calc(var(--dc-space-1) + 4px);
+  right: calc(var(--dc-space-1) + 4px);
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+}
+
+.ed-scene-list > li:hover .ed-scene-actions,
+.ed-scene-list > li:focus-within .ed-scene-actions,
+.ed-scene-list > li[data-current] .ed-scene-actions {
+  opacity: 1;
+}
+
+.ed-app .ed-scene-actions button {
+  min-height: 1.5rem;
+  width: 1.5rem;
+  padding: 0;
+  justify-content: center;
+  background: var(--dc-surface);
+}
+
+.ed-scene-actions button::before {
+  content: "";
+  width: 0.875rem;
+  height: 0.875rem;
+  background: currentcolor;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.ed-scene-actions [data-action="duplicate-scene"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5'%3E%3Crect x='5.5' y='5.5' width='8' height='8' rx='1.5'/%3E%3Cpath d='M10.5 3.5v-1a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h1'/%3E%3C/svg%3E");
+}
+
+.ed-scene-actions [data-action="delete-scene"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M2.5 4.5h11M6.5 4.5v-2h3v2M4 4.5l.6 9h6.8l.6-9'/%3E%3C/svg%3E");
 }
 
 .ed-scene .ed-num {
@@ -228,10 +306,8 @@ body {
   grid-area: lead;
 }
 
-.ed-app .ed-scene[aria-current="true"] {
-  border-color: var(--dc-line);
-  background: var(--dc-bg);
-  box-shadow: inset 3px 0 0 var(--dc-action);
+.ed-app .ed-scene[aria-current="true"] .ed-title {
+  font-weight: 600;
 }
 
 .ed-num {
@@ -648,7 +724,7 @@ body {
   }
 
   .ed-scene-list > li {
-    flex: 0 0 13rem;
+    flex: 0 0 9.5rem;
   }
 
   /* A phone is portrait, so the preview takes the phone layout instead of a tiny 16:9 slide. */

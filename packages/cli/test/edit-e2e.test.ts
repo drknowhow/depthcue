@@ -166,6 +166,45 @@ describe("the editor in a real browser", () => {
     expect(problems.filter((line) => !line.includes("net::ERR_FAILED"))).toEqual([]);
   });
 
+  it("draws each scene's real layout in its thumbnail, scaled to fit, and redraws it after an edit", async () => {
+    await open();
+    await page.waitForFunction(() => document.querySelectorAll(".ed-thumb-frame").length === 3);
+    const fits = await page.evaluate(() =>
+      [...document.querySelectorAll(".ed-thumb")].map((thumb) => {
+        const frame = thumb.querySelector(".ed-thumb-frame")?.getBoundingClientRect();
+        // Inside the thumbnail's border, which is what the strip measures to pick the scale.
+        const { clientWidth, clientHeight } = thumb;
+        return (
+          frame && Math.abs(frame.width - clientWidth) < 1.5 && Math.abs(frame.height - clientHeight) < 1.5
+        );
+      }),
+    );
+    expect(fits).toEqual([true, true, true]);
+    expect(await read(page.locator("[data-id='opening'] .ed-thumb"))).toContain("Channel B now leads demand");
+
+    await typeAtEnd(" zzz");
+    await page.waitForFunction(() =>
+      document.querySelector("[data-id='opening'] .ed-thumb")?.textContent?.includes("zzz"),
+    );
+    expect(problems).toEqual([]);
+  });
+
+  it("duplicates and deletes a scene from the strip, and the folder follows", async () => {
+    await open();
+    await page.locator("[data-id='demand']").hover();
+    await page.locator("[data-id='demand'] [data-action='duplicate-scene']").click();
+    await page.locator("[data-id='demand-copy']").waitFor();
+    await saved();
+    expect(disk().deck.scenes).toEqual(["opening", "demand", "demand-copy", "method"]);
+    expect(disk().scenes["demand-copy"]?.blocks).toEqual(disk().scenes.demand?.blocks);
+
+    await page.locator("[data-id='demand-copy'] [data-action='delete-scene']").click();
+    await page.locator("[data-id='demand-copy']").waitFor({ state: "detached" });
+    await saved();
+    expect(disk().deck.scenes).toEqual(["opening", "demand", "method"]);
+    expect(problems).toEqual([]);
+  });
+
   it("takes in a change made on disk while nothing is unsaved", async () => {
     await open();
     external([retitle("Rewritten by an agent")]);
