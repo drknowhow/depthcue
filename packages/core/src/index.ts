@@ -10,6 +10,8 @@ export type {
   SceneChanges,
 } from "./apply.ts";
 export { applyOps } from "./apply.ts";
+export type { Cue, CueBuild, CueMap } from "./cues.ts";
+export { CUE_MAP_FORMAT, cueMapPath, MAX_CUES, makeCue, readCueMap, tidyCues } from "./cues.ts";
 export type { RawError } from "./diagnostics.ts";
 export { explain } from "./diagnostics.ts";
 export type { Doc, LoadResult } from "./doc.ts";

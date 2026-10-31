@@ -203,7 +203,7 @@ export function createInspector(host: InspectorHost): Inspector {
           label: manifest.title,
           empty: "Automatic",
           options: [
-            { value: "off", label: "Off: show it as a plain chart" },
+            { value: "off", label: `Off: show it as ${manifest.fallback}` },
             { value: manifest.version, label: `Needs version ${manifest.version} or newer` },
           ],
           read: () => settings()[manifest.id] ?? "",

@@ -9,6 +9,8 @@ export interface ModuleManifest {
   id: string;
   /** What a person sees in the editor: a few words naming what it adds. */
   title: string;
+  /** What the block shows without the module, finishing "Off: show it as ...", such as "a plain chart". */
+  fallback: string;
   /** Major and minor, such as "1.0". A deck that needs a newer minor or another major leaves it off. */
   version: string;
   /** The block types the module makes interactive. Their static form stays on the page until it hydrates. */

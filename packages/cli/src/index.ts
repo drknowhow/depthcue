@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkDeckFiles, type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
+import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./clip.ts";
 import { applyToFolder, openDeck } from "./deck-api.ts";
 import { loadDeckDir } from "./loader.ts";
 import { openRenderer, type RenderOptions } from "./render.ts";
@@ -18,6 +19,8 @@ const USAGE = `Usage:
   depthcue serve <deck-folder> [--port <n>]
   depthcue edit <deck-folder> [--port <n>]
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
+  depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
+                      [--scale <0.1-1>] [--kine <path>] [--json]
 
 check  Checks deck.json, every scene file, every reference and every asset.
 rev    Prints the deck's revision, a hash of its content. Pass it back as --base-rev.
@@ -36,7 +39,12 @@ render Renders scenes in a headless browser at the stage size (default 1280x720,
        --out it also writes one PNG per scene. It needs Chrome or Edge; set DEPTHCUE_BROWSER for another.
        Without a scene it renders them all. --step shows that many steps (default: all).
 
-Exit codes: 0 done, 1 errors found or edit rejected, 2 could not run, 3 stale revision.`;
+clip   Builds a clip from a Kinescript scene with the kine program you have installed (pip install
+       kinescript; --kine or DEPTHCUE_KINE points elsewhere). It writes assets/<name>.mp4, a poster
+       and a cue map, and skips the render when nothing changed. Add the result to a scene as a
+       clip block. --scale 0.5 with --quality draft is the fast way to try a scene.
+
+Exit codes: 0 done, 1 errors found, edit rejected or a clip did not build, 2 could not run, 3 stale revision.`;
 
 function format(diagnostic: Diagnostic): string[] {
   const where = `${diagnostic.file}${diagnostic.path}`;
@@ -54,7 +62,18 @@ function summary(diagnostics: readonly Diagnostic[]): string {
   return `${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}`;
 }
 
-const VALUE_FLAGS = ["base-rev", "port", "out", "step", "width", "height"] as const;
+const VALUE_FLAGS = [
+  "base-rev",
+  "port",
+  "out",
+  "step",
+  "width",
+  "height",
+  "name",
+  "quality",
+  "scale",
+  "kine",
+] as const;
 type ValueFlag = (typeof VALUE_FLAGS)[number];
 
 interface Parsed {
@@ -260,7 +279,67 @@ async function renderCommand(
   return errors === 0 ? 0 : 1;
 }
 
-export function run(argv: readonly string[], io: Io): number | Promise<number> {
+interface ClipRequest {
+  folder: string;
+  scene: string;
+  name: string | undefined;
+  quality: Quality | undefined;
+  scale: number | undefined;
+  kine: readonly string[];
+}
+
+/** Builds a clip and tells the person, or a program reading --json, what was written. */
+async function clipBuildCommand(request: ClipRequest, json: boolean, io: Io): Promise<number> {
+  if (!existsSync(join(request.folder, "deck.json"))) {
+    io.err(`${request.folder} is not a deck folder: it has no deck.json.`);
+    return 2;
+  }
+  const stop = new AbortController();
+  const onInterrupt = () => stop.abort();
+  process.once("SIGINT", onInterrupt);
+  try {
+    const built = await buildClip({
+      folder: request.folder,
+      scene: request.scene,
+      kine: request.kine,
+      signal: stop.signal,
+      ...(request.name === undefined ? {} : { name: request.name }),
+      ...(request.quality === undefined ? {} : { quality: request.quality }),
+      ...(request.scale === undefined ? {} : { scale: request.scale }),
+    });
+    if (json) {
+      io.out(JSON.stringify({ ok: true, ...built, seconds: Number(built.seconds.toFixed(2)) }, null, 2));
+    } else if (built.built) {
+      io.out(
+        `Built ${built.source}: ${built.duration} s, ${built.width}x${built.height}, ${built.cueCount} cue${built.cueCount === 1 ? "" : "s"}, ${built.seconds.toFixed(1)} s with ${built.kinescript}.`,
+      );
+      io.out(`  poster ${built.poster}`);
+      io.out(`  cues   ${built.cues}`);
+    } else {
+      io.out(`Up to date: ${built.source}. Nothing was rebuilt.`);
+    }
+    if (!json) {
+      io.out(
+        `Add it to a scene as a block: ${JSON.stringify({ type: "clip", source: built.source, poster: built.poster, alt: "..." })}`,
+      );
+    }
+    return 0;
+  } catch (error) {
+    if (!(error instanceof ClipError)) throw error;
+    if (json) io.out(JSON.stringify({ ok: false, code: error.code, message: error.message }, null, 2));
+    else io.err(error.message);
+    return error.code === "kine-failed" ? 1 : 2;
+  } finally {
+    process.off("SIGINT", onInterrupt);
+  }
+}
+
+/** Test seams: the command that runs Kinescript, so a stand-in can be used where it is not installed. */
+export interface RunOptions {
+  kine?: readonly string[];
+}
+
+export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
   const { positional, json, values, unknown } = parse(rest);
   const baseRev = values["base-rev"];
@@ -268,11 +347,46 @@ export function run(argv: readonly string[], io: Io): number | Promise<number> {
   const port = portText === undefined ? undefined : Number(portText);
   const [folder, opsFile, ...extra] = positional;
   const renderFlags = values.out ?? values.step ?? values.width ?? values.height;
+  const clipFlags = values.name ?? values.quality ?? values.scale ?? values.kine;
   const usage = (message?: string) => {
     io.err(message ? `${message}\n\n${USAGE}` : USAGE);
     return 2;
   };
   if (unknown.length > 0) return usage(`Unknown option ${unknown[0]}.`);
+
+  if (command === "clip") {
+    const [sub, clipFolder, scene, ...more] = positional;
+    if (sub !== "build") return usage("clip needs a subcommand. The one there is: clip build.");
+    if (!clipFolder || !scene) return usage("clip build needs a deck folder and a Kinescript scene file.");
+    if (more.length > 0) return usage(`Unexpected argument ${more[0]}.`);
+    if (baseRev !== undefined || portText !== undefined || renderFlags !== undefined) {
+      return usage("clip build takes --name, --quality, --scale, --kine and --json.");
+    }
+    const quality = values.quality;
+    if (quality !== undefined && !(QUALITIES as readonly string[]).includes(quality)) {
+      return usage(`--quality is one of ${QUALITIES.join(", ")}.`);
+    }
+    const scale = values.scale === undefined ? undefined : Number(values.scale);
+    if (scale !== undefined && !(scale >= 0.1 && scale <= 1)) {
+      return usage("--scale needs a number from 0.1 to 1.");
+    }
+    return clipBuildCommand(
+      {
+        folder: clipFolder,
+        scene,
+        name: values.name,
+        quality: quality as Quality | undefined,
+        scale,
+        kine: options.kine ?? kineCommand(values.kine),
+      },
+      json,
+      io,
+    ).catch((error: Error) => {
+      io.err(error.message);
+      return 2;
+    });
+  }
+  if (clipFlags !== undefined) return usage("--name, --quality, --scale and --kine belong to clip build.");
   if (extra.length > 0) return usage(`Unexpected argument ${extra[0]}.`);
 
   try {
