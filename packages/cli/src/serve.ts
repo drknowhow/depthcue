@@ -144,17 +144,59 @@ function send(response: ServerResponse, status: number, body: string, type = "te
   response.end(body);
 }
 
+/**
+ * The bytes a `Range` header asks for. It is undefined when the header should be ignored: absent, not one range of
+ * the form `bytes=first-last`, `bytes=first-` or `bytes=-count`, or a last byte before the first. A browser seeks in a
+ * video by asking for a range, and plays no further than what it has read when the answer is the whole file.
+ */
+function byteRange(
+  header: string | undefined,
+  size: number,
+): { start: number; end: number } | "unsatisfiable" | undefined {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header?.trim() ?? "");
+  if (!match) return undefined;
+  const [, first = "", last = ""] = match;
+  if (first === "" && last === "") return undefined;
+  if (first === "") {
+    const count = Number(last);
+    if (count === 0 || size === 0) return "unsatisfiable";
+    return { start: Math.max(0, size - count), end: size - 1 };
+  }
+  const start = Number(first);
+  if (last !== "" && Number(last) < start) return undefined;
+  if (start >= size) return "unsatisfiable";
+  return { start, end: last === "" ? size - 1 : Math.min(Number(last), size - 1) };
+}
+
 function sendFile(request: IncomingMessage, response: ServerResponse, path: string, policy?: string) {
+  const size = statSync(path).size;
   const headers: Record<string, string> = {
     "Content-Type": TYPES[extname(path).toLowerCase()] ?? "application/octet-stream",
-    "Content-Length": String(statSync(path).size),
+    "Accept-Ranges": "bytes",
     "Cache-Control": "no-cache",
     "X-Content-Type-Options": "nosniff",
   };
   if (policy) headers["Content-Security-Policy"] = policy;
-  response.writeHead(200, headers);
-  if (request.method === "HEAD") response.end();
-  else createReadStream(path).pipe(response);
+  const range = byteRange(request.headers.range, size);
+  if (range === "unsatisfiable") {
+    response.writeHead(416, { ...headers, "Content-Range": `bytes */${size}`, "Content-Length": "0" });
+    response.end();
+    return;
+  }
+  if (range) {
+    headers["Content-Range"] = `bytes ${range.start}-${range.end}/${size}`;
+    headers["Content-Length"] = String(range.end - range.start + 1);
+  } else {
+    headers["Content-Length"] = String(size);
+  }
+  response.writeHead(range ? 206 : 200, headers);
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
+  const stream = createReadStream(path, range);
+  stream.on("error", () => response.destroy());
+  stream.pipe(response);
 }
 
 /**

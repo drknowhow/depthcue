@@ -890,6 +890,17 @@ describe("clip cues in a real browser", () => {
     page.evaluate(
       () => document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video")?.currentTime,
     );
+  /** Waits for the clip on the slide to be at `seconds`, which a loaded video reaches once its seek lands. */
+  const playheadIs = (seconds: number) =>
+    page.waitForFunction(
+      (to) =>
+        Math.abs(
+          (document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video")
+            ?.currentTime ?? Number.NaN) - to,
+        ) < 0.05,
+      seconds,
+      { timeout: 5000 },
+    );
 
   beforeEach(() => {
     copyFileSync(
@@ -960,10 +971,21 @@ describe("clip cues in a real browser", () => {
       "marker-2",
       "marker-1",
     ]);
+    // The slide does not fetch the video until it is played. Reading it first means a jump is a real seek in every
+    // browser, and not a start position that a late load may replace.
+    await page.evaluate(
+      () =>
+        new Promise<void>((done) => {
+          const video = document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video");
+          if (!video || video.readyState >= 1) return done();
+          video.addEventListener("loadedmetadata", () => done(), { once: true });
+          video.load();
+        }),
+    );
     await clipNode().locator("[data-cue='marker-1']").click();
-    expect(await playhead()).toBe(1);
+    await playheadIs(1);
     await clipNode().locator("[data-cue='marker-2']").click();
-    expect(await playhead()).toBe(0.5);
+    await playheadIs(0.5);
 
     await page.locator(".ed-toolbar [data-tb='cues']").click();
     await pop().locator("[data-field='cue:name:marker-1']").fill("the reveal");
