@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
-import { type DraftStore, memoryDraftStore } from "@depthcue/core";
+import { type DraftStore, loadDoc, memoryDraftStore } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type Editor, mountEditor } from "../src/app.ts";
-import { type EditorStore, openStore } from "../src/store.ts";
+import { type DeckCopy, type EditorStore, openStore, type StoreOptions } from "../src/store.ts";
 import { FakeServer, openingTitle, retitle } from "./helpers.ts";
 
 let host: HTMLElement;
@@ -10,9 +10,9 @@ let server: FakeServer;
 let store: EditorStore;
 let editor: Editor;
 
-async function mount(drafts: DraftStore = memoryDraftStore()) {
+async function mount(drafts: DraftStore = memoryDraftStore(), options: StoreOptions = {}) {
   server = new FakeServer();
-  store = await openStore(server, () => drafts);
+  store = await openStore(server, () => drafts, options);
   host = document.createElement("div");
   document.body.replaceChildren(host);
   editor = mountEditor(host, store);
@@ -65,20 +65,20 @@ describe("the scene list", () => {
 });
 
 describe("the top bar", () => {
-  it("shows the deck title and starts clean with nothing to undo or save", () => {
+  it("shows the deck title and starts clean with nothing to undo, and no Save button", () => {
     expect(host.querySelector(".ed-deck")?.textContent).toBe(store.session.doc.deck.title);
     expect(document.title).toContain(store.session.doc.deck.title);
     expect(button("undo").disabled).toBe(true);
     expect(button("redo").disabled).toBe(true);
-    expect(button("save").disabled).toBe(true);
+    expect(host.querySelector("[data-action='save']")).toBeNull();
+    expect(button("retry").hidden).toBe(true);
     expect(status().dataset.state).toBe("saved");
     expect(status().textContent).toBe("Saved");
   });
 
-  it("enables undo, redo and save as the work changes", () => {
+  it("enables undo and redo as the work changes", () => {
     store.session.apply([retitle("Edited")]);
     expect(button("undo").disabled).toBe(false);
-    expect(button("save").disabled).toBe(false);
     expect(status().textContent).toBe("Unsaved changes");
     button("undo").click();
     expect(button("redo").disabled).toBe(false);
@@ -88,23 +88,62 @@ describe("the top bar", () => {
     expect(openingTitle(store.session.doc)).toBe("Edited");
   });
 
-  it("saves from the button and says so", async () => {
-    store.session.apply([retitle("Edited")]);
-    button("save").click();
-    expect(status().textContent).toBe("Saving…");
-    await new Promise((done) => setTimeout(done, 0));
-    expect(status().textContent).toBe("Saved");
-    expect(server.saves).toHaveLength(1);
-  });
-
-  it("shows why a save failed", async () => {
+  it("shows why a save failed and offers to try again", async () => {
     store.session.apply([retitle("Edited")]);
     server.nextSave = { ok: false, kind: "failed", message: "Could not reach the server.", diagnostics: [] };
-    button("save").click();
+    key({ key: "s", ctrlKey: true });
     await new Promise((done) => setTimeout(done, 0));
     expect(status().dataset.state).toBe("error");
     expect(status().textContent).toBe("Could not reach the server.");
-    expect(button("save").disabled).toBe(false);
+    expect(button("retry").hidden).toBe(false);
+    button("retry").click();
+    await new Promise((done) => setTimeout(done, 0));
+    expect(status().textContent).toBe("Saved");
+    expect(button("retry").hidden).toBe(true);
+    expect(server.saves).toHaveLength(2);
+  });
+});
+
+describe("autosave in the bar", () => {
+  beforeEach(async () => {
+    editor.destroy();
+    await mount(memoryDraftStore(), { autosaveMs: 20 });
+  });
+
+  it("says Saving while an edit waits and Saved once it is on disk, with no click", async () => {
+    store.session.apply([retitle("Edited")]);
+    expect(status().textContent).toBe("Saving…");
+    expect(server.saves).toHaveLength(0);
+    await new Promise((done) => setTimeout(done, 80));
+    expect(status().textContent).toBe("Saved");
+    expect(server.saves).toHaveLength(1);
+    expect(openingTitle(loadDoc({ text: server.text, assets: server.assets }).doc ?? ({} as never))).toBe(
+      "Edited",
+    );
+  });
+
+  it("does not rebuild the field being typed in when the save lands", async () => {
+    const node = host.querySelector<HTMLElement>(".ed-frame [data-edit]") as HTMLElement;
+    node.focus();
+    node.textContent = "Typed in place";
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((done) => setTimeout(done, 80));
+    expect(server.saves).toHaveLength(1);
+    expect(status().textContent).toBe("Saved");
+    expect(host.querySelector(".ed-frame [data-edit]")).toBe(node);
+    expect(document.activeElement).toBe(node);
+  });
+
+  it("does not rebuild a details field being typed in when the save lands", async () => {
+    button("details").click();
+    const field = host.querySelector<HTMLInputElement>("[data-field='scene:title']") as HTMLInputElement;
+    field.focus();
+    field.value = "Retitled while typing";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((done) => setTimeout(done, 80));
+    expect(server.saves).toHaveLength(1);
+    expect(host.querySelector("[data-field='scene:title']")).toBe(field);
+    expect(document.activeElement).toBe(field);
   });
 });
 
@@ -226,15 +265,18 @@ describe("notices", () => {
     (host.querySelector(`[data-action="${action}"]`) as HTMLButtonElement).click();
   const settle = () => new Promise((done) => setTimeout(done, 0));
 
-  it("offers both versions when the files changed under unsaved edits, and blocks saving meanwhile", async () => {
+  it("offers reload and a copy when the files changed under unsaved edits, and stops saving meanwhile", async () => {
     store.session.apply([retitle("Mine")]);
     server.external([retitle("Theirs")]);
     await store.syncFromDisk();
     expect(notices()).toHaveLength(1);
     expect(notices()[0]?.dataset.kind).toBe("conflict");
-    expect(button("save").disabled).toBe(true);
-    expect(host.querySelector("[data-action='take-disk']")).not.toBeNull();
-    expect(host.querySelector("[data-action='keep-mine']")).not.toBeNull();
+    expect(button("retry").hidden).toBe(true);
+    expect(button("take-disk").textContent).toBe("Reload");
+    expect(button("keep-mine").textContent).toBe("Keep mine as copy");
+    key({ key: "s", ctrlKey: true });
+    await settle();
+    expect(server.saves).toHaveLength(0);
   });
 
   it("takes the disk version when asked", async () => {
@@ -248,16 +290,22 @@ describe("notices", () => {
     expect(host.querySelector(".ed-frame")?.textContent).toContain("Theirs");
   });
 
-  it("keeps the visitor's version and saves it when asked", async () => {
+  it("hands over the visitor's version as a file and loads the disk version, saving nothing", async () => {
+    const copies: DeckCopy[] = [];
+    editor.destroy();
+    await mount(memoryDraftStore(), { saveCopy: (copy) => copies.push(copy) });
     store.session.apply([retitle("Mine")]);
     server.external([retitle("Theirs")]);
     await store.syncFromDisk();
     choose("keep-mine");
     await settle();
     await settle();
+    expect(copies).toHaveLength(1);
+    expect(copies[0]?.text).toContain("Mine");
     expect(notices()).toHaveLength(0);
-    expect(status().textContent).toBe("Saved");
-    expect(server.saves).toHaveLength(1);
+    expect(openingTitle(store.session.doc)).toBe("Theirs");
+    expect(status().textContent).toContain("Saved");
+    expect(server.saves).toHaveLength(0);
   });
 
   it("explains a draft that came back and lets the visitor discard it", async () => {

@@ -29,17 +29,37 @@ export interface EditorStatus {
   draft: DraftNotice | undefined;
 }
 
+/** The visitor's unsaved version of the deck, as one file they can keep. */
+export interface DeckCopy {
+  name: string;
+  /** JSON text: the deck's files keyed by path, with the revision they were based on. */
+  text: string;
+}
+
+export interface StoreOptions {
+  /**
+   * Milliseconds of quiet after an edit before it is saved to disk by itself. Without it only `save()` writes,
+   * which is what the tests of the store itself use.
+   */
+  autosaveMs?: number;
+  /** The longest an edit may wait while typing goes on. Defaults to five times `autosaveMs`. */
+  autosaveMaxWaitMs?: number;
+  /** Hands the visitor their version as a file. Needed for `keepMineAsCopy`. */
+  saveCopy?: (copy: DeckCopy) => void;
+}
+
 export interface EditorStore {
   readonly session: Session;
   readonly status: EditorStatus;
   subscribe(listener: () => void): () => void;
+  /** Saves now, without waiting out the autosave delay. Ctrl+S and the retry button call it. */
   save(): Promise<void>;
   /** Looks at the files on disk and takes them in, or flags a conflict. Call it when the folder changes. */
   syncFromDisk(): Promise<void>;
   /** Conflict: drop the unsaved edits and load what is on disk. */
   takeDisk(): Promise<void>;
-  /** Conflict: keep the unsaved edits and save them over what is on disk. */
-  keepMine(): Promise<void>;
+  /** Conflict: hand over the unsaved edits as a file, then load what is on disk. Nothing is overwritten. */
+  keepMineAsCopy(): Promise<void>;
   /** A held draft: use it although the files changed since it was made. */
   useDraft(): void;
   /** A restored or held draft: throw it away and go back to the files on disk. */
@@ -58,9 +78,14 @@ const docOf = (payload: DeckPayload): Doc | undefined =>
  * Opens the deck from the server into a core session and restores a draft left by an earlier visit. It keeps
  * three things apart: the document being edited, the revision known to be on disk, and the draft in the
  * browser. A save always names the revision it started from, so the server refuses it when someone else (an
- * agent, the CLI, a text editor) changed the files since; the visitor then picks which version wins.
+ * agent, the CLI, a text editor) changed the files since. Autosave never overwrites those changes: it stops,
+ * and the visitor either reloads the files or keeps their own version as a copy.
  */
-export async function openStore(api: Api, draftsFor: (deckId: string) => DraftStore): Promise<EditorStore> {
+export async function openStore(
+  api: Api,
+  draftsFor: (deckId: string) => DraftStore,
+  options: StoreOptions = {},
+): Promise<EditorStore> {
   const payload = await api.loadDeck();
   const initial = docOf(payload);
   if (!initial) throw new Error("The deck on disk does not pass validation. Run `depthcue check`.");
@@ -71,8 +96,12 @@ export async function openStore(api: Api, draftsFor: (deckId: string) => DraftSt
   let saving = false;
   let failed = false;
   let pendingSync = false;
+  /** An edit came in while a save was running, so the save that follows it is still owed. */
+  let resave = false;
   /** Counts finished saves, so a read that a save overtook can be told apart and thrown away. */
   let epoch = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let waitingSince = 0;
   let message: string | undefined;
   let conflict: EditorStatus["conflict"];
   let draft: DraftNotice | undefined;
@@ -124,11 +153,39 @@ export async function openStore(api: Api, draftsFor: (deckId: string) => DraftSt
     };
   }
 
-  session.subscribe(() => {
+  const autosaveOn = options.autosaveMs !== undefined;
+  const cancelAutosave = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+  /** Starts, or restarts, the countdown to a save. Typing keeps restarting it, up to the longest wait. */
+  const armAutosave = () => {
+    if (!autosaveOn || conflict) return;
+    const quiet = options.autosaveMs as number;
+    const longest = options.autosaveMaxWaitMs ?? quiet * 5;
+    const now = Date.now();
+    if (timer === undefined) waitingSince = now;
+    cancelAutosave();
+    const wait = Math.max(0, Math.min(quiet, waitingSince + longest - now));
+    timer = setTimeout(() => {
+      timer = undefined;
+      void store.save();
+    }, wait);
+  };
+
+  session.subscribe((event) => {
     // Editing on top of a held draft replaces it, so the notice must stop offering it.
     if (held && session.dirty) {
       held = undefined;
       draft = undefined;
+    }
+    // Only the visitor's own edits start a save. A recovered draft waits until they act on it, because saving
+    // it would make "Discard the draft" a lie.
+    if (!session.dirty)
+      cancelAutosave(); // undone back to what is on disk
+    else if (event.type === "apply" || event.type === "undo" || event.type === "redo") {
+      if (saving) resave = true;
+      else armAutosave();
     }
     notify();
   });
@@ -163,7 +220,17 @@ export async function openStore(api: Api, draftsFor: (deckId: string) => DraftSt
   const store: EditorStore = {
     session,
     get status() {
-      const save: SaveState = saving ? "saving" : failed ? "error" : session.dirty ? "dirty" : "saved";
+      // "dirty" means edits that nothing is about to save; with autosave a countdown or a save is under way.
+      const pending = timer !== undefined || resave;
+      const save: SaveState = saving
+        ? "saving"
+        : failed
+          ? "error"
+          : session.dirty
+            ? pending
+              ? "saving"
+              : "dirty"
+            : "saved";
       return { save, message, conflict, draft };
     },
     subscribe(listener) {
@@ -172,7 +239,12 @@ export async function openStore(api: Api, draftsFor: (deckId: string) => DraftSt
     },
 
     async save() {
-      if (saving || conflict) return;
+      cancelAutosave();
+      if (conflict) return;
+      if (saving) {
+        resave = true; // the running save started before the latest edit, so another one follows it
+        return;
+      }
       const files = docToFiles(session.doc);
       saving = true;
       message = undefined;
@@ -183,6 +255,7 @@ export async function openStore(api: Api, draftsFor: (deckId: string) => DraftSt
       if (result.ok) {
         diskRev = result.rev;
         failed = false;
+        if (draft?.kind === "restored") draft = undefined; // it is on disk now, so there is nothing to discard
         session.markSaved(result.rev);
       } else if (result.kind === "stale") {
         conflict = { diskRev: result.rev };
@@ -197,6 +270,12 @@ export async function openStore(api: Api, draftsFor: (deckId: string) => DraftSt
       if (pendingSync) {
         pendingSync = false;
         await store.syncFromDisk();
+      }
+      // Edits made while this save was running are not in it. A failed save waits for the next edit instead.
+      if (resave) {
+        resave = false;
+        if (result.ok && session.dirty) armAutosave();
+        else notify();
       }
     },
 
@@ -245,13 +324,18 @@ export async function openStore(api: Api, draftsFor: (deckId: string) => DraftSt
       await reload("Loaded the files from disk. Your unsaved edits were dropped.");
     },
 
-    async keepMine() {
+    async keepMineAsCopy() {
       if (!conflict) return;
-      diskRev = conflict.diskRev;
-      conflict = undefined;
-      failed = false;
-      message = undefined;
-      await store.save();
+      if (!options.saveCopy) {
+        message = "This editor cannot hand over a copy. Reload the files, or copy your text out first.";
+        notify();
+        return;
+      }
+      const { doc } = session;
+      const name = `${doc.deck.id}-my-edits.json`;
+      const text = `${JSON.stringify({ deck: doc.deck.id, baseRev: diskRev, files: docToFiles(doc) }, null, 2)}\n`;
+      options.saveCopy({ name, text });
+      await reload(`Your version was downloaded as ${name}. These are the files from disk.`);
     },
 
     useDraft() {
@@ -272,8 +356,10 @@ export async function openStore(api: Api, draftsFor: (deckId: string) => DraftSt
 
     dismissNotice() {
       if (draft?.kind === "stale") return; // it is a question; it stays until answered
+      const keeping = draft?.kind === "restored" && session.dirty; // "Keep editing": now it may be saved
       draft = undefined;
       message = undefined;
+      if (keeping) armAutosave();
       notify();
     },
 
@@ -286,6 +372,7 @@ export async function openStore(api: Api, draftsFor: (deckId: string) => DraftSt
     flush: () => autosave.flush(),
 
     dispose() {
+      cancelAutosave();
       autosave.stop();
       listeners.clear();
     },

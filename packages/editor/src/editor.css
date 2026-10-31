@@ -99,17 +99,8 @@ body {
   opacity: 0.55;
 }
 
-.ed-app .ed-primary {
-  border-color: var(--dc-text);
-  background: var(--dc-text);
-  color: var(--dc-bg);
-}
-
-.ed-app .ed-primary:disabled {
-  border-color: var(--dc-line);
-  background: var(--dc-line);
-  color: var(--dc-muted);
-  opacity: 1;
+.ed-app button[hidden] {
+  display: none;
 }
 
 .ed-status {

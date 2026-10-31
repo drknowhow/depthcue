@@ -105,17 +105,14 @@ async function typeAtEnd(text: string) {
 }
 
 describe("the editor in a real browser", () => {
-  it("opens the deck, edits text in place, saves it to the folder and keeps the console clean", async () => {
+  it("opens the deck, edits text in place, saves it to the folder by itself and keeps the console clean", async () => {
     await open();
     expect(await page.title()).toContain("Why channel B now leads");
     expect(await page.locator(".ed-scene").count()).toBe(3);
     expect(await read(status())).toBe("Saved");
+    expect(await page.locator("[data-action='save']").count()).toBe(0);
 
     await typeAtEnd(" this quarter");
-    expect(await read(status())).toBe("Unsaved changes");
-    expect(headlineOnDisk()).toBe("Channel B now leads demand");
-
-    await page.keyboard.press("Control+s");
     await saved();
     expect(headlineOnDisk()).toBe("Channel B now leads demand this quarter");
     expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
@@ -147,10 +144,13 @@ describe("the editor in a real browser", () => {
   });
 
   it("brings unsaved work back after the tab is reloaded", async () => {
+    // With the server unreachable the edit cannot reach the folder, so the browser's draft is all there is.
+    await page.route("**/_depthcue/api/save", (route) => route.abort());
     await open();
     await typeAtEnd(" (draft)");
-    await page.waitForTimeout(700);
+    await page.locator(".ed-status[data-state='error']").waitFor();
     expect(await page.evaluate(() => Object.keys(localStorage))).toEqual(["depthcue:draft:channel-demand"]);
+    await page.unroute("**/_depthcue/api/save");
     await page.reload();
     await headline().waitFor();
     expect(await read(headline())).toBe("Channel B now leads demand (draft)");
@@ -162,7 +162,8 @@ describe("the editor in a real browser", () => {
     await saved();
     expect(await read(headline())).toBe("Channel B now leads demand");
     expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
-    expect(problems).toEqual([]);
+    // The refused request is the one this test caused on purpose; the browser logs it as a failed load.
+    expect(problems.filter((line) => !line.includes("net::ERR_FAILED"))).toEqual([]);
   });
 
   it("takes in a change made on disk while nothing is unsaved", async () => {
@@ -173,15 +174,17 @@ describe("the editor in a real browser", () => {
     expect(await page.locator(".ed-notice").count()).toBe(0);
   });
 
-  it("does not overwrite an agent's change with a stale edit, and lets the visitor choose", async () => {
+  it("does not overwrite an agent's change with a stale edit, and lets the visitor reload or keep a copy", async () => {
+    // Saves are held back so the agent's change lands while the edit is still unsaved. Whichever of the two
+    // reaches the folder first, the server refuses a stale save, so the outcome is the same conflict.
+    await page.route("**/_depthcue/api/save", (route) => route.abort());
     await open();
     await typeAtEnd(" (mine)");
     external([retitle("Written by an agent")]);
     await page.locator(".ed-notice[data-kind='conflict']").waitFor();
-    expect(await page.locator("[data-action='save']").isDisabled()).toBe(true);
     expect(headlineOnDisk()).toBe("Written by an agent");
 
-    await page.getByRole("button", { name: "Load the disk version" }).click();
+    await page.getByRole("button", { name: "Reload" }).click();
     await headline().filter({ hasText: "Written by an agent" }).waitFor();
     expect(await page.locator(".ed-notice").count()).toBe(0);
     expect(await read(status())).toContain("Saved");
@@ -189,10 +192,15 @@ describe("the editor in a real browser", () => {
     await typeAtEnd(" (again)");
     external([retitle("Agent again")]);
     await page.locator(".ed-notice[data-kind='conflict']").waitFor();
-    await page.getByRole("button", { name: "Keep mine and save" }).click();
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Keep mine as copy" }).click();
+    const copy = await download;
+    expect(copy.suggestedFilename()).toBe("channel-demand-my-edits.json");
+    const body = readFileSync((await copy.path()) as string, "utf8");
+    expect(body).toContain("Written by an agent (again)");
     await page.locator(".ed-notice").waitFor({ state: "detached" });
-    await saved();
-    expect(headlineOnDisk()).toBe("Written by an agent (again)");
+    await headline().filter({ hasText: "Agent again" }).waitFor();
+    expect(headlineOnDisk()).toBe("Agent again");
     expect(problems).toEqual([]);
   });
 
@@ -226,7 +234,7 @@ describe("the editor in a real browser", () => {
     await open();
     const [scroll, width] = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
     expect(scroll).toBeLessThanOrEqual(width as number);
-    expect(await page.locator("[data-action='save']").isVisible()).toBe(true);
+    expect(await status().isVisible()).toBe(true);
     expect(await headline().isVisible()).toBe(true);
   });
 

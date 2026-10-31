@@ -1,11 +1,15 @@
 // @vitest-environment happy-dom
 import { createSession, type DraftStore, loadDoc, memoryDraftStore, serializeDraft } from "@depthcue/core";
-import { describe, expect, it } from "vitest";
-import { type EditorStore, openStore } from "../src/store.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { type DeckCopy, type EditorStore, openStore, type StoreOptions } from "../src/store.ts";
 import { FakeServer, openingTitle, retitle } from "./helpers.ts";
 
-async function open(server = new FakeServer(), drafts: DraftStore = memoryDraftStore()) {
-  const store = await openStore(server, () => drafts);
+async function open(
+  server = new FakeServer(),
+  drafts: DraftStore = memoryDraftStore(),
+  options: StoreOptions = {},
+) {
+  const store = await openStore(server, () => drafts, options);
   return { server, drafts, store };
 }
 
@@ -192,18 +196,36 @@ describe("files changed on disk", () => {
     expect(drafts.read()).toBeNull();
   });
 
-  it("lets the visitor keep theirs, and that save goes through against the new disk revision", async () => {
+  it("lets the visitor keep theirs as a file, then loads the disk version without writing to it", async () => {
+    const copies: DeckCopy[] = [];
+    const { store, server } = await open(new FakeServer(), memoryDraftStore(), {
+      saveCopy: (copy) => copies.push(copy),
+    });
+    const startedFrom = server.rev;
+    edit(store, "Mine");
+    server.external([retitle("Theirs")]);
+    await store.syncFromDisk();
+    await store.keepMineAsCopy();
+
+    expect(copies).toHaveLength(1);
+    expect(copies[0]?.name).toBe("channel-demand-my-edits.json");
+    const copy = JSON.parse(copies[0]?.text ?? "{}") as { baseRev: string; files: Record<string, string> };
+    expect(copy.baseRev, "the revision the visitor's edits were made on").toBe(startedFrom);
+    expect(copy.files["scenes/opening.json"]).toContain("Mine");
+    expect(server.saves).toHaveLength(0);
+    expect(openingTitle(store.session.doc)).toBe("Theirs");
+    expect(store.status).toMatchObject({ save: "saved", conflict: undefined });
+  });
+
+  it("keeps the conflict, and the visitor's edits, when it has nowhere to put a copy", async () => {
     const { store, server } = await open();
     edit(store, "Mine");
     server.external([retitle("Theirs")]);
     await store.syncFromDisk();
-    const diskNow = server.rev;
-    await store.keepMine();
-    expect(server.saves.at(-1)?.baseRev).toBe(diskNow);
-    expect(store.status).toMatchObject({ save: "saved", conflict: undefined });
-    expect(openingTitle(loadDoc({ text: server.text, assets: server.assets }).doc ?? ({} as never))).toBe(
-      "Mine",
-    );
+    await store.keepMineAsCopy();
+    expect(store.status.conflict).toBeDefined();
+    expect(store.status.message).toMatch(/copy/i);
+    expect(openingTitle(store.session.doc)).toBe("Mine");
   });
 
   it("is not fooled by its own save arriving back as a change event", async () => {
@@ -346,5 +368,141 @@ describe("images", () => {
     ]);
     expect(add.ok).toBe(true);
     expect(store.session.dirty).toBe(true);
+  });
+});
+
+describe("autosave", () => {
+  const QUIET = 800;
+  const LONGEST = 2000;
+  afterEach(() => vi.useRealTimers());
+
+  async function openTimed(server = new FakeServer(), drafts: DraftStore = memoryDraftStore()) {
+    vi.useFakeTimers();
+    return open(server, drafts, { autosaveMs: QUIET, autosaveMaxWaitMs: LONGEST });
+  }
+  const wait = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+
+  it("saves by itself after a quiet moment, once for a burst of edits", async () => {
+    const { store, server } = await openTimed();
+    edit(store, "One");
+    await wait(500);
+    edit(store, "Two");
+    await wait(500);
+    edit(store, "Three");
+    expect(server.saves).toHaveLength(0);
+    expect(store.status.save).toBe("saving");
+    await wait(QUIET);
+    expect(server.saves).toHaveLength(1);
+    expect(server.saves[0]?.files["scenes/opening.json"]).toContain("Three");
+    expect(store.status.save).toBe("saved");
+  });
+
+  it("does not wait for ever while typing goes on", async () => {
+    const { store, server } = await openTimed();
+    for (let i = 0; i < 8; i += 1) {
+      edit(store, `Word ${i}`);
+      await wait(500);
+    }
+    expect(server.saves.length).toBeGreaterThanOrEqual(1);
+    expect(server.saves[0]?.files["scenes/opening.json"]).toContain("Word");
+  });
+
+  it("saves again when an edit came in during a save", async () => {
+    const { store, server } = await openTimed();
+    edit(store, "First");
+    server.duringSave = () => {
+      server.duringSave = undefined;
+      edit(store, "Second, during the save");
+    };
+    await wait(QUIET);
+    expect(server.saves).toHaveLength(1);
+    expect(store.status.save).toBe("saving");
+    await wait(QUIET);
+    expect(server.saves).toHaveLength(2);
+    expect(store.status.save).toBe("saved");
+    expect(server.rev).toBe(store.session.rev);
+  });
+
+  it("cancels the save when the edit is undone before it runs", async () => {
+    const { store, server } = await openTimed();
+    edit(store, "Temporary");
+    store.session.undo();
+    await wait(QUIET * 2);
+    expect(server.saves).toHaveLength(0);
+    expect(store.status.save).toBe("saved");
+  });
+
+  it("saves now when asked, without waiting out the countdown", async () => {
+    const { store, server } = await openTimed();
+    edit(store, "Now");
+    await store.save();
+    expect(server.saves).toHaveLength(1);
+    await wait(QUIET * 2);
+    expect(server.saves).toHaveLength(1);
+  });
+
+  it("stops at a stale revision and never overwrites what is on disk", async () => {
+    const { store, server } = await openTimed();
+    edit(store, "Mine");
+    server.external([retitle("Theirs")]);
+    await wait(QUIET);
+    expect(server.saves).toHaveLength(1);
+    expect(store.status.conflict).toBeDefined();
+    edit(store, "Mine, edited more");
+    await wait(QUIET * 3);
+    expect(server.saves).toHaveLength(1);
+    expect(openingTitle(loadDoc({ text: server.text, assets: server.assets }).doc ?? ({} as never))).toBe(
+      "Theirs",
+    );
+  });
+
+  it("does not hammer a failing server, and tries again on the next edit", async () => {
+    const { store, server } = await openTimed();
+    edit(store, "One");
+    server.nextSave = { ok: false, kind: "failed", message: "Could not reach the server.", diagnostics: [] };
+    await wait(QUIET * 4);
+    expect(server.saves).toHaveLength(1);
+    expect(store.status.save).toBe("error");
+    edit(store, "Two");
+    await wait(QUIET);
+    expect(server.saves).toHaveLength(2);
+    expect(store.status.save).toBe("saved");
+  });
+
+  it("holds a recovered draft until the visitor chooses to keep editing", async () => {
+    const server = new FakeServer();
+    const { store } = await openTimed(server, draftOf(server, "From the last visit"));
+    expect(store.status.draft?.kind).toBe("restored");
+    await wait(QUIET * 4);
+    expect(server.saves).toHaveLength(0);
+    expect(store.status.save).toBe("dirty");
+
+    store.dismissNotice();
+    expect(store.status.save).toBe("saving");
+    await wait(QUIET);
+    expect(server.saves).toHaveLength(1);
+    expect(store.status).toMatchObject({ save: "saved", draft: undefined });
+  });
+
+  it("does not save a stale draft the visitor chose to use until they edit again", async () => {
+    const server = new FakeServer();
+    const { store } = await openTimed(server, draftOf(server, "Old draft", "0123456789abcdef"));
+    expect(store.status.draft?.kind).toBe("stale");
+    store.useDraft();
+    await wait(QUIET * 4);
+    expect(server.saves).toHaveLength(0);
+    expect(store.status.save).toBe("dirty");
+    edit(store, "Old draft, then more");
+    await wait(QUIET);
+    expect(server.saves).toHaveLength(1);
+  });
+
+  it("does not save a recovered draft that the visitor discards", async () => {
+    const server = new FakeServer();
+    const { store } = await openTimed(server, draftOf(server, "From the last visit"));
+    await store.discardDraft();
+    await wait(QUIET * 4);
+    expect(server.saves).toHaveLength(0);
+    expect(openingTitle(store.session.doc)).toBe("Channel B now leads demand");
   });
 });
