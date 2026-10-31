@@ -125,29 +125,53 @@ interface Way {
   where: string;
   reach(): Element | null | undefined;
 }
-type Entry = Way | { never: string } | { pending: string };
+type Entry = Way | { never: string };
 
 const NEVER_FORMAT = "A format marker the editor writes back as it found it.";
 const NEVER_ID = "Chosen when the thing is created, and other things point at it, so it does not change.";
 const NEVER_KIND = "The kind of a block is fixed when it is added.";
 
-/**
- * The format has a block `frame` before the editor can draw one: schema 0.2 lands first, and pinning (the Free
- * toggle, `P`, drag and resize on the slide) follows in the same phase of docs/EDITOR_REMAKE.md. Each entry here
- * becomes a `where` when that lands; the test below keeps this list to frames so it cannot collect other gaps.
- */
-const PENDING_FRAME = "Pinning, the next part of phase 4 in docs/EDITOR_REMAKE.md, adds the control.";
-const PENDING_FRAMES = Object.fromEntries(
-  ["text", "image", "bar-chart", "clip"].flatMap((kind) =>
-    ["frame", "frame.x", "frame.y", "frame.w", "frame.h"].map((name) => [
-      `scene.blocks<${kind}>.${name}`,
-      { pending: PENDING_FRAME },
+/** A pinned block, as a stored deck has it, chosen and with its Pinned chip open. There is no layout here to measure. */
+const pinnedPop = (id: string) => {
+  const result = store.session.apply([
+    { op: "block.frame", scene: SCENE, id, frame: { x: 10, y: 10, w: 30, h: 20 } },
+  ]);
+  if (!result.ok) throw new Error("the frame should be accepted");
+  choose(id, "other");
+  return openChip("frame") as HTMLElement;
+};
+
+/** Every kind of block can be pinned, and each has the same two controls. */
+const FRAMED: Record<string, { id: () => string; kind: "text" | "other" }> = {
+  text: { id: () => blocks.text, kind: "text" },
+  image: { id: () => blocks.image, kind: "other" },
+  "bar-chart": { id: () => "chart-demand", kind: "other" },
+  clip: { id: () => blocks.clip, kind: "other" },
+};
+const FRAMES = Object.fromEntries(
+  Object.entries(FRAMED).flatMap(([type, { id, kind }]): [string, Entry][] => [
+    [
+      `scene.blocks<${type}>.frame`,
+      {
+        where: "Block toolbar, the Free button (or P on the chosen block)",
+        reach: () => {
+          choose(id(), kind);
+          return find(host, ".ed-toolbar [data-tb='free']");
+        },
+      },
+    ],
+    ...(["x", "y", "w", "h"] as const).map((name): [string, Entry] => [
+      `scene.blocks<${type}>.frame.${name}`,
+      {
+        where: "Block toolbar, Pinned chip (shown while the block is pinned)",
+        reach: () => field(pinnedPop(id()), `frame:${name}`),
+      },
     ]),
-  ),
-) as Record<string, Entry>;
+  ]),
+);
 
 const WAYS: Record<string, Entry> = {
-  ...PENDING_FRAMES,
+  ...FRAMES,
   "deck.$schema": { never: NEVER_FORMAT },
   "deck.schemaVersion": { never: NEVER_FORMAT },
   "deck.id": { never: NEVER_ID },
@@ -403,15 +427,11 @@ describe("every property of a deck can be edited", () => {
     }
   });
 
-  it("lets only a block's frame wait for its control", () => {
-    const waiting = Object.entries(WAYS)
-      .filter(([, entry]) => "pending" in entry)
-      .map(([path]) => path);
-    expect(waiting.length).toBeGreaterThan(0);
-    expect(
-      waiting.filter((path) => !/^scene\.blocks<[a-z-]+>\.frame(\.[xywh])?$/.test(path)),
-      "Only frames may wait; every other property needs a control, or a reason a person never edits it.",
-    ).toEqual([]);
+  it("names the controls of a block's frame for every kind of block", () => {
+    const framed = Object.keys(WAYS).filter((path) =>
+      /^scene\.blocks<[a-z-]+>\.frame(\.[xywh])?$/.test(path),
+    );
+    expect(framed).toHaveLength(Object.keys(FRAMED).length * 5);
   });
 
   const edited = Object.entries(WAYS).filter((pair): pair is [string, Way] => "where" in pair[1]);

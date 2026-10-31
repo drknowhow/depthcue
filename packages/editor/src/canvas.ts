@@ -1,9 +1,10 @@
-import { isMarker, type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
+import { type Frame, isMarker, type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
 import { h, renderScene } from "@depthcue/player";
 import { createBuildBadges } from "./buildbadges.ts";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
 import { type CueBook, clock } from "./cues.ts";
 import { drawGhosts, type GhostHooks } from "./ghosts.ts";
+import { frameOver, NUDGE, NUDGE_BIG, slideIn } from "./pin.ts";
 import { createSlotDrag } from "./slotdrag.ts";
 import { describeBlock, IMAGE_FILE, needsAlt } from "./templates.ts";
 
@@ -22,6 +23,8 @@ export interface CanvasHooks {
   changed?(): void;
   /** A picture file was dropped on an image, or pasted while the image had the keyboard: use it in its place. */
   replaceImage?(id: string, file: File): void;
+  /** An arrow key was pressed on a pinned block: move it by `dx` and `dy` percent of the slide. */
+  nudge?(id: string, dx: number, dy: number): void;
   /** The cues of the clips. A clip that has some gets a row of places to jump to under it. */
   cues?: CueBook;
   /** Adds to an area of the slide that holds nothing yet, which the slide draws a place for. */
@@ -40,6 +43,11 @@ export interface Canvas {
   mark(id: string | undefined): void;
   /** The element a block, or the claim, is drawn in. */
   nodeOf(id: string): HTMLElement | undefined;
+  /**
+   * The frame a block fills on the slide now, in percent of it, or undefined when it has no size to measure. Pinning a
+   * block with this frame leaves it where it is.
+   */
+  measure(id: string): Frame | undefined;
   /** Puts the keyboard on a block: the caret at the end of its text, or the block itself when it has none. */
   focusBlock(id: string): void;
   /** Draws the rows of cue chips again from the cue book, without redrawing the slide or resetting a video. */
@@ -63,6 +71,8 @@ interface Field {
   empty?: string;
   limit: number;
   node: HTMLElement;
+  /** A pinned text is chosen and moved as a block, and is typed in only after Enter or a double click. */
+  pinned?: boolean;
   read(scene: Scene): string | undefined;
   write(scene: Scene, text: string): Op;
 }
@@ -122,6 +132,7 @@ function fieldsOf(scene: Scene, root: HTMLElement): Field[] {
       label: `${block.role[0]?.toUpperCase()}${block.role.slice(1)}`,
       limit: TEXT_LIMITS[block.role],
       node: node.querySelector<HTMLElement>("p") ?? node,
+      pinned: block.frame !== undefined,
       read: (current) => {
         const found = current.blocks.find((candidate) => candidate.id === block.id);
         return found?.type === "text" ? found.text : undefined;
@@ -171,6 +182,8 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
   const element = h("div", { class: "ed-canvas-host" }, slot, overlay);
   let typing = false;
   let visits = 0;
+  /** Starts typing in a pinned text, by the id of its block. Filled in each time the slide is drawn. */
+  const editors = new Map<string, () => void>();
   /** The blocks moved or changed size, so the grips and the toolbar move with them. */
   const changed = () => {
     drag.place();
@@ -180,14 +193,43 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
 
   function wire(field: Field, sceneId: string) {
     const { node } = field;
-    node.dataset.edit = "";
-    node.setAttribute("role", "textbox");
-    node.setAttribute("aria-label", field.name ?? `${field.label} text`);
-    node.setAttribute("aria-multiline", "false");
-    node.contentEditable = supportsPlaintext() ? "plaintext-only" : "true";
     node.spellcheck = true;
-    node.tabIndex = 0;
     let visit = 0;
+
+    const armed = ["data-edit", "role", "aria-label", "aria-multiline", "contenteditable", "tabindex"];
+    /** What the node carried before it was armed. A pinned text is also its block, which a press chooses and Tab reaches. */
+    let before: [string, string | null][] = [];
+    /** Makes the text typeable. A pinned text is armed only while it is being edited. */
+    const arm = () => {
+      before = armed.map((name) => [name, node.getAttribute(name)]);
+      node.dataset.edit = "";
+      node.setAttribute("role", "textbox");
+      node.setAttribute("aria-label", field.name ?? `${field.label} text`);
+      node.setAttribute("aria-multiline", "false");
+      node.contentEditable = supportsPlaintext() ? "plaintext-only" : "true";
+      node.tabIndex = 0;
+    };
+    const disarm = () => {
+      for (const [name, value] of before) {
+        if (value === null) node.removeAttribute(name);
+        else node.setAttribute(name, value);
+      }
+    };
+    /** A pinned text hands the keyboard back to its block when the edit ends from the keyboard. */
+    const giveBack = () => {
+      if (field.pinned) nodeOf(field.id)?.focus();
+    };
+    if (field.pinned) {
+      editors.set(field.id, () => {
+        // A double click on a word of the text being typed in selects the word, and leaves the caret there.
+        if (node.hasAttribute("data-edit")) return;
+        arm();
+        node.focus();
+        placeCaretAtEnd(node);
+      });
+    } else {
+      arm();
+    }
 
     const scene = () => session.doc.scenes[sceneId] as Scene;
     const current = () => field.read(scene()) ?? "";
@@ -226,6 +268,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") {
         event.preventDefault();
         node.blur();
+        giveBack();
       } else if (event.inputType === "historyUndo") {
         event.preventDefault();
         session.undo();
@@ -241,10 +284,13 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     });
     node.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
+        // The block of a pinned text is this node, and its own Escape would let go of the choice.
+        event.preventDefault();
         node.textContent = current();
         node.removeAttribute("data-invalid");
         node.blur();
-        hooks.deselect?.();
+        if (field.pinned) giveBack();
+        else hooks.deselect?.();
       }
     });
     node.addEventListener("blur", () => {
@@ -257,6 +303,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       }
       node.removeAttribute("data-invalid");
       hooks.hint("", false);
+      if (field.pinned) disarm();
     });
   }
 
@@ -301,10 +348,13 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     });
   }
 
-  /** Images, charts and clips have no text to type into, so they are chosen by clicking or pressing Enter. */
+  /**
+   * Images, charts and clips have no text to type into, so they are chosen by clicking or pressing Enter. A pinned text
+   * is chosen the same way, because a press on it starts a move and not a caret; Enter or a double click types in it.
+   */
   function wirePicker(scene: Scene, root: HTMLElement) {
     for (const block of scene.blocks) {
-      if (block.type === "text") continue;
+      if (block.type === "text" && !block.frame) continue;
       const node = [...root.querySelectorAll<HTMLElement>(".dc-block")].find(
         (candidate) => candidate.dataset.id === block.id,
       );
@@ -317,7 +367,9 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       node.toggleAttribute("data-alt-missing", missingAlt);
       node.setAttribute(
         "aria-label",
-        `${describeBlock(block, 60)}.${missingAlt ? " Alt text is missing." : ""} Select to edit.`,
+        `${describeBlock(block, 60)}.${missingAlt ? " Alt text is missing." : ""} ${
+          block.type === "text" ? "Pinned. Press Enter to type in it." : "Select to edit."
+        }`,
       );
       node.tabIndex = 0;
       if (block.type === "image") wireDrop(node, block.id);
@@ -338,9 +390,14 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         });
       }
       node.addEventListener("click", () => hooks.select(block.id));
+      if (block.type === "text") node.addEventListener("dblclick", () => editors.get(block.id)?.());
       node.addEventListener("keydown", (event) => {
-        if (event.target !== node) return;
-        if (event.key === "Enter" || event.key === " ") {
+        // While a pinned text is being typed in, its keys are the text's: Delete, arrows and Enter act on the caret.
+        if (event.target !== node || event.defaultPrevented || node.hasAttribute("data-edit")) return;
+        if (event.key === "Enter" && block.type === "text") {
+          event.preventDefault();
+          editors.get(block.id)?.();
+        } else if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           hooks.select(block.id);
         } else if (event.key === "Escape") {
@@ -348,6 +405,14 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         } else if (event.key === "Delete" || event.key === "Backspace") {
           event.preventDefault();
           hooks.remove?.(block.id);
+        } else if (block.frame && event.key.startsWith("Arrow")) {
+          const step = event.shiftKey ? NUDGE_BIG : NUDGE;
+          event.preventDefault();
+          hooks.nudge?.(
+            block.id,
+            event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0,
+            event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0,
+          );
         }
       });
     }
@@ -440,6 +505,12 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     overlay,
     mark,
     nodeOf,
+    measure(id) {
+      const node = nodeOf(id);
+      const room = slot.querySelector<HTMLElement>(".dc-view");
+      if (!node || !room) return undefined;
+      return frameOver(node.getBoundingClientRect(), slideIn(room.getBoundingClientRect()));
+    },
     focusBlock,
     refreshCues() {
       const scene = drawn === undefined ? undefined : session.doc.scenes[drawn];
@@ -480,6 +551,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         { class: "dc-player ed-frame", "data-theme": session.doc.deck.theme },
         h("div", { class: "dc-stage" }, view),
       );
+      editors.clear();
       for (const field of fieldsOf(scene, view)) wire(field, sceneId);
       wirePicker(scene, view);
       wireCues(scene, view);

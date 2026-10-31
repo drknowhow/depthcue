@@ -126,7 +126,15 @@ never edits it (ids, kinds and format markers). A new property in the schema fai
 | claim: `text`                                 | Typed on the slide                                            |
 | claim: `evidenceIds`                          | Evidence chip in the claim's toolbar                          |
 | deck: `title`, `language`, `theme`, `modules` | Deck popover in the top bar                                   |
-| any block: `frame`                            | Not yet: drawn by the player, no editor control until step 12 |
+| any block: `frame`                            | Free button in the toolbar, or P; Pinned popover; arrow keys  |
+
+The Layout and Free buttons in a block's toolbar say where the block is. Free pins it where it stands: the frame is
+measured from the block's box on the slide, so pinning does not move it, and Layout puts it back in its slot. `P`
+does the same for the chosen block, except while a field has the keyboard. A pinned block gets a Pinned popover
+with its left, top, width and height in percent of the slide, and Align left, center and right buttons that keep to
+the 4% safe margin. The arrow keys move a chosen pinned block 1%, or 5% with Shift, and one run of presses is one
+Undo step. A pinned text is chosen like an image, because a press on it will start a move later: Enter or a double
+click types in it, and Enter or Escape gives the keyboard back to the block.
 
 Clip markers are not part of the deck. They live in the cue map beside the video, so the schema-walk test does not
 see them and they are not in the deck's Undo. The editor writes a marker to the file as soon as it is made, after

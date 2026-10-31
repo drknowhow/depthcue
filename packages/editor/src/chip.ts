@@ -38,6 +38,7 @@ export function buildChip(panel: Panel): Chip {
 /** Brings the popover and the chip's count up to date with the scene. */
 export function fillChip(chip: Chip, scene: Scene, typing: boolean) {
   chip.panel.fill(scene, typing);
+  chip.wrap.hidden = chip.panel.visible?.(scene) === false;
   const state = chip.panel.state?.(scene);
   chip.badge.textContent = state?.badge ?? "";
   chip.button.setAttribute("aria-label", state?.title ?? chip.panel.title);

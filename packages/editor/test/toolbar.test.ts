@@ -232,7 +232,7 @@ describe("citing sources", () => {
     withSources();
     textBox("method-body").focus();
     const chip = part<HTMLButtonElement>("cite");
-    const pop = toolbar().querySelector<HTMLElement>(".ed-tb-pop") as HTMLElement;
+    const pop = popOf("cite");
     expect(pop.hidden).toBe(true);
     expect(chip.getAttribute("aria-expanded")).toBe("false");
     chip.click();
@@ -284,7 +284,7 @@ describe("citing sources", () => {
     box.focus();
     box.checked = true;
     box.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(toolbar().querySelector<HTMLElement>(".ed-tb-pop")?.hidden).toBe(false);
+    expect(popOf("cite").hidden).toBe(false);
     expect(toolbar().querySelector("input[data-tb='source']")).toBe(box);
     expect(document.activeElement).toBe(box);
   });
@@ -292,7 +292,7 @@ describe("citing sources", () => {
   it("says when the scene has no sources, and opens the scene panel where they are added", () => {
     textBox("method-body").focus();
     part("cite").click();
-    expect(toolbar().querySelector(".ed-tb-pop")?.textContent).toContain("no sources");
+    expect(popOf("cite").textContent).toContain("no sources");
     part("open-sources").click();
     const scenePop = host.querySelector<HTMLElement>(".ed-scene-tools .ed-tb-pop") as HTMLElement;
     expect(scenePop.hidden).toBe(false);
@@ -462,7 +462,7 @@ describe("the keyboard", () => {
     textBox("method-body").focus();
     part("cite").click();
     press(toolbar().querySelector("input, button[data-tb='open-sources']") as Element, "Escape");
-    expect(toolbar().querySelector<HTMLElement>(".ed-tb-pop")?.hidden).toBe(true);
+    expect(popOf("cite").hidden).toBe(true);
     expect(document.activeElement).toBe(part("cite"));
     expect(editor.blockId).toBe("method-body");
   });

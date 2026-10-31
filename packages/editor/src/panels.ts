@@ -84,6 +84,8 @@ export interface Panel {
   fill(scene: Scene, typing: boolean): void;
   /** A count to show on the chip, and the title to say for it. */
   state?(scene: Scene): { badge: string; title: string };
+  /** False while the chip has nothing to open, such as the position of a block that is not pinned. */
+  visible?(scene: Scene): boolean;
 }
 
 type Chart = Extract<Block, { type: "bar-chart" }>;

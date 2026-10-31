@@ -1436,3 +1436,146 @@ describe("build order in a real browser", () => {
     expect(problems).toEqual([]);
   });
 });
+
+describe("pinning in a real browser", () => {
+  const block = (id: string) => page.locator(`.ed-frame [data-id='${id}']`);
+  const free = () => page.locator(".ed-toolbar [data-tb='free']");
+  const layout = () => page.locator(".ed-toolbar [data-tb='layout']");
+  const blockOnDisk = (scene: string, id: string) =>
+    disk().scenes[scene]?.blocks.find((entry) => entry.id === id);
+  const frameOnDisk = (scene: string, id: string) => blockOnDisk(scene, id)?.frame;
+  const focused = () => page.evaluate(() => document.activeElement?.getAttribute("data-id") ?? null);
+
+  async function openScene(id: string, anchor: string) {
+    await page.goto(url());
+    await page.locator(`.ed-scene[data-scene='${id}']`).click();
+    await block(anchor).waitFor();
+  }
+
+  const boxOf = async (id: string) => {
+    const box = await block(id).boundingBox();
+    if (!box) throw new Error(`block ${id} should be drawn`);
+    return box;
+  };
+
+  /** Pixels, on a slide about a thousand wide: a tenth of a percent, plus text that sets a little differently. */
+  const SAME = 10;
+  const expectSameBox = async (
+    id: string,
+    before: { x: number; y: number; width: number; height: number },
+  ) => {
+    const after = await boxOf(id);
+    for (const key of ["x", "y", "width", "height"] as const)
+      expect(
+        Math.abs(after[key] - before[key]),
+        `${id} ${key}: ${before[key]} then ${after[key]}`,
+      ).toBeLessThan(SAME);
+  };
+
+  it("pins a picture where it stands, so it does not jump, and the folder follows", async () => {
+    await openScene("method", "method-diagram");
+    const before = await boxOf("method-diagram");
+    await block("method-diagram").click();
+    await free().click();
+    await saved();
+    const frame = frameOnDisk("method", "method-diagram");
+    expect(frame).toBeDefined();
+    await page.locator(".ed-frame .dc-pinned").first().waitFor();
+    await expectSameBox("method-diagram", before);
+    expect(await page.locator(".ed-toolbar [data-tb='free']").getAttribute("aria-pressed")).toBe("true");
+    expect(problems).toEqual([]);
+  });
+
+  it("pins a text from its toolbar without moving it, and Layout puts it back", async () => {
+    await openScene("method", "method-body");
+    const before = await boxOf("method-body");
+    await block("method-body").click();
+    await free().click();
+    await saved();
+    expect(frameOnDisk("method", "method-body")).toBeDefined();
+    await expectSameBox("method-body", before);
+
+    await block("method-body").click();
+    await layout().click();
+    await saved();
+    expect(frameOnDisk("method", "method-body")).toBeUndefined();
+    await expectSameBox("method-body", before);
+    expect(problems).toEqual([]);
+  });
+
+  it("pins and unpins with P, and the keyboard stays on the block", async () => {
+    await openScene("method", "method-diagram");
+    await block("method-diagram").click();
+    await page.keyboard.press("p");
+    await saved();
+    expect(frameOnDisk("method", "method-diagram")).toBeDefined();
+    expect(await focused()).toBe("method-diagram");
+    await page.keyboard.press("p");
+    await saved();
+    expect(frameOnDisk("method", "method-diagram")).toBeUndefined();
+    expect(await focused()).toBe("method-diagram");
+    expect(problems).toEqual([]);
+  });
+
+  it("nudges a pinned block with the arrow keys, and one Undo takes back the whole run", async () => {
+    await openScene("method", "method-diagram");
+    await block("method-diagram").click();
+    await page.keyboard.press("p");
+    await saved();
+    const start = frameOnDisk("method", "method-diagram");
+    if (!start) throw new Error("the picture should be pinned");
+    for (const key of ["ArrowRight", "ArrowRight", "ArrowRight"]) await page.keyboard.press(key);
+    await page.keyboard.press("Shift+ArrowDown");
+    await saved();
+    const moved = frameOnDisk("method", "method-diagram");
+    expect(moved?.x).toBeCloseTo(Math.min(start.x + 3, 100 - start.w), 5);
+    expect(moved?.y).toBeCloseTo(Math.min(start.y + 5, 100 - start.h), 5);
+    expect(await focused()).toBe("method-diagram");
+
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(frameOnDisk("method", "method-diagram")).toEqual(start);
+    expect(problems).toEqual([]);
+  });
+
+  it("sets a pinned block's size from the Pinned popover, and the folder follows", async () => {
+    await openScene("method", "method-diagram");
+    await block("method-diagram").click();
+    await free().click();
+    await saved();
+    await page.locator(".ed-toolbar [data-tb='frame']").click();
+    const width = page.locator(".ed-toolbar [data-field='frame:w']");
+    await width.fill("33");
+    await saved();
+    expect(frameOnDisk("method", "method-diagram")?.w).toBe(33);
+    await page.locator(".ed-toolbar [data-tb='align-center']").click();
+    await saved();
+    const centered = frameOnDisk("method", "method-diagram");
+    expect(centered?.w).toBe(33);
+    expect(centered?.x).toBeCloseTo((100 - 33) / 2, 5);
+    expect(problems).toEqual([]);
+  });
+
+  it("types in a pinned text after Enter, and gives the keyboard back to the block when Enter finishes", async () => {
+    await openScene("method", "method-body");
+    await block("method-body").click();
+    await free().click();
+    await saved();
+    expect(await block("method-body").getAttribute("contenteditable")).toBeNull();
+
+    await block("method-body").focus();
+    await page.keyboard.press("Enter");
+    expect(await block("method-body").getAttribute("contenteditable")).not.toBeNull();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type(" Pinned too.");
+    await page.keyboard.press("Enter");
+    await saved();
+    const body = blockOnDisk("method", "method-body");
+    expect(body && "text" in body ? body.text : "").toMatch(/ Pinned too\.$/);
+    expect(await focused()).toBe("method-body");
+    expect(await block("method-body").getAttribute("contenteditable")).toBeNull();
+    expect(await block("method-body").getAttribute("tabindex")).toBe("0");
+    expect(frameOnDisk("method", "method-body")).toBeDefined();
+    expect(problems).toEqual([]);
+  });
+});

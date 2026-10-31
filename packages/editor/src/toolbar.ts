@@ -14,6 +14,7 @@ import { afterWhenMoving, removeBlock, removeClaim } from "./cleanup.ts";
 import { type CueBook, measureClip, videoOf } from "./cues.ts";
 import { type CueTools, cuesPanel } from "./cuespanel.ts";
 import { actionButton, type Edits, problemOf } from "./fields.ts";
+import { framePanel } from "./framepanel.ts";
 import {
   chartPanel,
   citePanel,
@@ -26,10 +27,14 @@ import {
   panelHost,
   replaceImage,
 } from "./panels.ts";
+import { nudged } from "./pin.ts";
 import { describeBlock, ROLE_LABEL, type TextRole } from "./templates.ts";
 
 /** How far the toolbar floats from the block it belongs to, in pixels. */
 const GAP = 8;
+
+/** Arrow keys pressed within this long of each other move a block in one undo step. */
+const NUDGE_RUN_MS = 1000;
 
 type Text = Extract<Block, { type: "text" }>;
 
@@ -105,6 +110,10 @@ export interface Toolbar {
   typed(id: string, length: number, limit: number): void;
   /** Takes a block out of its scene as one undo step, and moves on to its neighbour. */
   remove(id: string): void;
+  /** Pins a block of the scene where it is, or puts a pinned one back in its layout's slot. */
+  togglePin(id: string): void;
+  /** Moves a pinned block by `dx` and `dy` percent of the slide. Presses close together are one undo step. */
+  nudge(id: string, dx: number, dy: number): void;
   /**
    * Stores a file and points the image at it, which also starts its alt text over. When the person is still on that
    * image afterwards, its Edit popover opens on the alt text. True when the image was replaced.
@@ -130,7 +139,7 @@ function resolve(scene: Scene, id: string): Target | undefined {
  */
 export function createToolbar(
   session: Session,
-  canvas: Pick<Canvas, "element" | "nodeOf">,
+  canvas: Pick<Canvas, "element" | "nodeOf" | "measure">,
   hooks: ToolbarHooks,
 ): Toolbar {
   const element = h("div", { class: "ed-toolbar", role: "toolbar", hidden: true });
@@ -147,7 +156,11 @@ export function createToolbar(
   let moves: HTMLButtonElement[] = [];
   /** A chart's Add bar and Sort buttons, which are built only for a chart. */
   let barTools: { add: HTMLButtonElement; sort: HTMLButtonElement } | undefined;
+  /** The Layout and Free buttons, which a text and a block have and the claim does not. */
+  let placement: { layout: HTMLButtonElement; free: HTMLButtonElement } | undefined;
   let open: Chip | undefined;
+  let lastNudge = 0;
+  let nudgeRun = 0;
 
   const scene = (id: string) => session.doc.scenes[id];
 
@@ -262,6 +275,74 @@ export function createToolbar(
     return node;
   }
 
+  const blockIn = (id: string) => scene(sceneId)?.blocks.find((candidate) => candidate.id === id);
+
+  /** Pins a block where it is on the slide now, so nothing moves until the person moves it. */
+  function pin(id: string) {
+    const block = blockIn(id);
+    if (!block || block.frame) return;
+    const frame = canvas.measure(id);
+    if (!frame) {
+      hooks.problem("That block is not on the slide, so there is nowhere to pin it. Choose it again.");
+      return;
+    }
+    report(hooks.edits.act([{ op: "block.frame", scene: sceneId, id, frame }]));
+  }
+
+  function unpin(id: string) {
+    if (!blockIn(id)?.frame) return;
+    report(hooks.edits.act([{ op: "block.unframe", scene: sceneId, id }]));
+  }
+
+  function togglePin(id: string) {
+    if (blockIn(id)?.frame) unpin(id);
+    else pin(id);
+  }
+
+  function nudge(id: string, dx: number, dy: number) {
+    const frame = blockIn(id)?.frame;
+    if (!frame) return;
+    const next = nudged(frame, dx, dy);
+    // A block already at the edge it is pushed against has nothing to move, and nothing to undo.
+    if (next.x === frame.x && next.y === frame.y) return;
+    const now = Date.now();
+    if (now - lastNudge > NUDGE_RUN_MS) nudgeRun++;
+    lastNudge = now;
+    report(
+      hooks.edits.act([{ op: "block.frame", scene: sceneId, id, frame: next }], {
+        coalesce: `nudge:${sceneId}:${id}:${nudgeRun}`,
+      }),
+    );
+  }
+
+  /** Layout puts the block in its layout's slot; Free pins it where it is, to be moved and resized on the slide. */
+  function placementToggle(id: string) {
+    const layout = h(
+      "button",
+      {
+        type: "button",
+        "data-tb": "layout",
+        "aria-pressed": "true",
+        title: "Keep the block in its layout's slot",
+      },
+      "Layout",
+    );
+    const free = h(
+      "button",
+      {
+        type: "button",
+        "data-tb": "free",
+        "aria-pressed": "false",
+        title: "Pin the block where it is, to move and resize it freely (P)",
+      },
+      "Free",
+    );
+    layout.addEventListener("click", () => unpin(id));
+    free.addEventListener("click", () => pin(id));
+    placement = { layout, free };
+    return h("span", { class: "ed-seg", role: "group", "aria-label": "Placement" }, layout, free);
+  }
+
   /** Adds a bar to a chart, or sorts its bars: the two chart changes that do not need a popover. */
   function barButtons(id: string) {
     const rowsOf = () => {
@@ -305,7 +386,7 @@ export function createToolbar(
           return [];
       }
     };
-    return [...own(), citePanel(host, sceneId, block.id)];
+    return [...own(), framePanel(host, sceneId, block.id), citePanel(host, sceneId, block.id)];
   }
 
   function build(target: Target) {
@@ -313,6 +394,7 @@ export function createToolbar(
     role = count = label = undefined;
     moves = [];
     barTools = undefined;
+    placement = undefined;
     const id = idOf(target);
     const controls: HTMLElement[] = [];
     const inScene = target.scene.id;
@@ -341,6 +423,7 @@ export function createToolbar(
         select,
         count,
         ...moves,
+        placementToggle(id),
         ...chips.map((chip) => chip.wrap),
         removeButton(id, "this text"),
       );
@@ -360,6 +443,7 @@ export function createToolbar(
         label,
         ...(barTools ? [barTools.add, barTools.sort] : []),
         ...moves,
+        placementToggle(id),
         ...chips.map((chip) => chip.wrap),
         removeButton(id, "this block"),
       );
@@ -403,7 +487,14 @@ export function createToolbar(
         if (node) node.disabled = afterWhenMoving(order, id, direction) === undefined;
       }
     }
+    if (placement && target.kind !== "claim") {
+      const pinned = target.block.frame !== undefined;
+      placement.layout.setAttribute("aria-pressed", String(!pinned));
+      placement.free.setAttribute("aria-pressed", String(pinned));
+    }
     for (const chip of chips) fillChip(chip, target.scene, typing);
+    // A block put back in its slot has no position to show.
+    if (open?.wrap.hidden) closePop();
   }
 
   function place() {
@@ -476,6 +567,8 @@ export function createToolbar(
       if (shown?.id === id) showCount(length, limit);
     },
     remove,
+    togglePin,
+    nudge,
     replaceImage: replaceImageOf,
     focus() {
       if (element.hidden) return false;

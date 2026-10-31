@@ -25,6 +25,11 @@ function button(action: string, label: string, onClick: () => void, extra: Recor
   return node;
 }
 
+/** True when a key pressed on this element goes into text: a field, or text being edited on the slide. */
+const typesInto = (target: EventTarget | null) =>
+  target instanceof Element &&
+  target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])") !== null;
+
 export interface Editor {
   /** The scene being edited. */
   readonly sceneId: string;
@@ -94,6 +99,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     select: (id) => selectBlock(id),
     deselect: () => selectBlock(undefined),
     remove: (id) => toolbar.remove(id),
+    nudge: (id, dx, dy) => toolbar.nudge(id, dx, dy),
     typed: (id, length, limit) => toolbar.typed(id, length, limit),
     changed: () => toolbar.place(),
     replaceImage(id, file) {
@@ -299,6 +305,17 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     // Alt+F10 moves the keyboard into the toolbar of the chosen block.
     if (event.key === "F10" && event.altKey && toolbar.focus()) {
       event.preventDefault();
+      return;
+    }
+    // P pins the chosen block where it is, or puts it back in its slot. In a field it is a letter like any other.
+    if (
+      event.key.toLowerCase() === "p" &&
+      !(event.ctrlKey || event.metaKey || event.altKey || event.repeat) &&
+      selectedBlock !== undefined &&
+      !typesInto(event.target)
+    ) {
+      event.preventDefault();
+      toolbar.togglePin(selectedBlock);
       return;
     }
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
