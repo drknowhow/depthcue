@@ -1,5 +1,6 @@
 import {
   ASSET_PATTERN,
+  FRAME_MIN,
   ID_PATTERN,
   LANGUAGE_PATTERN,
   MODULE_SETTING_PATTERN,
@@ -73,6 +74,10 @@ export const PATTERN_HINTS: Record<string, string> = {
   [URL_PATTERN]: "Use a full http or https URL.",
   [MODULE_SETTING_PATTERN]: 'Write "off", or the version the deck needs, such as "1" or "1.2".',
 };
+
+/** What a number outside its range in a frame should be, since the schema's own limits do not say percent of what. */
+const FRAME_HINT = `A frame is in percent of the slide: x and y from 0 to 100, w and h from ${FRAME_MIN} to 100.`;
+const inFrame = (path: string): boolean => /\/frame\/[xywh]$/.test(path);
 
 function kind(value: Json): string {
   if (value === null) return "null";
@@ -195,6 +200,18 @@ function explainOne(error: RawError, data: Json, root: Json): Explained {
         code: "wrong-type",
         message: `Expected ${params.type}, got ${kind(value)}.`,
         fix: `Use a ${params.type}.`,
+      };
+    case "minimum":
+      return {
+        code: "too-small",
+        message: `${display(value)} is below the minimum of ${params.limit}.`,
+        fix: inFrame(path) ? FRAME_HINT : `Use ${params.limit} or more.`,
+      };
+    case "maximum":
+      return {
+        code: "too-large",
+        message: `${display(value)} is above the maximum of ${params.limit}.`,
+        fix: inFrame(path) ? FRAME_HINT : `Use ${params.limit} or less.`,
       };
     case "propertyNames":
       return {

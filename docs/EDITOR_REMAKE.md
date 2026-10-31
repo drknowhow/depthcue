@@ -37,6 +37,14 @@ slide. It is keyed by block id, so it survives an agent rewriting the scene as l
 block drops its frame. Reading order is block order, never frame position. Schema version 0.2 adds `frame`;
 v0.1 decks load unchanged.
 
+`x` and `y` run from 0 to 100, `w` and `h` from 5 to 100 (the smallest a person can still grab), and the box stays
+on the slide: `x + w` and `y + h` are at most 100, with a thousandth of slack for rounding. The schema checks the
+ranges; `checkFrames` in `frames.ts` checks the sums. A file may declare `schemaVersion` 0.1 or 0.2, and a 0.1
+scene with a frame is refused. Applying an operation that leaves a 0.1 scene with a frame rewrites it as 0.2, the
+way the tool already sets the version of a new scene, so an agent never has to. Two operations write a frame by
+block id, `block.frame` (all four numbers) and `block.unframe`; `block.set` with a `frame` key also works. A scene
+stays at 0.2 after its last frame is cleared.
+
 ### Comments
 
 `comments.json` sits beside the deck and has its own revision, so a comment never changes the deck revision.
@@ -100,6 +108,7 @@ never edits it (ids, kinds and format markers). A new property in the schema fai
 | claim: `text`                                 | Typed on the slide                                            |
 | claim: `evidenceIds`                          | Evidence chip in the claim's toolbar                          |
 | deck: `title`, `language`, `theme`, `modules` | Deck popover in the top bar                                   |
+| any block: `frame`                            | Not yet: pinning is the next part of phase 4                  |
 
 Clip markers are not part of the deck. They live in the cue map beside the video, so the schema-walk test does not
 see them and they are not in the deck's Undo. The editor writes a marker to the file as soon as it is made, after

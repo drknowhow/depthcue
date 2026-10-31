@@ -39,6 +39,8 @@ export type { Autosave, AutosaveOptions, DraftStore, Recovery, Timers } from "./
 export { attachAutosave, DRAFT_FORMAT, memoryDraftStore, recoverDraft, serializeDraft } from "./draft.ts";
 export type { ExportData } from "./exported.ts";
 export { EXPORT_FORMAT } from "./exported.ts";
+export type { Frame } from "./frames.ts";
+export { checkFrames, FRAME_MIN, frameOf, hasFrames } from "./frames.ts";
 export type {
   CommandResult,
   Lease,
@@ -74,6 +76,7 @@ export {
   OP_NAMES,
   opsSchema,
   SCHEMA_VERSION,
+  SCHEMA_VERSIONS,
   sceneSchema,
   TEXT_LIMITS,
   TEXT_ROLES,

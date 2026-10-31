@@ -2,7 +2,10 @@
  * JSON Schema source of truth for a deck folder (draft-07 keywords only).
  * `pnpm schema` writes the published .schema.json files and the compiled validators from these objects.
  */
-export const SCHEMA_VERSION = "0.1" as const;
+/** Versions a file may declare. 0.2 adds the optional block `frame`; a 0.1 file is read as it is. */
+export const SCHEMA_VERSIONS = ["0.1", "0.2"] as const;
+/** The version the tool writes into a new scene. */
+export const SCHEMA_VERSION = "0.2" as const;
 
 export const ID_PATTERN = "^[a-z][a-z0-9-]{1,63}$";
 export const ASSET_PATTERN = "^assets/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*$";
@@ -21,8 +24,23 @@ export const TEXT_LIMITS = { heading: 90, body: 600, caption: 160, quote: 300 } 
 
 const id = { type: "string", pattern: ID_PATTERN } as const;
 const idList = { type: "array", items: id, uniqueItems: true, maxItems: 32 } as const;
+
+/** The smallest a frame may be, in percent of the slide's width or height. */
+export const FRAME_MIN = 5;
+const percent = { type: "number", minimum: 0, maximum: 100 } as const;
+const extent = { type: "number", minimum: FRAME_MIN, maximum: 100 } as const;
+/**
+ * Where a pinned block sits: its left, top, width and height in percent of a 16 by 9 slide. That the box stays
+ * on the slide (x + w and y + h at most 100) is a sum, which a schema cannot state; `checkFrames` does.
+ */
+const frame = {
+  type: "object",
+  additionalProperties: false,
+  required: ["x", "y", "w", "h"],
+  properties: { x: percent, y: percent, w: extent, h: extent },
+} as const;
 const assetPath = { type: "string", pattern: ASSET_PATTERN, maxLength: 200 } as const;
-const schemaVersion = { const: SCHEMA_VERSION } as const;
+const schemaVersion = { enum: SCHEMA_VERSIONS } as const;
 const schemaRef = { type: "string", maxLength: 300 } as const;
 
 const textBlock = {
@@ -35,6 +53,7 @@ const textBlock = {
     role: { enum: TEXT_ROLES },
     text: { type: "string", minLength: 1, maxLength: TEXT_LIMITS.body },
     sourceIds: idList,
+    frame,
   },
   allOf: [
     {
@@ -63,6 +82,7 @@ const imageBlock = {
     alt: { type: "string", minLength: 1, maxLength: 250 },
     caption: { type: "string", minLength: 1, maxLength: TEXT_LIMITS.caption },
     sourceIds: idList,
+    frame,
   },
 } as const;
 
@@ -90,6 +110,7 @@ const barChartBlock = {
       },
     },
     sourceIds: idList,
+    frame,
   },
 } as const;
 
@@ -104,6 +125,7 @@ const clipBlock = {
     poster: assetPath,
     alt: { type: "string", minLength: 1, maxLength: 250 },
     sourceIds: idList,
+    frame,
   },
 } as const;
 
@@ -121,7 +143,7 @@ const source = {
 
 export const sceneSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.1:scene",
+  $id: "urn:depthcue:schema:0.2:scene",
   title: "Depthcue scene",
   type: "object",
   additionalProperties: false,
@@ -176,7 +198,7 @@ export const sceneSchema = {
 
 export const deckSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.1:deck",
+  $id: "urn:depthcue:schema:0.2:deck",
   title: "Depthcue deck manifest",
   type: "object",
   additionalProperties: false,
@@ -207,6 +229,8 @@ export const OP_NAMES = [
   "block.remove",
   "block.move",
   "block.set",
+  "block.frame",
+  "block.unframe",
 ] as const;
 
 const object = { type: "object" } as const;
@@ -233,7 +257,7 @@ const op = <Name extends string, Properties extends object, Required extends rea
  */
 export const opsSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.1:ops",
+  $id: "urn:depthcue:schema:0.2:ops",
   title: "Depthcue operations",
   type: "array",
   minItems: 1,
@@ -251,6 +275,8 @@ export const opsSchema = {
       op("block.remove", { scene: id, id }, ["scene", "id"]),
       op("block.move", { scene: id, id, after: position }, ["scene", "id", "after"]),
       op("block.set", { scene: id, id, set: changes }, ["scene", "id", "set"]),
+      op("block.frame", { scene: id, id, frame }, ["scene", "id", "frame"]),
+      op("block.unframe", { scene: id, id }, ["scene", "id"]),
     ],
   },
 } as const;
