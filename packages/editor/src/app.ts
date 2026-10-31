@@ -78,7 +78,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const status = h("span", { class: "ed-status", role: "status", "aria-live": "polite" });
   const undo = button("undo", "Undo", () => session.undo());
   const redo = button("redo", "Redo", () => session.redo());
-  const save = button("save", "Save", () => void store.save(), { class: "ed-primary" });
+  const retry = button("retry", "Try again", () => void store.save());
+  retry.hidden = true;
   const details = button("details", "Details", () => setDetails(!detailsOpen), {
     "aria-expanded": "false",
     "aria-controls": "ed-details",
@@ -92,7 +93,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     "header",
     { class: "ed-bar" },
     deckTitle,
-    h("div", { class: "ed-actions" }, undo, redo, status, save, details, present),
+    h("div", { class: "ed-actions" }, undo, redo, status, retry, details, present),
   );
   const notices = h("div", { class: "ed-notices" });
   const sceneList = h("ol", { class: "ed-scene-list" });
@@ -169,11 +170,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     const state = store.status;
     undo.toggleAttribute("disabled", !session.canUndo);
     redo.toggleAttribute("disabled", !session.canRedo);
-    save.toggleAttribute(
-      "disabled",
-      state.save === "saved" || state.save === "saving" || state.conflict !== undefined,
-    );
-    save.textContent = state.save === "saving" ? "Saving…" : "Save";
+    retry.hidden = state.save !== "error" || state.conflict !== undefined;
     status.dataset.state = state.save;
     status.textContent =
       state.save === "error"
@@ -191,9 +188,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       rows.push(
         notice(
           "conflict",
-          "The files changed on disk while you had unsaved edits. Choose which version to keep.",
-          button("take-disk", "Load the disk version", () => void store.takeDisk()),
-          button("keep-mine", "Keep mine and save", () => void store.keepMine()),
+          "The files changed on disk while you had unsaved edits, so saving has stopped. Reload to take the files as they are now, or keep your version as a file first.",
+          button("take-disk", "Reload", () => void store.takeDisk()),
+          button("keep-mine", "Keep mine as copy", () => void store.keepMineAsCopy()),
         ),
       );
     }
@@ -283,7 +280,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   };
   document.addEventListener("keydown", onKey);
 
-  const unsubscribeSession = session.subscribe(() => {
+  const unsubscribeSession = session.subscribe((event) => {
+    // A save changes no content, and the store tells the bar. Redrawing here would rebuild a field mid-keystroke.
+    if (event.type === "saved") return;
     ensureSelection();
     renderScenes();
     renderBar();
