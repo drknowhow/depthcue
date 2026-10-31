@@ -90,6 +90,7 @@ never edits it (ids, kinds and format markers). A new property in the schema fai
 | image: `asset`                                | Drop or paste on the image; Edit popover: file, upload       |
 | image: `alt`, `caption`                       | Edit popover: alt text (flagged until written), caption      |
 | clip: `source`, `poster`, `alt`               | Edit popover: video menu, poster menu, alt text              |
+| clip: markers in `<video>.cues.json`          | Cues popover: add at the playhead, rename, retime, remove    |
 | block order                                   | Earlier and later buttons in the toolbar                     |
 | scenes: add, order, duplicate, delete         | Scene strip: Add scene, drag, and the buttons on each scene  |
 | new blocks, claim: `summary`                  | Add row under the slide: Text, Image, Chart, Clip, Claim     |
@@ -100,13 +101,19 @@ never edits it (ids, kinds and format markers). A new property in the schema fai
 | claim: `evidenceIds`                          | Evidence chip in the claim's toolbar                         |
 | deck: `title`, `language`, `theme`, `modules` | Deck popover in the top bar                                  |
 
+Clip markers are not part of the deck. They live in the cue map beside the video, so the schema-walk test does not
+see them and they are not in the deck's Undo. The editor writes a marker to the file as soon as it is made, after
+reading the file again so a rebuild since the last look is not overwritten. The Cues popover has its own Undo
+marker change button, which takes back marker changes only. Cues that come from the scene are listed and can be
+jumped to, but only markers are edited. A cue file the editor cannot read is left alone and named in the popover.
+
 ## Phases
 
 | Phase | What lands                                                              | PRs |
 | ----- | ----------------------------------------------------------------------- | --- |
 | 1     | Shell: slim top bar, thumbnail strip, large stage, autosave             | 2   |
 | 2     | Selection, floating toolbars per block type, notes sheet, old panel out | 3   |
-| 3     | Chart bars (done), image drop (done), clip cues, slot swap, ghosts      | 3   |
+| 3     | Done: chart bars, image drop, clip cues. Next: slot swap, ghosts        | 3   |
 | 4     | Schema 0.2, player and checks, pinning, layout interplay                | 4   |
 | 5     | Quick bar, shortcuts, problem ribbon, Ctrl K palette                    | 2   |
 | 6     | Comments: model, agent side, editor                                     | 3   |

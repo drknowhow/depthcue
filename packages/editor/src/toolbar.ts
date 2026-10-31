@@ -11,6 +11,8 @@ import { type Canvas, SUMMARY_LIMIT } from "./canvas.ts";
 import { addedRow, CHART_ROWS_MAX, sortedRows } from "./chart.ts";
 import { buildChip, type Chip, fillChip, fitPopover, hidePopover, showPopover } from "./chip.ts";
 import { afterWhenMoving, removeBlock, removeClaim } from "./cleanup.ts";
+import { type CueBook, measureClip, videoOf } from "./cues.ts";
+import { type CueTools, cuesPanel } from "./cuespanel.ts";
 import { actionButton, type Edits, problemOf } from "./fields.ts";
 import {
   chartPanel,
@@ -86,6 +88,8 @@ export interface ToolbarHooks {
   focusBlock(id: string): void;
   /** Opens where the scene's sources are added and edited. */
   openSources(): void;
+  /** The cues of the clips, which are kept in files beside the videos. */
+  cues: CueBook;
 }
 
 export interface Toolbar {
@@ -159,6 +163,21 @@ export function createToolbar(
     close: () => closePop(),
     openSources: hooks.openSources,
   });
+
+  /** The video of a clip is on the slide only while the clip is drawn, so it is looked for each time it is needed. */
+  const videoFor = (id: string) => videoOf(canvas.nodeOf(id));
+  const cueTools: CueTools = {
+    book: hooks.cues,
+    playhead: (id) => videoFor(id)?.currentTime,
+    measure(id) {
+      const video = videoFor(id);
+      return video ? measureClip(video) : Promise.resolve(undefined);
+    },
+    seek(id, seconds) {
+      const video = videoFor(id);
+      if (video) video.currentTime = seconds;
+    },
+  };
 
   function closePop(giveBack = false) {
     if (!open) return;
@@ -281,7 +300,7 @@ export function createToolbar(
         case "image":
           return [imagePanel(host, sceneId, block.id)];
         case "clip":
-          return [clipPanel(host, sceneId, block.id)];
+          return [clipPanel(host, sceneId, block.id), cuesPanel(host, cueTools, sceneId, block.id)];
         default:
           return [];
       }

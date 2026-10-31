@@ -50,6 +50,8 @@ export interface StoreOptions {
 
 export interface EditorStore {
   readonly session: Session;
+  /** The cue files beside the videos. They are not part of the deck, so the session never sees them. */
+  readonly cueApi: Pick<Api, "loadCues" | "saveCues">;
   readonly status: EditorStatus;
   subscribe(listener: () => void): () => void;
   /** Saves now, without waiting out the autosave delay. Ctrl+S and the retry button call it. */
@@ -70,6 +72,12 @@ export interface EditorStore {
   flush(): void;
   dispose(): void;
 }
+
+/**
+ * A cue map is kept beside its video, but no block names it, so a new one is not a new asset. The first marker of a
+ * clip creates its file, and counting that would redraw the slide a moment later and send the video back to its start.
+ */
+const isCueMap = (path: string) => path.endsWith(".cues.json");
 
 const docOf = (payload: DeckPayload): Doc | undefined =>
   loadDoc({ text: payload.text, assets: payload.assets }).doc ?? undefined;
@@ -219,6 +227,10 @@ export async function openStore(
 
   const store: EditorStore = {
     session,
+    cueApi: {
+      loadCues: (source) => api.loadCues(source),
+      saveCues: (source, cues, clip) => api.saveCues(source, cues, clip),
+    },
     get status() {
       // "dirty" means edits that nothing is about to save; with autosave a countdown or a save is under way.
       const pending = timer !== undefined || resave;
@@ -299,7 +311,7 @@ export async function openStore(
       }
       const doc = docOf(fresh);
       if (!doc) return;
-      session.addAssets(fresh.assets);
+      session.addAssets(fresh.assets.filter((path) => !isCueMap(path)));
       if (fresh.rev === diskRev) return;
       if (fresh.rev === session.rev) {
         diskRev = fresh.rev;

@@ -872,6 +872,94 @@ body {
     center / contain no-repeat;
 }
 
+/* Cues: the places to jump to in a clip. The popover lists them, and the slide shows them as chips under the clip. */
+.ed-cue-list {
+  display: grid;
+  gap: var(--dc-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ed-cue-list:empty {
+  display: none;
+}
+
+/* Room for the name of a marker beside its time, Here and remove. */
+.ed-tb-form:has(.ed-cue-list) {
+  width: min(24rem, calc(100vw - 4rem));
+}
+
+.ed-cue-row {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) 4.25rem auto 2rem;
+  align-items: center;
+  gap: var(--dc-space-2);
+}
+
+/* A cue the scene made has no fields to edit: its time, its name and what kind of layer it is. */
+.ed-cue-row:not([data-marker]) {
+  grid-template-columns: 3rem minmax(0, 1fr) auto;
+}
+
+.ed-cue-row input.ed-cue-time {
+  appearance: textfield;
+}
+
+.ed-cue-time::-webkit-inner-spin-button,
+.ed-cue-time::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.ed-cue-go,
+.ed-cue-here {
+  min-height: 2.25rem;
+  padding: 0 var(--dc-space-2);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-bg);
+  color: var(--dc-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.ed-cue-go:hover,
+.ed-cue-here:hover {
+  border-color: var(--dc-text);
+}
+
+.ed-cue-row span.ed-cue-name,
+.ed-cue-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-cue-type {
+  color: var(--dc-muted);
+  font-size: 0.75rem;
+}
+
+.ed-cue-row input {
+  min-width: 0;
+  padding-inline: var(--dc-space-2);
+  font-size: 0.8125rem;
+}
+
+/* The editor draws the cue row without the player's modules, so it keeps the room for it as the player does. */
+.ed-frame .dc-clip:has(> .dc-clip-cues) {
+  position: relative;
+  padding-block-end: 2.75em;
+}
+
+/* A marker is a place a person added. Its chip is drawn with a dashed edge to tell it from the scene's own cues. */
+.ed-frame .dc-chip[data-marker] {
+  border-style: dashed;
+}
+
 /* Scene tools: who leads and which layout, for the scene being edited. They sit in the top bar. */
 .ed-scene-tools {
   display: flex;

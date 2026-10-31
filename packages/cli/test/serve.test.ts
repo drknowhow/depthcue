@@ -20,7 +20,7 @@ interface Answer {
 }
 
 /** A raw request, so the path and Host header go out exactly as written (fetch would normalize both). */
-function get(path: string, init: { method?: string; host?: string } = {}): Promise<Answer> {
+function get(path: string, init: { method?: string; host?: string; range?: string } = {}): Promise<Answer> {
   return new Promise((resolveAnswer, reject) => {
     const req = request(
       {
@@ -28,7 +28,10 @@ function get(path: string, init: { method?: string; host?: string } = {}): Promi
         port: server.port,
         path,
         method: init.method ?? "GET",
-        headers: { Host: init.host ?? `127.0.0.1:${server.port}` },
+        headers: {
+          Host: init.host ?? `127.0.0.1:${server.port}`,
+          ...(init.range === undefined ? {} : { Range: init.range }),
+        },
       },
       (response) => {
         let body = "";
@@ -105,6 +108,69 @@ describe("what it serves", () => {
     expect(policy).toContain("sandbox");
     expect(policy).toContain("default-src 'none'");
     expect(svg.headers["x-content-type-options"]).toBe("nosniff");
+  });
+});
+
+describe("byte ranges", () => {
+  const TEXT = "0123456789abcdef";
+  const ranged = (range: string, method = "GET") => get("/assets/ranged.txt", { range, method });
+
+  beforeEach(() => writeFileSync(join(folder, "assets", "ranged.txt"), TEXT));
+
+  it("says a file can be read in parts, which a browser needs to seek in a video", async () => {
+    const whole = await get("/assets/ranged.txt");
+    expect(whole.status).toBe(200);
+    expect(whole.headers["accept-ranges"]).toBe("bytes");
+    expect(whole.headers["content-length"]).toBe("16");
+    expect(whole.body).toBe(TEXT);
+  });
+
+  it.each([
+    ["the first bytes", "bytes=0-3", "0123", "bytes 0-3/16"],
+    ["one byte", "bytes=5-5", "5", "bytes 5-5/16"],
+    ["to the end", "bytes=10-", "abcdef", "bytes 10-15/16"],
+    ["the last bytes", "bytes=-4", "cdef", "bytes 12-15/16"],
+    ["more than the file has", "bytes=-99", TEXT, "bytes 0-15/16"],
+    ["a last byte past the end", "bytes=12-99", "cdef", "bytes 12-15/16"],
+  ])("answers %s with only those bytes", async (_name, range, body, contentRange) => {
+    const part = await ranged(range);
+    expect(part.status).toBe(206);
+    expect(part.body).toBe(body);
+    expect(part.headers["content-range"]).toBe(contentRange);
+    expect(part.headers["content-length"]).toBe(String(body.length));
+  });
+
+  it("refuses a range that starts after the end, and says how long the file is", async () => {
+    for (const range of ["bytes=16-", "bytes=99-120", "bytes=-0"]) {
+      const answer = await ranged(range);
+      expect(answer.status, range).toBe(416);
+      expect(answer.headers["content-range"], range).toBe("bytes */16");
+      expect(answer.body, range).toBe("");
+    }
+  });
+
+  it("serves the whole file when the header is not one range it understands", async () => {
+    for (const range of ["bytes=5-2", "bytes=0-1,4-5", "items=0-3", "bytes=-", "bytes=a-b"]) {
+      const answer = await ranged(range);
+      expect(answer.status, range).toBe(200);
+      expect(answer.body, range).toBe(TEXT);
+      expect(answer.headers["content-range"], range).toBeUndefined();
+    }
+  });
+
+  it("answers HEAD for a range with the headers and no body", async () => {
+    const head = await ranged("bytes=2-5", "HEAD");
+    expect(head.status).toBe(206);
+    expect(head.headers["content-range"]).toBe("bytes 2-5/16");
+    expect(head.headers["content-length"]).toBe("4");
+    expect(head.body).toBe("");
+  });
+
+  it("keeps the other headers of a deck file on a part of it", async () => {
+    const part = await get("/assets/method.svg", { range: "bytes=0-9" });
+    expect(part.status).toBe(206);
+    expect(String(part.headers["content-security-policy"])).toContain("sandbox");
+    expect(part.headers["x-content-type-options"]).toBe("nosniff");
   });
 });
 
