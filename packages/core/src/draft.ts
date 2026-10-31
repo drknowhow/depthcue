@@ -33,7 +33,7 @@ export interface Timers {
   clear(handle: unknown): void;
 }
 
-const systemTimers: Timers = {
+export const systemTimers: Timers = {
   set: (callback, ms) => setTimeout(callback, ms),
   clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };

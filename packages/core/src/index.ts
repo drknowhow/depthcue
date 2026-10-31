@@ -18,6 +18,30 @@ export type { Doc, LoadResult } from "./doc.ts";
 export { checkDoc, docToFiles, loadDoc, revisionOf, sceneRevision } from "./doc.ts";
 export type { Autosave, AutosaveOptions, DraftStore, Recovery, Timers } from "./draft.ts";
 export { attachAutosave, DRAFT_FORMAT, memoryDraftStore, recoverDraft, serializeDraft } from "./draft.ts";
+export type {
+  CommandResult,
+  Lease,
+  LeaseAction,
+  LeaseCommand,
+  LeaseController,
+  LeaseEvent,
+  LeaseHost,
+  LeaseOptions,
+  LeaseScope,
+  LeaseState,
+  Rejection,
+  RenewResult,
+  RevokeReason,
+  Standing,
+} from "./lease.ts";
+export {
+  createLeaseController,
+  LEASE_ACTIONS,
+  LEASE_EXPIRE_MS,
+  LEASE_RENEW_MS,
+  LEASE_RUN_LIMIT_MS,
+  REVOKE_TEXT,
+} from "./lease.ts";
 export { checkReferences } from "./references.ts";
 export {
   ASSET_PATTERN,
