@@ -1,6 +1,7 @@
-import { type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
+import { isMarker, type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
 import { h, renderScene } from "@depthcue/player";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
+import { type CueBook, clock } from "./cues.ts";
 import { describeBlock, IMAGE_FILE, needsAlt } from "./templates.ts";
 
 export interface CanvasHooks {
@@ -18,6 +19,8 @@ export interface CanvasHooks {
   changed?(): void;
   /** A picture file was dropped on an image, or pasted while the image had the keyboard: use it in its place. */
   replaceImage?(id: string, file: File): void;
+  /** The cues of the clips. A clip that has some gets a row of places to jump to under it. */
+  cues?: CueBook;
 }
 
 export interface Canvas {
@@ -34,6 +37,8 @@ export interface Canvas {
   nodeOf(id: string): HTMLElement | undefined;
   /** Puts the keyboard on a block: the caret at the end of its text, or the block itself when it has none. */
   focusBlock(id: string): void;
+  /** Draws the rows of cue chips again from the cue book, without redrawing the slide or resetting a video. */
+  refreshCues(): void;
 }
 
 /** One piece of text on a scene that can be edited where it appears. */
@@ -290,8 +295,9 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       );
       if (!node) continue;
       node.dataset.pick = "";
-      // A chart holds sliders and text fields of its own, which a button may not contain.
-      node.setAttribute("role", block.type === "bar-chart" ? "group" : "button");
+      // A chart holds sliders and text fields of its own, and a clip a player and its cue chips, which a button may
+      // not contain.
+      node.setAttribute("role", block.type === "bar-chart" || block.type === "clip" ? "group" : "button");
       const missingAlt = needsAlt(block);
       node.toggleAttribute("data-alt-missing", missingAlt);
       node.setAttribute(
@@ -332,6 +338,55 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     }
   }
 
+  /** The scene on the slide, for drawing the cue rows again when a clip's cues load or change. */
+  let drawn: string | undefined;
+
+  /**
+   * The row of places to jump to under each clip that has cues, as the player shows them. The cues come from the cue
+   * book and not from the deck, so a row is drawn after the slide and again whenever the book changes, and never
+   * redraws the video, which would send it back to its start.
+   */
+  function wireCues(scene: Scene, root: HTMLElement) {
+    const book = hooks.cues;
+    if (!book) return;
+    for (const block of scene.blocks) {
+      if (block.type !== "clip") continue;
+      const node = [...root.querySelectorAll<HTMLElement>(".dc-block")].find(
+        (candidate) => candidate.dataset.id === block.id,
+      );
+      if (!node) continue;
+      node.querySelector(".dc-clip-cues")?.remove();
+      const entry = book.entry(block.source);
+      // A video whose cues are loading, or could not be read, has none to show.
+      if (entry.cues.length === 0) continue;
+      const row = h(
+        "div",
+        { class: "dc-clip-cues", role: "group", "aria-label": "Jump to" },
+        ...entry.cues.map((cue) =>
+          h(
+            "button",
+            {
+              type: "button",
+              class: "dc-chip",
+              "data-cue": cue.id,
+              "data-marker": isMarker(cue) ? "" : undefined,
+              "aria-label": `${cue.id}, at ${clock(cue.in)}`,
+            },
+            cue.id,
+            h("span", { class: "dc-cue-time" }, clock(cue.in)),
+          ),
+        ),
+      );
+      row.addEventListener("click", (event) => {
+        const chip = (event.target as Element).closest<HTMLElement>("[data-cue]");
+        const cue = chip && entry.cues.find((candidate) => candidate.id === chip.dataset.cue);
+        const video = node.querySelector("video");
+        if (cue && video) video.currentTime = cue.in;
+      });
+      node.append(row);
+    }
+  }
+
   const nodeOf = (id: string) =>
     [...slot.querySelectorAll<HTMLElement>("[data-id]")].find((node) => node.dataset.id === id);
 
@@ -359,10 +414,17 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     mark,
     nodeOf,
     focusBlock,
+    refreshCues() {
+      const scene = drawn === undefined ? undefined : session.doc.scenes[drawn];
+      if (!scene) return;
+      wireCues(scene, slot);
+      hooks.changed?.();
+    },
     get typing() {
       return typing;
     },
     render(sceneId, selectedId) {
+      drawn = sceneId;
       const scene = session.doc.scenes[sceneId];
       if (!scene) {
         slot.replaceChildren();
@@ -384,6 +446,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       );
       for (const field of fieldsOf(scene, view)) wire(field, sceneId);
       wirePicker(scene, view);
+      wireCues(scene, view);
       slot.replaceChildren(frame);
       mark(selectedId);
       if (focusedId) {

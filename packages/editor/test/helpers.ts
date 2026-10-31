@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { applyOps, docToFiles, loadDoc, type Op, revisionOf } from "@depthcue/core";
-import type { Api, DeckPayload, SaveResult } from "../src/api.ts";
+import { applyOps, type Cue, checkCues, docToFiles, loadDoc, type Op, revisionOf } from "@depthcue/core";
+import type { Api, ClipSize, CueList, DeckPayload, SaveResult } from "../src/api.ts";
 
 // happy-dom replaces the global URL, so the path is built from dirname rather than from import.meta.url.
 export const demoDir = resolve(import.meta.dirname, "../../../fixtures/decks/demo");
@@ -29,6 +29,18 @@ export class FakeServer implements Api {
   duringSave: (() => void) | undefined;
   /** Holds loadDeck's answer, which is read when the call is made, until this settles. */
   loadGate: Promise<void> | undefined;
+  /** Cue maps by video path, as `depthcue clip build` or the editor left them. */
+  cueMaps: Record<string, { duration: number; width: number; height: number; cues: Cue[] }> = {};
+  /** Videos whose cue file is there but is not a cue map. */
+  brokenCues = new Set<string>();
+  cueLoads: string[] = [];
+  cueSaves: Array<{ source: string; cues: Cue[]; clip: ClipSize | undefined }> = [];
+  /** Makes loadCues throw while true, like a server that cannot be reached. */
+  cueLoadFails = false;
+  /** Makes the next saveCues refuse with this message. */
+  nextCueSaveFails: string | undefined;
+  /** Holds loadCues' answers, which are read when the call is made, until this settles. */
+  cueGate: Promise<void> | undefined;
 
   constructor() {
     const demo = readDemo();
@@ -84,6 +96,37 @@ export class FakeServer implements Api {
     this.uploads.push(path);
     if (!this.assets.includes(path)) this.assets.push(path);
     return path;
+  }
+
+  async loadCues(source: string): Promise<CueList> {
+    this.cueLoads.push(source);
+    if (this.cueLoadFails) throw new Error("The server could not be reached.");
+    const map = this.cueMaps[source];
+    const answer: CueList = this.brokenCues.has(source)
+      ? { state: "broken", cues: [] }
+      : map
+        ? { state: "ok", cues: structuredClone(map.cues), duration: map.duration }
+        : { state: "none", cues: [] };
+    await this.cueGate;
+    return answer;
+  }
+
+  async saveCues(source: string, cues: readonly Cue[], clip?: ClipSize) {
+    this.cueSaves.push({ source, cues: structuredClone([...cues]), clip });
+    if (this.nextCueSaveFails !== undefined) {
+      const message = this.nextCueSaveFails;
+      this.nextCueSaveFails = undefined;
+      throw new Error(message);
+    }
+    if (this.brokenCues.has(source)) throw new Error("That is not a cue map the editor can read.");
+    const size = this.cueMaps[source] ?? clip;
+    if (!size)
+      throw new Error("This clip has no cue map yet. Send its duration, width and height to start one.");
+    const checked = checkCues(cues, size.duration);
+    if (!checked.ok) throw new Error(checked.message);
+    const { duration, width, height } = size;
+    this.cueMaps[source] = { duration, width, height, cues: checked.cues };
+    return { cues: structuredClone(checked.cues), duration };
   }
 }
 

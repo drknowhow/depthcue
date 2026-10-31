@@ -2,6 +2,7 @@ import type { ApplyOptions, Op } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { createCanvas } from "./canvas.ts";
 import { popoverChip } from "./chip.ts";
+import { createCueBook } from "./cues.ts";
 import type { Edits } from "./fields.ts";
 import { deckPanel, panelHost } from "./panels.ts";
 import { createQuickBar } from "./quickbar.ts";
@@ -62,7 +63,16 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     hint.textContent = text ?? "";
     hint.toggleAttribute("data-problem", text !== undefined);
   };
+  // The cues of a clip are a file beside its video. They load, and change, apart from the deck's own edits.
+  const cues = createCueBook(store.cueApi, {
+    problem: showProblem,
+    changed() {
+      canvas.refreshCues();
+      toolbar.render(selected, selectedBlock);
+    },
+  });
   const canvas = createCanvas(session, {
+    cues,
     // The count of a field is in the toolbar; this line is for what was refused.
     hint: (text, problem) => showProblem(problem ? text : undefined),
     select: (id) => selectBlock(id),
@@ -86,6 +96,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     },
     focusBlock: (id) => canvas.focusBlock(id),
     openSources: () => sceneBar.open("sources"),
+    cues,
   });
   canvas.overlay.append(toolbar.element);
 

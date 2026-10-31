@@ -1,8 +1,8 @@
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyOps, loadDoc, type Op, revisionOf } from "@depthcue/core";
+import { applyOps, loadDoc, type Op, readCueMap, revisionOf } from "@depthcue/core";
 import type { Browser, BrowserContext, Locator, Page } from "playwright-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadDeckDir } from "../src/loader.ts";
@@ -872,5 +872,149 @@ describe("the editor in a real browser", () => {
     });
     expect(verdicts.without).toBe(403);
     expect(readFileSync(join(folder, "deck.json"), "utf8")).toContain('"channel-demand"');
+  });
+});
+
+describe("clip cues in a real browser", () => {
+  const cueFile = () => join(folder, "assets", "talk.cues.json");
+  const clipNode = () => page.locator(".ed-frame [data-id='opening-clip']");
+  const pop = () => page.locator(".ed-toolbar .ed-tb-pop:not([hidden])");
+  const mapOnDisk = () => readCueMap(JSON.parse(readFileSync(cueFile(), "utf8")));
+  /** Puts the playhead of the clip on the slide at `seconds`. */
+  const playheadAt = (seconds: number) =>
+    page.evaluate((to) => {
+      const video = document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video");
+      if (video) video.currentTime = to;
+    }, seconds);
+  const playhead = () =>
+    page.evaluate(
+      () => document.querySelector<HTMLVideoElement>(".ed-frame [data-id='opening-clip'] video")?.currentTime,
+    );
+
+  beforeEach(() => {
+    copyFileSync(
+      fileURLToPath(new URL("./fixtures/tiny.webm", import.meta.url)),
+      join(folder, "assets", "talk.webm"),
+    );
+    external([
+      {
+        op: "block.add",
+        scene: "opening",
+        block: { id: "opening-clip", type: "clip", source: "assets/talk.webm", alt: "The talk" },
+      },
+    ]);
+  });
+
+  async function openCues() {
+    await open();
+    // A press on the corner chooses the clip without pressing the player's own controls.
+    await clipNode().click({ position: { x: 4, y: 4 } });
+    await page.locator(".ed-toolbar [data-tb='cues']").click();
+    await pop().waitFor();
+  }
+
+  it("starts a cue map from a marker added at the playhead, and the video stays where it was", async () => {
+    await openCues();
+    await page.evaluate(() => {
+      (window as unknown as { held: Element | null }).held = document.querySelector(
+        ".ed-frame [data-id='opening-clip'] video",
+      );
+    });
+    await playheadAt(1);
+    await pop().locator("[data-tb='cue-add']").click();
+    await pop().locator(".ed-cue-row[data-cue='marker-1']").waitFor();
+
+    const map = mapOnDisk();
+    expect(map).toMatchObject({ source: "assets/talk.webm", width: 64, height: 36, fps: 30 });
+    expect(map?.duration).toBeGreaterThan(1.9);
+    expect(map?.cues).toEqual([{ id: "marker-1", type: "marker", in: 1, out: map?.duration }]);
+
+    const same = await page.evaluate(
+      () =>
+        (window as unknown as { held: Element | null }).held ===
+        document.querySelector(".ed-frame [data-id='opening-clip'] video"),
+    );
+    expect(same).toBe(true);
+    expect(await playhead()).toBe(1);
+    await clipNode().locator(".dc-clip-cues [data-cue='marker-1']").waitFor();
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-field"))).toBe(
+      "cue:name:marker-1",
+    );
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps the markers across a reload, jumps to them from the slide, and edits and removes them", async () => {
+    await openCues();
+    await playheadAt(1);
+    await pop().locator("[data-tb='cue-add']").click();
+    await pop().locator(".ed-cue-row[data-cue='marker-1']").waitFor();
+    await playheadAt(0.5);
+    await pop().locator("[data-tb='cue-add']").click();
+    await pop().locator(".ed-cue-row[data-cue='marker-2']").waitFor();
+
+    await page.reload();
+    await headline().waitFor();
+    const chips = clipNode().locator(".dc-clip-cues [data-cue]");
+    await chips.nth(1).waitFor();
+    expect(await chips.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-cue")))).toEqual([
+      "marker-2",
+      "marker-1",
+    ]);
+    await clipNode().locator("[data-cue='marker-1']").click();
+    expect(await playhead()).toBe(1);
+    await clipNode().locator("[data-cue='marker-2']").click();
+    expect(await playhead()).toBe(0.5);
+
+    await page.locator(".ed-toolbar [data-tb='cues']").click();
+    await pop().locator("[data-field='cue:name:marker-1']").fill("the reveal");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.querySelector(".ed-frame [data-cue='the reveal']"));
+    expect(mapOnDisk()?.cues.map((cue) => cue.id)).toEqual(["marker-2", "the reveal"]);
+
+    await pop().locator(".ed-cue-row[data-cue='marker-2'] [data-tb='cue-remove']").click();
+    await page.waitForFunction(() => !document.querySelector(".ed-frame [data-cue='marker-2']"));
+    expect(mapOnDisk()?.cues.map((cue) => cue.id)).toEqual(["the reveal"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("leaves the build record of a built clip alone when a marker is added", async () => {
+    const built = {
+      format: "depthcue-cues/1",
+      source: "assets/talk.webm",
+      duration: 2,
+      width: 64,
+      height: 36,
+      fps: 24,
+      cues: [{ id: "dot", type: "circle", in: 0, out: 1 }],
+      build: { key: "abc", kinescript: "kinescript 1.0.0", quality: "draft", scale: 1, scene: "talk.json" },
+    };
+    writeFileSync(cueFile(), JSON.stringify(built));
+    await openCues();
+    await playheadAt(1.5);
+    await pop().locator("[data-tb='cue-add']").click();
+    await pop().locator(".ed-cue-row[data-cue='marker-1']").waitFor();
+    const after = JSON.parse(readFileSync(cueFile(), "utf8"));
+    expect(after.build).toEqual(built.build);
+    expect(after.fps).toBe(24);
+    expect(after.cues.map((cue: { id: string }) => cue.id)).toEqual(["dot", "marker-1"]);
+  });
+
+  it("keeps the Cues popover inside the slide on a phone", async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openCues();
+    await playheadAt(1);
+    await pop().locator("[data-tb='cue-add']").click();
+    await pop().locator(".ed-cue-row[data-cue='marker-1']").waitFor();
+    await page.waitForFunction(() => document.querySelector(".ed-toolbar")?.getAttribute("data-side"));
+    const [host, box] = await Promise.all([
+      page.locator(".ed-canvas-host").boundingBox(),
+      pop().boundingBox(),
+    ]);
+    if (!host || !box) throw new Error("the slide and the popover should both be on screen");
+    expect(box.x, "left").toBeGreaterThanOrEqual(host.x - 1);
+    expect(box.x + box.width, "right").toBeLessThanOrEqual(host.x + host.width + 1);
+    const [scroll, width] = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
+    expect(scroll).toBeLessThanOrEqual(width as number);
+    expect(problems).toEqual([]);
   });
 });

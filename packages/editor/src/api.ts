@@ -1,3 +1,5 @@
+import type { Cue } from "@depthcue/core";
+
 export interface ApiDiagnostic {
   code: string;
   at: string;
@@ -20,12 +22,34 @@ export type SaveResult =
   | { ok: false; kind: "stale"; rev: string; message: string }
   | { ok: false; kind: "rejected" | "failed"; message: string; diagnostics: ApiDiagnostic[] };
 
+/**
+ * A clip's cues as the server has them. `none` is a clip with no cue map yet, and `broken` a file where the map
+ * should be that the player cannot read, which the server never overwrites.
+ */
+export interface CueList {
+  state: "none" | "broken" | "ok";
+  cues: Cue[];
+  /** Seconds. Only a clip with a cue map has one on record. */
+  duration?: number;
+}
+
+/** What the browser measured of a video, sent when the clip has no cue map to take these from. */
+export interface ClipSize {
+  duration: number;
+  width: number;
+  height: number;
+}
+
 /** What the editor needs from the server. A test can stand in for it. */
 export interface Api {
   loadDeck(): Promise<DeckPayload>;
   save(files: Record<string, string>, baseRev: string): Promise<SaveResult>;
   /** Adds an image and returns its deck path, such as "assets/photo-1a2b3c4d.png". */
   uploadAsset(file: Blob, name: string): Promise<string>;
+  /** The cues of a clip, named by its deck path such as "assets/intro.mp4". */
+  loadCues(source: string): Promise<CueList>;
+  /** Replaces a clip's cues. Rejects with a message the person can read when the server refuses the list. */
+  saveCues(source: string, cues: readonly Cue[], clip?: ClipSize): Promise<{ cues: Cue[]; duration: number }>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -99,6 +123,29 @@ export function createApi(token: string, send: typeof fetch = (...args) => fetch
       const answer = await body(response);
       if (!response.ok || typeof answer.asset !== "string") throw new Error(messageOf(answer, response));
       return answer.asset;
+    },
+
+    async loadCues(source) {
+      const response = await call(`cues?source=${encodeURIComponent(source)}`);
+      const answer = await body(response);
+      if (!response.ok) throw new Error(messageOf(answer, response));
+      return answer as unknown as CueList;
+    },
+
+    async saveCues(source, cues, clip) {
+      let response: Response;
+      try {
+        response = await call("cues", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source, cues, clip }),
+        });
+      } catch {
+        throw new Error("The editor could not reach the server. Is `depthcue edit` still running?");
+      }
+      const answer = await body(response);
+      if (!response.ok || !Array.isArray(answer.cues)) throw new Error(messageOf(answer, response));
+      return { cues: answer.cues as Cue[], duration: Number(answer.duration) };
     },
   };
 }

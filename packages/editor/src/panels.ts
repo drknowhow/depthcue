@@ -109,7 +109,7 @@ const assetOptions = (host: PanelHost, pattern: RegExp) =>
  * The popover body for a block's own properties. It is drawn from the document again after every change that did
  * not come from typing in it, and the control that had the keyboard is found again by its `data-field`.
  */
-function form(exists: () => boolean, draw: () => Node[]) {
+export function form(exists: () => boolean, draw: () => Node[]) {
   const body = h("div", { class: "ed-tb-form" });
   let want: string | undefined;
   const rebuild = () => {
@@ -128,7 +128,7 @@ function form(exists: () => boolean, draw: () => Node[]) {
   return {
     body,
     /** The control to put the keyboard on after the next redraw, such as the row that was just added. */
-    focusNext(key: string) {
+    focusNext(key: string | undefined) {
       want = key;
     },
     fill(_scene: Scene, typing: boolean) {
