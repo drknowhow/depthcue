@@ -13,7 +13,22 @@ export { applyOps } from "./apply.ts";
 export type { AssetRef } from "./assets.ts";
 export { assetRefs, assetsOf } from "./assets.ts";
 export type { Cue, CueBuild, CueMap } from "./cues.ts";
-export { CUE_MAP_FORMAT, cueMapPath, MAX_CUES, makeCue, readCueMap, tidyCues } from "./cues.ts";
+export {
+  CUE_MAP_FORMAT,
+  checkCues,
+  cueMapPath,
+  isMarker,
+  keepMarkers,
+  MARKER_TYPE,
+  MAX_CUE_ID,
+  MAX_CUES,
+  makeCue,
+  newMarker,
+  nextMarkerId,
+  readCueMap,
+  roundedSeconds,
+  tidyCues,
+} from "./cues.ts";
 export type { RawError } from "./diagnostics.ts";
 export { explain } from "./diagnostics.ts";
 export type { Doc, LoadResult } from "./doc.ts";

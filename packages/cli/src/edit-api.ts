@@ -1,8 +1,18 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
-import { type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
+import {
+  CUE_MAP_FORMAT,
+  type Cue,
+  type CueMap,
+  checkCues,
+  cueMapPath,
+  type Diagnostic,
+  loadDoc,
+  readCueMap,
+  revisionOf,
+} from "@depthcue/core";
 import { openDeck } from "./deck-api.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
 import { loadDeckDir } from "./loader.ts";
@@ -205,6 +215,125 @@ async function uploadAsset(request: IncomingMessage, response: ServerResponse, u
   return send(response, 200, { asset: `assets/${name}`, kind, bytes: bytes.length });
 }
 
+export const MAX_CUES_BYTES = 256 * 1024;
+
+/** A video the deck holds, named the way a clip block names it. One segment under assets/, so no path can climb out. */
+const CLIP_FILE = /^assets\/[^/\\]+\.(mp4|webm)$/i;
+
+/** The path of a clip's cue map on disk, or why the editor may not keep one for what was asked about. */
+function cueFileFor(
+  source: unknown,
+  ctx: EditContext,
+): { source: string; file: string } | { message: string } {
+  if (typeof source !== "string" || !CLIP_FILE.test(source)) {
+    return { message: "Name a video of the deck, such as assets/intro.mp4." };
+  }
+  if (!existsSync(join(ctx.folder, ...source.split("/")))) {
+    return { message: `There is no ${source} in the deck.` };
+  }
+  return { source, file: join(ctx.folder, ...cueMapPath(source).split("/")) };
+}
+
+type CueFile =
+  | { state: "none" }
+  /** A file is there that is not a cue map the player would take. It is never overwritten. */
+  | { state: "broken" }
+  | { state: "ok"; map: CueMap; raw: Record<string, unknown> };
+
+function readCueFile(file: string): CueFile {
+  if (!existsSync(file)) return { state: "none" };
+  try {
+    const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
+    const map = readCueMap(raw);
+    return map && isRecord(raw) ? { state: "ok", map, raw } : { state: "broken" };
+  } catch {
+    return { state: "broken" };
+  }
+}
+
+function loadCues(response: ServerResponse, url: URL, ctx: EditContext) {
+  const named = cueFileFor(url.searchParams.get("source"), ctx);
+  if ("message" in named) return send(response, 400, { error: "bad-request", message: named.message });
+  const found = readCueFile(named.file);
+  return send(
+    response,
+    200,
+    found.state === "ok"
+      ? { state: "ok", cues: found.map.cues, duration: found.map.duration }
+      : { state: found.state, cues: [] as Cue[] },
+  );
+}
+
+const positive = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0;
+
+/**
+ * Keeps a clip's cues. The editor sends the whole list and the server checks it the way the player will read it. An
+ * existing map keeps everything but its cues, so the build record that lets `depthcue clip build` skip an unchanged
+ * clip survives. A clip that was never built has no map, and the editor sends what it measured from the video.
+ */
+async function saveCues(request: IncomingMessage, response: ServerResponse, ctx: EditContext) {
+  if (!String(request.headers["content-type"]).startsWith("application/json")) {
+    return send(response, 415, { error: "bad-request", message: "Send application/json." });
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse((await readBody(request, MAX_CUES_BYTES)).toString("utf8"));
+  } catch (error) {
+    if (error instanceof TooLarge) {
+      return send(response, 413, { error: "too-large", message: "The cues are too large to save." });
+    }
+    return send(response, 400, { error: "bad-request", message: "The body is not valid JSON." });
+  }
+  if (!isRecord(body)) {
+    return send(response, 400, {
+      error: "bad-request",
+      message: "Send { source: string, cues: Cue[], clip?: { duration, width, height } }.",
+    });
+  }
+  const named = cueFileFor(body.source, ctx);
+  if ("message" in named) return send(response, 400, { error: "bad-request", message: named.message });
+
+  const found = readCueFile(named.file);
+  if (found.state === "broken") {
+    return send(response, 422, {
+      error: "broken",
+      message: `${cueMapPath(named.source)} is not a cue map the editor can read, so it was left alone. Fix or remove that file first.`,
+    });
+  }
+  const measured = isRecord(body.clip) ? body.clip : {};
+  if (
+    found.state === "none" &&
+    !(positive(measured.duration) && positive(measured.width) && positive(measured.height))
+  ) {
+    return send(response, 422, {
+      error: "needs-clip",
+      message: "This clip has no cue map yet. Send its duration, width and height to start one.",
+    });
+  }
+  const duration = found.state === "ok" ? found.map.duration : (measured.duration as number);
+  const checked = checkCues(body.cues, duration);
+  if (!checked.ok) return send(response, 422, { error: "invalid", message: checked.message });
+
+  const next =
+    found.state === "ok"
+      ? { ...found.raw, cues: checked.cues }
+      : {
+          format: CUE_MAP_FORMAT,
+          source: named.source,
+          duration,
+          width: measured.width,
+          height: measured.height,
+          // A video that was not built here has no frame rate on record. Nothing reads it, but the format wants one.
+          fps: 30,
+          cues: checked.cues,
+        };
+  const temporary = `${named.file}.depthcue-${process.pid}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`);
+  renameSync(temporary, named.file);
+  return send(response, 200, { cues: checked.cues, duration });
+}
+
 /** Handles `/_depthcue/api/*`. Returns false when the path is not an edit API path. */
 export async function handleEditApi(
   request: IncomingMessage,
@@ -225,7 +354,10 @@ export async function handleEditApi(
     else if (route === "/_depthcue/api/save" && request.method === "POST") await save(request, response, ctx);
     else if (route === "/_depthcue/api/asset" && request.method === "POST") {
       await uploadAsset(request, response, url, ctx);
-    } else {
+    } else if (route === "/_depthcue/api/cues" && request.method === "GET") loadCues(response, url, ctx);
+    else if (route === "/_depthcue/api/cues" && request.method === "POST")
+      await saveCues(request, response, ctx);
+    else {
       send(response, 404, { error: "not-found", message: "There is no such editor call." });
     }
   } catch (error) {
