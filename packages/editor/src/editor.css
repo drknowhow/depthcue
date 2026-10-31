@@ -1235,6 +1235,30 @@ body {
   color: var(--dc-bg);
 }
 
+/* The Pinned popover: where the block sits, as four numbers, and three ways to line it up on the slide. */
+.ed-frame-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dc-space-2) var(--dc-space-3);
+}
+
+.ed-frame-align {
+  display: flex;
+  gap: var(--dc-space-2);
+}
+
+.ed-app .ed-tb-form .ed-frame-align button {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Layout and Free in the block toolbar, a little smaller than the scene tools' layouts. */
+.ed-app .ed-toolbar .ed-seg button {
+  min-height: 2rem;
+  padding: 0 var(--dc-space-2);
+  font-size: 0.8125rem;
+}
+
 .ed-seg svg {
   width: 1.5rem;
   height: 1rem;
