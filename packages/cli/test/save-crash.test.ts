@@ -210,6 +210,25 @@ describe("a save stopped after any file operation", () => {
     expect(done).toEqual(["write brand/brand.json", "write scenes/context.json", "write brand/brand.json"]);
   });
 
+  it("leaves a deck that loads, for one of 24 styles replaced by a new one", () => {
+    // The fixture has two styles; 22 more puts the brand at its limit.
+    const many: Op[] = Array.from({ length: 22 }, (_, i) => ({
+      op: "style.set",
+      id: `s-${i}`,
+      style: { name: `S${i}`, for: ["body"] },
+    }));
+    const done = crashEverywhere(
+      branded,
+      () => [
+        { op: "style.set", id: "s-0", style: null },
+        { op: "style.set", id: "s-new", style: { name: "New", for: ["body"] } },
+      ],
+      many,
+    );
+    // No scene or template names s-0, so brand.json is not first written with all 25.
+    expect(done).toEqual(["write brand/brand.json"]);
+  });
+
   it("leaves a deck that loads, for built-in styles hidden once no block uses them", () => {
     const done = crashEverywhere(branded, () => [
       { op: "block.set", scene: "context", id: "context-quote", set: { style: null } },

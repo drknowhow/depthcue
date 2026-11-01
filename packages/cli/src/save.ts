@@ -3,7 +3,6 @@ import { dirname, join, sep } from "node:path";
 import {
   BRAND_DIR,
   BRAND_FILE,
-  type Brand,
   type DeckFiles,
   type Diagnostic,
   type Doc,
@@ -100,20 +99,43 @@ const DISK: SaveIo = {
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
+/** The styles the scenes and templates of a Doc name, which stay on disk until the save rewrites or removes them. */
+function stylesNamed(doc: Doc): Set<string> {
+  const named = new Set<string>();
+  for (const scene of Object.values(doc.scenes))
+    for (const block of scene.blocks) if (block.style !== undefined) named.add(block.style);
+  for (const template of Object.values(doc.templates ?? {}))
+    for (const slot of template.slots) if (slot.style !== undefined) named.add(slot.style);
+  return named;
+}
+
 /**
  * brand.json as it is written before the scenes, when that differs from how it ends: the new brand.json still holding
- * every style it loses, hiding no built-in set and locking nothing that the old one did not. A scene that stops using
- * a style in the same save is written after this, and still finds it.
+ * each style it loses that a scene or template on disk names, hiding no built-in set and locking nothing that the old
+ * one did not. A scene that stops using a style in the same save is written after this, and still finds it. A style
+ * nothing names is not kept, so a save that replaces one style with another stays within the brand's limit; only one
+ * that swaps a style a scene uses for a new one, with the brand at its limit, can pass it at this stop.
  */
-function keeping(before: Brand | undefined, after: Brand | undefined): string | undefined {
-  if (before === undefined) return undefined;
-  const brand: Record<string, unknown> = { ...(after ?? before) };
-  const styles = { ...before.styles, ...after?.styles };
+function keeping(before: Doc, after: Doc): string | undefined {
+  const was = before.brand;
+  const will = after.brand;
+  if (was === undefined) return undefined;
+  const brand: Record<string, unknown> = { ...(will ?? was) };
+  const named = stylesNamed(before);
+  const old = was.styles ?? {};
+  const now = will?.styles ?? {};
+  const styles = Object.fromEntries([
+    ...Object.entries(old).flatMap(([id, style]) =>
+      Object.hasOwn(now, id) ? [[id, now[id]]] : named.has(id) ? [[id, style]] : [],
+    ),
+    ...Object.entries(now).filter(([id]) => !Object.hasOwn(old, id)),
+  ]);
   if (Object.keys(styles).length > 0) brand.styles = styles;
-  const hidden = after?.hideBuiltIn?.filter((set) => before.hideBuiltIn?.includes(set)) ?? [];
+  else delete brand.styles;
+  const hidden = will?.hideBuiltIn?.filter((set) => was.hideBuiltIn?.includes(set)) ?? [];
   if (hidden.length > 0) brand.hideBuiltIn = hidden;
   else delete brand.hideBuiltIn;
-  if (!(before.lock && after?.lock)) delete brand.lock;
+  if (!(was.lock && will?.lock)) delete brand.lock;
   return json(brand);
 }
 
@@ -142,7 +164,7 @@ export function savePlan(before: Doc, after: Doc): Step[] {
   // brand.json that loses something is written first as `keeping` has it, unless that is the file already on disk,
   // and as it ends only after deck.json.
   const middle =
-    Object.hasOwn(was, BRAND_FILE) && changed(BRAND_FILE) ? keeping(before.brand, after.brand) : undefined;
+    Object.hasOwn(was, BRAND_FILE) && changed(BRAND_FILE) ? keeping(before, after) : undefined;
   const late = middle !== undefined && middle !== now[BRAND_FILE];
   const steps: Step[] = [];
   const write = (path: string) => steps.push({ path, text: now[path] as string });
