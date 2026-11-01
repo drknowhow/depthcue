@@ -688,6 +688,48 @@ describe("a brand's own files", () => {
     expect(errors(checked(dim))).toContain("template-low-contrast");
   });
 
+  it("checks the tone of each slot's style on a template's background, a claim slot's and a chart slot's too", () => {
+    // cover is on "action". A claim drawn in "action" on it is unreadable, and no block is there for the scene's
+    // checks to catch it; a chart slot's blocks are not text, so the scene checks miss it too.
+    const styles = {
+      ...brand.styles,
+      loud: { name: "Loud", for: ["heading", "chart"], tone: "action" },
+      light: { name: "Light", for: ["heading"], tone: "bg" },
+      panel: { name: "Panel", for: ["chart"], tone: "action", fill: "surface" },
+    };
+    const frame = (y: number) => ({ x: 8, y, w: 84, h: 8 });
+    const banner = (claim: string, chart: string) => ({
+      ...cover,
+      slots: [
+        { id: "claim", role: "claim", frame: frame(8), hint: "The claim.", style: claim },
+        {
+          id: "chart",
+          role: "chart",
+          frame: frame(40),
+          accepts: ["chart"],
+          hint: "The chart.",
+          style: chart,
+        },
+      ],
+    });
+    const inCover = (template: unknown) =>
+      checked({ [BRAND_FILE]: { ...brand, styles }, "brand/templates/cover.json": template }).filter(
+        (d) => d.file === "brand/templates/cover.json" && d.severity === "error",
+      );
+    // Action on action fails on both presets the brand has a palette for.
+    const found = inCover(banner("loud", "loud"));
+    expect(found.map((d) => [d.code, d.path])).toEqual([
+      ["template-low-contrast", "/slots/0/style"],
+      ["template-low-contrast", "/slots/0/style"],
+      ["template-low-contrast", "/slots/1/style"],
+      ["template-low-contrast", "/slots/1/style"],
+    ]);
+    expect(found[0]?.message).toMatch(/^The slot "claim" draws its claim in "action" .* on paper slides/);
+    expect(found[1]?.message).toContain("on ink slides");
+    // A tone that reads on the background passes, and a style with a fill is checked on its fill alone.
+    expect(inCover(banner("light", "panel"))).toEqual([]);
+  });
+
   it("holds a slot's role and what it accepts to each other, with one claim slot at most", () => {
     const [kicker, title, byline] = cover.slots;
     const frame = (y: number) => ({ x: 8, y, w: 20, h: 5 });
@@ -1161,6 +1203,19 @@ describe("retemplate", () => {
     });
     const decided = apply(doc, [{ op: "scene.set", id: "context", set: { summary: null } }, ...none.ops]);
     expect(decided).toMatchObject({ ok: true });
+  });
+
+  it("lists the claim when moving to a layout that does not draw one, and only then", () => {
+    const summary = { id: "context-claim", text: "Two berths were shut.", evidenceIds: ["context-body"] };
+    const doc = applied(brandDoc(), [
+      ...retemplate(brandDoc(), "context", { template: "statement" }).ops,
+      { op: "scene.set", id: "context", set: { summary } },
+      { op: "block.remove", scene: "context", id: "context-heading" },
+    ]);
+    expect(retemplate(doc, "context", { layout: "text-media" }).unplaced).toEqual(["context-claim"]);
+    expect(retemplate(doc, "context", { layout: "title" }).unplaced).toEqual(["context-claim"]);
+    expect(retemplate(doc, "context", { layout: "claim-evidence" }).unplaced).toEqual([]);
+    expect(retemplate(brandDoc(), "growth", { layout: "text-media" }).unplaced).toEqual([]);
   });
 
   it("gives a pinned block a slot with room like any other, and keeps one no slot takes pinned over the slots", () => {

@@ -208,7 +208,9 @@ library, and per-block raw hex colors.
   machine), `body-without-bold`, `chrome-crowded` (two chrome parts in one place), `background-unmeasured` (until
   step 3 measures text on an image). Templates: `duplicate-id` for slots, `frame-off-slide`, `slots-overlap`,
   `slot-role-mismatch`, `two-claim-slots`, `unknown-style`, `style-wrong-kind` (a claim slot's style must be for
-  headings, as the claim is drawn as one) and `template-low-contrast` (text on a strong background is drawn in `bg`).
+  headings, as the claim is drawn as one) and `template-low-contrast` (text on a strong background is drawn in `bg`;
+  at `/slots/<i>/style`, a slot style's tone with no fill under it on the background color, which is how a claim slot
+  or a slot of charts, which no scene check reads, is held to it).
   The chart, style and template checks run on every preset the brand gives a palette for, and on the deck's theme
   (`looksOf`), so a brand that reads on paper and fails on ink fails in a paper deck too.
 - **Styled blocks.** A text block with a style, its own or its slot's, or on a template's colored background, is
@@ -243,14 +245,22 @@ library, and per-block raw hex colors.
   with it, when the new template has a claim slot; when it has none, the claim's id is in the unplaced list, and the
   operations apply once it is decided. A claim is never turned into text. A pinned block needs a slot with room like
   any other; one that no slot takes loses its slot and stays pinned, over the template, as does an overlay already
-  there. Moving to a layout clears every slot.
-- **Saving.** `saveDeckDir` writes the brand's new and changed files first (brand.json still holding any style it
-  loses, and hiding or locking nothing new), then the scenes, deck.json, brand.json as it ends, and the removals, so
-  a save stopped after any file leaves a deck that loads. `save-crash.test.ts` stops nine kinds of batch after every
-  file. Not covered: a template or style whose content changes under a scene, colors checked across the two files, and
-  a brand made with scenes that use it. A save that would write under brand/ refuses, with `linked-brand-folder` and
-  no file touched, when brand/ or brand/templates/ is a link or resolves outside the deck; reading through it is
-  allowed. Making a brand over brand files left in the folder is refused as `leftover-brand-file`.
+  there. Moving to a layout clears every slot, and lists the claim as unplaced unless the layout is claim-evidence,
+  the one layout that draws it.
+- **Saving.** `saveDeckDir` writes the brand's new and changed files first (brand.json still holding each style it
+  loses that a scene or template on disk names, and hiding or locking nothing new), then the scenes, deck.json, the
+  removed templates, brand.json as it ends, and the other removals, brand.json's last, so a save stopped after any
+  file leaves a deck that loads. A template goes before brand.json drops a style it names or hides the built-in set
+  that has it. `save-crash.test.ts` stops twelve kinds of batch after every file. A brand taken off is, between its
+  first write and deck.json, still the deck's brand but without `lock` and `hideBuiltIn`. Not covered: a template or
+  style whose content changes under a scene; colors checked across the two files; a brand made with scenes that use
+  it; a brand id changed in one save (`brand.set` null, then a new id), which stopped after brand.json is
+  `brand-id-mismatch`, since the id is in both files, and whose fix names the hand edit (a test pins this); and, with
+  the brand at 24 styles, a style a scene uses swapped for a new one, where brand.json has 25 (`too-many`) until the
+  scenes are written. A save that would write under brand/ refuses, with `linked-brand-folder` and no file touched,
+  when brand/ or brand/templates/ is a link or resolves outside the deck; reading through it is allowed. Making a
+  brand over brand files left in the folder is refused as `leftover-brand-file`, except files the save writes with
+  the same text, so a save that made a brand and stopped can run again.
 - **Revision.** It covers brand.json and the templates, independent of formatting. A deck without a brand hashes as
   before: the v0-1 fixture stays `ec4e0cd5c59ef06a` and the demo `eb9d45889adffe19`, pinned in `brand.test.ts`. Brand
   binaries count no more than assets do. Drafts keep the brand; a review keeps the reviewed brand but lists no brand
@@ -263,23 +273,25 @@ library, and per-block raw hex colors.
   and each block's `slot` and `style` as `PENDING` for steps 7 and 8.
 - **The editor's brand checks load on demand.** The changes above took the editor's script to 92,224 bytes, 64 over
   its limit. What moved: core's `brandcheck.ts`, the checks of brand.json and the template files (`readBrand`,
-  `checkBrand`, `checkTemplate`, `checkBrandFile`, `checkTemplateFile`, `unusedBrand`, `looksOf`), is now
-  `dist/brandcheck.js`, 3.1 KB brotli with its own budget row of 6 KB. The editor's build puts
+  `checkBrand`, `checkTemplate`, `checkBrandFile`, `checkTemplateFile`, `looksOf`), is now
+  `dist/brandcheck.js`, 3.2 KB brotli with its own budget row of 6 KB. The editor's build puts
   `packages/editor/src/brandchecks.ts` where core imports it; that stand-in fetches the chunk the first time a check
   is wanted and, until it is in, answers with the error `brand-checks-loading`, so nothing passes unchecked. The store
   then waits for the chunk and reads the deck again; it does the same for a draft, which is not thrown away for it.
-  A check that meets the error mid-edit starts the fetch and asks for another try. The chunk loads for a deck with a
-  brand, or a folder with brand files; a template scene of a deck without a brand uses only the built-in templates,
-  which tests check, so it needs nothing from the chunk. `checkSceneBrand` (a scene against its template) stays in
+  A check that meets the error mid-edit starts the fetch and asks for another try. When the chunk does not arrive,
+  the deck or draft does not open, or a reload or a read of the files after a change on disk stops with "Could not
+  load the brand checks; reload the page." The chunk loads only for a deck with a brand: `unusedBrand`, the warning
+  for brand files a deck without a brand leaves unread, is in brand.ts, and a template scene of a deck without a
+  brand uses only the built-in templates, which tests check, so neither needs the chunk. `checkSceneBrand` (a scene against its template) stays in
   editor.js: it runs on every edit of a template scene. About 1.3 KB of what the checks use stays in editor.js too,
   because it sits in modules the editor needs anyway, above all the brand and template schemas in schema.ts; moving
   those out is the next lever. CLI, MCP and tests use core's module as before.
 - **Player.** A template scene draws each slot as a dashed box with its id, its blocks stacked inside, until step 3
   places slots at their frames; the claim comes first, in a box for the `claim` slot, and an overlay sits only at its
   frame. The fixture's chart-and-note scene overflows that stack in `depthcue render`.
-- **Sizes.** Core runtime 45.2 to 39.9 KB gzip (limit 60). Editor script 89.3 to 88.2 KB brotli (90,299 bytes of
+- **Sizes.** Core runtime 45.2 to 40.1 KB gzip (limit 60). Editor script 89.3 to 88.3 KB brotli (90,368 bytes of
   92,160): the review round took it to 92,224 bytes, and moving the brand checks to their chunk took 1.9 KB back out.
-  The chunk is 3.1 KB (3,186 bytes of 6,144). Player script 10.1 to 10.3 KB (the placeholder), core code in the
+  The chunk is 3.2 KB (3,289 bytes of 6,144). Player script 10.1 to 10.3 KB (the placeholder), core code in the
   player 5.1 to 5.0 KB, exported page 13.3 KB.
 
 ### Cod's review

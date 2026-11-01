@@ -15,9 +15,10 @@ export interface Retemplated {
   /** The operations that make the move, to apply as one transaction. */
   ops: Op[];
   /**
-   * Ids of what does not fit, in scene order: the claim, when the template has no claim slot, and the blocks no slot of
-   * the template takes. While any are left the operations do not apply: remove them, move them to another scene, or
-   * pick a template that takes them.
+   * Ids of what does not fit, in scene order: the claim, when the template has no claim slot or the layout is not
+   * claim-evidence (the one layout that draws a claim), and the blocks no slot of the template takes. Decide each
+   * before applying: until then a template's operations fail, and a layout's leave the claim undrawn. Remove them, move
+   * them to another scene, or pick a template or layout that takes them.
    */
   unplaced: string[];
 }
@@ -43,7 +44,8 @@ export function retemplate(
       if (block.slot !== undefined)
         ops.push({ op: "block.set", scene: sceneId, id: block.id, set: { slot: null } });
     }
-    return { ops, unplaced: [] };
+    // Only claim-evidence draws a claim; on another layout it would stay in the file, unseen.
+    return { ops, unplaced: scene.summary && to.layout !== "claim-evidence" ? [scene.summary.id] : [] };
   }
   const template = own(templatesOf(doc), to.template);
   if (!template) throw new Error(`There is no template "${to.template}".`);
