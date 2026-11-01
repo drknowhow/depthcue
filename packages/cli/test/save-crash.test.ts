@@ -1,7 +1,7 @@
 // A save that stops after any of its file operations must leave a deck folder that loads with no errors. Each batch
 // below is one transaction of operations; the save of it is cut short after every k-th write or removal, on a fresh copy
 // each time, and the folder is loaded as it was left.
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -141,12 +141,12 @@ describe("a save stopped after any file operation", () => {
       { op: "block.set", scene: "context", id: "context-body", set: { style: null } },
       { op: "brand.set", set: null },
     ]);
-    expect(done.at(-4)).toBe("write deck.json");
-    expect(done.slice(-3).sort()).toEqual(
-      ["brand/brand.json", "brand/templates/chart-and-note.json", "brand/templates/cover.json"].map(
-        (path) => `remove ${path}`,
-      ),
-    );
+    expect(done.slice(-4)).toEqual([
+      "write deck.json",
+      "remove brand/templates/chart-and-note.json",
+      "remove brand/templates/cover.json",
+      "remove brand/brand.json",
+    ]);
   });
 
   it("leaves a deck that loads, for a template removed and its scene moved off it", () => {
@@ -155,6 +155,40 @@ describe("a save stopped after any file operation", () => {
       { op: "template.set", id: "chart-and-note", template: null },
     ]);
     expect(done).toEqual(["write scenes/growth.json", "remove brand/templates/chart-and-note.json"]);
+  });
+
+  it("leaves a deck that loads, for a template and the style its slot names removed together", () => {
+    const done = crashEverywhere(branded, (doc) => [
+      ...retemplate(doc, "growth", { template: "two-column" }).ops,
+      { op: "block.set", scene: "context", id: "context-body", set: { style: null } },
+      { op: "template.set", id: "chart-and-note", template: null },
+      { op: "style.set", id: "quiet-panel", style: null },
+    ]);
+    // The template names the style in a slot, so it goes before brand.json loses the style.
+    expect(done).toEqual([
+      "write scenes/context.json",
+      "write scenes/growth.json",
+      "remove brand/templates/chart-and-note.json",
+      "write brand/brand.json",
+    ]);
+  });
+
+  it("leaves a deck that loads, for built-in styles hidden while a template that names one is removed", () => {
+    const template = JSON.parse(readFileSync(join(branded, "brand/templates/chart-and-note.json"), "utf8"));
+    const slots = template.slots.map((slot: { style?: string }) =>
+      slot.style === "quiet-panel" ? { ...slot, style: "callout" } : slot,
+    );
+    const done = crashEverywhere(
+      branded,
+      (doc) => [
+        ...retemplate(doc, "growth", { template: "two-column" }).ops,
+        { op: "block.set", scene: "context", id: "context-quote", set: { style: null } },
+        { op: "template.set", id: "chart-and-note", template: null },
+        { op: "brand.set", set: { hideBuiltIn: ["styles"] } },
+      ],
+      [{ op: "template.set", id: "chart-and-note", template: { ...template, slots } }],
+    );
+    expect(done.slice(-2)).toEqual(["remove brand/templates/chart-and-note.json", "write brand/brand.json"]);
   });
 
   it("leaves a deck that loads, for a style removed with the block that used it", () => {

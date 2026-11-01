@@ -127,8 +127,10 @@ interface Step {
  * The writes and removals that turn `before`'s files into `after`'s, in an order that leaves a deck that loads at
  * every stop between them, for what one batch of operations does to references: a scene that starts to use a template
  * or style finds it already written, and one a scene stops using goes only after the scene. So: the brand's new and
- * changed files, brand.json in its `keeping` form; the scenes; deck.json; brand.json as it ends; the removals. A brand
- * made or taken off is a folder deck.json does not name for the stops in between, which a load leaves unread. Not
+ * changed files, brand.json in its `keeping` form; the scenes; deck.json; the templates removed; brand.json as it ends;
+ * the other removals, brand.json's last. A template removed goes before brand.json drops a style it names or hides the
+ * built-in set that has it. A brand made or taken off is a folder deck.json does not name for the stops in between,
+ * which a load leaves unread. Not
  * covered: a template or style whose content changes under a scene that uses it, colors checked across the two files,
  * and a brand made in the same save as a scene that uses it.
  */
@@ -150,8 +152,13 @@ export function savePlan(before: Doc, after: Doc): Step[] {
   for (const path of Object.keys(now))
     if (!inBrand(path) && path !== MANIFEST_FILE && changed(path)) write(path);
   if (changed(MANIFEST_FILE)) write(MANIFEST_FILE);
+  const gone = Object.keys(was).filter((path) => !Object.hasOwn(now, path));
+  // A template goes before brand.json drops a style it names or hides the built-in set that has it.
+  for (const path of gone) if (isTemplateFile(path)) steps.push({ path });
   if (late && Object.hasOwn(now, BRAND_FILE)) write(BRAND_FILE);
-  for (const path of Object.keys(was)) if (!Object.hasOwn(now, path)) steps.push({ path });
+  // A brand taken off loses brand.json last, so no stop leaves its templates without it.
+  for (const path of gone) if (!isTemplateFile(path) && path !== BRAND_FILE) steps.push({ path });
+  if (gone.includes(BRAND_FILE)) steps.push({ path: BRAND_FILE });
   return steps;
 }
 
