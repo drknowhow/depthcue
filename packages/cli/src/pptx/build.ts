@@ -498,7 +498,8 @@ function chartBlock(
         barGrouping: kind === "stacked-bar" ? "stacked" : "clustered",
         barGapWidthPct: horizontal ? 60 : 100,
         showValue: labels,
-        dataLabelPosition: "outEnd",
+        // PowerPoint refuses to open a file whose stacked bars put labels outside the bar end.
+        dataLabelPosition: kind === "stacked-bar" ? "inEnd" : "outEnd",
         // The page lists the bars of a horizontal chart from the top; PowerPoint lists them from the bottom, and the
         // values sit at the bar ends, so that axis has nothing more to say.
         ...(horizontal

@@ -486,7 +486,11 @@ async function expectDeckInFile(folder: string, file: string, notes: boolean) {
         expect(shape.chart, `"${block.id}" is a native chart`).toBeTruthy();
         const xml = await pptx.text(shape.chart as string);
         expect(xml).toContain(CHART_ELEMENT[chart.kind] as string);
-        if (chart.kind === "stacked-bar") expect(xml).toContain('<c:grouping val="stacked"/>');
+        if (chart.kind === "stacked-bar") {
+          expect(xml).toContain('<c:grouping val="stacked"/>');
+          // PowerPoint will not open a file whose stacked bars place labels outside the bar end.
+          expect(xml).not.toContain('<c:dLblPos val="outEnd"/>');
+        }
         if (block.type === "bar-chart") expect(xml).toContain('<c:barDir val="bar"/>');
         for (const column of chart.columns.slice(1)) {
           if (chart.kind !== "donut") expect(xml).toContain(`<c:v>${encodeXml(column.label)}</c:v>`);
