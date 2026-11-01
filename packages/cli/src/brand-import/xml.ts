@@ -13,12 +13,26 @@ const MAX_DEPTH = 100;
 
 export class XmlError extends Error {}
 
+/** The document has more elements than the reader was told to take. */
+export class XmlTooLarge extends XmlError {}
+
+export interface XmlOptions {
+  /** Refuse a document with more elements than this. There is no limit when it is left out. */
+  maxNodes?: number;
+  /**
+   * Keep every attribute under its name as written (`xlink:href`), not only the ones in the relationships namespace.
+   * Used to read an SVG, where a link or an event handler may have any prefix.
+   */
+  keepAttributes?: boolean;
+}
+
 export interface XmlNode {
   /** The element's name without its prefix: `a:srgbClr` is `srgbClr`. */
   name: string;
   /**
    * Attributes by name. One in the relationships namespace is written `r:` and its name, whatever prefix the file
-   * gave it. Attributes of any other prefix are left out.
+   * gave it. Attributes of any other prefix are left out, unless the document was read with `keepAttributes`, which
+   * keeps all of them under the name as written.
    */
   attrs: Readonly<Record<string, string>>;
   children: XmlNode[];
@@ -49,7 +63,11 @@ const ATTRIBUTE = /([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 type Scope = Readonly<Record<string, string>>;
 
 /** The element's attributes, with the namespaces it declares, which its children inherit. */
-function readAttributes(source: string, inherited: Scope): { attrs: Record<string, string>; scope: Scope } {
+function readAttributes(
+  source: string,
+  inherited: Scope,
+  keepAll: boolean,
+): { attrs: Record<string, string>; scope: Scope } {
   const raw: Array<[string, string]> = [];
   let scope = inherited;
   for (const match of source.matchAll(ATTRIBUTE)) {
@@ -62,18 +80,19 @@ function readAttributes(source: string, inherited: Scope): { attrs: Record<strin
   const attrs: Record<string, string> = {};
   for (const [name, value] of raw) {
     const colon = name.indexOf(":");
-    if (colon < 0) attrs[name] = value;
+    if (colon < 0 || keepAll) attrs[name] = value;
     else if (scope[name.slice(0, colon)] === RELATIONSHIPS_NS) attrs[`r:${name.slice(colon + 1)}`] = value;
   }
   return { attrs, scope };
 }
 
-/** Reads a document into its root element. Throws `XmlError` for text that is not well-formed XML. */
-export function parseXml(source: string): XmlNode {
+/** Reads a document into its root element, and says how many elements it has. Throws `XmlError` for text that is not well-formed XML. */
+export function parseXmlCounted(source: string, options: XmlOptions = {}): { root: XmlNode; nodes: number } {
   const text = source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
   if (/<!DOCTYPE/i.test(text)) throw new XmlError("The document declares a DOCTYPE, which is not read.");
   const stack: Array<{ node: XmlNode; scope: Scope }> = [];
   let root: XmlNode | undefined;
+  let nodes = 0;
   TOKEN.lastIndex = 0;
   while (TOKEN.lastIndex < text.length) {
     const match = TOKEN.exec(text);
@@ -91,7 +110,15 @@ export function parseXml(source: string): XmlNode {
       }
     } else if (opening !== undefined) {
       if (!top && root) throw new XmlError("More than one root element.");
-      const { attrs, scope } = readAttributes(attributes ?? "", top?.scope ?? {});
+      nodes++;
+      if (options.maxNodes !== undefined && nodes > options.maxNodes) {
+        throw new XmlTooLarge(`The document has more than ${options.maxNodes} elements.`);
+      }
+      const { attrs, scope } = readAttributes(
+        attributes ?? "",
+        top?.scope ?? {},
+        options.keepAttributes === true,
+      );
       const node: XmlNode = { name: opening.slice(opening.indexOf(":") + 1), attrs, children: [], text: "" };
       if (top) top.node.children.push(node);
       else root = node;
@@ -104,8 +131,12 @@ export function parseXml(source: string): XmlNode {
   if (stack.length > 0)
     throw new XmlError(`The element <${stack[stack.length - 1]?.node.name}> is never closed.`);
   if (!root) throw new XmlError("The document has no root element.");
-  return root;
+  return { root, nodes };
 }
+
+/** Reads a document into its root element. Throws `XmlError` for text that is not well-formed XML. */
+export const parseXml = (source: string, options: XmlOptions = {}): XmlNode =>
+  parseXmlCounted(source, options).root;
 
 /** The first child element with this name. */
 export const child = (node: XmlNode | undefined, name: string): XmlNode | undefined =>

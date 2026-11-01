@@ -3,18 +3,39 @@
  * part to another. Nothing here knows what a theme or a layout is; it only finds parts and hands back their bytes.
  */
 import JSZip from "jszip";
-import { childrenNamed, parseXml, type XmlNode } from "./xml.ts";
+import { childrenNamed, parseXmlCounted, XmlError, type XmlNode, XmlTooLarge } from "./xml.ts";
 
-/** What a file may hold before it is refused, so a small file that unpacks into a great deal costs nothing to refuse. */
-export const LIMITS = {
+/**
+ * What a file may hold before it is refused. A zip says in its directory how large each part will be, and a hostile one
+ * lies, so these are counted as the parts are unpacked, not read from the directory. The largest XML part in the themes
+ * that ship with PowerPoint is 5.4 MB and 103,000 elements, their pictures are at most 1.2 MB each, and a whole file's
+ * parts come to 432,000 elements and 8.4 MB of pictures: the limits sit well above that.
+ */
+export interface Limits {
+  /** Parts in the zip. */
+  parts: number;
+  /** The unpacked size of one XML part, in bytes. */
+  xml: number;
+  /** The unpacked size of one picture. */
+  media: number;
+  /** Everything unpacked, XML and pictures together, over the whole import. */
+  total: number;
+  /** Elements in one XML part. */
+  nodesPerPart: number;
+  /** Elements in all the XML parts read. */
+  nodes: number;
+}
+
+export const LIMITS: Limits = {
   parts: 4000,
-  /** The unpacked size of one XML part. The largest master in the themes that ship with PowerPoint is under 100 KB. */
   xml: 16 * 1024 * 1024,
-  /** The unpacked size of a picture. */
-  media: 64 * 1024 * 1024,
-} as const;
+  media: 32 * 1024 * 1024,
+  total: 128 * 1024 * 1024,
+  nodesPerPart: 300_000,
+  nodes: 800_000,
+};
 
-export type PackageErrorCode = "not-a-package" | "too-large" | "bad-xml";
+export type PackageErrorCode = "not-a-package" | "too-large" | "bad-xml" | "unreadable";
 
 /** The file is not an Office package this command can read. */
 export class PackageError extends Error {
@@ -54,25 +75,76 @@ const relsPath = (part: string): string => {
   return `${part.slice(0, slash + 1)}_rels/${part.slice(slash + 1)}.rels`;
 };
 
-/** The size a zip entry will unpack to, as its directory records it; undefined if this version of JSZip hides it. */
-const unpackedSize = (entry: JSZip.JSZipObject): number | undefined =>
+/** The size a zip entry will unpack to, as its directory records it. The directory can lie, so this is only a shortcut. */
+const declaredSize = (entry: JSZip.JSZipObject): number | undefined =>
   (entry as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
+
+/**
+ * An entry's bytes, counted as they come out of the decompressor, with the reading stopped as soon as they pass `limit`.
+ * What the zip's directory says about the size is not used: a part that claims 2 KB and holds 600 MB is read for 16 KB of
+ * input at a time, and stops after the one that takes it past the limit. Resolves to "over" when it does.
+ */
+function unpackCounted(entry: JSZip.JSZipObject, limit: number): Promise<Uint8Array | "over"> {
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    let settled = false;
+    const stream = entry.nodeStream("nodebuffer") as NodeJS.ReadableStream & { destroy?: () => void };
+    const settle = (finish: () => void) => {
+      if (settled) return;
+      settled = true;
+      stream.pause();
+      stream.destroy?.();
+      finish();
+    };
+    stream.on("data", (chunk: Uint8Array) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > limit) settle(() => resolve("over"));
+      else chunks.push(chunk);
+    });
+    stream.on("error", (error: Error) => settle(() => reject(error)));
+    stream.on("end", () => {
+      if (settled) return;
+      const data = new Uint8Array(size);
+      let at = 0;
+      for (const chunk of chunks) {
+        data.set(chunk, at);
+        at += chunk.length;
+      }
+      settled = true;
+      resolve(data);
+    });
+  });
+}
+
+export interface OpenOptions {
+  /** Smaller limits than the defaults, for a test that cannot build a file of the real size. */
+  limits?: Partial<Limits>;
+}
 
 export class OfficePackage {
   readonly #zip: JSZip;
+  readonly limits: Limits;
   readonly #xml = new Map<string, XmlNode>();
+  /** Pictures already unpacked, by part name: a picture two layouts share is read once and counted once. */
+  readonly #media = new Map<string, Uint8Array>();
   /** Part names, as the file spells them, by lower case: part names are not case-sensitive. */
   readonly #names = new Map<string, string>();
+  #unpacked = 0;
+  #nodes = 0;
 
-  private constructor(zip: JSZip) {
+  private constructor(zip: JSZip, limits: Limits) {
     this.#zip = zip;
+    this.limits = limits;
     for (const [name, entry] of Object.entries(zip.files)) {
       if (!entry.dir) this.#names.set(name.toLowerCase(), name);
     }
   }
 
   /** Opens the zip. Throws `PackageError` when the bytes are not a zip or hold too many parts. */
-  static async open(bytes: Uint8Array): Promise<OfficePackage> {
+  static async open(bytes: Uint8Array, options: OpenOptions = {}): Promise<OfficePackage> {
+    const limits = { ...LIMITS, ...options.limits };
     let zip: JSZip;
     try {
       zip = await JSZip.loadAsync(bytes);
@@ -82,13 +154,13 @@ export class OfficePackage {
         "It is not a PowerPoint file: a .potx, .pptx or .thmx is a zip of XML parts, and this is not a zip. (The old .ppt, .pot and .thm formats cannot be read.)",
       );
     }
-    if (Object.keys(zip.files).length > LIMITS.parts) {
+    if (Object.keys(zip.files).length > limits.parts) {
       throw new PackageError(
         "too-large",
-        `The file holds more than ${LIMITS.parts} parts, which no deck does.`,
+        `The file holds more than ${limits.parts} parts, which no deck does.`,
       );
     }
-    return new OfficePackage(zip);
+    return new OfficePackage(zip, limits);
   }
 
   /** The part's name as the file spells it, or undefined when the file has no such part. */
@@ -105,25 +177,60 @@ export class OfficePackage {
     return [...this.#names.values()];
   }
 
-  /** A part's bytes, or undefined when there is no such part. Throws `PackageError` for one that unpacks too large. */
-  async bytes(part: string, limit: number = LIMITS.media): Promise<Uint8Array | undefined> {
+  /** How many bytes have been unpacked so far, XML and pictures together. */
+  get unpacked(): number {
+    return this.#unpacked;
+  }
+
+  /** Unpacks one part, within its own limit and what is left of the whole file's. */
+  async #unpack(part: string, name: string, limit: number): Promise<Uint8Array> {
+    const entry = this.#zip.file(name);
+    if (!entry) throw new PackageError("unreadable", `The part ${part} is not in the file.`);
+    const declared = declaredSize(entry);
+    if (declared !== undefined && declared > limit) {
+      throw new PackageError(
+        "too-large",
+        `The part ${part} unpacks to ${declared} bytes, past the ${limit} this reads.`,
+      );
+    }
+    const room = this.limits.total - this.#unpacked;
+    let data: Uint8Array | "over";
+    try {
+      data = await unpackCounted(entry, Math.min(limit, room));
+    } catch (error) {
+      throw new PackageError(
+        "unreadable",
+        `The part ${part} cannot be unpacked (${(error as Error).message}), so the file is damaged.`,
+      );
+    }
+    if (data === "over") {
+      throw new PackageError(
+        "too-large",
+        limit <= room
+          ? `The part ${part} unpacks to more than the ${limit} bytes this reads.`
+          : `The file unpacks to more than ${this.limits.total} bytes in all, which no template does.`,
+      );
+    }
+    this.#unpacked += data.length;
+    return data;
+  }
+
+  /** A picture's bytes, or undefined when there is no such part. Throws `PackageError` for one that unpacks too large. */
+  async bytes(part: string, limit: number = this.limits.media): Promise<Uint8Array | undefined> {
     const name = this.nameOf(part);
-    const entry = name === undefined ? undefined : this.#zip.file(name);
-    if (!entry) return undefined;
-    const size = unpackedSize(entry);
-    if (size !== undefined && size > limit) {
-      throw new PackageError(
-        "too-large",
-        `The part ${part} unpacks to ${size} bytes, past the ${limit} this reads.`,
-      );
+    if (name === undefined) return undefined;
+    const known = this.#media.get(name);
+    if (known) {
+      if (known.length > limit) {
+        throw new PackageError(
+          "too-large",
+          `The part ${part} unpacks to ${known.length} bytes, past the ${limit} this reads.`,
+        );
+      }
+      return known;
     }
-    const data = await entry.async("uint8array");
-    if (data.length > limit) {
-      throw new PackageError(
-        "too-large",
-        `The part ${part} unpacks to ${data.length} bytes, past the ${limit} this reads.`,
-      );
-    }
+    const data = await this.#unpack(part, name, limit);
+    this.#media.set(name, data);
     return data;
   }
 
@@ -132,17 +239,29 @@ export class OfficePackage {
     const key = part.toLowerCase();
     const cached = this.#xml.get(key);
     if (cached) return cached;
-    const data = await this.bytes(part, LIMITS.xml);
-    if (!data) return undefined;
+    const name = this.nameOf(part);
+    if (name === undefined) return undefined;
+    const data = await this.#unpack(part, name, this.limits.xml);
     try {
-      const root = parseXml(new TextDecoder("utf-8").decode(data));
+      const { root, nodes } = parseXmlCounted(new TextDecoder("utf-8").decode(data), {
+        maxNodes: Math.min(this.limits.nodesPerPart, this.limits.nodes - this.#nodes),
+      });
+      this.#nodes += nodes;
       this.#xml.set(key, root);
       return root;
     } catch (error) {
-      throw new PackageError("bad-xml", `The part ${part} is not valid XML: ${(error as Error).message}`);
+      if (error instanceof XmlTooLarge) {
+        throw new PackageError(
+          "too-large",
+          `The part ${part} has more elements than this reads (${this.limits.nodesPerPart} in one part, ${this.limits.nodes} in the whole file).`,
+        );
+      }
+      if (error instanceof XmlError) {
+        throw new PackageError("bad-xml", `The part ${part} is not valid XML: ${error.message}`);
+      }
+      throw error;
     }
   }
-
   /** The relationships a part has, or none when it has no relationships part. */
   async rels(part: string): Promise<Relationship[]> {
     const root = await this.xml(relsPath(part));

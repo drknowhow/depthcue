@@ -2,12 +2,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImportError, importBrand, ratioLabel, slug } from "../src/brand-import/index.ts";
+import { LIMITS } from "../src/brand-import/package.ts";
 import { mix } from "../src/brand-import/palette.ts";
 import {
   DARK,
   importFixture,
   LAYOUTS,
   LIGHT,
+  lieAbout,
   MASTER,
   type PackageSpec,
   PNG,
@@ -27,11 +29,12 @@ afterEach(() => {
 /** Imports whatever parts are given, as a file of the given name. */
 async function importParts(
   parts: Map<string, string | Uint8Array>,
-  options: { name?: string; ext?: string } = {},
+  options: { name?: string; ext?: string; lie?: { part: string; claimed: number } } = {},
 ) {
   const folder = make();
   const file = join(folder, `${options.name ?? "Harbor"}.${options.ext ?? "potx"}`);
-  writeFileSync(file, await zipParts(parts));
+  const zip = await zipParts(parts);
+  writeFileSync(file, options.lie ? lieAbout(zip, options.lie.part, options.lie.claimed) : zip);
   const out = join(folder, "brand-out");
   return { folder, file, out, run: () => importBrand({ file, out }) };
 }
@@ -322,6 +325,65 @@ describe("a file that cannot be imported", () => {
     await expect(run()).rejects.toMatchObject({
       code: "unreadable",
       message: expect.stringContaining("DOCTYPE"),
+    });
+  });
+
+  describe("a file made to use up memory", () => {
+    const layout = "ppt/slideLayouts/slideLayout1.xml";
+    const padded = (filler: string) => {
+      const parts = partsOf();
+      parts.set(layout, (parts.get(layout) as string).replace("<p:cSld", `${filler}<p:cSld`));
+      return parts;
+    };
+
+    it("is refused when a part is larger than the limit and says so in its directory", async () => {
+      const { run, out } = await importParts(padded(" ".repeat(LIMITS.xml + 1024)));
+      await expect(run()).rejects.toMatchObject({
+        code: "unreadable",
+        message: expect.stringMatching(/slideLayout1\.xml unpacks to \d+ bytes, past the/),
+      });
+      expect(existsSync(out)).toBe(false);
+    });
+
+    it("is refused when a part is larger than the limit and its directory says it is small", async () => {
+      const { run, out } = await importParts(padded(" ".repeat(LIMITS.xml + 1024)), {
+        lie: { part: layout, claimed: 2000 },
+      });
+      await expect(run()).rejects.toMatchObject({
+        code: "unreadable",
+        message: expect.stringMatching(/slideLayout1\.xml unpacks to more than the \d+ bytes this reads/),
+      });
+      expect(existsSync(out)).toBe(false);
+    });
+
+    it("is refused when a part has more elements than any layout has, though it is under the size limit", async () => {
+      const { run } = await importParts(padded("<a:x/>".repeat(LIMITS.nodesPerPart + 1)));
+      await expect(run()).rejects.toMatchObject({
+        code: "unreadable",
+        message: expect.stringMatching(/slideLayout1\.xml has more elements than this reads/),
+      });
+    });
+
+    it("is refused when its pictures together are more than a file's budget, each under the limit for one", async () => {
+      const each = Math.floor(LIMITS.media * 0.75);
+      const picture = (n: number) => {
+        const data = new Uint8Array(each);
+        data.set(PNG.subarray(0, 8));
+        data[100] = n;
+        return data;
+      };
+      const media = Object.fromEntries(Array.from({ length: 6 }, (_, n) => [`bg${n}.png`, picture(n + 1)]));
+      const layouts = Array.from({ length: 6 }, (_, n) => ({
+        name: `Layout ${n}`,
+        shapes: [{ kind: "ph", type: "title", frame: { x: 10, y: 10, w: 80, h: 20 } }] as ShapeSpec[],
+        bg: { picture: `bg${n}.png` },
+      }));
+      const { run, out } = await importParts(partsOf({ media: { "logo.png": PNG, ...media }, layouts }));
+      await expect(run()).rejects.toMatchObject({
+        code: "unreadable",
+        message: expect.stringMatching(/unpacks to more than \d+ bytes in all/),
+      });
+      expect(existsSync(out)).toBe(false);
     });
   });
 

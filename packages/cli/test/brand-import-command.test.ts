@@ -1,8 +1,17 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { LIMITS } from "../src/brand-import/package.ts";
 import { run } from "../src/index.ts";
-import { type LayoutSpec, LIGHT, temporaryFolders, writeFixture } from "./brand-import-fixtures.ts";
+import {
+  type LayoutSpec,
+  LIGHT,
+  lieAbout,
+  partsOf,
+  temporaryFolders,
+  writeFixture,
+  zipParts,
+} from "./brand-import-fixtures.ts";
 
 // The real import runs unless a test says otherwise; one test makes it report a brand that fails its checks, which
 // no file can be made to do.
@@ -278,6 +287,43 @@ describe("depthcue brand import: a file that cannot be read", () => {
       message: expect.stringContaining("is not a zip"),
     });
     expect(existsSync(join(folder, "out"))).toBe(false);
+  });
+
+  it("exits 2 and prints data with --json for a part whose directory lies about its size", async () => {
+    const folder = make();
+    const parts = partsOf();
+    const layout = "ppt/slideLayouts/slideLayout1.xml";
+    parts.set(
+      layout,
+      (parts.get(layout) as string).replace("<p:cSld", `${" ".repeat(LIMITS.xml + 1024)}<p:cSld`),
+    );
+    const file = join(folder, "Lying.potx");
+    writeFileSync(file, lieAbout(await zipParts(parts), layout, 2000));
+    const result = await cli("brand", "import", file, "--out", join(folder, "out"), "--json");
+    expect(result.code).toBe(2);
+    expect(result.errors).toEqual([]);
+    expect(JSON.parse(result.out)).toMatchObject({
+      ok: false,
+      code: "unreadable",
+      message: expect.stringContaining("slideLayout1.xml unpacks to more than"),
+    });
+    expect(existsSync(join(folder, "out"))).toBe(false);
+  });
+
+  it("exits 2 with a message, not a stack trace, for a part that holds more than its directory says", async () => {
+    const folder = make();
+    const parts = partsOf();
+    const layout = "ppt/slideLayouts/slideLayout1.xml";
+    const file = join(folder, "Damaged.potx");
+    const size = Buffer.byteLength(parts.get(layout) as string);
+    writeFileSync(file, lieAbout(await zipParts(parts), layout, size - 10));
+    const result = await cli("brand", "import", file, "--out", join(folder, "out"), "--json");
+    expect(result.code).toBe(2);
+    expect(JSON.parse(result.out)).toMatchObject({
+      ok: false,
+      code: "unreadable",
+      message: expect.stringContaining("so the file is damaged"),
+    });
   });
 
   it("exits 2 for a folder with somebody else's files in it, and leaves it alone", async () => {

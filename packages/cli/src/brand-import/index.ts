@@ -229,9 +229,12 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
   }
 
   const master = found.master ? await readMaster(pkg, found.master) : undefined;
-  const layouts = (await Promise.all((master?.layouts ?? []).map((part) => readLayout(pkg, part)))).filter(
-    (layout): layout is Layout => layout !== undefined,
-  );
+  // One at a time, so only one part is unpacked at once: the limits are counted as the parts come out.
+  const layouts: Layout[] = [];
+  for (const part of master?.layouts ?? []) {
+    const layout = await readLayout(pkg, part);
+    if (layout) layouts.push(layout);
+  }
   // A theme file may carry no layouts at all. A presentation or template with none has nothing to import.
   if (input.kind !== "thmx" && layouts.length === 0) {
     return failure("no-layout", "The file has no slide layouts, so there is nothing to make templates from.");

@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { child, childrenNamed, descend, find, integer, parseXml, XmlError } from "../src/brand-import/xml.ts";
+import {
+  child,
+  childrenNamed,
+  descend,
+  find,
+  integer,
+  parseXml,
+  parseXmlCounted,
+  XmlError,
+  XmlTooLarge,
+} from "../src/brand-import/xml.ts";
 
 describe("parseXml", () => {
   it("reads elements, attributes and text, without the prefixes", () => {
@@ -19,6 +29,22 @@ describe("parseXml", () => {
       `<x xmlns:q="${ns}" xmlns:o="urn:other"><blip q:embed="rId7" o:embed="no" plain="yes"/></x>`,
     );
     expect(child(root, "blip")?.attrs).toEqual({ "r:embed": "rId7", plain: "yes" });
+  });
+
+  it("keeps every attribute under its name as written when asked to, and decodes character references in it", () => {
+    const root = parseXml(
+      '<svg xmlns:xlink="urn:x"><a xlink:href="&#106;avascript:x" s:onload="y" plain="1"/></svg>',
+      { keepAttributes: true },
+    );
+    expect(child(root, "a")?.attrs).toEqual({ "xlink:href": "javascript:x", "s:onload": "y", plain: "1" });
+  });
+
+  it("refuses a document with more elements than it is told to take, and takes one with exactly that many", () => {
+    const text = `<a>${"<b/>".repeat(9)}</a>`;
+    expect(parseXml(text, { maxNodes: 10 }).children).toHaveLength(9);
+    expect(() => parseXml(text, { maxNodes: 9 })).toThrow(XmlTooLarge);
+    expect(() => parseXml(text, { maxNodes: 9 })).toThrow(/more than 9 elements/);
+    expect(parseXmlCounted(text).nodes).toBe(10);
   });
 
   it("lets a child inherit the namespaces its parent declares", () => {

@@ -680,3 +680,33 @@ export async function importFixture(
     json: (path) => JSON.parse(readFileSync(join(out, path), "utf8")),
   };
 }
+
+// ---------------------------------------------------------------------------------------------- hostile files
+
+/**
+ * A copy of the zip in which the named part claims to unpack to `claimed` bytes, in both of its headers, whatever it
+ * really holds. A real zip never does this; a file made to exhaust memory does, to get past a check of the headers.
+ */
+export function lieAbout(zip: Uint8Array, name: string, claimed: number): Uint8Array {
+  const buffer = Buffer.from(zip);
+  const wanted = Buffer.from(name);
+  let patched = 0;
+  for (let at = 0; at < buffer.length - 46; at++) {
+    const signature = buffer.readUInt32LE(at);
+    if (signature === 0x04034b50) {
+      const length = buffer.readUInt16LE(at + 26);
+      if (buffer.subarray(at + 30, at + 30 + length).equals(wanted)) {
+        buffer.writeUInt32LE(claimed, at + 22);
+        patched++;
+      }
+    } else if (signature === 0x02014b50) {
+      const length = buffer.readUInt16LE(at + 28);
+      if (buffer.subarray(at + 46, at + 46 + length).equals(wanted)) {
+        buffer.writeUInt32LE(claimed, at + 24);
+        patched++;
+      }
+    }
+  }
+  if (patched !== 2) throw new Error(`Expected to change two headers of ${name}, changed ${patched}.`);
+  return new Uint8Array(buffer);
+}
