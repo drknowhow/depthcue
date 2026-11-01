@@ -2,25 +2,29 @@ import { describe, expect, it } from "vitest";
 import {
   cornerOf,
   formatOf,
-  isSafeSvg,
   jpegSize,
   nearestSize,
   svgAroundJpeg,
   touchesEdge,
 } from "../src/brand-import/logo.ts";
+import { svgProblem } from "../src/brand-import/svg.ts";
 import {
   DARK,
   EMF,
   GIF,
+  HOSTILE_SVGS,
   importFixture,
   jpeg,
   LAYOUTS,
   MASTER,
   type PackageSpec,
   PNG,
+  PNG_DATA,
   SCRIPTED_SVG,
   type ShapeSpec,
   STANDARD_MEDIA,
+  SVG_NS,
+  SVG_XLINK,
   svg,
   temporaryFolders,
 } from "./brand-import-fixtures.ts";
@@ -53,20 +57,40 @@ describe("formatOf", () => {
   });
 });
 
-describe("isSafeSvg", () => {
-  it("accepts a plain drawing", () => {
-    expect(isSafeSvg('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>')).toBe(true);
+describe("svgProblem", () => {
+  it.each([
+    ["a plain drawing", `<svg ${SVG_NS}><path d="M0 0"/></svg>`],
+    [
+      "one saved by Illustrator, with a DOCTYPE that only names the DTD",
+      `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg ${SVG_NS} ${SVG_XLINK} viewBox="0 0 10 10"><title>Mark</title><path d="M0 0"/></svg>`,
+    ],
+    [
+      "gradients, uses and filters, which point at places in the file",
+      `<svg ${SVG_NS} ${SVG_XLINK}><defs><linearGradient id="g"/><filter id="f"/><path id="a" d="M0 0"/></defs><rect fill="url(#g)" filter="url('#f')" style="stroke:url( &quot;#g&quot; )"/><use xlink:href="#a"/><use href="#a"/></svg>`,
+    ],
+    [
+      "a style sheet with colors and fonts",
+      `<svg ${SVG_NS}><style>.a { fill: #123456; font-family: 'Segoe UI'; }</style></svg>`,
+    ],
+    [
+      "a picture held in the file",
+      `<svg ${SVG_NS} ${SVG_XLINK}><image xlink:href="${PNG_DATA}" width="1" height="1"/></svg>`,
+    ],
+    [
+      "a transform, whose parenthesis is no style",
+      `<svg ${SVG_NS}><g transform="translate(1 2) rotate(3)"/></svg>`,
+    ],
+  ])("accepts %s", (_, text) => {
+    expect(svgProblem(text)).toBeUndefined();
   });
 
-  it.each([
-    ["a script", "<svg><script>x()</script></svg>"],
-    ["a foreignObject", "<svg><foreignObject/></svg>"],
-    ["an entity", '<!DOCTYPE svg [<!ENTITY x "y">]><svg/>'],
-    ["a javascript: link", '<svg><a href="javascript:x()"/></svg>'],
-    ["an event handler", '<svg><rect onload="x()"/></svg>'],
-    ["an event handler after a newline", '<svg><rect\nonclick = "x()"/></svg>'],
-  ])("refuses an SVG with %s", (_, text) => {
-    expect(isSafeSvg(text)).toBe(false);
+  it.each(HOSTILE_SVGS)("refuses an SVG with %s", (_, text, problem) => {
+    expect(svgProblem(text)).toMatch(problem);
+  });
+
+  it("refuses an SVG that is not text it can read, instead of passing it", () => {
+    expect(svgProblem("<svg")).toMatch(/not valid XML/);
+    expect(svgProblem("")).toMatch(/not valid XML/);
   });
 });
 
@@ -86,7 +110,7 @@ describe("jpegSize and svgAroundJpeg", () => {
     expect(text).toContain('width="120" height="40" viewBox="0 0 120 40"');
     const data = /base64,([A-Za-z0-9+/=]+)"/.exec(text)?.[1] as string;
     expect(Uint8Array.from(Buffer.from(data, "base64"))).toEqual(bytes);
-    expect(isSafeSvg(text)).toBe(true);
+    expect(svgProblem(text)).toBeUndefined();
   });
 
   it("falls back to the size it is given when the JPEG's own cannot be read", () => {
@@ -193,7 +217,7 @@ describe("the logo in an import", () => {
       ],
       ["logo.gif", GIF, /it is a GIF, and a brand's logo is an SVG or a PNG/],
       ["logo.bin", Uint8Array.from([9, 9, 9, 9]), /its image is in a format this does not know/],
-      ["logo.svg", SCRIPTED_SVG, /its SVG holds a script/],
+      ["logo.svg", SCRIPTED_SVG, /its SVG has a "script" element, which a logo may not/],
     ];
     for (const [name, bytes, why] of cases) {
       const done = await importFixture(
@@ -210,6 +234,54 @@ describe("the logo in an import", () => {
       ).toMatch(why);
       expect(done.json("brand.json").logos, name).toBeUndefined();
     }
+  });
+
+  /** The logo is the one picture on the master, in a corner, and it is this SVG. */
+  const logoSvg = (text: string) =>
+    importFixture(
+      make,
+      withPictures([pic({ x: 90, y: 5, w: 5, h: 9 }, { name: "Logo", media: "logo.svg" })], {
+        "logo.svg": new TextEncoder().encode(text),
+      }),
+    );
+  const whyLogoLeftOut = (done: Awaited<ReturnType<typeof logoSvg>>) =>
+    done.report.left.find((item) => item.what === 'The picture "Logo" on the slide master')?.why;
+
+  // The SVGs that are not found to be SVGs at all (no <svg then a space) are left out for that reason instead.
+  it.each(
+    HOSTILE_SVGS.filter(
+      ([name]) => !["no SVG at all", "an event handler with no space before it"].includes(name),
+    ),
+  )("is left out, with the reason, when its SVG has %s", async (name, text, problem) => {
+    const done = await logoSvg(text);
+    expect(done.report.logo, name).toBeNull();
+    expect(done.json("brand.json").logos, name).toBeUndefined();
+    expect(
+      done.report.files.filter((file) => file.startsWith("logos/")),
+      name,
+    ).toEqual([]);
+    expect(whyLogoLeftOut(done), name).toMatch(
+      /^it is the smallest picture in a corner, so the logo, but its SVG has .*, which a logo may not$/,
+    );
+    expect(whyLogoLeftOut(done), name).toMatch(problem);
+  });
+
+  it("is left out when a handler is written as <svg/onload=...> after a comment that makes the file look like an SVG", async () => {
+    const done = await logoSvg(`<!-- <svg > --><svg/onload=alert(1) ${SVG_NS}><circle r="4"/></svg>`);
+    expect(done.report.logo).toBeNull();
+    expect(whyLogoLeftOut(done)).toMatch(/its SVG has markup that is not valid XML/);
+  });
+
+  it("keeps an SVG with a picture held inside it", async () => {
+    const bytes = new TextEncoder().encode(
+      `<svg ${SVG_NS} xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="${PNG_DATA}" width="1" height="1"/></svg>`,
+    );
+    const done = await importFixture(
+      make,
+      withPictures([pic({ x: 90, y: 5, w: 5, h: 9 }, { media: "logo.svg" })], { "logo.svg": bytes }),
+    );
+    expect(done.report.logo).toMatchObject({ file: "logos/logo.svg" });
+    expect(done.bytes("logos/logo.svg")).toEqual(bytes);
   });
 
   it("is left out when its image is not in the file", async () => {

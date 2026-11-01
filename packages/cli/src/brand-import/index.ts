@@ -19,7 +19,7 @@ import {
   type ThemeName,
 } from "@depthcue/core";
 import { readFonts } from "./fonts.ts";
-import { chooseLogo, formatOf, isSafeSvg, type LogoCandidate, type LogoChoice } from "./logo.ts";
+import { chooseLogo, formatOf, type LogoCandidate, type LogoChoice } from "./logo.ts";
 import {
   chromeOfMaster,
   embeddedFonts,
@@ -33,6 +33,7 @@ import {
 } from "./master.ts";
 import { OfficePackage, PackageError } from "./package.ts";
 import { buildPalette, shownRatio } from "./palette.ts";
+import { svgProblem } from "./svg.ts";
 import { buildTemplate, fillOf, type TemplateContext, type TemplateResult } from "./templates.ts";
 import { DEFAULT_COLOR_MAP, resolveColor } from "./theme.ts";
 import type { ImportReport, Left } from "./types.ts";
@@ -338,9 +339,8 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
           why: `its picture is in a format a template's background cannot be (${what}); use PNG, JPEG, WebP or SVG`,
         };
       }
-      if (ext === "svg" && !isSafeSvg(new TextDecoder().decode(data))) {
-        return { why: "its SVG holds a script or a reference to something outside the file" };
-      }
+      const problem = ext === "svg" ? svgProblem(new TextDecoder().decode(data)) : undefined;
+      if (problem) return { why: `its SVG has ${problem}, which a template's background may not` };
       const known = imageFiles.get(part);
       if (known) return { file: known };
       let file = `images/${imageStem(part)}.${ext}`;

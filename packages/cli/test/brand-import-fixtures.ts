@@ -231,6 +231,108 @@ export const svg = (body = '<circle cx="5" cy="5" r="4"/>'): Uint8Array =>
 /** An SVG with a script in it, which a logo may not have. */
 export const SCRIPTED_SVG: Uint8Array = svg('<script>alert(1)</script><circle cx="5" cy="5" r="4"/>');
 
+export const SVG_NS = 'xmlns="http://www.w3.org/2000/svg"';
+export const SVG_XLINK = 'xmlns:xlink="http://www.w3.org/1999/xlink"';
+export const PNG_DATA = `data:image/png;base64,${Buffer.from(PNG).toString("base64")}`;
+
+/** SVGs a browser would run something from, or fetch something for, and what is wrong with each. */
+export const HOSTILE_SVGS: Array<[string, string, RegExp]> = [
+  ["a script", `<svg ${SVG_NS}><script>x()</script></svg>`, /a "script" element/],
+  [
+    "a script under another prefix",
+    `<svg ${SVG_NS} xmlns:s="http://www.w3.org/2000/svg"><s:script>alert(document.domain)</s:script><circle r="4"/></svg>`,
+    /a "script" element/,
+  ],
+  ["a foreignObject", `<svg ${SVG_NS}><foreignObject/></svg>`, /a "foreignObject" element/],
+  [
+    "an HTML script in a foreignObject under a prefix",
+    `<svg ${SVG_NS} xmlns:s="http://www.w3.org/2000/svg"><s:foreignObject><body xmlns="http://www.w3.org/1999/xhtml"/></s:foreignObject></svg>`,
+    /a "foreignObject" element/,
+  ],
+  [
+    "an animation that sets a link",
+    `<svg ${SVG_NS}><set attributeName="href" to="javascript:x()"/></svg>`,
+    /a "set" element/,
+  ],
+  [
+    "a link to javascript: written with a character reference",
+    `<svg ${SVG_NS} ${SVG_XLINK}><a xlink:href="&#106;avascript:alert(1)"><circle r="4"/></a></svg>`,
+    /a link to "javascript:alert\(1\)", which is outside the file/,
+  ],
+  [
+    "a link to javascript: after white space",
+    `<svg ${SVG_NS}><a href="&#10;  javascript:x()"/></svg>`,
+    /a link to "javascript:x\(\)"/,
+  ],
+  [
+    "an image from a web address",
+    `<svg ${SVG_NS} viewBox="0 0 10 10"><image href="https://tracker.example/p.png" width="10" height="10"/></svg>`,
+    /a link to "https:\/\/tracker\.example\/p\.png", which is outside the file/,
+  ],
+  [
+    "an image from a web address, in the xlink namespace under another prefix",
+    `<svg ${SVG_NS} xmlns:q="http://www.w3.org/1999/xlink"><image q:href="//tracker.example/p.png"/></svg>`,
+    /a link to "\/\/tracker\.example\/p\.png"/,
+  ],
+  [
+    "a use of another file",
+    `<svg ${SVG_NS}><use href="other.svg#mark"/></svg>`,
+    /a link to "other\.svg#mark", which is outside the file/,
+  ],
+  [
+    "an SVG held in a link, which can hold more of these",
+    `<svg ${SVG_NS}><image href="data:image/svg+xml;base64,PHN2Zy8+"/></svg>`,
+    /a link to "data:image\/svg\+xml;base64,PHN2Zy8\+"/,
+  ],
+  [
+    "a style that imports another",
+    `<svg ${SVG_NS} viewBox="0 0 10 10"><style>@import url(https://tracker.example/x.css);</style><circle r="4"/></svg>`,
+    /a style with "@import"/,
+  ],
+  [
+    "a style that loads a picture from a web address",
+    `<svg ${SVG_NS}><style><![CDATA[.a { fill: url("https://tracker.example/p.svg#a"); }]]></style></svg>`,
+    /a style that loads "https:\/\/tracker\.example\/p\.svg#a", which is outside the file/,
+  ],
+  [
+    "a style attribute that loads one",
+    `<svg ${SVG_NS}><rect style="fill:url(//tracker.example/p.svg#a)"/></svg>`,
+    /a style that loads "\/\/tracker\.example\/p\.svg#a"/,
+  ],
+  [
+    "a fill that loads one",
+    `<svg ${SVG_NS}><rect fill="url('http://tracker.example/p.svg#a') red"/></svg>`,
+    /a style that loads "http:\/\/tracker\.example\/p\.svg#a"/,
+  ],
+  [
+    "a style written with an escape",
+    `<svg ${SVG_NS}><style>.a{background:\\75rl(https://tracker.example/x)}</style></svg>`,
+    /a style with "\\"/,
+  ],
+  ["an event handler", `<svg ${SVG_NS}><rect onload="x()"/></svg>`, /an event handler \("onload"\)/],
+  [
+    "an event handler under a prefix, after a newline",
+    `<svg ${SVG_NS} xmlns:s="urn:s"><rect\n s:onclick = "x()"/></svg>`,
+    /an event handler \("s:onclick"\)/,
+  ],
+  [
+    "an event handler with no space before it",
+    '<svg/onload=alert(1) xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>',
+    /markup that is not valid XML/,
+  ],
+  [
+    "an entity declared",
+    `<!DOCTYPE svg [<!ENTITY x "y">]><svg ${SVG_NS}>&x;</svg>`,
+    /a DOCTYPE with declarations/,
+  ],
+  [
+    "a linked style sheet",
+    `<?xml-stylesheet href="https://tracker.example/x.css" type="text/css"?><svg ${SVG_NS}/>`,
+    /a linked style sheet/,
+  ],
+  ["no SVG at all", `<html ${SVG_NS}><body/></html>`, /"html" as its root element/],
+];
+
 // ---------------------------------------------------------------------------------------------- the parts
 
 const emu = (percent: number, of: number): number => Math.round((percent / 100) * of);

@@ -6,6 +6,7 @@
 import type { Brand } from "@depthcue/core";
 import type { OfficePackage, Relationship } from "./package.ts";
 import type { Box, Shape } from "./shapes.ts";
+import { svgProblem } from "./svg.ts";
 import { child, find } from "./xml.ts";
 
 type ChromeLogo = NonNullable<NonNullable<Brand["chrome"]>["logo"]>;
@@ -103,11 +104,6 @@ export function formatOf(bytes: Uint8Array): ImageFormat {
   if (/<svg[\s>]/i.test(head)) return "svg";
   return "unknown";
 }
-
-/** What an SVG may not contain to be a logo on a slide: script, or anything that reaches outside the file. */
-const UNSAFE_SVG = /<script|<foreignObject|<!ENTITY|<!DOCTYPE[^>]*\[|javascript:|\son[a-z]+\s*=/i;
-
-export const isSafeSvg = (text: string): boolean => !UNSAFE_SVG.test(text);
 
 /** The pixel size of a JPEG, from its first start-of-frame marker. */
 export function jpegSize(bytes: Uint8Array): { w: number; h: number } | undefined {
@@ -231,11 +227,8 @@ export async function chooseLogo(
   const from = `${nameOf(shape)} on ${where}${image.cropped ? ", its crop is not applied" : ""}`;
   if (format === "png") return { logo: { ...base, file: "logos/logo.png", bytes, from }, skipped };
   if (format === "svg") {
-    if (!isSafeSvg(new TextDecoder().decode(bytes))) {
-      return refuse(
-        "its SVG holds a script or a reference to something outside the file, which a logo may not",
-      );
-    }
+    const problem = svgProblem(new TextDecoder().decode(bytes));
+    if (problem) return refuse(`its SVG has ${problem}, which a logo may not`);
     return { logo: { ...base, file: "logos/logo.svg", bytes, from }, skipped };
   }
   if (format === "jpeg") {

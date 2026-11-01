@@ -4,6 +4,7 @@ import { importBrand } from "../src/brand-import/index.ts";
 import { frameOf, trimmed } from "../src/brand-import/templates.ts";
 import {
   EMF,
+  HOSTILE_SVGS,
   importFixture,
   jpeg,
   type LayoutSpec,
@@ -11,7 +12,10 @@ import {
   MASTER,
   type PackageSpec,
   PNG,
+  PNG_DATA,
   type ShapeSpec,
+  SVG_NS,
+  SVG_XLINK,
   temporaryFolders,
   writeFixture,
 } from "./brand-import-fixtures.ts";
@@ -579,6 +583,38 @@ describe("the background of a layout", () => {
     expect(done.bytes("images/photo.jpg")).toEqual(bytes);
     expect(done.report.templates[0]?.background).toBe("images/photo.jpg under a 65% bg scrim");
     expect(done.report.files).toContain("images/photo.jpg");
+  });
+
+  it("is a picture in images/ when it is an SVG with nothing in it that reaches outside the file", async () => {
+    const bytes = new TextEncoder().encode(
+      `<svg ${SVG_NS} ${SVG_XLINK}><defs><linearGradient id="g"/></defs><rect width="1" height="1" fill="url(#g)"/><image xlink:href="${PNG_DATA}" width="1" height="1"/></svg>`,
+    );
+    const { done, template } = await backgroundOf(
+      { picture: "back.svg" },
+      { media: { "logo.png": PNG, "back.svg": bytes } },
+    );
+    expect(template.background).toEqual({ color: "bg", image: "images/back.svg", scrim: 65 });
+    expect(done.bytes("images/back.svg")).toEqual(bytes);
+  });
+
+  // An SVG with no `<svg ` in it is not found to be an SVG at all, so it is left out as a format this does not know.
+  it.each(
+    HOSTILE_SVGS.filter(
+      ([name]) => !["no SVG at all", "an event handler with no space before it"].includes(name),
+    ),
+  )("is left out, and reported, when the picture is an SVG with %s", async (name, text, problem) => {
+    const { template, left, done } = await backgroundOf(
+      { picture: "back.svg" },
+      { media: { "logo.png": PNG, "back.svg": new TextEncoder().encode(text) } },
+    );
+    expect(template.background, name).toBeUndefined();
+    expect(left, name).toHaveLength(1);
+    expect(left[0]?.why, name).toMatch(/^its SVG has .*, which a template's background may not$/);
+    expect(left[0]?.why, name).toMatch(problem);
+    expect(
+      done.report.files.filter((file) => file.startsWith("images/")),
+      name,
+    ).toEqual([]);
   });
 
   it("shares one image file between layouts that paint the same picture", async () => {
