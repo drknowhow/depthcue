@@ -8,13 +8,15 @@
 import type { FromSchema } from "json-schema-to-ts";
 import { closest, explain } from "./diagnostics.ts";
 import type { Doc } from "./doc.ts";
-import { validateCommentOps, validateComments } from "./generated/validators.js";
 import { canonicalJson, sha256Hex } from "./revision.ts";
 import { COMMENTS_FORMAT, commentOpsSchema, commentsSchema } from "./schema.ts";
+import { schemaValidator } from "./schemacheck.ts";
 import type { Diagnostic } from "./types.ts";
 
 /** Where the comments of a deck are kept: next to `deck.json`, and not under `scenes/` or `assets/`. */
 export const COMMENTS_FILE = "comments.json";
+const validateComments = /* @__PURE__ */ schemaValidator(commentsSchema);
+const validateCommentOps = /* @__PURE__ */ schemaValidator(commentOpsSchema);
 
 export type CommentsFile = FromSchema<typeof commentsSchema>;
 export type Comment = CommentsFile["comments"][number];

@@ -13,14 +13,16 @@ import { type BrandData, readBrand } from "./brandcheck.ts";
 import { checkData } from "./data.ts";
 import { explain } from "./diagnostics.ts";
 import { checkFrames } from "./frames.ts";
-import { validateDeck, validateScene } from "./generated/validators.js";
 import { checkReferences } from "./references.ts";
 import { deckSchema, sceneSchema } from "./schema.ts";
+import { schemaValidator } from "./schemacheck.ts";
 import { checkPalette, checkTones, styleOf } from "./style.ts";
 import type { Brand, Deck, Diagnostic, Scene } from "./types.ts";
 import { checkDeckVersion, checkSceneVersion, checkText } from "./versions.ts";
 
 export const MANIFEST_FILE = "deck.json";
+const validateDeck = /* @__PURE__ */ schemaValidator(deckSchema);
+const validateScene = /* @__PURE__ */ schemaValidator(sceneSchema);
 export const scenePath = (id: string): string => `scenes/${id}.json`;
 
 /**

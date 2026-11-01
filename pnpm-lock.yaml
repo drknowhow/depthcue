@@ -46,11 +46,10 @@ importers:
         version: 1.64.0
 
   packages/core:
-    dependencies:
+    devDependencies:
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
-    devDependencies:
       json-schema-to-ts:
         specifier: ^3.1.1
         version: 3.1.1

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { staleFiles } from "./generated.mjs";
 
@@ -22,13 +22,17 @@ describe("staleFiles", () => {
   });
 });
 
-describe("generated validators", () => {
-  const code = readFileSync(new URL("../packages/core/src/generated/validators.js", import.meta.url), "utf8");
+describe("core's validators", () => {
+  const core = new URL("../packages/core/", import.meta.url);
 
-  // Ajv's standalone output reaches for its runtime through require() when a keyword needs a helper, such as
-  // code-point string length. In an ES module that fails in the browser and drags Ajv into the bundle.
-  it("is self-contained: no require() and no imports", () => {
-    expect(code).not.toMatch(/\brequire\(/);
-    expect(code).not.toMatch(/^\s*import\s/m);
+  // Core checks files with src/schemacheck.ts, which reads the schema objects at run time. Ajv's compiled code for the
+  // same schemas cost the editor's script more than all the rest of core added to it, so Ajv is for tests only.
+  it("are not compiled: no generated module, and no Ajv in core's source or dependencies", () => {
+    expect(readdirSync(new URL("src/", core))).not.toContain("generated");
+    for (const name of readdirSync(new URL("src/", core)).filter((file) => file.endsWith(".ts"))) {
+      expect(readFileSync(new URL(`src/${name}`, core), "utf8"), name).not.toMatch(/from "ajv/);
+    }
+    const manifest = JSON.parse(readFileSync(new URL("package.json", core), "utf8"));
+    expect(Object.keys(manifest.dependencies ?? {})).not.toContain("ajv");
   });
 });

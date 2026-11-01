@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { staleFiles } from "./generated.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const DIRECTORIES = ["packages/core/schema", "packages/core/src/generated"];
+// The published JSON Schemas. Core compiles nothing from them: it reads the same objects at run time.
+const DIRECTORIES = ["packages/core/schema"];
 const FILES = ["brand/tokens.css"];
 // Every SVG in brand/ is drawn by tools/build-brand.mjs, so a new one is covered without being listed here.
 const SVG_DIRECTORIES = ["brand"];

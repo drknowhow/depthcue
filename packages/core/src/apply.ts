@@ -1,13 +1,15 @@
 import { closest, explain } from "./diagnostics.ts";
 import { checkChanges, type Doc, revisionOf, sceneRevision } from "./doc.ts";
 import type { Frame } from "./frames.ts";
-import { validateOps } from "./generated/validators.js";
 import { escapeText } from "./inline.ts";
 import { canonicalJson } from "./revision.ts";
 import { ID_PATTERN, opsSchema, SCHEMA_VERSION } from "./schema.ts";
+import { schemaValidator } from "./schemacheck.ts";
 import type { Block, BlockStyle, Brand, Deck, Diagnostic, Scene, Template } from "./types.ts";
 import { scenePath } from "./validate.ts";
 import { blockNeeds, raiseDeck, raiseScene, readsMarkup, upgradeScene, versionAtLeast } from "./versions.ts";
+
+const validateOps = /* @__PURE__ */ schemaValidator(opsSchema);
 
 /** Properties to write; a null value deletes an optional property. */
 type Nullable<T> = { [K in keyof T]?: T[K] | null };

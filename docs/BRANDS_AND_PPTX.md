@@ -187,11 +187,16 @@ library, and per-block raw hex colors.
   parts in one place), `background-unmeasured` (until step 3 measures text on an image). Templates: `duplicate-id` for
   slots, `frame-off-slide`, `slots-overlap`, `unknown-style`, `style-wrong-kind` and `template-low-contrast` (text on a
   strong background is drawn in `bg`). Contrast is checked for the deck's theme.
-- **Validation.** Ajv still compiles deck, scene, ops and comments. brand.json and templates are checked by
-  `schemacheck.ts`, a small interpreter of the JSON-schema subset those two schemas use, because their compiled Ajv
-  code cost about 10 KB gzip of core and 5 KB brotli of the editor. Its errors equal Ajv's (path, keyword, params,
-  order), which `schemacheck.test.ts` holds by running both on the fixture and on thousands of one-change mutations;
-  a keyword it does not know throws.
+- **Validation.** Nothing is compiled any more. `schemacheck.ts` reads the schema objects of schema.ts at run time
+  and checks deck.json, scenes, operations, comments, comment operations, brand.json and templates with them. With
+  the 0.4 schema, Ajv's generated validators had pushed the editor's script to 97.2 KB brotli; without them it is
+  88.6 KB. The checker reports the errors Ajv 8 reported with the old options (keyword, params, instance and schema
+  paths, in order), so every diagnostic is unchanged; `schemacheck.test.ts` holds that by running both on every
+  fixture and on about 65,000 one-change and seeded several-change copies of each kind of file, and checks that the
+  copies reach every keyword. It knows only the keywords the schemas use (`oneOf` only with a `discriminator`,
+  `uniqueItems` only on scalar items) and throws on any other. Ajv is a dev dependency of core now; `pnpm schema`
+  writes only the published `.schema.json` files, which did not change, and `check:generated` still fails when one
+  is stale. Checking a scene takes about 20 microseconds instead of 0.5.
 - **Operations.** `brand.set` makes a brand (it needs `id` and `name`), edits brand.json keys (null deletes one) and,
   with `set: null`, takes the brand off: deck.json loses `brand`, and brand.json and the template files are removed;
   fonts, logos and images stay on disk. The id never changes. `deck.set` refuses `brand`, `brand.set` refuses `styles`.
@@ -215,7 +220,5 @@ library, and per-block raw hex colors.
   and 8.
 - **Player.** A template scene draws each slot as a dashed box with its id, its blocks stacked inside, until step 3
   places slots at their frames. The fixture's chart-and-note scene overflows that stack in `depthcue render`.
-- **Sizes.** Core runtime 45.2 to 56.3 KB gzip (limit 60). Player script 10.1 to 10.3 KB (the placeholder), core code
-  in the player 5.1 to 4.9 KB, exported page 13.3 to 13.2 KB. The editor script went from 89.3 to 97.2 KB brotli,
-  over its 90 KB limit: the editor bundles all of core, and the 0.4 schema, checks and built-ins come with it. Not
-  fixed in this step; the options are in the PR.
+- **Sizes.** Core runtime 45.2 to 38.2 KB gzip (limit 60). Editor script 89.3 to 88.6 KB brotli (limit 90). Player
+  script 10.1 to 10.3 KB (the placeholder), core code in the player 5.1 to 4.9 KB, exported page 13.3 to 13.2 KB.
