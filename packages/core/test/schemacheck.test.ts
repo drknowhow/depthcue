@@ -444,7 +444,9 @@ describe("schemaValidator", () => {
       ["allOf", { allOf: [true] }],
       ["allOf", { allOf: { type: "string" } }],
       ["oneOf", { type: "object", discriminator: { propertyName: "kind" }, oneOf: [branch, false] }],
+      // biome-ignore lint/suspicious/noThenProperty: then and else are JSON Schema keywords here, not a thenable
       ["if", { if: true, then: { type: "string" } }],
+      // biome-ignore lint/suspicious/noThenProperty: as above
       ["then", { if: { type: "string" }, then: false }],
       ["else", { if: { type: "string" }, else: true }],
       ["dependencies", { type: "object", dependencies: { a: { required: ["b"] } } }],
