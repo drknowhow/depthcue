@@ -729,6 +729,66 @@ describe("the footer, the slide number and the date", () => {
     expect(done.json("brand.json").chrome.footer).toEqual({ text: "Words from the layout", place: "center" });
   });
 
+  describe("when only the slides of a presentation have words", () => {
+    const words = (text?: string): ShapeSpec[] => [
+      { kind: "ph", type: "ftr", idx: 3, ...(text === undefined ? {} : { text }) },
+    ];
+    const emptyMaster = master(footer({ x: 34, y: 92, w: 32, h: 5 }));
+    const onSlides = (
+      shapes: PackageSpec["slideShapes"],
+      slides = 3,
+      extra: PackageSpec = {},
+    ): PackageSpec => ({
+      ...emptyMaster,
+      kind: "pptx",
+      slides,
+      ...(shapes ? { slideShapes: shapes } : {}),
+      ...extra,
+    });
+
+    it("takes the footer's words from the first slide that has some, and says so", async () => {
+      const done = await importFixture(make, onSlides({ 1: words(), 2: words("From the second slide") }));
+      expect(done.json("brand.json").chrome.footer).toEqual({
+        text: "From the second slide",
+        place: "center",
+      });
+      expect(done.report.notes).toContain(
+        'The footer text "From the second slide" is the first one found on the slides (up to the first 20 are read): the master and its layouts have none.',
+      );
+      expect(done.report.notes.join("\n")).not.toContain("has a footer placeholder with no text");
+    });
+
+    it("prefers a layout's words to a slide's, and does not read the slides for them", async () => {
+      const layouts = LAYOUTS.map((layout, at) =>
+        at === 0 ? { ...layout, shapes: [...layout.shapes, ...words("From the layout")] } : layout,
+      );
+      const done = await importFixture(make, onSlides({ 1: words("From the slide") }, 3, { layouts }));
+      expect(done.json("brand.json").chrome.footer.text).toBe("From the layout");
+      expect(done.report.notes.join("\n")).not.toContain("is the first one found on the slides");
+    });
+
+    it("reads the first 20 slides and no more", async () => {
+      const inside = await importFixture(make, onSlides({ 20: words("Slide twenty") }, 30));
+      expect(inside.json("brand.json").chrome.footer.text).toBe("Slide twenty");
+      const beyond = await importFixture(make, onSlides({ 21: words("Slide twenty-one") }, 30));
+      expect(beyond.json("brand.json").chrome?.footer).toBeUndefined();
+      expect(beyond.report.notes).toContain(
+        "The master has a footer placeholder with no text in it, so the brand has no footer line; the words are typed on each slide in PowerPoint.",
+      );
+    });
+
+    it("has no footer line, and says so, when no slide has words either", async () => {
+      const done = await importFixture(make, onSlides({ 1: words(), 3: words("  ") }));
+      expect(done.json("brand.json").chrome?.footer).toBeUndefined();
+      expect(done.report.notes.join("\n")).toContain("has a footer placeholder with no text in it");
+    });
+
+    it("leaves a template, which has no slides, as it was", async () => {
+      const done = await importFixture(make, { ...emptyMaster, kind: "potx" });
+      expect(done.json("brand.json").chrome?.footer).toBeUndefined();
+      expect(done.report.notes.join("\n")).not.toContain("is the first one found on the slides");
+    });
+  });
   it("has no footer line when no placeholder has words, and says so", async () => {
     const done = await importFixture(make, master(footer({ x: 34, y: 92, w: 32, h: 5 })));
     expect(done.json("brand.json").chrome?.footer).toBeUndefined();

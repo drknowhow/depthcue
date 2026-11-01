@@ -29,6 +29,8 @@ import {
   type Master,
   readLayout,
   readMaster,
+  readSlideShapes,
+  SLIDES_READ,
   slideSize,
 } from "./master.ts";
 import { OfficePackage, PackageError } from "./package.ts";
@@ -309,13 +311,20 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
   if (logo.logo) files.set(logo.logo.file, logo.logo.bytes);
 
   // Chrome: the logo's place, and the master's footer and slide number.
-  const parts = master
-    ? chromeOfMaster(
-        master,
-        layouts.map((layout) => layout.shapes),
-        slide.w,
-      )
-    : undefined;
+  const onLayouts = layouts.map((layout) => layout.shapes);
+  let parts = master ? chromeOfMaster(master, onLayouts, slide.w) : undefined;
+  // The words of a footer are often only on the slides, which a presentation has and a template or theme does not.
+  if (master && parts && !parts.footer && master.shapes.some((shape) => shape.placeholder?.type === "ftr")) {
+    const onSlides = await readSlideShapes(pkg, found.slides);
+    // The layouts have no words here, or the first pass would have found them.
+    const withSlides = chromeOfMaster(master, onSlides, slide.w);
+    if (withSlides.footer) {
+      parts = withSlides;
+      notes.push(
+        `The footer text "${withSlides.footer.text}" is the first one found on the slides (up to the first ${SLIDES_READ} are read): the master and its layouts have none.`,
+      );
+    }
+  }
   notes.push(...(parts?.notes ?? []));
   const chrome = {
     ...(logo.logo ? { logo: { corner: logo.logo.corner, size: logo.logo.size } } : {}),

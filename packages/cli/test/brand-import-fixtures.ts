@@ -147,6 +147,8 @@ export interface PackageSpec {
   embeddedFonts?: string[];
   /** How many slides, each on the first layout. */
   slides?: number;
+  /** What is on a slide, by its number from 1; the others are empty. */
+  slideShapes?: Record<number, ShapeSpec[]>;
   /** Masters beyond the first. */
   extraMasters?: number;
   /** Theme variants, as a .thmx carries. */
@@ -699,7 +701,7 @@ export function partsOf(spec: PackageSpec = {}): Map<string, string | Uint8Array
   for (let n = 1; n <= slides; n++) {
     parts.set(
       `${base}/slides/slide${n}.xml`,
-      xml(`<p:sld ${NS}><p:cSld>${treeXml([], size, new Map())}</p:cSld></p:sld>`),
+      xml(`<p:sld ${NS}><p:cSld>${treeXml(spec.slideShapes?.[n] ?? [], size, new Map())}</p:cSld></p:sld>`),
     );
     parts.set(
       `${base}/slides/_rels/slide${n}.xml.rels`,

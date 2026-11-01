@@ -180,6 +180,18 @@ export async function readLayout(pkg: OfficePackage, part: string): Promise<Layo
   };
 }
 
+/** How many slides are read for words the master and its layouts do not have: the first ones, in the deck's order. */
+export const SLIDES_READ = 20;
+
+/** The shapes of the first `SLIDES_READ` of these slides. A part that is not a slide is left out. */
+export async function readSlideShapes(pkg: OfficePackage, slides: readonly string[]): Promise<Shape[][]> {
+  const out: Shape[][] = [];
+  for (const part of slides.slice(0, SLIDES_READ)) {
+    const root = await pkg.xml(part);
+    if (root?.name === "sld") out.push(shapesOf(descend(root, "cSld", "spTree")));
+  }
+  return out;
+}
 /** Where a footer or a slide number sits along the bottom: the third of the slide its center is in. */
 export const placeOf = (shape: Shape, slideWidth: number): "start" | "center" | "end" | undefined => {
   if (!shape.box) return undefined;
