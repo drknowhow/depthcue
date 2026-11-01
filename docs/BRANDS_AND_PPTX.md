@@ -326,3 +326,79 @@ Found, not fixed (older than the brand work):
 - **A scene named `constructor` crashes the review.** It passes the id pattern; `diffDocs` and `acceptChanges` read
   `base.scenes[id]` and get Object's constructor, then throw. Location: `packages/core/src/review.ts`, the scene
   lookups at lines 222, 237, 349, 394 and 397. Fix: the `own()` lookup this step added for kits.
+
+## Step 3 record: the brand in the player
+
+- **One path to the page.** The server answers `/look.json` with `lookOf(doc)` (404 while the deck has errors, and the
+  page then draws from `deck.json` alone, as before). The export works the look out once and puts it in
+  `ExportData.look` (the only field `exported.ts` gained). The player never imports `lookOf` or the registry; it is
+  given a `DeckLook`. `applyLook(element, look, base)` sets the theme and font pair as attributes and every color,
+  the six chart colors and the brand's faces as custom properties, and takes off what an earlier look set that this one
+  does not. A `Look` is a deck's theme, palette and fonts, or a `DeckLook`; a deck before 0.4 is drawn exactly as
+  before. `legacy.test.ts` compares the DOM of five old decks with and without a look, and the e2e file compares
+  pixels of the v0-1, v0-2, v0-3, demo and charts decks with and without one.
+- **Faces.** `@font-face` rules go in a constructed stylesheet (`adoptedStyleSheets`), because the page's policy
+  (`style-src 'self'`) refuses a `<style>` element. A face is a safe family name and a file inside `brand/`
+  (`brandUrl`); a family name with a quote, backslash, semicolon, brace or angle bracket is left out. The heading
+  weight is the file weight nearest 700 (a tie takes the lighter), set as `--dc-display-weight`. Without constructed
+  stylesheets the built-in pair stays. `faceCss`, `brandUrl` and `lookKey` are exported for the editor and the tests.
+- **Template scenes.** Each slot sits at its frame (percent of the stage), its blocks stacked by `valign`; a claim slot
+  draws the scene's claim as one heading with its evidence linked by `data-evidence`; an overlay sits at its frame
+  over the template. A slot's `style` and a block's own `style` give fill, border, edge, radius, case and weight, with
+  reversed text (the theme's background color) on a strong fill. Brand and block styles go through the CSSOM, never an
+  inline `style` attribute. A template's background (a color, or an image under a scrim) and its chrome (`minimal` or
+  `none`) are drawn too. Chrome is the logo, footer, slide number and accent bar in the corners and edges the brand
+  names; it is never drawn over content on the three layouts, which grow their padding by `--room` (4.3, 5.3 or 6.7 em)
+  when the logo is in a top corner. On a strong background the logo is drawn on a plate of the theme's background color
+  instead of a second logo file: a brand's logo for the other theme is not chosen by the player.
+- **Sources on template scenes** are one line at the foot, above the footer, instead of the block under the content;
+  under 640 px of container width it falls back to a block with a rule above.
+- **Export.** `index.html` carries the look; `fonts/<pair>.css` goes for the look's pair (a brand's faces load over it)
+  and the files under `brand/` are copied only when the look uses them: its faces, the logo for the deck's theme and
+  the images of the templates in use. `BRAND_FILES` in `serve.ts` is the one whitelist for the server and the copy
+  (fonts, logos, images; never `brand.json` or templates). `--json` lists `brandFiles`. An export opened in a real
+  browser with every request that is not a file blocked loads the faces.
+- **Render.** `depthcue render` draws the brand and `layout.ts` measures it: `slot-overflow` (a block outside its
+  slot, measured on the block's own rectangle), `chrome-overlap` (the brand's logo, footer, number or accent over a
+  block, with the overlap in pixels) and `background-low-contrast`. For the last, the page is photographed a second time with its text made transparent, and
+  each line's contrast is measured on the pixels under it (`measurePicture`), so text on a template's picture is
+  judged on what is behind it; with scrim 0 a bright picture fails, with scrim 90 or a dark picture it passes.
+  `brandcheck.ts` now says in `background-unmeasured` what render does (wording only).
+- **Editor.** The canvas, the strip and the storyboard all draw from `lookFor(doc)` (one `DeckLook` per version of the
+  document), so they show the brand the person will present. The frame now carries every color as an inline custom
+  property and `data-fonts` always, where it used to carry only the palette's and the deck's pair; the slide is the
+  same and the four Style tests that read those attributes now read the preset's value instead of nothing. Thumbnails
+  draw logo, footer and accent but not the slide number (the budget below).
+- **Sizes (brotli bytes, main to now).** Player script 10,539 to 12,009; player styles 4,862 to 5,802; exported page
+  script 13,641 to 15,018 (limit 14,336 raised to 16,384, as approved); core code in the player 5,080 (limit 6,144);
+  editor script 90,368 to 92,106 (limit 92,160: 54 bytes of room); editor brand checks 3,328; core runtime gzip
+  41,084 (no change). The editor is what is tight: Brotli moves 40 to 60 bytes on a change of one name, so the next
+  step to touch it should look for room first. What bought room: no `data-st` attribute on styled blocks, no slide
+  number on a thumbnail, and no `format("woff2")` hint in `@font-face`.
+- **Fixture.** `v0-4-brand` (Harbor Analytics) has two faces (Harbor Display, Harbor Sans) in two real woff2 files
+  with their OFL text, a logo, two templates (cover, chart-and-note), two styles and three scenes. The cover template has chrome `none`
+  (its light logo was unreadable on teal), the chart-and-note title is 76 wide so it clears the logo, and the logo is
+  176 wide so "Analytics" is not cut.
+  Scenarios beyond it (section, statement, two-column, a strong fill, a picture, a dark and a bright background) are
+  built in temporary copies by `brand-player-e2e.test.ts`, because the MCP tests pin the fixture's three scenes.
+- **Decided.** Heading weight nearest 700; evidence-linked blocks on a template scene get `data-evidence`; the
+  presenter has no scene preview, so its colors and faces come through `applyLook` like the page's; the logo plate
+  instead of a logo variant (see Risks); sources as a foot line; thumbnails without the number.
+- **Risks for later steps.**
+  - A logo in a top corner adds top padding on a layout scene, so a claim-evidence slide with a chart and sources that
+    just fit before can overflow by about 14 px; render says `overflow`. The fix is a smaller logo or a shorter slide,
+    not a different padding.
+  - The plate is not a design answer for a brand whose logo only works on one background: a logo for dark backgrounds
+    (`logos` per theme) is not read for a template's strong fill. Step 8's brand panel should say which logo goes where.
+  - A font's licence text (the fixture's `brand/fonts/OFL.txt`) is not copied into an export, because `BRAND_FILES`
+    lists only font, logo and image files. Decide before a brand ships a font whose licence asks for its text to go
+    with every copy.
+  - `packages/cli/src/pptx/measure.ts` counts the logo `<img>` as a picture; step 5 should skip `.dc-chrome img`.
+  - The human summary of `depthcue export` in `cli/src/index.ts` does not list the brand files (`--json` does); it is
+    outside this step's files. `docs/export.md` still gives the old exported-page budget in its table.
+  - The editor has 54 bytes of room under its limit.
+- **Outside the write-set.** `packages/editor/src/storyboard.ts` (the staleness key and the look, as `strip.ts`);
+  `packages/core/test/brand.test.ts` and `packages/editor/test/brandchecks.test.ts` (the `background-unmeasured`
+  wording); `packages/editor/test/deckpanel.test.ts` and `packages/cli/test/edit-style-e2e.test.ts` (the inline colors
+  and `data-fonts` above); `packages/cli/test/layout.test.ts`, `export-brand.test.ts` and `serve-brand.test.ts` (the
+  new checks, the export and the server).

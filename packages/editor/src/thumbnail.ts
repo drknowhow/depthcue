@@ -1,5 +1,5 @@
 import { type DeckLook, type Doc, lookOf, type Scene } from "@depthcue/core";
-import { applyLook, h, type Look, lookKey, renderScene } from "@depthcue/player";
+import { applyLook, h, type Look, renderScene } from "@depthcue/player";
 
 /** A thumbnail draws the real slide at this width and scales it down, so it shows the true layout. editor.css sets the same size. */
 const STAGE_WIDTH = 1280;
@@ -34,16 +34,13 @@ export function lookFor(doc: Doc): DeckLook {
   return made;
 }
 
-/** The key a drawing is stale by: the look, and the slide's number where the brand draws one on every slide. */
-export const drawKey = (look: Look, number: number): string =>
-  "colors" in look && look.chrome?.number ? `${lookKey(look)}#${number}` : lookKey(look);
-
 /**
  * The slide as a picture: the real scene at full size, inert so nothing in it takes focus or a click, to be scaled by
- * the `--thumb-k` of whatever holds it. The strip and the storyboard both draw it, so they show the same thing.
+ * the `--thumb-k` of whatever holds it. The strip and the storyboard both draw it, so they show the same thing. It has
+ * the brand's logo, footer and accent but not the slide number, which a thumbnail this small could not show.
  */
-export function thumbnailFrame(scene: Scene, look: Look, number = 1): HTMLElement {
-  const context = { assetBase: "", number, ...("colors" in look ? { look } : {}) };
+export function thumbnailFrame(scene: Scene, look: Look): HTMLElement {
+  const context = { assetBase: "", ...("colors" in look ? { look } : {}) };
   const view = h("div", { class: "dc-view" }, renderScene(scene, context));
   for (const node of view.querySelectorAll<HTMLElement>("[data-gated]")) node.dataset.revealed = "true";
   for (const video of view.querySelectorAll("video")) video.controls = false;

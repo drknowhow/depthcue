@@ -6,7 +6,7 @@ import { mountPlayer, type Player } from "../src/player.ts";
 import { mountPresenterView } from "../src/presenter.ts";
 import { applyLook, faceCss, lookKey } from "../src/style.ts";
 import { demoSource } from "./helpers.ts";
-import { COLORS as THEME_COLORS, lookWith } from "./looks.ts";
+import { lookWith, COLORS as THEME_COLORS } from "./looks.ts";
 
 const COLORS = {
   bg: "#101820",
@@ -108,7 +108,10 @@ describe("applyLook with a deck's look", () => {
     const heavy = (weights: number[]) =>
       lookWith({
         faces: {
-          display: face("D", weights.map((weight) => [`brand/fonts/D-${weight}.woff2`, weight])),
+          display: face(
+            "D",
+            weights.map((weight) => [`brand/fonts/D-${weight}.woff2`, weight]),
+          ),
           body: face("B", []),
         },
       });
@@ -141,7 +144,10 @@ describe("applyLook with a deck's look", () => {
 
 describe("faceCss", () => {
   const faces = {
-    display: { family: "Harbor Display", files: [{ path: "brand/fonts/D.woff2", weight: 700, style: "normal" as const }] },
+    display: {
+      family: "Harbor Display",
+      files: [{ path: "brand/fonts/D.woff2", weight: 700, style: "normal" as const }],
+    },
     body: {
       family: "Harbor Sans",
       files: [
@@ -155,8 +161,8 @@ describe("faceCss", () => {
   it("is one font-face rule per file, with the deck's folder in front of the path, and swaps while it loads", () => {
     const css = faceCss(lookWith({ faces }), "/decks/q3");
     expect(css.split("\n")).toEqual([
-      '@font-face{font-family:"Harbor Display";src:url("/decks/q3/brand/fonts/D.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}',
-      '@font-face{font-family:"Harbor Sans";src:url("/decks/q3/brand/fonts/S.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}',
+      '@font-face{font-family:"Harbor Display";src:url("/decks/q3/brand/fonts/D.woff2");font-weight:700;font-style:normal;font-display:swap}',
+      '@font-face{font-family:"Harbor Sans";src:url("/decks/q3/brand/fonts/S.woff2");font-weight:400;font-style:normal;font-display:swap}',
       '@font-face{font-family:"Harbor Sans";src:url("/decks/q3/brand/fonts/S-Italic.otf");font-weight:400;font-style:italic;font-display:swap}',
     ]);
   });
@@ -168,13 +174,19 @@ describe("faceCss", () => {
   });
 
   it("declares a file once however many jobs the face does, and skips a path that is not a brand font", () => {
-    const same = { family: "One", files: [{ path: "brand/fonts/One.woff2", weight: 400, style: "normal" as const }] };
+    const same = {
+      family: "One",
+      files: [{ path: "brand/fonts/One.woff2", weight: 400, style: "normal" as const }],
+    };
     const css = faceCss(
       lookWith({
         faces: {
           display: same,
           body: same,
-          mono: { family: "Bad", files: [{ path: "brand/fonts/../../x.woff2", weight: 400, style: "normal" as const }] },
+          mono: {
+            family: "Bad",
+            files: [{ path: "brand/fonts/../../x.woff2", weight: 400, style: "normal" as const }],
+          },
         },
       }),
       ".",

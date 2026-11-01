@@ -1,16 +1,8 @@
 import type { Session } from "@depthcue/core";
-import { h } from "@depthcue/player";
+import { h, lookKey } from "@depthcue/player";
 import type { Count } from "./commentview.ts";
 import { type Card, cardsOf, pillsOf, type Step, sayCard, stepOfKey, stepTo } from "./storyboardview.ts";
-import {
-  createDrawQueue,
-  type Drawn,
-  drawKey,
-  fitThumbnails,
-  isStale,
-  lookFor,
-  thumbnailFrame,
-} from "./thumbnail.ts";
+import { createDrawQueue, type Drawn, fitThumbnails, isStale, lookFor, thumbnailFrame } from "./thumbnail.ts";
 
 export interface StoryboardHooks {
   /** Shows a scene on the slide. The storyboard closes itself right after. */
@@ -85,11 +77,9 @@ export function createStoryboard(session: Session, hooks: StoryboardHooks): Stor
     const tile = tiles.get(id);
     const scene = session.doc.scenes[id];
     if (!tile || !scene) return;
-    const { doc } = session;
-    const number = doc.deck.scenes.indexOf(id) + 1;
-    const look = lookFor(doc);
-    tile.thumb.replaceChildren(thumbnailFrame(scene, look, number));
-    tile.drawn = { scene, look: drawKey(look, number) };
+    const look = lookFor(session.doc);
+    tile.thumb.replaceChildren(thumbnailFrame(scene, look));
+    tile.drawn = { scene, look: lookKey(look) };
     measure();
   }
 
@@ -160,13 +150,13 @@ export function createStoryboard(session: Session, hooks: StoryboardHooks): Stor
     if (target === undefined || !live.has(target)) target = live.has(current) ? current : cards[0]?.id;
 
     const stale: string[] = [];
-    const look = lookFor(doc);
+    const looked = lookKey(lookFor(doc));
     for (const card of cards) {
       const tile = tiles.get(card.id) ?? make(card.id);
       tiles.set(card.id, tile);
       update(tile, card, current);
       const scene = doc.scenes[card.id];
-      if (scene && isStale(tile.drawn, scene, drawKey(look, card.number))) stale.push(card.id);
+      if (scene && isStale(tile.drawn, scene, looked)) stale.push(card.id);
     }
     // The scene on show is drawn first, so it is the first thing the person sees come in.
     for (const id of stale.sort((a, b) => Number(b === current) - Number(a === current))) queue.add(id);

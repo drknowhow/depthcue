@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import type { DeckLook, Scene } from "@depthcue/core";
 import { describe, expect, it } from "vitest";
-import { renderScene } from "../src/scene.ts";
-import { lookWith, SPLIT, slot, style, template } from "./looks.ts";
+import { ownOf, renderScene } from "../src/scene.ts";
 import { sceneWith } from "./helpers.ts";
+import { lookWith, SPLIT, slot, style, template } from "./looks.ts";
 
 const frame = { x: 56, y: 14, w: 38, h: 44 };
 const text = (id: string, more: Record<string, unknown> = {}) => ({
@@ -57,7 +57,9 @@ describe("a template scene", () => {
 
   it("stacks a slot's blocks in block order", () => {
     const section = draw(
-      scene({ blocks: [text("a", { slot: "left" }), text("b", { slot: "right" }), text("c", { slot: "left" })] }),
+      scene({
+        blocks: [text("a", { slot: "left" }), text("b", { slot: "right" }), text("c", { slot: "left" })],
+      }),
       withSplit(),
     );
     expect(idsIn(boxes(section)[0])).toEqual(["a", "c"]);
@@ -104,7 +106,9 @@ describe("a template scene", () => {
         summary: { id: "claim-1", text: "Demand doubled." },
         blocks: [text("a", { slot: "left" }), text("lost", { slot: "nowhere" }), text("bare")],
       }),
-      lookWith({ templates: { split: template("split", [slot("left", "body", { x: 6, y: 34, w: 42, h: 50 })]) } }),
+      lookWith({
+        templates: { split: template("split", [slot("left", "body", { x: 6, y: 34, w: 42, h: 50 })]) },
+      }),
     );
     const stack = section.querySelector(".dc-stack");
     expect(boxes(section).map((box) => box.dataset.slot)).toEqual(["left"]);
@@ -131,7 +135,14 @@ describe("a template scene the page has no look for", () => {
 describe("a block's style", () => {
   const look = withSplit({
     styles: {
-      quote: style({ font: "display", weight: "bold", case: "upper", tone: "action", size: "l", align: "center" }),
+      quote: style({
+        font: "display",
+        weight: "bold",
+        case: "upper",
+        tone: "action",
+        size: "l",
+        align: "center",
+      }),
       card: style({ fill: "surface", border: "line", edge: "start", radius: "m", pad: "l" }),
       banner: style({ fill: "action", pad: "m" }),
       lead: style({ size: "xl", weight: "bold" }),
@@ -149,7 +160,6 @@ describe("a block's style", () => {
   it("is set on the block as the attributes the stylesheet answers, left out when it says none", () => {
     const section = draw(scene({ blocks: [text("q", { slot: "right", style: "quote" })] }), look);
     const q = find(section, "q");
-    expect(q?.dataset.st).toBe("quote");
     expect(
       ["font", "weight", "case", "tone", "size", "align"].map((name) => q?.getAttribute(`data-${name}`)),
     ).toEqual(["display", "bold", "upper", "action", "l", "center"]);
@@ -162,19 +172,18 @@ describe("a block's style", () => {
       scene({ blocks: [text("a", { slot: "left" }), text("b", { slot: "left", style: "quote" })] }),
       look,
     );
-    expect(find(section, "a")?.dataset.st).toBe("card");
-    expect(find(section, "b")?.dataset.st).toBe("quote");
+    // The slot's style is the card, which fills; the block's own is the quote, which sets its case and does not fill.
+    expect(find(section, "a")?.dataset.fill).toBe("surface");
+    expect(find(section, "a")?.hasAttribute("data-case")).toBe(false);
+    expect(find(section, "b")?.dataset.case).toBe("upper");
+    expect(find(section, "b")?.hasAttribute("data-fill")).toBe(false);
   });
 
   it("gives fill, border, accent edge, radius and padding as attributes", () => {
     const a = find(draw(scene({ blocks: [text("a", { slot: "left" })] }), look), "a");
-    expect(["fill", "border", "edge", "radius", "pad"].map((name) => a?.getAttribute(`data-${name}`))).toEqual([
-      "surface",
-      "line",
-      "start",
-      "m",
-      "l",
-    ]);
+    expect(
+      ["fill", "border", "edge", "radius", "pad"].map((name) => a?.getAttribute(`data-${name}`)),
+    ).toEqual(["surface", "line", "start", "m", "l"]);
     // A fill that is the slide's own surface keeps the slide's text colors.
     expect(a?.hasAttribute("data-on")).toBe(false);
   });
@@ -214,22 +223,29 @@ describe("a block's style", () => {
       look,
     );
     const claim = find(section, "claim-1");
-    expect(claim?.dataset.st).toBe("lead");
     expect(claim?.dataset.size).toBe("xl");
     expect(claim?.dataset.weight).toBe("bold");
-    expect(find(section, "a")?.hasAttribute("data-st")).toBe(false);
+    expect(find(section, "a")?.hasAttribute("data-weight")).toBe(false);
   });
 
   it("does not take a style from the object's prototype", () => {
+    expect(ownOf(look.styles, "constructor")).toBeUndefined();
+    expect(ownOf(look.styles, "__proto__")).toBeUndefined();
+    expect(ownOf(look.styles, "card")?.fill).toBe("surface");
     const section = draw(scene({ blocks: [text("a", { slot: "right", style: "constructor" })] }), look);
-    expect(find(section, "a")?.hasAttribute("data-st")).toBe(false);
+    expect(find(section, "a")?.hasAttribute("data-weight")).toBe(false);
   });
 });
 
 describe("a template's background", () => {
   const withBackground = (background: unknown, more: Record<string, unknown> = {}) =>
     lookWith({
-      templates: { split: template("split", [slot("left", "body", { x: 6, y: 34, w: 42, h: 50 })], { background, ...more } as never) },
+      templates: {
+        split: template("split", [slot("left", "body", { x: 6, y: 34, w: 42, h: 50 })], {
+          background,
+          ...more,
+        } as never),
+      },
     });
   const body = scene({ blocks: [text("a", { slot: "left" })] });
 
@@ -279,7 +295,11 @@ describe("the brand's chrome", () => {
     lookWith({
       chrome,
       templates: {
-        split: template("split", [slot("left", "body", { x: 6, y: 34, w: 42, h: 50 })], mode ? { chrome: mode } : {}),
+        split: template(
+          "split",
+          [slot("left", "body", { x: 6, y: 34, w: 42, h: 50 })],
+          mode ? { chrome: mode } : {},
+        ),
       },
     });
 
@@ -294,9 +314,10 @@ describe("the brand's chrome", () => {
     expect(chromed.querySelector(".dc-footer")?.textContent).toBe("Harbor Studio, confidential");
     expect(chromed.querySelector(".dc-number")?.textContent).toBe("4");
     expect(chromed.querySelector<HTMLElement>(".dc-accent")?.dataset.accent).toBe("top");
-    expect(
-      [...chromed.querySelectorAll<HTMLElement>(".dc-foot")].map((foot) => foot.dataset.at),
-    ).toEqual(["start", "end"]);
+    expect([...chromed.querySelectorAll<HTMLElement>(".dc-foot")].map((foot) => foot.dataset.at)).toEqual([
+      "start",
+      "end",
+    ]);
   });
 
   it("puts a footer and a number that share a place in one cell", () => {
@@ -313,7 +334,8 @@ describe("the brand's chrome", () => {
 
   it("is hidden from a screen reader but for the logo, which says the brand's words once", () => {
     const section = draw(body, look(), { number: 1 });
-    for (const foot of section.querySelectorAll(".dc-foot")) expect(foot.getAttribute("aria-hidden")).toBe("true");
+    for (const foot of section.querySelectorAll(".dc-foot"))
+      expect(foot.getAttribute("aria-hidden")).toBe("true");
     expect(section.querySelector(".dc-accent")?.getAttribute("aria-hidden")).toBe("true");
     expect(section.querySelectorAll(".dc-chrome img")).toHaveLength(1);
     expect(section.querySelector(".dc-logo")?.getAttribute("alt")).toBe("Harbor");
@@ -336,7 +358,10 @@ describe("the brand's chrome", () => {
   it("leaves out the number when it was not told one, and a logo whose path is not a brand file", () => {
     const section = draw(body, look());
     expect(section.querySelector(".dc-number")).toBeNull();
-    const bad = lookWith({ chrome: { ...chrome, logo: { ...chrome.logo, path: "../logo.svg" } }, templates: { split: SPLIT } });
+    const bad = lookWith({
+      chrome: { ...chrome, logo: { ...chrome.logo, path: "../logo.svg" } },
+      templates: { split: SPLIT },
+    });
     expect(draw(body, bad, { number: 1 }).querySelector(".dc-logo")).toBeNull();
   });
 

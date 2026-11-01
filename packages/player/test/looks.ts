@@ -18,12 +18,31 @@ export function lookWith(parts: Partial<DeckLook> = {}): DeckLook {
   return { theme: "ink", colors: COLORS, chart: [], fonts: "modern", styles: {}, templates: {}, ...parts };
 }
 
-export function slot(id: string, role: TemplateSlot["role"], frame: TemplateSlot["frame"], more: Partial<TemplateSlot> = {}) {
-  return { id, role, frame, hint: `The ${id}.`, ...(role === "claim" ? {} : { accepts: ["text"] }), ...more } as TemplateSlot;
+export function slot(
+  id: string,
+  role: TemplateSlot["role"],
+  frame: TemplateSlot["frame"],
+  more: Partial<TemplateSlot> = {},
+) {
+  return {
+    id,
+    role,
+    frame,
+    hint: `The ${id}.`,
+    ...(role === "claim" ? {} : { accepts: ["text"] }),
+    ...more,
+  } as TemplateSlot;
 }
 
 export function template(id: string, slots: TemplateSlot[], more: Partial<Template> = {}): Template {
-  return { schemaVersion: "0.4", id, name: id, description: `The ${id} template.`, slots, ...more } as Template;
+  return {
+    schemaVersion: "0.4",
+    id,
+    name: id,
+    description: `The ${id} template.`,
+    slots,
+    ...more,
+  } as Template;
 }
 
 export const style = (parts: Partial<BlockStyle> = {}): BlockStyle =>

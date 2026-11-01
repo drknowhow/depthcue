@@ -25,14 +25,21 @@ type BarChart = Extract<Block, { type: "bar-chart" }>;
 type TextBlock = Extract<Block, { type: "text" }>;
 
 /** A property of a table that came from JSON, only if it is the table's own: a key like `__proto__` finds nothing. */
-export const ownOf = <T>(table: Readonly<Record<string, T>> | undefined, key: string | undefined): T | undefined =>
+export const ownOf = <T>(
+  table: Readonly<Record<string, T>> | undefined,
+  key: string | undefined,
+): T | undefined =>
   table !== undefined && key !== undefined && Object.hasOwn(table, key) ? table[key] : undefined;
 
 /** A color that text on it is reversed for: every one but the slide's own two, as core's `textOn` has it. */
-const isStrong = (color?: string): boolean => !!color && color !== "none" && color !== "bg" && color !== "surface";
+const isStrong = (color?: string): boolean =>
+  !!color && color !== "none" && color !== "bg" && color !== "surface";
 
 /** The template a scene names, from the look. */
-export const templateOf = (scene: Pick<Scene, "template">, look: DeckLook | undefined): Template | undefined =>
+export const templateOf = (
+  scene: Pick<Scene, "template">,
+  look: DeckLook | undefined,
+): Template | undefined =>
   scene.template === undefined ? undefined : ownOf(look?.templates, scene.template);
 
 /**
@@ -196,8 +203,7 @@ interface Entry {
  * edge, radius and padding, and for text its tone, size and alignment. The block's own tone, size and align win. A fill
  * that is not one of the slide's own colors reverses the text on it, as a template's strong background does.
  */
-function dress(node: HTMLElement, id: string, style: BlockStyle, mine?: Partial<TextBlock>): void {
-  node.dataset.st = id;
+function dress(node: HTMLElement, style: BlockStyle, mine?: Partial<TextBlock>): void {
   const strong = isStrong(style.fill);
   if (mine) {
     const tone = mine.tone ?? style.tone ?? (strong ? "bg" : undefined);
@@ -271,7 +277,10 @@ function renderChrome(look: DeckLook | undefined, template: Template | undefined
   const feet = new Map<string, HTMLElement[]>();
   const foot = (part: string, place?: string, text?: string) => {
     if (mode !== "minimal" && place && text) {
-      feet.set(place, [...(feet.get(place) ?? []), h("span", { class: `dc-${part}`, "data-part": part }, text)]);
+      feet.set(place, [
+        ...(feet.get(place) ?? []),
+        h("span", { class: `dc-${part}`, "data-part": part }, text),
+      ]);
     }
   };
   foot("footer", chrome.footer?.place, chrome.footer?.text);
@@ -279,8 +288,15 @@ function renderChrome(look: DeckLook | undefined, template: Template | undefined
   const parts = [
     mode !== "minimal" &&
       chrome.accent !== "none" &&
-      h("span", { class: "dc-accent", "data-part": "accent", "data-accent": chrome.accent, "aria-hidden": "true" }),
-    ...[...feet].map(([at, nodes]) => h("div", { class: "dc-foot", "data-at": at, "aria-hidden": "true" }, ...nodes)),
+      h("span", {
+        class: "dc-accent",
+        "data-part": "accent",
+        "data-accent": chrome.accent,
+        "aria-hidden": "true",
+      }),
+    ...[...feet].map(([at, nodes]) =>
+      h("div", { class: "dc-foot", "data-at": at, "aria-hidden": "true" }, ...nodes),
+    ),
     logo &&
       src &&
       h("img", {
@@ -312,7 +328,7 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
     // A block's style is its own, or else the one its slot gives; its own tone, size and align win over the style's.
     const styleId = block.style ?? slotOf(block.slot)?.style;
     const style = ownOf(look?.styles, styleId);
-    if (styleId !== undefined && style) dress(node, styleId, style, block.type === "text" ? block : undefined);
+    if (style) dress(node, style, block.type === "text" ? block : undefined);
     if (template && evidenceIds.has(block.id)) node.dataset.evidence = "";
     return { block, node, slot: block.frame ? ghost(node) : node };
   });
@@ -328,9 +344,8 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
       )
     : null;
   if (claim && template) {
-    const claimStyle = template.slots.find((slot) => slot.role === "claim")?.style;
-    const style = ownOf(look?.styles, claimStyle);
-    if (claimStyle !== undefined && style) dress(claim, claimStyle, style, {});
+    const style = ownOf(look?.styles, template.slots.find((slot) => slot.role === "claim")?.style);
+    if (style) dress(claim, style, {});
   }
   let body: HTMLElement[];
   if (template) {
@@ -355,7 +370,9 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
   } else {
     // A layout with nothing special to do, or a template the page has no look for: everything the scene says, in order,
     // rather than nothing.
-    body = [h("div", { class: "dc-region dc-stack" }, scene.template !== undefined && claim, ...nodes(() => true))];
+    body = [
+      h("div", { class: "dc-region dc-stack" }, scene.template !== undefined && claim, ...nodes(() => true)),
+    ];
   }
 
   // The template's background: one of the slide's colors, or a brand image under a scrim of it. Text on a strong one

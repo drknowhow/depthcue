@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type DeckLook, type ExportData, type FontPair } from "@depthcue/core";
+import type { DeckLook, ExportData, FontPair } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXPORT_MARKER, type ExportRequest, exportDeck } from "../src/export.ts";
 
@@ -39,7 +39,10 @@ beforeEach(() => {
   fonts = join(root, "fonts-src");
   mkdirSync(fonts);
   for (const pair of PAIRS) {
-    writeFileSync(join(fonts, `${pair}.css`), `@font-face {\n  font-family: "${pair}";\n  src: url("${pair}.woff2") format("woff2");\n}\n`);
+    writeFileSync(
+      join(fonts, `${pair}.css`),
+      `@font-face {\n  font-family: "${pair}";\n  src: url("${pair}.woff2") format("woff2");\n}\n`,
+    );
     writeFileSync(join(fonts, `${pair}.woff2`), `font:${pair}`);
   }
 });

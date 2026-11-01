@@ -4,7 +4,7 @@
   "name": "Cover",
   "description": "The first slide: the deck's title on the brand's color, with a label above it and who presents it below.",
   "background": { "color": "action" },
-  "chrome": "minimal",
+  "chrome": "none",
   "slots": [
     {
       "id": "kicker",

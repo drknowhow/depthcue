@@ -9,7 +9,8 @@ import { brandUrl } from "./safe.ts";
  */
 export type Look = Pick<Deck, "theme" | "palette" | "fonts"> | DeckLook;
 
-export const isDeckLook = (look: Look | undefined): look is DeckLook => look !== undefined && "colors" in look;
+export const isDeckLook = (look: Look | undefined): look is DeckLook =>
+  look !== undefined && "colors" in look;
 
 /** The colors set as `--dc-<name>`: the seven a palette may change, and the two Depthcue's own controls use. */
 const COLOR_NAMES = [...PALETTE_COLORS, "state", "on-state"] as const;
@@ -39,10 +40,9 @@ export function faceCss(look: Look | undefined, base: string): string {
     const family = familyOf(face);
     for (const file of family ? (face?.files ?? []) : []) {
       const url = brandUrl(base, file.path);
-      const type = /\.(woff2?)$/.exec(file.path)?.[1];
       if (url) {
         rules.add(
-          `@font-face{font-family:"${family}";src:url("${url}")${type ? ` format("${type}")` : ""};font-weight:${file.weight};font-style:${file.style};font-display:swap}`,
+          `@font-face{font-family:"${family}";src:url("${url}");font-weight:${file.weight};font-style:${file.style};font-display:swap}`,
         );
       }
     }

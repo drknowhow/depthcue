@@ -1,0 +1,761 @@
+// The brand in a real browser, under the same Content-Security-Policy the player ships with: a served deck, its offline
+// export and `depthcue render`. A copy of fixtures/decks/v0-4-brand is changed the way an author would change it (a longer
+// byline, a frame moved in a template file, a picture behind a title) and the page is looked at: the colors on the pixels,
+// the face the page loaded, where each slot, the logo and the footer are. What the pages do is in the other e2e files;
+// this one is about the brand's look reaching all three places that draw a deck.
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { lookOf } from "@depthcue/core";
+import type { Browser, BrowserContext, Page } from "playwright-core";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { openDeck } from "../src/deck-api.ts";
+import { exportDeck } from "../src/export.ts";
+import { launchBrowser, openRenderer } from "../src/render.ts";
+import { builtPlayerDir, builtStandaloneDir, type RunningServer, startServer } from "../src/serve.ts";
+
+const fixtureOf = (name: string) =>
+  fileURLToPath(new URL(`../../../fixtures/decks/${name}`, import.meta.url));
+const SHOTS = process.env.DEPTHCUE_SHOTS;
+
+let browser: Browser | undefined;
+let skipReason: string | undefined;
+let root: string | undefined;
+let problems: string[];
+/** What to close after the test, last opened first. */
+const closers: Array<() => Promise<unknown>> = [];
+
+beforeAll(async () => {
+  try {
+    if (
+      !existsSync(join(builtPlayerDir(), "player.js")) ||
+      !existsSync(join(builtStandaloneDir(), "depthcue.js"))
+    )
+      throw new Error("The player is not built. Run pnpm build.");
+    browser = await launchBrowser();
+  } catch (error) {
+    // CI builds first and has Chrome, so it must not skip. A machine without either can run everything else.
+    if (process.env.CI) throw error;
+    skipReason = (error as Error).message;
+  }
+}, 60_000);
+
+afterAll(async () => {
+  await browser?.close();
+});
+
+beforeEach(async (test) => {
+  if (!browser) {
+    console.warn(`Skipped: ${skipReason}`);
+    return test.skip();
+  }
+  root = mkdtempSync(join(tmpdir(), "depthcue-brand-player-"));
+  problems = [];
+});
+
+afterEach(async () => {
+  const seen = problems;
+  for (const close of closers.splice(0).reverse()) await close().catch(() => undefined);
+  if (root) rmSync(root, { recursive: true, force: true });
+  root = undefined;
+  expect(seen).toEqual([]);
+});
+
+// ---- the deck, changed the way an author would change it -------------------------------------------------------------
+
+type Json = Record<string, any>;
+
+const readJson = (path: string): Json => JSON.parse(readFileSync(path, "utf8"));
+function writeJson(path: string, json: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(json, null, 2)}\n`);
+}
+function editJson(path: string, change: (json: Json) => void): void {
+  const json = readJson(path);
+  change(json);
+  writeJson(path, json);
+}
+
+/** A copy of the branded fixture, or of an old deck, in this test's folder. */
+function copyDeck(name = "v0-4-brand", into = "deck"): string {
+  const deck = join(root as string, into);
+  cpSync(fixtureOf(name), deck, { recursive: true });
+  return deck;
+}
+
+function addScene(deck: string, scene: Json & { id: string }): void {
+  writeJson(join(deck, "scenes", `${scene.id}.json`), { schemaVersion: "0.4", ...scene });
+  editJson(join(deck, "deck.json"), (manifest) => manifest.scenes.push(scene.id));
+}
+
+const text = (id: string, role: string, body: string, extra: Json = {}): Json => ({
+  id,
+  type: "text",
+  role,
+  text: body,
+  ...extra,
+});
+
+const chart = (id: string, extra: Json = {}): Json => ({
+  id,
+  type: "chart",
+  kind: "bar",
+  title: "Ships handled each month",
+  columns: [{ label: "Month" }, { label: "Berth A" }, { label: "Berth B" }],
+  rows: [
+    ["July", 40, 0],
+    ["August", 42, 18],
+    ["September", 44, 30],
+  ],
+  ...extra,
+});
+
+/** A scene of each of the three built-in templates, a style that fills with a strong color, and a template on a picture. */
+function moreScenes(deck: string): void {
+  editJson(join(deck, "brand", "brand.json"), (brand) => {
+    brand.styles.banner = { name: "Banner", for: ["body"], fill: "action", pad: "m" };
+  });
+  mkdirSync(join(deck, "brand", "images"), { recursive: true });
+  writeFileSync(
+    join(deck, "brand", "images", "night.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f3a4f"/><stop offset="1" stop-color="#06151f"/></linearGradient></defs><rect width="1600" height="900" fill="url(#sky)"/><path d="M0 640c200-60 400-60 600 0s400 60 600 0 300-40 400-20v280H0z" fill="#0b2a3a"/><path d="M0 720c200-50 400-50 600 0s400 50 600 0 300-30 400-10v190H0z" fill="#081f2d"/></svg>',
+  );
+  writeFileSync(
+    join(deck, "brand", "images", "bright.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice"><rect width="1600" height="900" fill="#ffffff"/></svg>',
+  );
+  writeJson(join(deck, "brand", "templates", "photo.json"), {
+    schemaVersion: "0.4",
+    id: "photo",
+    name: "Photo",
+    description: "A title over a picture, with a line under it.",
+    background: { color: "text", image: "images/night.svg", scrim: 30 },
+    chrome: "none",
+    slots: [
+      {
+        id: "title",
+        role: "title",
+        frame: { x: 8, y: 36, w: 84, h: 26 },
+        accepts: ["heading"],
+        required: true,
+        valign: "bottom",
+        hint: "The title, in a few words.",
+      },
+      {
+        id: "byline",
+        role: "subtitle",
+        frame: { x: 8, y: 66, w: 70, h: 12 },
+        accepts: ["body"],
+        hint: "One line under the title.",
+      },
+    ],
+  });
+  addScene(deck, {
+    id: "part",
+    title: "Part",
+    template: "section",
+    blocks: [
+      text("part-kicker", "caption", "Part two", { slot: "kicker" }),
+      text("part-title", "heading", "What changed", { slot: "title" }),
+      text("part-lede", "body", "Three berths, one quarter.", { slot: "lede" }),
+    ],
+  });
+  addScene(deck, {
+    id: "claim",
+    title: "Claim",
+    template: "statement",
+    summary: { id: "claim-claim", text: "Ships handled rose by a third.", evidenceIds: ["claim-chart"] },
+    blocks: [chart("claim-chart", { slot: "evidence", sourceIds: ["berth-log"] })],
+    sources: [{ id: "berth-log", title: "Harbor master's berth log" }],
+  });
+  addScene(deck, {
+    id: "pair",
+    title: "Pair",
+    template: "two-column",
+    blocks: [
+      text("pair-title", "heading", "Two berths, two stories", { slot: "title" }),
+      text("pair-left", "body", "Berth A never closed, and moved 40 ships in July.", { slot: "left" }),
+      text("pair-right", "body", "Berth B reopened in August and caught up by September.", { slot: "right" }),
+    ],
+  });
+  addScene(deck, {
+    id: "banner",
+    title: "Banner",
+    layout: "text-media",
+    blocks: [
+      text("banner-heading", "heading", "A strong fill reverses its text"),
+      text("banner-body", "body", "This block is filled with the brand's action color.", { style: "banner" }),
+    ],
+  });
+  addScene(deck, {
+    id: "photo",
+    title: "Photo",
+    template: "photo",
+    blocks: [
+      text("photo-title", "heading", "The harbor at night", { slot: "title" }),
+      text("photo-byline", "body", "A title over a picture.", { slot: "byline" }),
+    ],
+  });
+}
+
+/** Scenes of the three built-in layouts, which have no template to keep clear of the brand's logo. */
+function layoutScenes(deck: string): string[] {
+  addScene(deck, {
+    id: "lay-title",
+    title: "Title layout",
+    layout: "title",
+    blocks: [
+      text("lay-title-heading", "heading", "Where the harbor grew"),
+      text("lay-title-sub", "body", "A walk through the third quarter."),
+    ],
+  });
+  addScene(deck, {
+    id: "lay-claim",
+    title: "Claim layout",
+    layout: "claim-evidence",
+    // No sources and a short claim: a claim-evidence slide with a chart, sources and a long claim fills the whole stage,
+    // and a logo's room at the top is then room the slide has to find (the render check reports `overflow`).
+    summary: { id: "lay-claim-claim", text: "Ships handled rose.", evidenceIds: ["lay-claim-chart"] },
+    blocks: [chart("lay-claim-chart")],
+  });
+  addScene(deck, {
+    id: "lay-media",
+    title: "Text and media layout",
+    layout: "text-media",
+    blocks: [
+      text("lay-media-heading", "heading", "The quarter started slow"),
+      text("lay-media-body", "body", "Two of the three berths were closed for dredging until August."),
+      text("lay-media-quote", "quote", "We planned for a flat quarter."),
+    ],
+  });
+  return ["lay-title", "lay-claim", "lay-media"];
+}
+
+// ---- looking at a page -----------------------------------------------------------------------------------------------
+
+const rgb = (hex: string): string => {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return `rgb(${value >> 16}, ${(value >> 8) & 255}, ${value & 255})`;
+};
+
+type Depthcue = { depthcue?: { settled(): Promise<void> } };
+
+/** Waits until the scene is on the page, its modules are hydrated and its fonts are in. */
+async function settle(page: Page, scene: string): Promise<void> {
+  await page.waitForSelector(`.dc-scene[data-scene="${scene}"]`);
+  await page.evaluate(() => (window as unknown as Depthcue).depthcue?.settled());
+  await page.evaluate(() => document.fonts.ready);
+}
+
+/** Watches a page for the errors a refused script, style or font would raise. */
+function watch(page: Page, withConsole = true): void {
+  page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
+  if (withConsole) {
+    page.on("console", (message) => {
+      if (message.type() === "error") problems.push(`console: ${message.text()}`);
+    });
+  }
+}
+
+interface Served {
+  server: RunningServer;
+  page: Page;
+  context: BrowserContext;
+  /** Every answer the server gave this page, by path. */
+  responses: Array<{ status: number; path: string }>;
+  go(scene: string): Promise<Page>;
+}
+
+/**
+ * Serves a deck folder and opens it. By default the page has the player's own Content-Security-Policy and the controls
+ * the audience has. `clean` is what `depthcue render` shows: the controls hidden, so a 16 by 9 slide is exactly the
+ * viewport, which is how a slot's box is measured against its frame.
+ */
+async function serve(
+  folder: string,
+  options: { clean?: boolean; quiet?: boolean; width?: number; height?: number } = {},
+): Promise<Served> {
+  const server = await startServer({ folder, playerDir: builtPlayerDir(), port: 0 });
+  closers.push(() => server.close());
+  const context = await (browser as Browser).newContext({
+    viewport: { width: options.width ?? 1280, height: options.height ?? (options.clean ? 720 : 781) },
+    deviceScaleFactor: 1,
+    reducedMotion: "reduce",
+    colorScheme: "light",
+    ...(options.clean ? { bypassCSP: true } : {}),
+  });
+  closers.push(() => context.close());
+  const page = await context.newPage();
+  watch(page, !options.quiet);
+  const responses: Served["responses"] = [];
+  page.on("response", (response) =>
+    responses.push({ status: response.status(), path: response.url().replace(server.url, "/") }),
+  );
+  let styled = false;
+  return {
+    server,
+    page,
+    context,
+    responses,
+    async go(scene) {
+      await page.goto(`${server.url}#/${scene}`);
+      if (options.clean && !styled) {
+        styled = true;
+        await page.addStyleTag({ content: ".dc-controls { display: none !important; }" });
+      }
+      await settle(page, scene);
+      return page;
+    },
+  };
+}
+
+const style = (page: Page, selector: string, property: string): Promise<string> =>
+  page
+    .locator(selector)
+    .first()
+    .evaluate((element, name) => getComputedStyle(element).getPropertyValue(name), property);
+
+/** A box as a fraction of the scene it is in, in percent, so it does not depend on the size the page was opened at. */
+async function share(page: Page, selector: string) {
+  return page
+    .locator(selector)
+    .first()
+    .evaluate((element) => {
+      const scene = (element.closest(".dc-scene") as HTMLElement).getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      return {
+        x: ((box.left - scene.left) / scene.width) * 100,
+        y: ((box.top - scene.top) / scene.height) * 100,
+        w: (box.width / scene.width) * 100,
+        h: (box.height / scene.height) * 100,
+      };
+    });
+}
+
+// ---- a served deck ---------------------------------------------------------------------------------------------------
+
+describe("a deck with a brand, served", () => {
+  it("draws every color of the brand: the template's, the accent bar and the chart's marks", async () => {
+    const deck = copyDeck();
+    const served = await serve(deck);
+    const welcome = await served.go("welcome");
+    // The cover's template asks for the brand's action color behind the slide.
+    expect(await style(welcome, ".dc-scene", "background-color")).toBe(rgb("#0B6E6E"));
+
+    const growth = await served.go("growth");
+    expect((await style(growth, ".dc-scene", "--dc-action")).trim().toUpperCase()).toBe("#0B6E6E");
+    expect((await style(growth, ".dc-scene", "--dc-evidence")).trim().toUpperCase()).toBe("#2D4BB8");
+    expect(await style(growth, ".dc-accent", "background-color")).toBe(rgb("#0B6E6E"));
+    const fills = await growth
+      .locator(".dc-mark")
+      .evaluateAll((marks) => [...new Set(marks.map((mark) => getComputedStyle(mark).fill))]);
+    expect(fills).toEqual([rgb("#0B6E6E"), rgb("#2D4BB8"), rgb("#B4531F")]);
+  }, 60_000);
+
+  it("takes the chart's colors for the deck's theme: the ink theme has its own set", async () => {
+    const deck = copyDeck();
+    editJson(join(deck, "deck.json"), (manifest) => {
+      manifest.theme = "ink";
+    });
+    const served = await serve(deck);
+    const growth = await served.go("growth");
+    const fills = await growth
+      .locator(".dc-mark")
+      .evaluateAll((marks) => [...new Set(marks.map((mark) => getComputedStyle(mark).fill))]);
+    expect(fills).toEqual([rgb("#4FC4C4"), rgb("#8FA5FF"), rgb("#F0A06A")]);
+  }, 60_000);
+
+  it("loads the brand's own faces from the deck folder and draws the text with them", async () => {
+    const served = await serve(copyDeck());
+    const growth = await served.go("growth");
+    const asked = served.responses.filter((response) => response.path.startsWith("/brand/fonts/"));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((response) => response.status === 200)).toBe(true);
+    expect(new Set(asked.map((response) => response.path))).toEqual(
+      new Set(["/brand/fonts/HarborSans-Bold.woff2", "/brand/fonts/HarborSans-Regular.woff2"]),
+    );
+    const loaded = await growth.evaluate(() =>
+      [...document.fonts]
+        .filter((face) => face.status === "loaded")
+        .map((face) => `${face.family} ${face.weight}`),
+    );
+    expect(loaded).toContain("Harbor Display 700");
+    expect(loaded).toContain("Harbor Sans 400");
+    expect(loaded).toContain("Harbor Sans 700");
+    expect(await style(growth, ".dc-heading", "font-family")).toContain("Harbor Display");
+    expect(await style(growth, ".dc-body", "font-family")).toContain("Harbor Sans");
+    // The policy refuses a <style> element, so the faces must have come in through the constructed stylesheet.
+    expect(await growth.evaluate(() => document.querySelectorAll("style").length)).toBe(0);
+    expect(await growth.evaluate(() => document.adoptedStyleSheets.length)).toBeGreaterThan(0);
+  }, 60_000);
+
+  it("puts the logo, footer, number and accent at the places the brand names, and none on a template that asks for none", async () => {
+    const served = await serve(copyDeck());
+    const growth = await served.go("growth");
+    const logo = await share(growth, ".dc-logo");
+    expect(logo.x).toBeGreaterThan(75);
+    expect(logo.y).toBeLessThan(10);
+    expect(
+      await growth
+        .locator(".dc-logo")
+        .evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0),
+    ).toBe(true);
+    expect(await growth.locator(".dc-logo").getAttribute("alt")).toBe("Harbor Analytics");
+    expect(await growth.locator(".dc-logo").getAttribute("src")).toContain("brand/logos/harbor.svg");
+    const footer = await share(growth, ".dc-foot[data-at='start']");
+    expect(footer.x).toBeLessThan(10);
+    expect(footer.y).toBeGreaterThan(90);
+    expect(await growth.locator(".dc-footer").textContent()).toBe("Harbor Analytics, for internal use");
+    const number = await share(growth, ".dc-foot[data-at='end']");
+    expect(number.x).toBeGreaterThan(90);
+    expect(await growth.locator(".dc-number").textContent()).toBe("3");
+    const accent = await share(growth, ".dc-accent");
+    expect(accent.y).toBeLessThan(1);
+    expect(accent.w).toBeGreaterThan(99);
+
+    // The cover's template says "none": nothing of the brand's chrome is on it.
+    const welcome = await served.go("welcome");
+    expect(await welcome.locator(".dc-chrome").count()).toBe(0);
+  }, 60_000);
+
+  it("shows the logo alone on a template whose chrome is minimal", async () => {
+    const deck = copyDeck();
+    moreScenes(deck);
+    const served = await serve(deck);
+    const part = await served.go("part");
+    expect(await part.locator(".dc-chrome .dc-logo").count()).toBe(1);
+    expect(await part.locator(".dc-foot, .dc-accent, .dc-footer, .dc-number").count()).toBe(0);
+  }, 60_000);
+
+  it("draws a style's fill, border, edge and radius, and reverses the text on a strong fill", async () => {
+    const deck = copyDeck();
+    moreScenes(deck);
+    const served = await serve(deck);
+    const context = await served.go("context");
+    const body = "[data-id='context-body']";
+    const surface = (await style(context, ".dc-scene", "--dc-surface")).trim();
+    expect(await style(context, body, "background-color")).toBe(rgb(surface));
+    expect(await style(context, body, "border-top-width")).toBe("1px");
+    expect(Number.parseFloat(await style(context, body, "border-top-left-radius"))).toBeGreaterThan(0);
+    expect(Number.parseFloat(await style(context, body, "padding-top"))).toBeGreaterThan(0);
+    // The built-in callout has an edge down its start side in the action color.
+    const quote = "[data-id='context-quote']";
+    expect(Number.parseFloat(await style(context, quote, "border-left-width"))).toBeGreaterThan(3);
+    expect(await style(context, quote, "border-left-color")).toBe(rgb("#0B6E6E"));
+
+    const banner = await served.go("banner");
+    const filled = "[data-id='banner-body']";
+    expect(await style(banner, filled, "background-color")).toBe(rgb("#0B6E6E"));
+    const ground = (await style(banner, ".dc-scene", "--dc-bg")).trim();
+    expect(await style(banner, filled, "color")).toBe(rgb(ground));
+    // A block with no fill keeps the ink on the page.
+    expect(await style(banner, "[data-id='banner-heading']", "color")).not.toBe(rgb(ground));
+  }, 60_000);
+
+  it("puts every slot's box within a pixel of its frame on a 1280 by 720 slide, on the fixture's templates and the built-in ones", async () => {
+    const deck = copyDeck();
+    moreScenes(deck);
+    const opened = openDeck(deck);
+    if (!opened.ok) throw new Error(`the deck has errors: ${JSON.stringify(opened.diagnostics)}`);
+    const look = lookOf(opened.doc);
+    const served = await serve(deck, { clean: true });
+    let checked = 0;
+    for (const id of ["welcome", "growth", "part", "claim", "pair", "photo"]) {
+      const scene = opened.doc.scenes[id];
+      const template = look.templates[scene?.template ?? ""];
+      if (!template) throw new Error(`no template for ${id}`);
+      const page = await served.go(id);
+      const slide = await page.locator(".dc-scene").evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return { x: box.left, y: box.top, w: box.width, h: box.height };
+      });
+      expect(Math.abs(slide.w - 1280), `${id} width`).toBeLessThanOrEqual(1);
+      expect(Math.abs(slide.h - 720), `${id} height`).toBeLessThanOrEqual(1);
+      const drawn = await page.locator(".dc-slot").evaluateAll((slots) =>
+        slots.map((slot) => {
+          const box = slot.getBoundingClientRect();
+          return {
+            id: (slot as HTMLElement).dataset.slot ?? "",
+            x: box.left,
+            y: box.top,
+            w: box.width,
+            h: box.height,
+          };
+        }),
+      );
+      expect(drawn.length, `${id}: a slot with something in it is drawn`).toBeGreaterThan(0);
+      for (const box of drawn) {
+        const frame = template.slots.find((slot) => slot.id === box.id)?.frame;
+        if (!frame) throw new Error(`${id}: the page drew a slot "${box.id}" the template does not have`);
+        const want = {
+          x: slide.x + (frame.x / 100) * 1280,
+          y: slide.y + (frame.y / 100) * 720,
+          w: (frame.w / 100) * 1280,
+          h: (frame.h / 100) * 720,
+        };
+        for (const key of ["x", "y", "w", "h"] as const) {
+          expect(Math.abs(box[key] - want[key]), `${id}/${box.id} ${key}`).toBeLessThanOrEqual(1);
+        }
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(14);
+  }, 90_000);
+
+  it("moves a block when its slot's frame is edited in the template file, on every scene that uses the template", async () => {
+    const deck = copyDeck();
+    const growth = readJson(join(deck, "scenes", "growth.json"));
+    addScene(deck, {
+      ...growth,
+      id: "growth-two",
+      title: "Growth again",
+      blocks: growth.blocks.map((block: Json) => ({
+        ...block,
+        id: String(block.id).replace("growth", "growth-two"),
+      })),
+    });
+    const served = await serve(deck);
+    const slot = ".dc-slot[data-slot='title']";
+    for (const [scene, id] of [
+      ["growth", "growth-title"],
+      ["growth-two", "growth-two-title"],
+    ] as const) {
+      const page = await served.go(scene);
+      expect(Math.round((await share(page, slot)).x), `${scene} before`).toBe(6);
+      expect(Math.round((await share(page, `[data-id='${id}']`)).x), `${id} before`).toBe(6);
+    }
+
+    editJson(join(deck, "brand", "templates", "chart-and-note.json"), (template) => {
+      const title = template.slots.find((entry: Json) => entry.id === "title");
+      title.frame = { x: 20, y: 6, w: 60, h: 14 };
+    });
+
+    // The server reloads the page when the brand folder changes; the new frame must be on both scenes.
+    const page = served.page;
+    await expect.poll(async () => Math.round((await share(page, slot).catch(() => ({ x: -1 }))).x)).toBe(20);
+    await settle(page, "growth-two");
+    expect(Math.round((await share(page, "[data-id='growth-two-title']")).x)).toBe(20);
+    const first = await served.go("growth");
+    expect(Math.round((await share(first, slot)).x)).toBe(20);
+    expect(Math.round((await share(first, "[data-id='growth-title']")).x)).toBe(20);
+  }, 90_000);
+});
+
+// ---- the offline export ----------------------------------------------------------------------------------------------
+
+describe("a deck with a brand, exported", () => {
+  it("shows the brand's face, logo and colors with every request that is not a file blocked", async () => {
+    const deck = copyDeck();
+    const result = exportDeck({ folder: deck, out: join(root as string, "out") });
+    if (!result.ok) throw new Error(`the export failed: ${JSON.stringify(result.diagnostics)}`);
+    const index = pathToFileURL(join(result.summary.out, "index.html")).href;
+
+    // The network is off for this page: nothing but files may load, and anything else that asks is counted.
+    const context = await (browser as Browser).newContext({
+      viewport: { width: 1280, height: 781 },
+      reducedMotion: "reduce",
+      offline: true,
+    });
+    closers.push(() => context.close());
+    const blocked: string[] = [];
+    await context.route(
+      (url) => url.protocol !== "file:",
+      (route) => {
+        blocked.push(route.request().url());
+        return route.abort();
+      },
+    );
+    const page = await context.newPage();
+    watch(page);
+    const asked: string[] = [];
+    page.on("request", (request) => asked.push(request.url()));
+
+    await page.goto(`${index}#/welcome`);
+    await settle(page, "welcome");
+    expect(await style(page, ".dc-scene", "background-color")).toBe(rgb("#0B6E6E"));
+
+    await page.goto(`${index}#/growth`);
+    await settle(page, "growth");
+    const fills = await page
+      .locator(".dc-mark")
+      .evaluateAll((marks) => [...new Set(marks.map((mark) => getComputedStyle(mark).fill))]);
+    expect(fills).toEqual([rgb("#0B6E6E"), rgb("#2D4BB8"), rgb("#B4531F")]);
+    const loaded = await page.evaluate(() =>
+      [...document.fonts]
+        .filter((face) => face.status === "loaded")
+        .map((face) => `${face.family} ${face.weight}`),
+    );
+    expect(loaded).toContain("Harbor Display 700");
+    expect(loaded).toContain("Harbor Sans 400");
+    expect(await style(page, ".dc-heading", "font-family")).toContain("Harbor Display");
+    expect(
+      await page
+        .locator(".dc-logo")
+        .evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0),
+    ).toBe(true);
+    expect(await page.locator(".dc-footer").textContent()).toBe("Harbor Analytics, for internal use");
+    expect(await page.locator(".dc-number").textContent()).toBe("3");
+    expect(asked.some((url) => url.endsWith("/brand/fonts/HarborSans-Bold.woff2"))).toBe(true);
+    expect(asked.some((url) => url.endsWith("/brand/logos/harbor.svg"))).toBe(true);
+    expect(blocked).toEqual([]);
+
+    if (SHOTS) {
+      mkdirSync(SHOTS, { recursive: true });
+      await page.setViewportSize({ width: 1280, height: 720 });
+      for (const scene of ["welcome", "context", "growth"]) {
+        await page.goto(`${index}#/${scene}`);
+        await settle(page, scene);
+        await page.screenshot({ path: join(SHOTS, `brand-export-${scene}.png`), animations: "disabled" });
+      }
+    }
+  }, 90_000);
+});
+
+// ---- depthcue render -------------------------------------------------------------------------------------------------
+
+describe("depthcue render, on a deck with a brand", () => {
+  async function render(folder: string, scene: string, options: { screenshot?: boolean } = {}) {
+    const renderer = await openRenderer(folder);
+    closers.push(() => renderer.close());
+    return renderer.render(scene, { screenshot: options.screenshot ?? false });
+  }
+  const codes = (result: { diagnostics: Array<{ code: string }> }) => result.diagnostics.map((d) => d.code);
+
+  it("renders the fixture's three scenes with nothing to report", async () => {
+    const deck = copyDeck();
+    expect(openDeck(deck).ok).toBe(true);
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    for (const scene of ["welcome", "context", "growth"]) {
+      const result = await renderer.render(scene);
+      expect(result.diagnostics, scene).toEqual([]);
+      expect(result.png?.length, `${scene} has a picture`).toBeGreaterThan(1000);
+    }
+  }, 90_000);
+
+  it("reports a slot-overflow when a slot's blocks are taller than the slot", async () => {
+    const deck = copyDeck();
+    editJson(join(deck, "scenes", "welcome.json"), (scene) => {
+      scene.blocks[2].text = `${"The analytics team presents the third quarter, berth by berth, ".repeat(3)}and what comes next.`;
+    });
+    const result = await render(deck, "welcome");
+    expect(codes(result)).toContain("slot-overflow");
+    const found = result.diagnostics.find((d) => d.code === "slot-overflow");
+    expect(found?.severity).toBe("error");
+    expect(found?.message).toContain('"byline"');
+    expect(found?.path).toBe("/blocks/2");
+  }, 60_000);
+
+  it("reports a chrome-overlap when a slot runs under the logo, and nothing when the title keeps to its side", async () => {
+    const deck = copyDeck();
+    // A title slot that reaches the logo's corner with the text at its end, so the first line sits under the logo.
+    editJson(join(deck, "brand", "templates", "chart-and-note.json"), (template) => {
+      template.slots.find((entry: Json) => entry.id === "title").frame = { x: 6, y: 6, w: 88, h: 14 };
+    });
+    editJson(join(deck, "scenes", "growth.json"), (scene) => {
+      scene.blocks[0].align = "end";
+    });
+    const result = await render(deck, "growth");
+    expect(codes(result)).toContain("chrome-overlap");
+    const found = result.diagnostics.find((d) => d.code === "chrome-overlap");
+    expect(found?.message).toContain("logo");
+    expect(found?.message).toContain('"growth-title"');
+  }, 60_000);
+
+  it("reports a background-low-contrast on a bright picture, measured on the pixels, and passes a dark one or a stronger scrim", async () => {
+    const deck = copyDeck();
+    moreScenes(deck);
+    const template = join(deck, "brand", "templates", "photo.json");
+    const withPicture = (image: string, scrim: number) =>
+      editJson(template, (json) => {
+        json.background = { color: "text", image, scrim };
+      });
+
+    withPicture("images/bright.svg", 0);
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    const bright = await renderer.render("photo", { screenshot: false });
+    expect(codes(bright)).toContain("background-low-contrast");
+    const found = bright.diagnostics.find((d) => d.code === "background-low-contrast");
+    expect(found?.severity).toBe("error");
+    expect(found?.message).toContain("template's picture");
+
+    // The same page with a scrim of the template's color over the picture is readable.
+    withPicture("images/bright.svg", 90);
+    expect(codes(await renderer.render("photo", { screenshot: false }))).not.toContain(
+      "background-low-contrast",
+    );
+
+    // And a dark picture needs none: what counts is the picture as drawn, not the token the template names.
+    withPicture("images/night.svg", 0);
+    expect(codes(await renderer.render("photo", { screenshot: false }))).not.toContain(
+      "background-low-contrast",
+    );
+  }, 90_000);
+
+  it("keeps the chrome off the content of the three built-in layouts in every corner, with the largest logo", async () => {
+    const deck = copyDeck();
+    const scenes = layoutScenes(deck);
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    for (const corner of ["top-start", "top-end", "bottom-start", "bottom-end"]) {
+      editJson(join(deck, "brand", "brand.json"), (brand) => {
+        brand.chrome.logo = { corner, size: "l" };
+      });
+      for (const scene of scenes) {
+        const result = await renderer.render(scene, { screenshot: false });
+        expect(codes(result), `${scene} with the logo at ${corner}`).toEqual([]);
+      }
+    }
+  }, 120_000);
+});
+
+// ---- decks with no brand ---------------------------------------------------------------------------------------------
+
+describe("a deck with no brand", () => {
+  for (const name of ["v0-1", "v0-2", "v0-3", "demo", "charts"]) {
+    it(`${name} is drawn the same with the look the server sends as without it`, async () => {
+      const deck = copyDeck(name, name);
+      const opened = openDeck(deck);
+      if (!opened.ok) throw new Error(`the deck has errors: ${JSON.stringify(opened.diagnostics)}`);
+      const scenes = opened.doc.deck.scenes;
+
+      const withLook = await serve(deck);
+      // The same deck from a server with no look to give: the page is drawn from the deck alone, as it was before. The
+      // 404 is the point of this page, so the browser's console note of it is not a problem.
+      const without = await serve(deck, { quiet: true });
+      await without.context.route("**/look.json", (route) => route.fulfill({ status: 404, body: "" }));
+
+      for (const scene of scenes) {
+        const a = await withLook.go(scene);
+        const b = await without.go(scene);
+        const left = await a.locator(".dc-stage").screenshot({ animations: "disabled" });
+        const right = await b.locator(".dc-stage").screenshot({ animations: "disabled" });
+        expect(left.equals(right), `${name}/${scene} looks the same with and without a look`).toBe(true);
+        expect(await a.locator(".dc-chrome, .dc-slot, .dc-backdrop").count(), `${name}/${scene}`).toBe(0);
+      }
+    }, 120_000);
+  }
+});
+
+// ---- the pictures Dimitri looks at -----------------------------------------------------------------------------------
+
+describe.skipIf(!SHOTS)("screenshots of the brand", () => {
+  it("writes a 1280 by 720 picture of every scene of the fixture and of the added ones", async () => {
+    const dir = SHOTS as string;
+    mkdirSync(dir, { recursive: true });
+    const deck = copyDeck();
+    moreScenes(deck);
+    layoutScenes(deck);
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    const opened = openDeck(deck);
+    if (!opened.ok) throw new Error(`the deck has errors: ${JSON.stringify(opened.diagnostics)}`);
+    for (const scene of opened.doc.deck.scenes) {
+      const result = await renderer.render(scene);
+      writeFileSync(join(dir, `brand-${scene}.png`), result.png as Buffer);
+      console.log(`${scene}: ${result.diagnostics.map((d) => d.code).join(", ") || "no findings"}`);
+    }
+  }, 180_000);
+});

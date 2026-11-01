@@ -356,6 +356,13 @@
   object-fit: contain;
 }
 
+/* The logo is drawn for the theme's own ground, so on a strong background it keeps that ground as a plate behind it. */
+.dc-scene[data-on="strong"] .dc-logo {
+  background: var(--dc-bg);
+  border-radius: 0.2em;
+  box-shadow: 0 0 0 0.45em var(--dc-bg);
+}
+
 .dc-logo[data-height="s"] {
   height: 2em;
 }
@@ -458,13 +465,16 @@
   flex: none;
 }
 
+/* `safe` keeps a slot's overflow at its foot and not above its top; a browser without it keeps the plain value. */
 .dc-slot[data-valign="middle"] {
   justify-content: center;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: the line above is the fallback for a browser without `safe` */
   justify-content: safe center;
 }
 
 .dc-slot[data-valign="bottom"] {
   justify-content: flex-end;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: the line above is the fallback for a browser without `safe` */
   justify-content: safe flex-end;
 }
 
@@ -729,6 +739,32 @@
 .dc-sources a {
   color: var(--dc-evidence);
   text-underline-offset: 0.2em;
+}
+
+/* In a template scene the sources are one line along the foot, over the footer, where the slots leave room for them. */
+.dc-scene:has(> .dc-slot) > .dc-sources {
+  position: absolute;
+  inset: auto 6% 2.3em;
+  display: flex;
+  align-items: baseline;
+  gap: 1em;
+  padding: 0;
+  border: 0;
+}
+
+.dc-scene:has(> .dc-slot) > .dc-sources :is(p, ol) {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@container (max-width: 640px) {
+  .dc-scene:has(> .dc-slot) > .dc-sources {
+    position: static;
+    display: block;
+    padding-top: 1em;
+    border-top: 1px solid var(--dc-line);
+  }
 }
 
 /*

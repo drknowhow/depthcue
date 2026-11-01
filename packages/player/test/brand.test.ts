@@ -71,9 +71,9 @@ describe("the reading view of a template scene", () => {
       summary: { id: "claim-1", text: "Demand doubled." },
       blocks: [text("b"), text("a")],
     });
-    const lines = [...renderReading(deck, [plain], { assetBase: ".", look }).querySelectorAll("article p")].map(
-      (p) => p.textContent,
-    );
+    const lines = [
+      ...renderReading(deck, [plain], { assetBase: ".", look }).querySelectorAll("article p"),
+    ].map((p) => p.textContent);
     expect(lines).toEqual(["Demand doubled.", "Words of b", "Words of a"]);
   });
 

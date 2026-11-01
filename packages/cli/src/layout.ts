@@ -216,7 +216,11 @@ export async function measureLayout(): Promise<LayoutMeasure> {
       if (!visible(block)) continue;
       const box = block.getBoundingClientRect();
       const down = Math.max(box.bottom - frame.bottom, frame.top - box.top);
-      const across = Math.max(box.right - frame.right, frame.left - box.left, block.scrollWidth - block.clientWidth);
+      const across = Math.max(
+        box.right - frame.right,
+        frame.left - box.left,
+        block.scrollWidth - block.clientWidth,
+      );
       if (down > 1 || across > 1) culprit ??= block;
       y = Math.max(y, down);
       x = Math.max(x, across);
@@ -261,7 +265,12 @@ export async function measureLayout(): Promise<LayoutMeasure> {
         const width = Math.min(own.right, box.right) - Math.max(own.left, box.left);
         const height = Math.min(own.bottom, box.bottom) - Math.max(own.top, box.top);
         if (width <= 2 || height <= 2) continue;
-        chrome.push({ part: part.dataset.part ?? "", id: block.dataset.id ?? "", width: round(width), height: round(height) });
+        chrome.push({
+          part: part.dataset.part ?? "",
+          id: block.dataset.id ?? "",
+          width: round(width),
+          height: round(height),
+        });
         break;
       }
     }
@@ -362,7 +371,10 @@ export async function measureLayout(): Promise<LayoutMeasure> {
  * ratio of the line's color to that pixel, and the ratio reached under all but the weakest twentieth of them. A picture is
  * rarely even, so a quarter of a line on a bright patch fails the line where a mean would let it through.
  */
-export async function measurePicture(input: { shot: string; lines: PictureLine[] }): Promise<PictureContrast[]> {
+export async function measurePicture(input: {
+  shot: string;
+  lines: PictureLine[];
+}): Promise<PictureContrast[]> {
   const image = new Image();
   image.src = `data:image/png;base64,${input.shot}`;
   await image.decode();
@@ -377,7 +389,8 @@ export async function measurePicture(input: { shot: string; lines: PictureLine[]
     const c = value / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
-  const light = (r: number, g: number, b: number) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  const light = (r: number, g: number, b: number) =>
+    0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
   return input.lines.map((line) => {
     const left = Math.max(0, Math.floor(line.x * scale));
     const top = Math.max(0, Math.floor(line.y * scale));
