@@ -17,6 +17,7 @@ const MENU_NAME: Record<Target, string> = {
   claim: "Claim menu",
   slide: "Slide menu",
   scene: "Scene menu",
+  cell: "Cell menu",
 };
 
 /** One row of the menu: a command, a submenu that opens to more of them, or the line between two sections. */
@@ -61,6 +62,8 @@ export interface Pointed {
   id?: string;
   /** The area of the layout under the pointer, on the empty slide. */
   slot?: SlotName;
+  /** The cell of a table under the pointer, with `id` the table. Row -1 is the header. */
+  cell?: { row: number; column: number };
   /** Where it was pointed at, in pixels of the window. */
   at: { x: number; y: number };
 }
@@ -69,7 +72,7 @@ export interface ContextMenuHooks {
   /** The slide's stage and the strip of scenes. A right-click anywhere else keeps the browser's own menu. */
   stage: HTMLElement;
   strip: HTMLElement;
-  /** What an id found on the slide is: a block, the claim, or neither. */
+  /** What an id found on the slide is: a block, the claim, or neither. A cell is found by its own markers. */
   kindOf(id: string): "block" | "claim" | undefined;
   /** The block or claim that is chosen, so the keyboard can open the menu on it from anywhere in the editor. */
   chosen(): { id: string; node: HTMLElement | undefined } | undefined;
@@ -329,6 +332,15 @@ export function createContextMenu(root: HTMLElement, hooks: ContextMenuHooks): C
     return row && hooks.strip.contains(row) ? row : undefined;
   };
 
+  /** The cell of a table that an element is in, with the table it is in, or undefined for anything else. */
+  function cellAround(
+    node: Element,
+  ): { cell: { row: number; column: number }; node: HTMLElement } | undefined {
+    const cell = node.closest<HTMLElement>("[data-cell]");
+    if (!cell || cell.dataset.row === undefined || cell.dataset.col === undefined) return undefined;
+    return { cell: { row: Number(cell.dataset.row), column: Number(cell.dataset.col) }, node: cell };
+  }
+
   /** What a pointer at `node` is pointing at, or undefined for anything the menu is not for: the bars, popovers and fields. */
   function pointedAt(node: EventTarget | null, at: { x: number; y: number }): Pointed | undefined {
     if (!(node instanceof Element)) return undefined;
@@ -345,6 +357,9 @@ export function createContextMenu(root: HTMLElement, hooks: ContextMenuHooks): C
     // The toolbar, the handles, the pins and the badges are drawn over the slide, and are not the slide.
     if (node.closest(".ed-overlay, .ed-hint")) return undefined;
     const found = itemAround(node);
+    // A cell of a table has a menu of its own. The border, the caption and the toolbar of the table keep the block's.
+    const cell = found?.kind === "block" ? cellAround(node) : undefined;
+    if (found && cell) return { target: "cell", id: found.id, cell: cell.cell, at };
     if (found) return { target: found.kind, id: found.id, at };
     const region = node.closest(".dc-region");
     const slot = region && Object.entries(REGION_SLOT).find(([name]) => region.classList.contains(name))?.[1];
@@ -366,6 +381,13 @@ export function createContextMenu(root: HTMLElement, hooks: ContextMenuHooks): C
     if (row)
       return open({ target: "scene", id: row.dataset.id as string, at: { x: 0, y: 0 } }, "keyboard", row);
     const found = hooks.stage.contains(active) ? itemAround(active) : undefined;
+    const cell = found?.kind === "block" ? cellAround(active) : undefined;
+    if (found && cell)
+      return open(
+        { target: "cell", id: found.id, cell: cell.cell, at: { x: 0, y: 0 } },
+        "keyboard",
+        cell.node,
+      );
     if (found) return open({ target: found.kind, id: found.id, at: { x: 0, y: 0 } }, "keyboard", found.node);
     // Anywhere else in the editor the menu is for the chosen block, which the toolbar's keys are for as well.
     const chosen = hooks.chosen();

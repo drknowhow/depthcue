@@ -1,7 +1,10 @@
 import { h } from "@depthcue/player";
 
-/** What the right-click menu can be opened on: a block, the claim, an empty part of the slide, or a scene in the strip. */
-export type Target = "block" | "claim" | "slide" | "scene";
+/**
+ * What the right-click menu can be opened on: a block, the claim, an empty part of the slide, a scene in the strip, or a
+ * cell of a table, which has a menu of its own while the rest of the table keeps the block's.
+ */
+export type Target = "block" | "claim" | "slide" | "scene" | "cell";
 
 /**
  * One thing the editor can do. The palette lists every command; the right-click menu lists those that say they

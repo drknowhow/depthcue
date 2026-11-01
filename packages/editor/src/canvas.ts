@@ -6,9 +6,11 @@ import { type CommentPins, type CommentSurface, createCommentPins } from "./comm
 import { type CueBook, clock } from "./cues.ts";
 import { createFrameDrag } from "./framedrag.ts";
 import { drawGhosts, type GhostHooks } from "./ghosts.ts";
+import type { Grid, Spot } from "./grid.ts";
 import { frameOver, NUDGE, NUDGE_BIG, type Rect, slideIn } from "./pin.ts";
 import { createSlotDrag } from "./slotdrag.ts";
 import { restingBox, snap, standings } from "./snap.ts";
+import { cellFocus, wireTables } from "./tablewire.ts";
 import { describeBlock, IMAGE_FILE, needsAlt } from "./templates.ts";
 
 export interface CanvasHooks {
@@ -59,6 +61,10 @@ export interface Canvas {
   room(): Rect | undefined;
   /** Puts the keyboard on a block: the caret at the end of its text, or the block itself when it has none. */
   focusBlock(id: string): void;
+  /** The cell of a table's grid the keyboard last was on, or undefined when the block has no grid. Row -1 is the header. */
+  cellOf(id: string): Spot | undefined;
+  /** Puts the keyboard on a cell of a table's grid. */
+  focusCell(id: string, spot: Spot): void;
   /** Draws the rows of cue chips again from the cue book, without redrawing the slide or resetting a video. */
   refreshCues(): void;
   /** Shows or hides the build order: a badge beside each part that says which step reveals it. */
@@ -195,6 +201,8 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
   let visits = 0;
   /** Starts typing in a pinned text, by the id of its block. Filled in each time the slide is drawn. */
   const editors = new Map<string, () => void>();
+  /** The grid of each table on the slide, by the id of its block. Drawn again with the slide. */
+  let grids = new Map<string, Grid>();
   /** The blocks moved or changed size, so the grips and the toolbar move with them. */
   const changed = () => {
     drag.place();
@@ -375,9 +383,12 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       );
       if (!node) continue;
       node.dataset.pick = "";
-      // A chart holds sliders and text fields of its own, and a clip a player and its cue chips, which a button may
-      // not contain.
-      node.setAttribute("role", block.type === "bar-chart" || block.type === "clip" ? "group" : "button");
+      // A chart holds sliders and text fields of its own, a clip a player and its cue chips, and a table its cells,
+      // which a button may not contain.
+      node.setAttribute(
+        "role",
+        block.type === "bar-chart" || block.type === "clip" || block.type === "table" ? "group" : "button",
+      );
       const missingAlt = needsAlt(block);
       node.toggleAttribute("data-alt-missing", missingAlt);
       node.setAttribute(
@@ -542,6 +553,8 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       return room ? room.getBoundingClientRect() : undefined;
     },
     focusBlock,
+    cellOf: (id) => grids.get(id)?.active,
+    focusCell: (id, spot) => grids.get(id)?.focus(spot),
     refreshCues() {
       const scene = drawn === undefined ? undefined : session.doc.scenes[drawn];
       if (!scene) return;
@@ -553,6 +566,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     },
     comments: notes,
     destroy() {
+      for (const grid of grids.values()) grid.destroy();
       drag.destroy();
       pins.destroy();
       build.destroy();
@@ -566,6 +580,8 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       drawn = sceneId;
       const scene = session.doc.scenes[sceneId];
       if (!scene) {
+        for (const grid of grids.values()) grid.destroy();
+        grids = new Map();
         slot.replaceChildren();
         drag.draw(undefined);
         pins.draw(undefined);
@@ -580,7 +596,13 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       const focusedId = (focused?.closest<HTMLElement>("[data-id]") ?? focused)?.dataset.id;
       const focusedBar = focused?.dataset.slider === undefined ? undefined : focused.dataset.row;
 
-      const view = h("div", { class: "dc-view" }, renderScene(scene, { assetBase: "" }));
+      // A cell that has the keyboard is told apart from the rest of the slide, so it gets the keyboard back after a redraw.
+      const cellAt = cellFocus(slot);
+      const view = h(
+        "div",
+        { class: "dc-view" },
+        renderScene(scene, { assetBase: "", language: session.doc.deck.language }),
+      );
       for (const node of view.querySelectorAll<HTMLElement>("[data-gated]")) node.dataset.revealed = "true";
       const frame = h(
         "div",
@@ -590,6 +612,21 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       editors.clear();
       for (const field of fieldsOf(scene, view)) wire(field, sceneId);
       wirePicker(scene, view);
+      for (const grid of grids.values()) grid.destroy();
+      grids = wireTables(session, scene, view, {
+        select: hooks.select,
+        leave: focusBlock,
+        hint: hooks.hint,
+        quietly(change) {
+          typing = true;
+          try {
+            change();
+          } finally {
+            typing = false;
+          }
+        },
+        changed,
+      });
       wireCues(scene, view);
       if (hooks.ghosts) drawGhosts(scene, view, hooks.ghosts);
       // A block that goes into its slot, or out of it, slides there from where it stood. Only a slide with a pin on
@@ -613,6 +650,8 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         if (bar) bar.focus();
         else focusBlock(focusedId);
       }
+      // A table the keyboard was in keeps it, on the cell it was on, or the nearest one when the table got smaller.
+      if (cellAt) grids.get(cellAt.id)?.focus(cellAt.spot);
       changed();
       // Last, so everything drawn above is placed where the blocks end up. What measures a block later, the toolbar
       // and the pin, asks for `restingBox`, which ignores a slide still on its way.

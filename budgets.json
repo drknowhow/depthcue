@@ -32,6 +32,12 @@
       "limitBytes": 3072
     },
     {
+      "name": "module table",
+      "file": "packages/player/dist/table.js",
+      "metric": "brotli",
+      "limitBytes": 3072
+    },
+    {
       "name": "lease script",
       "file": "packages/player/dist/lease.js",
       "metric": "brotli",

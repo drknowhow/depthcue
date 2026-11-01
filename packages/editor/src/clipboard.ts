@@ -9,9 +9,11 @@ import {
   type Session,
   type SlotName,
 } from "@depthcue/core";
+import { numberText } from "@depthcue/player";
 import { slotFor } from "./adder.ts";
 import { problemOf } from "./fields.ts";
 import { fitted, nudged, type Rect, slideIn } from "./pin.ts";
+import { tabSeparated } from "./tablecells.ts";
 import { idsInScene, uniqueId } from "./templates.ts";
 
 /*
@@ -42,11 +44,16 @@ export type Read = { block: Block } | { problem: string };
 const CARRIER = "data-depthcue-block";
 const VERSION = 1;
 
-/** The words a block says: its text, its alt text, or a chart's title and what each bar says. */
-export function wordsOf(block: Block): string {
+/**
+ * The words a block says: its text, its alt text, a chart's title and what each bar says, or a table's rows, tab
+ * separated like a spreadsheet's, with its numbers written the way the deck's language writes them.
+ */
+export function wordsOf(block: Block, language?: string): string {
   switch (block.type) {
     case "text":
       return block.text;
+    case "table":
+      return tabSeparated(block, (value) => numberText(value, language));
     case "bar-chart":
       return [block.title, ...block.data.map((row) => `${row.label}: ${row.value}`)]
         .filter((line) => line !== undefined && line !== "")
@@ -62,9 +69,9 @@ export function wordsOf(block: Block): string {
 const escaped = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-export function copiedBlock(block: Block): Copied {
+export function copiedBlock(block: Block, language?: string): Copied {
   const json = JSON.stringify({ depthcue: "block", version: VERSION, block });
-  const words = wordsOf(block);
+  const words = wordsOf(block, language);
   const html = `<meta charset="utf-8"><span ${CARRIER}="${escaped(json)}">${escaped(words).replace(/\n/g, "<br>")}</span>`;
   return { json, words, html };
 }
@@ -129,6 +136,7 @@ const PINNED_SIZE: Readonly<Record<string, { w: number; h: number }>> = {
   "bar-chart": { w: 45, h: 45 },
   image: { w: 40, h: 40 },
   clip: { w: 45, h: 30 },
+  table: { w: 55, h: 40 },
 };
 const PINNED_OTHER = { w: 40, h: 30 };
 
@@ -252,7 +260,7 @@ export function createBlockClipboard(session: Session, hooks: ClipboardHooks): B
 
   function remember(block: Block): Copied {
     own = { block: JSON.parse(JSON.stringify(block)) as Block };
-    return copiedBlock(block);
+    return copiedBlock(block, session.doc.deck.language);
   }
 
   function fill(data: DataTransfer, copied: Copied) {

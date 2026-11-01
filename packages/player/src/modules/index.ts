@@ -1,6 +1,7 @@
 import type { ModuleRegistry } from "../modules.ts";
 import { chartManifest } from "./chart-manifest.ts";
 import { clipManifest } from "./clip-manifest.ts";
+import { tableManifest } from "./table-manifest.ts";
 
 /**
  * The modules that ship with the player. Each loads on its own, only when a block calls for it, so a deck
@@ -10,4 +11,5 @@ import { clipManifest } from "./clip-manifest.ts";
 export const firstPartyModules: ModuleRegistry = [
   { manifest: chartManifest, load: () => import("./chart.ts") },
   { manifest: clipManifest, load: () => import("./clip.ts") },
+  { manifest: tableManifest, load: () => import("./table.ts") },
 ];

@@ -4,47 +4,39 @@ import { renderScene } from "../src/scene.ts";
 import { sceneWith } from "./helpers.ts";
 
 const ctx = { assetBase: "." };
-const table = {
-  id: "t-table",
-  type: "table",
-  title: "Orders by channel",
-  columns: [{ label: "Channel" }, { label: "Orders", kind: "number" }],
-  rows: [["A", 4000]],
-  sourceIds: ["t-source"],
-};
 const chart = {
   id: "t-chart",
   type: "chart",
   kind: "line",
+  title: "Orders by quarter",
   columns: [{ label: "Quarter" }, { label: "Orders" }],
   rows: [["Q1", 10]],
+  sourceIds: ["t-source"],
 };
 
-describe("a table or a chart, which the player does not draw yet", () => {
+describe("a chart, which the player does not draw yet", () => {
   it("holds its place with what it is and its title", () => {
     const section = renderScene(
       sceneWith({
         schemaVersion: "0.3",
-        blocks: [table, chart],
+        blocks: [chart, { ...chart, id: "t-bare", title: undefined, sourceIds: undefined }],
         sources: [{ id: "t-source", title: "Order snapshot" }],
       }),
       ctx,
     );
     const [first, second] = section.querySelectorAll<HTMLElement>(".dc-placeholder");
-    expect(first?.dataset.id).toBe("t-table");
-    expect(first?.dataset.kind).toBe("table");
-    expect(first?.querySelector(".dc-label")?.textContent).toBe("Table");
-    expect(first?.querySelector("figcaption")?.textContent).toBe("Orders by channel");
+    expect(first?.dataset.id).toBe("t-chart");
+    expect(first?.dataset.kind).toBe("line");
+    expect(first?.querySelector(".dc-label")?.textContent).toBe("Chart");
+    expect(first?.querySelector("figcaption")?.textContent).toBe("Orders by quarter");
     expect(first?.querySelector(".dc-cite")?.textContent).toBe("Source: Order snapshot");
-    expect(second?.dataset.kind).toBe("line");
-    expect(second?.querySelector(".dc-label")?.textContent).toBe("Chart");
     expect(second?.querySelector("figcaption")).toBeNull();
   });
 
   it("shows its title as written, like a caption, since markup is read only in a text block's text", () => {
     const image = { id: "t-image", type: "image", asset: "assets/a.png", alt: "A", caption: "**x**" };
     const section = renderScene(
-      sceneWith({ schemaVersion: "0.3", blocks: [{ ...table, title: "**x**" }, image] }),
+      sceneWith({ schemaVersion: "0.3", blocks: [{ ...chart, title: "**x**" }, image] }),
       ctx,
     );
     expect(section.querySelector(".dc-placeholder figcaption")?.textContent).toBe("**x**");

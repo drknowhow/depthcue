@@ -135,3 +135,34 @@ Declined in review:
 - A list block instead of `- ` lines: agents write markdown lists well, and a list block can be added later without
   breaking anything.
 - Row-level and cell-level provenance: it belongs to the 0.4 data module in `docs/PLAN.md`.
+
+
+## Step 4 record: the table block
+
+- **Static form.** A table is a real `<table>` drawn by `renderTable` in the core player, so it reads the same in
+  reading view, thumbnails, the editor, and the exported page, and still shows if the `table` module is off or fails.
+  The lazy module only adds row markers (activation idle, exported static). This departs from the brief's wording,
+  which had the module replace a placeholder; no placeholder remains for tables.
+- **Numbers.** Shown with `Intl` in the deck's language and no thousands separator, right-aligned and tabular, with
+  the unit beside the header label. The unit is hidden when the header row is.
+- **New table.** Three columns by three data rows, labels "Column 1" to "Column 3", every cell empty. Header row
+  detection on paste applies only to such an untouched table, pasting at the first cell: the first row is all
+  non-number words, there are at least two rows, and some column below it is all numbers. Anything else pastes as data.
+- **Number columns.** A column becomes numeric when a paste into a fresh column holds only numbers. A word typed
+  into a number column is refused with its reason, and so is a paste that would put one there; the whole paste is
+  refused, not part of it.
+- **Editing.** One edit or paste is one `block.set` and so one Undo step. Tab after a commit moves to the next cell
+  without editing; typing then starts an edit. Enter moves down and stays on the last row. Escape cancels an edit.
+- **Cell menu.** Right-click on a cell lists cell commands only (insert row above and below, insert column left and
+  right, delete row, delete column, show or hide the header, make the column text or numbers). Impossible ones
+  are left out: at a limit, on the last row or column, row above and delete row on the header. The block menu stays on
+  the border, caption and toolbar.
+- **Clipboard.** Ctrl+C on a cell copies the whole table: the step 2 envelope, plus tab-separated text. Pasted HTML
+  is read with `DOMParser` for text only, with script, style, noscript and template removed, and never inserted.
+- **Quick bar.** The Table button took the bar past one row at 1024 wide in a wide fallback face (DejaVu Sans, as on a
+  Linux runner). From 761 to 1279 wide its buttons are padded 6 pixels and it may come within 8 pixels of the stage,
+  which leaves 68 pixels of the stage free in DejaVu Sans and 55 in Verdana. A test forces that face and asks for 40.
+- **Core.** No change; every limit comes from `DATA_LIMITS`. `grid.ts` knows nothing of tables, so step 6 can reuse
+  it for chart data.
+- **Size.** Editor script grew from 73.6 to 79.2 KB brotli of 90, so steps 3, 5 and 6 share about 10 KB. The `table`
+  module is 0.6 KB of 3.0. Player script and styles, and the exported page script, are within their limits.
