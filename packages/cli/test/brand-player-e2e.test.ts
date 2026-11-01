@@ -241,11 +241,54 @@ const rgb = (hex: string): string => {
 
 type Depthcue = { depthcue?: { settled(): Promise<void> } };
 
+/**
+ * Waits for the page to lay out what it has and for the fonts that layout asked for. A face is fetched only once text that
+ * uses it is laid out, which is a frame after the scene is in, so the fonts are awaited after two frames, not before.
+ */
+const frames = (page: Page): Promise<void> =>
+  page.evaluate(async () => {
+    const frame = () => new Promise((done) => requestAnimationFrame(done));
+    await frame();
+    await frame();
+    await document.fonts.ready;
+  });
+
 /** Waits until the scene is on the page, its modules are hydrated and its fonts are in. */
 async function settle(page: Page, scene: string): Promise<void> {
   await page.waitForSelector(`.dc-scene[data-scene="${scene}"]`);
   await page.evaluate(() => (window as unknown as Depthcue).depthcue?.settled());
-  await page.evaluate(() => document.fonts.ready);
+  await frames(page);
+}
+
+/** What a page has loaded, for the message of a test that finds two pages differ. */
+const loadedFaces = (page: Page): Promise<string> =>
+  page.evaluate(() =>
+    [...document.fonts]
+      .filter((face) => face.status !== "unloaded")
+      .map((face) => `${face.family} ${face.weight} ${face.style} ${face.status}`)
+      .join("; "),
+  );
+
+/**
+ * Whether the stages of two pages come out as the same picture. A face that arrives late repaints, so the pictures are
+ * taken again a few times before they are called different; a difference that is still there is a real one, and the
+ * message says what each page had loaded and whether the first page agrees with itself.
+ */
+async function sameStage(a: Page, b: Page): Promise<string | undefined> {
+  const shoot = (page: Page) => page.locator(".dc-stage").screenshot({ animations: "disabled" });
+  let left = await shoot(a);
+  let right = await shoot(b);
+  for (let attempt = 0; attempt < 4 && !left.equals(right); attempt++) {
+    await a.waitForTimeout(250);
+    await Promise.all([frames(a), frames(b)]);
+    left = await shoot(a);
+    right = await shoot(b);
+  }
+  if (left.equals(right)) return undefined;
+  const again = await shoot(a);
+  return `the pictures differ (${left.length} and ${right.length} bytes, the first ${
+    again.equals(left) ? "is" : "is not"
+  } the same twice); loaded: [${await loadedFaces(a)}] and [${await loadedFaces(b)}]`;
 }
 
 /** Watches a page for the errors a refused script, style or font would raise. */
@@ -730,9 +773,10 @@ describe("a deck with no brand", () => {
       for (const scene of scenes) {
         const a = await withLook.go(scene);
         const b = await without.go(scene);
-        const left = await a.locator(".dc-stage").screenshot({ animations: "disabled" });
-        const right = await b.locator(".dc-stage").screenshot({ animations: "disabled" });
-        expect(left.equals(right), `${name}/${scene} looks the same with and without a look`).toBe(true);
+        expect(
+          await sameStage(a, b),
+          `${name}/${scene} looks the same with and without a look`,
+        ).toBeUndefined();
         expect(await a.locator(".dc-chrome, .dc-slot, .dc-backdrop").count(), `${name}/${scene}`).toBe(0);
       }
     }, 120_000);
