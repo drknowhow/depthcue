@@ -1,6 +1,12 @@
 import { h } from "@depthcue/player";
 
-/** One thing the palette can do. */
+/** What the right-click menu can be opened on: a block, the claim, an empty part of the slide, or a scene in the strip. */
+export type Target = "block" | "claim" | "slide" | "scene";
+
+/**
+ * One thing the editor can do. The palette lists every command; the right-click menu lists those that say they
+ * apply to what was clicked, so the two are one list and cannot disagree about what can be done.
+ */
 export interface Command {
   id: string;
   /** What the list says. */
@@ -11,6 +17,14 @@ export interface Command {
   words?: string;
   /** The keys that do the same thing, as the table of shortcuts writes them. */
   keys?: readonly (readonly string[])[] | undefined;
+  /** What the right-click menu lists it for. Without it the command is in the palette alone. */
+  targets?: readonly Target[];
+  /** What the menu says, when that is shorter than the title: the menu already says what it is about. */
+  label?: string;
+  /** The commands of one section sit together in the menu, with a line between one section and the next. */
+  section?: string;
+  /** The name of the submenu the menu puts it in, so a long run of choices is one item that opens. */
+  submenu?: string;
   run(): void;
 }
 

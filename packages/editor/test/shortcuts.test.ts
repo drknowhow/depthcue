@@ -61,6 +61,22 @@ const pinned = (id: string, frame: Frame) => {
   if (!result.ok) throw new Error("the frame should be accepted");
 };
 
+/** What a copy, cut or paste event carries: a clipboard that holds what was set on it. */
+const clipboardOf = (initial: Record<string, string> = {}) => {
+  const held = new Map(Object.entries(initial));
+  return {
+    held,
+    files: [] as File[],
+    setData: (type: string, value: string) => void held.set(type, value),
+    getData: (type: string) => held.get(type) ?? "",
+  };
+};
+const clipboardEvent = (type: "copy" | "cut" | "paste", data: ReturnType<typeof clipboardOf>) => {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", { value: data });
+  return event;
+};
+
 const rect = (left: number, top: number, width: number, height: number) =>
   ({
     left,
@@ -168,6 +184,64 @@ const CASES: Record<string, () => void | Promise<void>> = {
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement?.closest(".ed-toolbar")).not.toBeNull();
   },
+  cut() {
+    blockNode(PICTURE).click();
+    const clipboard = clipboardOf();
+    const event = clipboardEvent("cut", clipboard);
+    blockNode(PICTURE).dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(JSON.parse(clipboard.getData("application/json")).block.id).toBe(PICTURE);
+    expect(blocks().some((block) => block.id === PICTURE)).toBe(false);
+  },
+  copy() {
+    blockNode(PICTURE).click();
+    const clipboard = clipboardOf();
+    const event = clipboardEvent("copy", clipboard);
+    blockNode(PICTURE).dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(JSON.parse(clipboard.getData("application/json"))).toMatchObject({
+      depthcue: "block",
+      version: 1,
+      block: { id: PICTURE, type: "image" },
+    });
+    // The words go as plain text, and the block is still on the slide.
+    const picture = blocks().find((block) => block.id === PICTURE);
+    expect(picture?.type === "image" && picture.alt).toBeTruthy();
+    expect(clipboard.getData("text/plain")).toBe(picture?.type === "image" ? picture.alt : "");
+    expect(clipboard.getData("text/html")).toContain("data-depthcue-block");
+  },
+  paste() {
+    blockNode(PICTURE).click();
+    const clipboard = clipboardOf();
+    blockNode(PICTURE).dispatchEvent(clipboardEvent("copy", clipboard));
+    const event = clipboardEvent("paste", clipboard);
+    blockNode(PICTURE).dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(kinds()).toEqual(["text", "text", "image", "image"]);
+    // The copy is a block of its own, and is the one chosen.
+    expect(editor.blockId).not.toBe(PICTURE);
+    expect(editor.blockId).toBe(blocks()[3]?.id);
+  },
+  duplicate() {
+    blockNode(PICTURE).click();
+    const event = press(blockNode(PICTURE), "d", { ctrlKey: true });
+    // A browser would bookmark the page on this key.
+    expect(event.defaultPrevented).toBe(true);
+    expect(kinds()).toEqual(["text", "text", "image", "image"]);
+    // Held down, it makes one copy.
+    press(document, "d", { ctrlKey: true, repeat: true });
+    expect(kinds()).toHaveLength(4);
+  },
+  menu() {
+    const menu = host.querySelector<HTMLElement>(".ed-menu") as HTMLElement;
+    expect(menu.hidden).toBe(true);
+    blockNode(PICTURE).click();
+    blockNode(PICTURE).focus();
+    const event = press(blockNode(PICTURE), "F10", { shiftKey: true });
+    expect(event.defaultPrevented).toBe(true);
+    expect(menu.hidden).toBe(false);
+    expect(menu.getAttribute("aria-label")).toBe("Block menu");
+  },
   edit() {
     pinned(TEXT, { x: 10, y: 10, w: 50, h: 20 });
     press(blockNode(TEXT), "Enter");
@@ -219,6 +293,10 @@ describe("the table of shortcuts", () => {
       toolbar: () => false,
       palette() {},
       storyboard() {},
+      copy: () => false,
+      paste: () => false,
+      duplicate: () => false,
+      menu: () => false,
     }).map((entry) => entry.id);
     expect([...drawn].sort()).toEqual([...table].sort());
     expect([...table].sort()).toEqual(Object.keys(CASES).sort());
