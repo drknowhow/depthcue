@@ -2155,6 +2155,11 @@ body {
   padding: 0.35em 0.6em;
 }
 
+/* The player's table leaves its last column no padding on the right and a number column a wide one: here every cell has the same. */
+.ed-chart-grid .ed-grid :is(th, td):is(:last-child, :not(:last-child)) {
+  padding-inline: 0.6em;
+}
+
 .ed-chart-grid .ed-grid thead th {
   position: sticky;
   top: 0;

@@ -40,6 +40,8 @@ interface Plot {
 
 /** The width of one character of the 12-unit data font, which is how a label's width is known before it is drawn. */
 const CHAR = 7.2;
+/** The same for the 14-unit semibold type of a donut's shares. */
+const SHARE_CHAR = 8.4;
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 const num = (cell: unknown): number | null =>
   typeof cell === "number" && Number.isFinite(cell) ? cell : null;
@@ -75,10 +77,23 @@ function barPath(x: number, base: number, end: number, width: number, round: boo
   );
 }
 
-const text = (x: number, y: number, content: string, anchor: "start" | "middle" | "end", name?: string) =>
+const text = (
+  x: number,
+  y: number,
+  content: string,
+  anchor: "start" | "middle" | "end",
+  name?: string,
+  part?: string,
+) =>
   s(
     "text",
-    { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, "text-anchor": anchor, class: name },
+    {
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      "text-anchor": anchor,
+      class: name,
+      "data-s": part,
+    },
     content,
   );
 
@@ -260,6 +275,7 @@ function donut(plot: Plot): SVGElement[] {
 
   const outer = Math.min(H / 2 - 8, W * 0.25);
   const inner = outer * 0.58;
+  const mid = (outer + inner) / 2;
   const [cx, cy] = [outer + 6, H / 2];
   const at = (angle: number, radius: number) =>
     [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)] as const;
@@ -269,7 +285,7 @@ function donut(plot: Plot): SVGElement[] {
   for (const part of parts) {
     // A part whole circle is drawn as nearly one, so that its arc has two ends. Parts are 2 units apart.
     const span = Math.min(6.28, (part.value / total) * 2 * Math.PI);
-    const gap = span > 0.3 && span < 6.28 ? 1 / ((outer + inner) / 2) : 0;
+    const gap = span > 0.3 && span < 6.28 ? 1 / mid : 0;
     const [from, to] = [angle + gap, angle + span - gap];
     const large = to - from > Math.PI ? 1 : 0;
     const shape = d(
@@ -277,17 +293,18 @@ function donut(plot: Plot): SVGElement[] {
       ...["L", ...at(to, inner), "A", inner, inner, 0, large, 0, ...at(from, inner), "Z"],
     );
     out.push(s("path", { class: "dc-mark", "data-s": slot(part.at), d: shape }));
-    if (part.value / total >= 0.07) {
-      const [x, y] = at(angle + span / 2, (outer + inner) / 2);
-      share.push(
-        text(
-          x,
-          y + 4,
-          `${numberText(Math.round((part.value / total) * 100), language)}%`,
-          "middle",
-          "dc-halo",
-        ),
-      );
+    // Its share is written on the part, and left off a part too thin to hold it: the list beside the ring names every
+    // part with its value. The label is a box across the ring and along it, whichever way the part's middle points.
+    const label = `${numberText(Math.round((part.value / total) * 100), language)}%`;
+    const middle = angle + span / 2;
+    const [across, along] = [Math.abs(Math.cos(middle)), Math.abs(Math.sin(middle))];
+    const [wide, high] = [label.length * SHARE_CHAR, 14];
+    if (
+      across * wide + along * high + 10 <= outer - inner &&
+      along * wide + across * high + 10 <= span * mid
+    ) {
+      const [x, y] = at(middle, mid);
+      share.push(text(x, y + 5, label, "middle", "dc-share", slot(part.at)));
     }
     angle += span;
   }

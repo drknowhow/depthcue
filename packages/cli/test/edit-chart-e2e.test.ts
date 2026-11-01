@@ -441,6 +441,27 @@ describe("the chart block in a real browser", () => {
       expect(popBox.x + popBox.width <= chartBox.x || popBox.x >= chartBox.x + chartBox.width).toBe(true);
       expect(popBox.x).toBeGreaterThanOrEqual(slideBox.x);
       expect(popBox.x + popBox.width).toBeLessThanOrEqual(slideBox.x + slideBox.width);
+      // Four columns show in full: the grid does not scroll sideways, and the last column's words keep their padding.
+      const fit = await pop.locator(".ed-chart-grid").evaluate((grid) => {
+        const box = grid.getBoundingClientRect();
+        const edges = [...grid.querySelectorAll("tr")].map((row) => {
+          const last = row.lastElementChild as HTMLElement;
+          const words = document.createRange();
+          words.selectNodeContents(last);
+          return { cell: last.getBoundingClientRect().right, words: words.getBoundingClientRect().right };
+        });
+        return {
+          scrolls: grid.scrollWidth - grid.clientWidth,
+          columns: grid.querySelectorAll("thead th").length,
+          room: Math.min(...edges.map((edge) => box.right - 1 - edge.words)),
+          inside: Math.max(...edges.map((edge) => edge.cell - box.right)),
+        };
+      });
+      expect(fit.columns).toBe(4);
+      expect(fit.scrolls).toBeLessThanOrEqual(0);
+      expect(fit.inside).toBeLessThanOrEqual(0);
+      // The words end well short of the border: at least the cell's padding, which is about 8 pixels.
+      expect(fit.room).toBeGreaterThanOrEqual(6);
       // A number typed into the grid is on the chart before the cell is left.
       await cell(page, 1, 2).click();
       await page.keyboard.type("40");
@@ -579,6 +600,57 @@ describe("every kind of chart in the player and in an exported page", () => {
     expect(outside).toEqual([]);
     expect(problems).toEqual([]);
   });
+
+  for (const theme of ["paper", "ink"]) {
+    it(`writes each donut share in a color that reads on its part, on the ${theme} preset`, async () => {
+      const deck = await openDeck(charts, (folder) => {
+        const file = join(folder, "deck.json");
+        writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), theme }, null, 2));
+      });
+      const present = await context.newPage();
+      await present.goto(`${deck.server.url}present#/donut`);
+      await present.locator(".dc-scene svg.dc-plot").waitFor();
+      await present.evaluate(() => document.fonts.ready);
+      const ratios = await present.evaluate(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const paint = canvas.getContext("2d", { willReadFrequently: true }) as CanvasRenderingContext2D;
+        // Any color the page computes, as the red, green and blue the screen shows.
+        const rgb = (value: string) => {
+          paint.clearRect(0, 0, 1, 1);
+          paint.fillStyle = value;
+          paint.fillRect(0, 0, 1, 1);
+          return [...paint.getImageData(0, 0, 1, 1).data].slice(0, 3) as number[];
+        };
+        const light = (channels: number[]) => {
+          const [r = 0, g = 0, b = 0] = channels.map((channel) => {
+            const v = channel / 255;
+            return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        };
+        return [...document.querySelectorAll(".dc-scene text.dc-share")].map((label) => {
+          const part = label
+            .closest("svg")
+            ?.querySelector(`path.dc-mark[data-s='${label.getAttribute("data-s")}']`);
+          const [a, b] = [label, part as Element].map((node) => light(rgb(getComputedStyle(node).fill)));
+          const [high, low] = [Math.max(a as number, b as number), Math.min(a as number, b as number)];
+          return { share: label.textContent, ratio: Math.round(((high + 0.05) / (low + 0.05)) * 100) / 100 };
+        });
+      });
+      expect(ratios.map((entry) => entry.share)).toEqual(["43%", "29%", "14%", "10%"]);
+      for (const { share, ratio } of ratios)
+        expect(ratio, `${theme} ${share} of ${JSON.stringify(ratios)}`).toBeGreaterThanOrEqual(4.5);
+      // No halo is painted over the glyphs.
+      expect(
+        await present
+          .locator(".dc-scene text.dc-share")
+          .first()
+          .evaluate((node) => getComputedStyle(node).stroke),
+      ).toBe("none");
+      expect(problems).toEqual([]);
+    });
+  }
 
   it("puts the sentences of a chart in the table that a screen reader gets, with its unit in the header", async () => {
     const deck = await openDeck(charts);

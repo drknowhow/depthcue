@@ -377,6 +377,17 @@ describe("a donut chart", () => {
     expect(text).not.toContain("4%");
   });
 
+  it("writes each share flat on its part, with the part's own place in the palette and no halo", () => {
+    const shares = [...figure.querySelectorAll("svg.dc-plot text.dc-share")];
+    expect(shares.map((share) => [share.textContent, share.getAttribute("data-s")])).toEqual([
+      ["43%", "1"],
+      ["29%", "2"],
+      ["14%", "3"],
+      ["10%", "4"],
+    ]);
+    expect(figure.querySelector(".dc-halo")).toBeNull();
+  });
+
   it("draws one whole part as a ring, and nothing when its parts add up to nothing", () => {
     const base = chartIn("donut");
     const whole = renderChart({ ...base, rows: [["Only", 5]] });

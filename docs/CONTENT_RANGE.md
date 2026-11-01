@@ -245,7 +245,7 @@ Declined in review:
   player by `renderChart` (`charts/scale.ts`, `svg.ts`, `draw.ts`) as one SVG, so a chart shows in reading view,
   thumbnails, the editor, the exported page and `depthcue render` with no module. The lazy `chart` module still serves
   only the old `bar-chart`, so its row stays at 3 KB (1.4 used) and the approved raise to 8 KB was not needed. The cost
-  moved to the exported page script, which holds the player: 13.2 KB brotli with step 5's text code, so its limit goes
+  moved to the exported page script, which holds the player: 13.3 KB brotli with step 5's text code, so its limit goes
   from 12 to 14 KB (the plan allows 16).
 - **Reading it.** Each chart is a `figure` holding `svg[role=img]` labeled "<Kind> chart: <title>", plus a real table of
   its data in a visually hidden block, built by `renderTable`, so a screen reader gets rows and columns with units.
@@ -273,7 +273,8 @@ Declined in review:
   that a smaller slot cannot contain. It does not measure the text inside the SVG.
 - **Not built.** No per-column unit control (`columns[].unit` is agent-only, and the grid keeps it); no kind select in
   the Data popover (the menu and palette cover it); the quick bar and top bar have no new buttons. A ghost menu lists
-  kinds in the core's accepts order, so Chart comes last. The donut's percent labels use a halo, and direct labels at
-  line ends were dropped for the legend.
-- **Size.** Editor script 84.7 to 89.2 KB brotli of 90, so step 6 took 4.5 KB and 0.8 KB is left. Player script
-  10.1 KB and styles 4.6 KB; core code in the player 5.1 KB of 6.0.
+  kinds in the core's accepts order, so Chart comes last. A donut's percent labels sit flat on their parts, white on a
+  dark part and black on a light one by the part's own luminance (at least 4.5 to 1, tested on both presets), and are
+  left off a part too thin to hold one. Direct labels at line ends were dropped for the legend.
+- **Size.** Editor script 84.7 to 89.3 KB brotli of 90, so step 6 took 4.6 KB and 0.7 KB is left. Player script
+  10.1 KB and styles 4.7 KB; core code in the player 5.1 KB of 6.0.

@@ -736,13 +736,27 @@
   color: var(--dc-text);
 }
 
-.dc-plot .dc-halo {
-  color: var(--dc-text);
+/*
+ * A donut's share sits flat on its part, with no halo: the deck's background color, or where the browser can read the
+ * part's own color, white on a dark part and black on a light one, which is at least 4.5 to 1 on any part.
+ */
+.dc-plot .dc-share {
+  fill: var(--dc-bg);
+  font-size: 14px;
   font-weight: 600;
-  stroke: var(--dc-bg);
-  stroke-linejoin: round;
-  stroke-width: 2px;
-  paint-order: stroke;
+}
+
+@supports (color: color(from red srgb-linear r g b)) {
+  .dc-plot .dc-share {
+    /* 1 (white) when the part's relative luminance is under 0.179, where white and black read equally well, else 0.
+       A mixed color can lie outside what a screen shows, which clips each channel, so the luminance is of the clipped one. */
+    --on: clamp(
+      0,
+      calc((0.179 - (clamp(0, r, 1) * 0.2126 + clamp(0, g, 1) * 0.7152 + clamp(0, b, 1) * 0.0722)) * 1000),
+      1
+    );
+    fill: color(from var(--c) srgb-linear var(--on) var(--on) var(--on));
+  }
 }
 
 .dc-plot :is(.dc-grid, .dc-axis) {
