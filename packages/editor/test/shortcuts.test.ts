@@ -123,6 +123,15 @@ const CASES: Record<string, () => void | Promise<void>> = {
     press(document, "s", { ctrlKey: true });
     await vi.waitFor(() => expect(server.saves).toHaveLength(1));
   },
+  palette() {
+    const palette = () => host.querySelector<HTMLElement>(".ed-palette") as HTMLElement;
+    const event = press(document, "k", { ctrlKey: true });
+    expect(event.defaultPrevented).toBe(true);
+    expect(palette().hidden).toBe(false);
+    // Inside it the same key puts it away again.
+    press(palette().querySelector("input") as HTMLElement, "k", { ctrlKey: true });
+    expect(palette().hidden).toBe(true);
+  },
   help() {
     press(document, "?");
     expect(sheet().hidden).toBe(false);
@@ -189,6 +198,7 @@ describe("the table of shortcuts", () => {
       save() {},
       pin: () => false,
       toolbar: () => false,
+      palette() {},
     }).map((entry) => entry.id);
     expect([...drawn].sort()).toEqual([...table].sort());
     expect([...table].sort()).toEqual(Object.keys(CASES).sort());
@@ -196,6 +206,17 @@ describe("the table of shortcuts", () => {
 
   it.each(Object.keys(CASES))("%s does what the sheet says", async (id) => {
     await CASES[id]?.();
+  });
+
+  it("opens the palette on Ctrl K or Command K, and not on a K alone or with Shift", () => {
+    const palette = host.querySelector<HTMLElement>(".ed-palette") as HTMLElement;
+    // Each press is checked by itself: a second one that opened it would shut it again.
+    for (const keys of [{}, { shiftKey: true }, { ctrlKey: true, shiftKey: true }, { altKey: true }]) {
+      press(document, keys.shiftKey ? "K" : "k", keys);
+      expect(palette.hidden).toBe(true);
+    }
+    press(document, "k", { metaKey: true });
+    expect(palette.hidden).toBe(false);
   });
 });
 

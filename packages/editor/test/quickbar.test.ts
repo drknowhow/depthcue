@@ -50,12 +50,25 @@ describe("adding to the slide", () => {
     expect(bar().closest(".ed-stage")).not.toBeNull();
     expect(bar().closest(".ed-main")).toBeNull();
     expect(bar().getAttribute("aria-label")).toBe("Add to this slide");
-    // The `?` button is last, and what it is called is in its label and not in its text.
+    // Everything and the `?` button come last, and what the `?` is called is in its label and not in its text.
     const labels = [...bar().querySelectorAll("[data-quick], .ed-button")].map(
       (node) => node.getAttribute("aria-label") ?? nameOf(node),
     );
-    expect(labels).toEqual(["Text", "Chart", "Image", "Clip", "Claim", "Build order", "Keyboard shortcuts"]);
+    expect(labels).toEqual([
+      "Text",
+      "Chart",
+      "Image",
+      "Clip",
+      "Claim",
+      "Build order",
+      "Everything",
+      "Keyboard shortcuts",
+    ]);
     expect(bar().querySelector("input[type='file']")).not.toBeNull();
+    // The Everything button names its key for assistive technology, for both of the keys that open it.
+    const everything = bar().querySelector("[data-quick='palette']");
+    expect(everything?.getAttribute("aria-keyshortcuts")).toBe("Control+K Meta+K");
+    expect(everything?.getAttribute("title")).toMatch(/^Find anything to do \(\w+ K\)$/);
   });
 
   it("writes the key of Text, Chart and Image on their buttons, and tells assistive technology the same", () => {

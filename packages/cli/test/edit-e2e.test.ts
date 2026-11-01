@@ -2234,6 +2234,182 @@ describe("the problem ribbon in a real browser", () => {
   });
 });
 
+describe("the Ctrl K palette in a real browser", () => {
+  const palette = () => page.locator(".ed-palette");
+  const field = () => palette().locator("input");
+  const focused = () =>
+    page.evaluate(() => {
+      const node = document.activeElement as HTMLElement | null;
+      return node?.getAttribute("role") ?? node?.getAttribute("data-quick") ?? node?.tagName ?? null;
+    });
+  /** Opens it from the page, types what a person would and does the first thing it lists. */
+  async function ask(text: string) {
+    await page.keyboard.press("Control+k");
+    await field().waitFor();
+    await page.keyboard.type(text);
+    await page.keyboard.press("Enter");
+    await palette().waitFor({ state: "hidden" });
+  }
+  const layoutOnDisk = (id: string) => sceneOnDisk(id)?.layout;
+  const frameOnDisk = (sceneId: string, id: string) =>
+    disk().scenes[sceneId]?.blocks.find((candidate) => candidate.id === id)?.frame;
+  const current = () =>
+    page.locator(".ed-scene-list > li[data-current] .ed-scene").getAttribute("data-scene");
+
+  it("opens on Ctrl K with the keyboard in its field, and Escape gives the keyboard back to where it was", async () => {
+    await page.goto(url());
+    const text = page.locator(".ed-quick [data-quick='text']");
+    await text.focus();
+    await page.keyboard.press("Control+k");
+    await field().waitFor();
+    expect(await focused()).toBe("combobox");
+    expect(await palette().locator("[role='option']").count()).toBeGreaterThan(5);
+    await page.keyboard.press("Escape");
+    await palette().waitFor({ state: "hidden" });
+    expect(await focused()).toBe("text");
+    // Ctrl K inside the field shuts it too.
+    await page.keyboard.press("Control+k");
+    await field().waitFor();
+    await page.keyboard.press("Control+k");
+    await palette().waitFor({ state: "hidden" });
+    expect(problems).toEqual([]);
+  });
+
+  it("opens from the Everything button of the bar, which names its key", async () => {
+    await page.goto(url());
+    const button = page.locator(".ed-quick [data-quick='palette']");
+    expect(await button.getAttribute("aria-keyshortcuts")).toBe("Control+K Meta+K");
+    await button.click();
+    await field().waitFor();
+    expect(await focused()).toBe("combobox");
+    expect(problems).toEqual([]);
+  });
+
+  it("changes the layout from a few letters, and one Undo takes it back", async () => {
+    addScene({
+      id: "kl",
+      title: "Palette layout",
+      layout: "text-media",
+      blocks: [note("kl-words", "Words.")],
+    });
+    await openScene("kl", "kl-words");
+    await ask("layout claim");
+    await saved();
+    expect(layoutOnDisk("kl")).toBe("claim-evidence");
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(layoutOnDisk("kl")).toBe("text-media");
+    expect(problems).toEqual([]);
+  });
+
+  it("goes to another scene by its name", async () => {
+    addScene({ id: "kg", title: "Zanzibar", layout: "text-media", blocks: [note("kg-words", "Words.")] });
+    await page.goto(url());
+    await page.locator(".ed-scene[data-scene='method']").click();
+    await ask("zanzibar");
+    expect(await current()).toBe("kg");
+    expect(problems).toEqual([]);
+  });
+
+  it("pins the chosen block where it is, then puts it back, each written to the file", async () => {
+    await openScene("method", "method-diagram");
+    await page.locator(".ed-frame [data-id='method-diagram']").click();
+    await ask("pin the block");
+    await saved();
+    expect(frameOnDisk("method", "method-diagram")).toBeDefined();
+    await page.locator(".ed-frame [data-id='method-diagram']").click();
+    await ask("put the block back");
+    await saved();
+    expect(frameOnDisk("method", "method-diagram")).toBeUndefined();
+    expect(problems).toEqual([]);
+  });
+
+  it("settles the problem on show with Fix, and Undo brings it back", async () => {
+    const margin = { x: 1, y: 30, w: 40, h: 20 };
+    addScene({ id: "kf", title: "Palette fix", layout: "text-media", blocks: [note("kf-words", "Words.")] });
+    const doc = disk();
+    const pinned = applyOps(
+      doc,
+      [{ op: "block.frame", scene: "kf", id: "kf-words", frame: margin }],
+      revisionOf(doc),
+    );
+    if (!pinned.ok) throw new Error(pinned.diagnostics[0]?.message);
+    writeFileSync(join(folder, "scenes", "kf.json"), `${JSON.stringify(pinned.doc.scenes.kf, null, 2)}\n`);
+    await openScene("kf", "kf-words");
+    await page.locator(".ed-ribbon[data-state='problems']").waitFor();
+    await ask("fix the problem");
+    await page.locator(".ed-ribbon[data-state='clear']").waitFor();
+    await saved();
+    expect(frameOnDisk("kf", "kf-words")).toBeUndefined();
+    await page.keyboard.press("Control+z");
+    await saved();
+    expect(frameOnDisk("kf", "kf-words")).toEqual(margin);
+    expect(problems).toEqual([]);
+  });
+
+  it("gives nothing to the slide behind it: a t adds no text and Ctrl Z undoes nothing while it is open", async () => {
+    addScene({ id: "kw", title: "Palette keys", layout: "text-media", blocks: [note("kw-words", "Words.")] });
+    await openScene("kw", "kw-words");
+    // There is a change to undo, so a Ctrl Z that got through would show.
+    await ask("lead agent");
+    await saved();
+    const agentLeads = () => page.locator("[data-lead='agent'][aria-pressed='true']").count();
+    expect(await agentLeads()).toBe(1);
+    const drawn = () => page.locator(".ed-frame [data-id]").count();
+    const before = await drawn();
+    await page.keyboard.press("Control+k");
+    await field().waitFor();
+    await page.keyboard.type("t");
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(300);
+    expect(await drawn()).toBe(before);
+    expect(await agentLeads()).toBe(1);
+    await page.keyboard.press("Escape");
+    await saved();
+    expect(sceneOnDisk("kw")?.lead).toBe("agent");
+    expect(idsOnDisk("kw")).toEqual(["kw-words"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("opens the presentation at this scene in a window of its own", async () => {
+    await openScene("method", "method-diagram");
+    const opened = context.waitForEvent("page");
+    await ask("present");
+    const popup = await opened;
+    expect(popup.url()).toContain("present");
+    expect(popup.url()).toContain("method");
+    await popup.close();
+    expect(problems).toEqual([]);
+  });
+
+  for (const [width, height] of [
+    [1440, 900],
+    [1024, 768],
+    [1024, 360],
+    [390, 844],
+  ] as const) {
+    it(`fits inside the window at ${width} by ${height} with a long list, and the page does not scroll sideways`, async () => {
+      await page.setViewportSize({ width, height });
+      await page.goto(url());
+      await page.locator(".ed-quick").waitFor();
+      await page.keyboard.press("Control+k");
+      await field().waitFor();
+      const box = await page.locator(".ed-palette-card").boundingBox();
+      if (!box) throw new Error("the palette should be drawn");
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      expect(box.y + box.height).toBeLessThanOrEqual(height);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+      await page.keyboard.press("ArrowDown");
+      expect(await field().getAttribute("aria-activedescendant")).toBe(
+        await palette().locator("[role='option']").nth(1).getAttribute("id"),
+      );
+      expect(problems).toEqual([]);
+    });
+  }
+});
+
 describe("layout problems from a real render, in a real browser", () => {
   // The first question starts a second Chrome, so these have more time than the others.
   const SLOW = 45_000;

@@ -3,6 +3,7 @@ import { h } from "@depthcue/player";
 import { popoverChip } from "./chip.ts";
 import { actionButton, type Edits, fileButton } from "./fields.ts";
 import { notesPanel, panelHost } from "./panels.ts";
+import { keyName } from "./shortcuts.ts";
 import { BLOCK_KINDS, IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
 
 export interface QuickBarHooks {
@@ -22,6 +23,8 @@ export interface QuickBarHooks {
   build?(on: boolean): void;
   /** The ? button was pressed: show the list of keyboard shortcuts. */
   keys(): void;
+  /** The Everything button was pressed: open the palette that finds anything to do. */
+  palette(): void;
 }
 
 export interface QuickBar {
@@ -106,7 +109,12 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     { "data-quick": "build", "aria-pressed": "false", class: "ed-quick-build" },
   );
 
-  // The keys sit at the far end: a way to look them up, and not one of the things to add.
+  // Everything and the keys sit at the far end: ways to find things, and not things to add.
+  const everything = actionButton("Everything", () => hooks.palette(), {
+    "data-quick": "palette",
+    "aria-keyshortcuts": "Control+K Meta+K",
+    title: `Find anything to do (${keyName("Mod")} K)`,
+  });
   const keys = actionButton("?", () => hooks.keys(), {
     "data-quick": "keys",
     "aria-label": "Keyboard shortcuts",
@@ -122,6 +130,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     h("span", { class: "ed-quick-rule", "aria-hidden": "true" }),
     notes.chip.wrap,
     order,
+    everything,
     keys,
   );
 

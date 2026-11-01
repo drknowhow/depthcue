@@ -59,6 +59,11 @@ export interface SceneBar {
   render(sceneId: string, typing?: boolean): void;
   /** Opens the scene popover, at one of its sections when that is given. */
   open(section?: "steps" | "sources"): void;
+  /** What the buttons do, for a command that has no button to press: one change, one undo step. */
+  setLead(lead: (typeof LEADS)[number]): void;
+  setLayout(layout: Layout): void;
+  /** Puts every pinned block of the scene back in its layout's slot. */
+  autoLayout(): void;
   destroy(): void;
 }
 
@@ -111,13 +116,14 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
     },
     "Auto layout",
   );
-  auto.addEventListener("click", () => {
+  function autoLayout() {
     const pinned = (session.doc.scenes[current]?.blocks ?? []).filter((block) => block.frame);
     if (pinned.length === 0) return;
     const ops = pinned.map((block): Op => ({ op: "block.unframe", scene: current, id: block.id }));
     const result = hooks.edits.act(ops);
     hooks.problem(result.ok ? undefined : problemOf(result));
-  });
+  }
+  auto.addEventListener("click", autoLayout);
 
   const host = panelHost(session, {
     edits: hooks.edits,
@@ -146,6 +152,9 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
   return {
     element,
     open,
+    setLead: (lead) => choose({ lead }),
+    setLayout: (layout) => choose({ layout }),
+    autoLayout,
     destroy: popover.destroy,
     render(sceneId, typing = false) {
       current = sceneId;
