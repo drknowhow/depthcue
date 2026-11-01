@@ -104,6 +104,17 @@ const CASES: Record<string, () => void | Promise<void>> = {
     press(document, "i");
     expect(opened).toHaveBeenCalledTimes(1);
   },
+  comment() {
+    const catcher = host.querySelector<HTMLElement>(".ed-comment-catch") as HTMLElement;
+    expect(catcher.hidden).toBe(true);
+    press(document, "m");
+    expect(catcher.hidden).toBe(false);
+    expect(quick("comment").getAttribute("aria-pressed")).toBe("true");
+    // The same key puts the tool away again.
+    press(document, "m");
+    expect(catcher.hidden).toBe(true);
+    expect(quick("comment").getAttribute("aria-pressed")).toBe("false");
+  },
   undo() {
     store.session.apply([retitle("Edited")]);
     press(document, "z", { ctrlKey: true });
@@ -193,6 +204,7 @@ describe("the table of shortcuts", () => {
     const table = shortcutTable({
       add() {},
       pickImage() {},
+      comment() {},
       undo() {},
       redo() {},
       save() {},
@@ -239,6 +251,7 @@ describe("the shortcut sheet", () => {
     const groups = [...sheet().querySelectorAll(".ed-sheet-group h3")].map((heading) => heading.textContent);
     expect(groups).toEqual([
       "Add to the slide",
+      "Comments",
       "Everywhere",
       "The chosen block",
       "With a block focused",

@@ -1,6 +1,7 @@
 import type { ApplyOptions, Op, Scene, Session } from "@depthcue/core";
 import { h, renderScene } from "@depthcue/player";
 import { afterWhenMoving } from "./cleanup.ts";
+import type { Count } from "./commentview.ts";
 import { problemOf } from "./fields.ts";
 import { sortableItems } from "./sortable.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL, newScene, uniqueId } from "./templates.ts";
@@ -16,6 +17,8 @@ const SCENE_TITLE_LIMIT = 120;
 export interface StripHooks {
   select(sceneId: string): void;
   act(ops: readonly Op[], options?: ApplyOptions): ReturnType<Session["apply"]>;
+  /** How many comments each scene has, read once each time the list is brought up to date. */
+  comments?(): ReadonlyMap<string, Count>;
 }
 
 export interface Strip {
@@ -32,6 +35,8 @@ interface Item {
   num: HTMLElement;
   title: HTMLElement;
   lead: HTMLElement;
+  /** The count of open comments on the scene, on its thumbnail. Hidden when there are none. */
+  notes: HTMLElement;
   thumb: HTMLElement;
   pick: HTMLButtonElement;
   earlier: HTMLButtonElement;
@@ -133,6 +138,10 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       if (run([{ op: "scene.remove", id }]).ok && editing && neighbour) hooks.select(neighbour);
     });
 
+    // A mark on the picture, so it is seen without reading. The button beside it says the same in words. It sits in
+    // the picture's lower corner, which the scene's own buttons in the upper one never cover.
+    const notes = h("span", { class: "ed-scene-notes", hidden: true, "aria-hidden": "true" });
+    thumb.append(notes);
     const li = h(
       "li",
       { "data-id": id },
@@ -141,7 +150,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       h("div", { class: "ed-scene-actions" }, earlier, later, duplicate, remove),
     );
     sortable.add(id, li);
-    return { li, num, title, lead, thumb, pick, earlier, later, duplicate, remove, drawn: undefined };
+    return { li, num, title, lead, notes, thumb, pick, earlier, later, duplicate, remove, drawn: undefined };
   }
 
   // Thumbnails
@@ -167,6 +176,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
         { class: "dc-player ed-thumb-frame", "data-theme": theme, inert: true },
         h("div", { class: "dc-stage" }, view),
       ),
+      item.notes,
     );
     item.drawn = { scene, theme };
     measure();
@@ -210,11 +220,27 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     let edited = false;
     let fresh = false;
     const total = deck.scenes.length;
+    const counts = hooks.comments?.();
     for (const [index, id] of deck.scenes.entries()) {
       const scene = scenes[id] as Scene;
       const item = items.get(id) ?? create(id);
       items.set(id, item);
       const label = `scene ${index + 1}, ${scene.title}`;
+      const count = counts?.get(id);
+      const open = count?.open ?? 0;
+      const tasks = count?.tasks ?? 0;
+      item.notes.hidden = open === 0;
+      item.notes.toggleAttribute("data-tasks", tasks > 0);
+      if (item.notes.textContent !== String(open)) item.notes.textContent = String(open);
+      // The scene's own button is what a screen reader meets, so it carries the count. With none it keeps its contents.
+      if (open === 0) item.pick.removeAttribute("aria-label");
+      else {
+        const waiting = tasks > 0 ? `, ${tasks} waiting for the agent` : "";
+        item.pick.setAttribute(
+          "aria-label",
+          `${label}, ${open} open ${open === 1 ? "comment" : "comments"}${waiting}`,
+        );
+      }
       const text = { num: String(index + 1), title: scene.title, lead: LEAD_LABEL[scene.lead ?? "human"] };
       if (item.num.textContent !== text.num) item.num.textContent = text.num;
       if (item.title.textContent !== text.title) item.title.textContent = text.title;

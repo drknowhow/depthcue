@@ -7,7 +7,14 @@ import { type EditorStore, openStore } from "../src/store.ts";
 import { FakeServer } from "./helpers.ts";
 
 let store: EditorStore;
-let on: { scene: string; block: string | undefined; video: boolean; problems: Problem[]; at: number };
+let on: {
+  scene: string;
+  block: string | undefined;
+  video: boolean;
+  problems: Problem[];
+  at: number;
+  commentsShown: boolean;
+};
 let calls: Record<string, ReturnType<typeof vi.fn>>;
 
 const problem = (key: string, fix: Problem["fix"]): Problem => ({
@@ -36,6 +43,9 @@ function sources(): CommandSources {
     hasVideo: () => on.video,
     togglePin: spy("togglePin"),
     remove: spy("remove"),
+    comment: spy("comment"),
+    commentsShown: () => on.commentsShown,
+    showComments: spy("showComments"),
     setLead: spy("setLead"),
     setLayout: spy("setLayout"),
     autoLayout: spy("autoLayout"),
@@ -70,7 +80,7 @@ const get = (id: string) => {
 
 beforeEach(async () => {
   store = await openStore(new FakeServer(), () => memoryDraftStore());
-  on = { scene: "method", block: undefined, video: false, problems: [], at: 0 };
+  on = { scene: "method", block: undefined, video: false, problems: [], at: 0, commentsShown: true };
   calls = {};
   supplied = sources();
 });
@@ -194,6 +204,34 @@ describe("the chosen block", () => {
     expect(ids()).not.toContain("pin");
     get("remove").run();
     expect(calls.remove).toHaveBeenCalledWith(claim);
+  });
+
+  it("offers to comment on the block, or on the claim, and asks the editor to open the box", () => {
+    expect(ids()).not.toContain("comment");
+    on.block = "method-diagram";
+    expect(get("comment").title).toBe("Comment on the block");
+    get("comment").run();
+    expect(calls.comment).toHaveBeenCalledWith("method-diagram");
+    on.scene = "demand";
+    on.block = store.session.doc.scenes.demand?.summary?.id as string;
+    expect(get("comment").title).toBe("Comment on the claim");
+  });
+
+  it("does not offer a comment on a block that is not on the scene", () => {
+    on.block = "no-such-block";
+    expect(ids()).not.toContain("comment");
+  });
+});
+
+describe("the comments", () => {
+  it("offers to hide the comments while they are shown, and to show them while they are hidden", () => {
+    expect(get("comments-toggle").title).toBe("Hide the comments");
+    get("comments-toggle").run();
+    expect(calls.showComments).toHaveBeenLastCalledWith(false);
+    on.commentsShown = false;
+    expect(get("comments-toggle").title).toBe("Show the comments");
+    get("comments-toggle").run();
+    expect(calls.showComments).toHaveBeenLastCalledWith(true);
   });
 });
 

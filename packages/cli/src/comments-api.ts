@@ -6,6 +6,7 @@ import {
   type Diagnostic,
   type Doc,
   isOrphan,
+  isTask,
   openComments,
 } from "@depthcue/core";
 import { applyCommentsDir, loadCommentsDir } from "./comments-file.ts";
@@ -36,14 +37,12 @@ export interface CommentSummary {
  * being a task until they write again.
  */
 export function commentTasks(file: CommentsFile): CommentTask[] {
-  return openComments(file)
-    .filter((comment) => comment.ask === true && comment.thread.at(-1)?.author === "you")
-    .map((comment) => ({
-      id: comment.id,
-      scene: comment.scene,
-      block: comment.block,
-      text: excerpt(comment.thread.at(-1)?.text ?? ""),
-    }));
+  return file.comments.filter(isTask).map((comment) => ({
+    id: comment.id,
+    scene: comment.scene,
+    block: comment.block,
+    text: excerpt(comment.thread.at(-1)?.text ?? ""),
+  }));
 }
 
 export const summarize = (file: CommentsFile): CommentSummary => ({

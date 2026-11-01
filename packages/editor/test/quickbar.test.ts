@@ -61,6 +61,7 @@ describe("adding to the slide", () => {
       "Clip",
       "Claim",
       "Build order",
+      "Comment",
       "Everything",
       "Keyboard shortcuts",
     ]);

@@ -12,6 +12,8 @@ export interface ShortcutActions {
   add(kind: NewBlockKind): void;
   /** Opens the file chooser that adds an image. */
   pickImage(): void;
+  /** Starts the Comment tool, or stops it when it is on. */
+  comment(): void;
   undo(): void;
   redo(): void;
   save(): void;
@@ -74,6 +76,13 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
       does: "Add an image: opens the file chooser",
       keys: [["I"]],
       handle: (event) => when(letter("i")(event), () => actions.pickImage()),
+    },
+    {
+      id: "comment",
+      group: "Comments",
+      does: "Comment on a block: press it, then click the block",
+      keys: [["M"]],
+      handle: (event) => when(letter("m")(event), () => actions.comment()),
     },
     {
       id: "undo",

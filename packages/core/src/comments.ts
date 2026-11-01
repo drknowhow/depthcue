@@ -92,6 +92,14 @@ export const commentsToText = (file: CommentsFile): string => `${JSON.stringify(
 /** The comments nobody has resolved, which is what an agent reads to see what is asked of it. */
 export const openComments = (file: CommentsFile): Comment[] => file.comments.filter((c) => !c.resolved);
 
+/**
+ * A comment the agent has been asked to act on and has not answered: open, marked `ask`, and last spoken to by the
+ * person. Once the agent replies, the ball is with the person and it stops being a task until they write again. The
+ * editor, `deck_get` and `depthcue comments` all use this one rule.
+ */
+export const isTask = (comment: Comment): boolean =>
+  !comment.resolved && comment.ask === true && comment.thread.at(-1)?.author === "you";
+
 const problem = (index: number, path: string, code: string, message: string, fix?: string): Diagnostic => ({
   severity: "error",
   code,

@@ -17,6 +17,11 @@ export interface CommandSources {
   /** What the toolbar of a block does. */
   togglePin(id: string): void;
   remove(id: string): void;
+  /** Opens the box that writes a comment on a block, or the claim. */
+  comment(id: string): void;
+  /** Whether the comments are on the slide, and putting them there or away. */
+  commentsShown(): boolean;
+  showComments(on: boolean): void;
   /** What the buttons of the scene bar do. */
   setLead(lead: (typeof LEADS)[number]): void;
   setLayout(layout: Layout): void;
@@ -129,6 +134,13 @@ export function listCommands(from: CommandSources): Command[] {
   }
   if (chosen !== undefined && (block || scene.summary?.id === chosen)) {
     add({
+      id: "comment",
+      title: block ? "Comment on the block" : "Comment on the claim",
+      group: "The chosen block",
+      words: "note feedback ask agent review",
+      run: () => from.comment(chosen),
+    });
+    add({
       id: "remove",
       title: block ? "Remove the block" : "Remove the claim",
       group: "The chosen block",
@@ -137,6 +149,13 @@ export function listCommands(from: CommandSources): Command[] {
     });
   }
 
+  add({
+    id: "comments-toggle",
+    title: from.commentsShown() ? "Hide the comments" : "Show the comments",
+    group: "This scene",
+    words: "notes pins feedback review",
+    run: () => from.showComments(!from.commentsShown()),
+  });
   if (scene.blocks.some((candidate) => candidate.frame)) {
     add({
       id: "auto-layout",

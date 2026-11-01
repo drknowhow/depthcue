@@ -10,6 +10,7 @@ import {
   type Session,
 } from "@depthcue/core";
 import type { Api, DeckPayload } from "./api.ts";
+import { type CommentBook, createCommentBook } from "./commentbook.ts";
 
 export type SaveState = "saved" | "dirty" | "saving" | "error";
 
@@ -54,6 +55,11 @@ export interface EditorStore {
   readonly cueApi: Pick<Api, "loadCues" | "saveCues">;
   /** What a render of the saved deck finds wrong, for the problem ribbon. */
   readonly layoutApi: Pick<Api, "loadLayout">;
+  /**
+   * The comments beside the deck. Like the cues they are a file of their own, so the session never sees them and an
+   * edit to the deck never saves them. Read it again with `comments.sync()` when the server says they changed.
+   */
+  readonly comments: CommentBook;
   readonly status: EditorStatus;
   subscribe(listener: () => void): () => void;
   /** Saves now, without waiting out the autosave delay. Ctrl+S and the retry button call it. */
@@ -102,6 +108,9 @@ export async function openStore(
   const drafts = draftsFor(initial.deck.id);
 
   const session = createSession(initial);
+  // Read in the background: the deck is what the visitor came for, and the pins appear when the answer is in.
+  const comments = createCommentBook(api);
+  void comments.sync();
   let diskRev = payload.rev;
   let saving = false;
   let failed = false;
@@ -234,6 +243,7 @@ export async function openStore(
       saveCues: (source, cues, clip) => api.saveCues(source, cues, clip),
     },
     layoutApi: { loadLayout: (scene) => api.loadLayout(scene) },
+    comments,
     get status() {
       // "dirty" means edits that nothing is about to save; with autosave a countdown or a save is under way.
       const pending = timer !== undefined || resave;
@@ -389,6 +399,7 @@ export async function openStore(
     dispose() {
       cancelAutosave();
       autosave.stop();
+      comments.dispose();
       listeners.clear();
     },
   };
