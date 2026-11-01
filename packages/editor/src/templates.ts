@@ -6,6 +6,10 @@ import {
   type NewScene,
   placeholderAlt,
   type Scene,
+  shownText,
+  type TEXT_ALIGNS,
+  type TEXT_SIZES,
+  type TONES,
 } from "@depthcue/core";
 
 export type Layout = Scene["layout"];
@@ -28,6 +32,22 @@ export const ROLE_LABEL: Record<TextRole, string> = {
   body: "Body",
   caption: "Caption",
   quote: "Quote",
+};
+export type TextSize = (typeof TEXT_SIZES)[number];
+export type TextAlign = (typeof TEXT_ALIGNS)[number];
+export type TextTone = (typeof TONES)[number];
+export const SIZE_LABEL: Record<TextSize, string> = {
+  s: "Small",
+  m: "Medium",
+  l: "Large",
+  xl: "Extra large",
+};
+export const ALIGN_LABEL: Record<TextAlign, string> = { start: "Start", center: "Center", end: "End" };
+export const TONE_LABEL: Record<TextTone, string> = {
+  text: "Text",
+  muted: "Muted",
+  action: "Action",
+  evidence: "Evidence",
 };
 
 const slug = (text: string): string => {
@@ -142,11 +162,14 @@ export const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg
 export const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
 export const VIDEO_FILE = /\.(mp4|webm)$/i;
 
-/** A short label for a block in a list: its text, its alt text or its chart title. */
-export function blockLabel(block: Block): string {
+/**
+ * A short label for a block in a list: its text, its alt text or its chart title. Given its scene, a text is given as
+ * the audience sees it, without markup.
+ */
+export function blockLabel(block: Block, scene?: Pick<Scene, "schemaVersion">): string {
   switch (block.type) {
     case "text":
-      return block.text;
+      return scene ? shownText(scene, block) : block.text;
     case "image":
       return block.alt;
     case "clip":
@@ -171,8 +194,8 @@ const KIND_LABEL = {
 const capital = (word: string) => `${word[0]?.toUpperCase()}${word.slice(1)}`;
 
 /** What a block is and says, in one short line for a list: "Heading: Why prices rise". */
-export function describeBlock(block: Block, limit = 36): string {
+export function describeBlock(block: Block, limit = 36, scene?: Pick<Scene, "schemaVersion">): string {
   const kind = block.type === "text" ? capital(block.role) : KIND_LABEL[block.type];
-  const label = blockLabel(block);
+  const label = blockLabel(block, scene);
   return `${kind}: ${label.length > limit ? `${label.slice(0, limit - 1)}…` : label}`;
 }

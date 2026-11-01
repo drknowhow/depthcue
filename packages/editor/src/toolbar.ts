@@ -1,8 +1,10 @@
 import {
   type ApplyResult,
   type Block,
+  readsMarkup,
   type Scene,
   type Session,
+  shownText,
   TEXT_LIMITS,
   TEXT_ROLES,
 } from "@depthcue/core";
@@ -14,6 +16,7 @@ import { afterWhenMoving, removeBlock, removeClaim } from "./cleanup.ts";
 import { type CueBook, measureClip, videoOf } from "./cues.ts";
 import { type CueTools, cuesPanel } from "./cuespanel.ts";
 import { actionButton, type Edits, problemOf } from "./fields.ts";
+import { createFormatBar, type FormatBar } from "./formatbar.ts";
 import { framePanel } from "./framepanel.ts";
 import {
   chartPanel,
@@ -31,9 +34,13 @@ import { nudged } from "./pin.ts";
 import { restingBox } from "./snap.ts";
 import { tablePanel } from "./tablepanel.ts";
 import { describeBlock, ROLE_LABEL, type TextRole } from "./templates.ts";
+import { stylePanel } from "./textpanel.ts";
 
 /** How far the toolbar floats from the block it belongs to, in pixels. */
 const GAP = 8;
+
+/** A text is near its limit from this share of it. */
+const NEAR = 0.9;
 
 /** Arrow keys pressed within this long of each other move a block in one undo step. */
 const NUDGE_RUN_MS = 1000;
@@ -145,7 +152,8 @@ export function createToolbar(
   hooks: ToolbarHooks,
 ): Toolbar {
   const element = h("div", { class: "ed-toolbar", role: "toolbar", hidden: true });
-  let shown: { id: string; kind: Target["kind"] } | undefined;
+  /** `rich` is true for a text of a scene that reads markup, which has the format bar; upgrading the scene builds it. */
+  let shown: { id: string; kind: Target["kind"]; rich: boolean } | undefined;
   /** The scene the keyboard is in, which `remove` acts on: ids repeat from one scene to the next. */
   let sceneId = "";
   let frame: number | undefined;
@@ -160,6 +168,8 @@ export function createToolbar(
   let barTools: { add: HTMLButtonElement; sort: HTMLButtonElement } | undefined;
   /** The Layout and Free buttons, which a text and a block have and the claim does not. */
   let placement: { layout: HTMLButtonElement; free: HTMLButtonElement } | undefined;
+  /** The row of formatting controls under a rich text's toolbar, shown while the keyboard is in the text. */
+  let formatBar: FormatBar | undefined;
   let open: Chip | undefined;
   let lastNudge = 0;
   let nudgeRun = 0;
@@ -386,6 +396,8 @@ export function createToolbar(
           return [imagePanel(host, sceneId, block.id)];
         case "clip":
           return [clipPanel(host, sceneId, block.id), cuesPanel(host, cueTools, sceneId, block.id)];
+        case "text":
+          return [stylePanel(host, sceneId, block.id)];
         default:
           return [];
       }
@@ -399,6 +411,8 @@ export function createToolbar(
     moves = [];
     barTools = undefined;
     placement = undefined;
+    formatBar?.destroy();
+    formatBar = undefined;
     const id = idOf(target);
     const controls: HTMLElement[] = [];
     const inScene = target.scene.id;
@@ -423,6 +437,12 @@ export function createToolbar(
       role = select;
       count = h("span", { class: "ed-tb-count", "data-tb": "count" });
       moves = [moveButton(id, -1), moveButton(id, 1)];
+      // Only a scene that reads markup has formatting, so the bar is for it alone.
+      if (readsMarkup(target.scene)) {
+        // Placed at once, not a frame later: the bar grows the toolbar upward from its top edge, and until it is placed
+        // the toolbar would sit over the text the pointer is on.
+        formatBar = createFormatBar(canvas.element, placeNow, target.block.role === "body");
+      }
       controls.push(
         select,
         count,
@@ -430,6 +450,7 @@ export function createToolbar(
         placementToggle(id),
         ...chips.map((chip) => chip.wrap),
         removeButton(id, "this text"),
+        ...(formatBar ? [formatBar.element] : []),
       );
     } else if (target.kind === "claim") {
       count = h("span", { class: "ed-tb-count", "data-tb": "count" });
@@ -463,6 +484,8 @@ export function createToolbar(
     if (!count) return;
     count.textContent = `${length} / ${limit}`;
     count.toggleAttribute("data-over", length > limit);
+    // Near the limit the count is drawn to be noticed, before it is over.
+    count.toggleAttribute("data-near", length <= limit && length >= limit * NEAR);
     count.setAttribute("aria-label", `${length} of ${limit} characters`);
   }
 
@@ -470,7 +493,9 @@ export function createToolbar(
     if (target.kind === "text") {
       const { block } = target;
       if (role) role.value = block.role;
-      showCount(block.text.length, TEXT_LIMITS[block.role]);
+      // The audience sees the words and not the markup, and the limit is about what they see.
+      showCount(shownText(target.scene, block).length, TEXT_LIMITS[block.role]);
+      formatBar?.lists(block.role === "body");
     } else if (target.kind === "claim") {
       showCount(target.scene.summary?.text.length ?? 0, SUMMARY_LIMIT);
     } else if (label) {
@@ -524,6 +549,11 @@ export function createToolbar(
     if (frame === undefined) frame = requestAnimationFrame(place);
   }
 
+  function placeNow() {
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    place();
+  }
+
   function hide() {
     closePop();
     element.hidden = true;
@@ -556,9 +586,11 @@ export function createToolbar(
         hide();
         return;
       }
-      if (!shown || shown.id !== idOf(target) || shown.kind !== target.kind) {
+      // A scene that is upgraded while its text is chosen gets the format bar the text did not have.
+      const rich = readsMarkup(target.scene);
+      if (!shown || shown.id !== idOf(target) || shown.kind !== target.kind || shown.rich !== rich) {
         build(target);
-        shown = { id: idOf(target), kind: target.kind };
+        shown = { id: idOf(target), kind: target.kind, rich };
         // The side is only known once the new target is placed, a frame from now. Until then it is not the old one.
         delete element.dataset.side;
       }
@@ -581,6 +613,7 @@ export function createToolbar(
     },
     destroy() {
       document.removeEventListener("pointerdown", onPointerDown);
+      formatBar?.destroy();
       resized?.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
     },

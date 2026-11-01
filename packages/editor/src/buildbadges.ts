@@ -35,7 +35,7 @@ const GAP = 8;
 const nameOf = (scene: Scene, id: string): string => {
   if (scene.summary?.id === id) return "The claim";
   const block = scene.blocks.find((candidate) => candidate.id === id);
-  return block ? describeBlock(block, 40) : id;
+  return block ? describeBlock(block, 40, scene) : id;
 };
 
 /**

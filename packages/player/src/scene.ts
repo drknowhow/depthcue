@@ -3,6 +3,7 @@ import { h } from "./dom.ts";
 import { gatedIds } from "./model.ts";
 import { assetUrl, safeUrl } from "./safe.ts";
 import { renderTable } from "./table.ts";
+import { renderText } from "./text.ts";
 
 export interface RenderContext {
   /** Where `assets/...` paths resolve from, for example "." or "/decks/q3". */
@@ -91,12 +92,7 @@ function renderBlock(
   let node: HTMLElement;
   switch (block.type) {
     case "text":
-      node =
-        block.role === "heading"
-          ? h("h2", { class: "dc-heading" }, block.text)
-          : block.role === "quote"
-            ? h("blockquote", { class: "dc-quote" }, h("p", {}, block.text))
-            : h("p", { class: block.role === "caption" ? "dc-caption" : "dc-body" }, block.text);
+      node = renderText(scene, block);
       break;
     case "image": {
       const src = assetUrl(ctx.assetBase, block.asset);

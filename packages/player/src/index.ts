@@ -38,3 +38,4 @@ export { renderChartTable, renderScene, renderSources, unitText } from "./scene.
 export type { Look } from "./style.ts";
 export { applyLook, lookKey } from "./style.ts";
 export { numberText, renderTable } from "./table.ts";
+export { renderFlow, renderSpans, renderText } from "./text.ts";

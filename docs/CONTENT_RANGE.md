@@ -197,3 +197,44 @@ Declined in review:
   it for chart data.
 - **Size.** Editor script grew from 73.6 to 79.2 KB brotli of 90, so steps 3, 5 and 6 share about 10 KB. The `table`
   module is 0.6 KB of 3.0. Player script and styles, and the exported page script, are within their limits.
+
+## Step 5 record: text styles
+
+- **Player.** `renderText` in `text.ts` draws a 0.3 text from `parseText`: one `<p>` per paragraph with a `<br>` for each
+  line break, a real `<ul>` or `<ol>` for lists, `<strong>`, `<em>`, and links that open in a new tab with
+  `rel="noopener noreferrer"`, underlined in the evidence color. A tone span is `<span class="dc-tone" data-tone>`.
+  A 0.3 body is a `div.dc-body` holding those nodes, so a list can sit inside it. A scene below 0.3 draws the exact
+  nodes it drew before. Size scales the block by 0.8, 1, 1.3 and 1.7, with a floor of 1.4em on `l` and `xl`, which draws
+  at 25 CSS pixels or more at the 1280 by 720 reference stage, so the render check counts them as large text.
+- **Editor.** A rich text is `contenteditable="true"` and edited with `document.execCommand` (bold, italic, lists,
+  links, line breaks), because the browser keeps its own caret, selection and spelling that way. What the DOM holds is
+  read back by `flowOfDom` into a core `Flow` and written by `serializeText`; the DOM is never trusted as markup. A
+  tone wraps the selection in `span[data-tone]` itself, and choosing the same tone again takes it off. When the field
+  settles it is drawn again from the canonical `Flow`, so debris the browser left is gone.
+- **Undo.** One visit to a field is one `block.set`, as before. A format command is bracketed by two `dc-format` events,
+  so it is a step of its own and the typing before and after it are two more.
+- **Paste.** Plain text only. A paste never reads `text/html`, and nothing is assigned as HTML. Lines that begin `- ` or
+  `1. ` become a list; any other characters stay literal, because `serializeText` escapes what would read as markup, so
+  a pasted `**x**` is not bold. Drops are refused.
+- **Enter.** In a body it is a line break, or a new item inside a list, which the browser makes itself. In a
+  heading, caption or quote it ends the edit, as it did.
+- **Keys and controls.** Ctrl+B and Ctrl+I in a rich text. Ctrl+K opens the link box inside a rich text, and the
+  palette everywhere else. The format bar is a second row of the block's toolbar, shown while a rich text has the
+  keyboard, so no quick-bar or top-bar button was added and the toolbar does not grow wider. The link box takes the
+  place of the buttons while it is open, so the toolbar stays short enough to sit above the text. A link must start
+  `https://` or `mailto:`; anything else shows "A link starts with https:// or mailto: and has no spaces in it." and
+  the text is left alone. Size, alignment and color are the Style chip, and the same three are submenus of a block's
+  right-click menu. A scene below 0.3 gets "Use text styles" in its right-click menu; the first 0.3 field set on a block
+  upgrades it the same way.
+- **Limits.** The count and the limit are of the characters the audience sees (`visibleText`), so `**bold**` counts 4,
+  not 8. The count takes `data-near` from 90% of the limit. Text over the limit is held back with the core's words and the
+  fix, and the file keeps the last text that fit.
+- **Refusals are hints, not ribbon problems.** `too-long`, `too-short` and `tone-low-contrast` are errors, and `apply`
+  refuses any change that holds an error, so they never reach a file and never show in the problem ribbon. The editor
+  reads the reason from the refused result and shows it in the hint with its fix. Showing them in the ribbon would need
+  core to make them non-blocking in `apply`, as for the palette in step 3.
+- **Render check.** A low-contrast tone names the tone, and its fix lists the real ways out: another tone, a heading
+  or size `l` or `xl`, or the palette. `text-too-small` no longer says size is not per block.
+- **Budgets.** Exported page script limit 10 to 12 KB (10.5 now) and core code in the player 5 to 6 KB (5.1 now); the
+  plan allows 16 KB for the first. Editor script 79.2 to 84.7 KB brotli of 90, so step 6 has about 5 KB.
+- **Core.** No change.

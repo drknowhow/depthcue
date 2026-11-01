@@ -1955,6 +1955,106 @@ body {
   font-weight: 600;
 }
 
+/* Near its limit a text's count is darker and bolder, so it is seen before the text is over. */
+.ed-tb-count[data-near] {
+  color: var(--dc-text);
+  font-weight: 600;
+}
+
+/*
+ * The format bar: a row of the toolbar of a rich text, shown while the keyboard is in the text. Its width is nothing and
+ * its minimum is the toolbar's, so the row is as wide as the toolbar and the toolbar does not grow when the row appears.
+ */
+.ed-fmt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-1);
+  width: 0;
+  min-width: 100%;
+  /* The toolbar is as wide as its buttons need, and one more item in it is one more gap. This takes that gap back. */
+  margin-inline-end: calc(var(--dc-space-2) * -1);
+  padding-top: var(--dc-space-1);
+  border-top: 1px solid var(--dc-line);
+}
+
+.ed-fmt[hidden] {
+  display: none;
+}
+
+.ed-app .ed-fmt-button {
+  min-width: 2rem;
+  justify-content: center;
+  padding: 0 var(--dc-space-2);
+  border-radius: var(--dc-radius-sm);
+}
+
+.ed-app .ed-fmt-button[aria-pressed="true"] {
+  background: var(--dc-text);
+  color: var(--dc-bg);
+}
+
+.ed-fmt-tones {
+  display: inline-flex;
+  gap: var(--dc-space-1);
+}
+
+/* The dot of a bulleted list is too small to find at the size of the other buttons' letters. */
+.ed-app .ed-fmt-button[data-fmt="bullets"] {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+/* Each color is drawn in the deck's own color, which the bar reads from the slide. */
+.ed-fmt-dot {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--swatch, currentcolor);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 30%);
+}
+
+.ed-fmt-link {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-2);
+}
+
+.ed-fmt-link[hidden] {
+  display: none;
+}
+
+/* While an address is asked for, the link button and the box are the whole bar. */
+.ed-fmt[data-linking] > .ed-fmt-button:not([data-fmt="link"]),
+.ed-fmt[data-linking] > .ed-fmt-tones {
+  display: none;
+}
+
+.ed-fmt[data-linking] > .ed-fmt-link {
+  flex: 1 1 16rem;
+}
+
+.ed-app .ed-fmt-input {
+  flex: 1 1 12rem;
+  width: auto;
+  min-width: 0;
+  min-height: 2rem;
+  font-size: 0.8125rem;
+}
+
+.ed-fmt-link .ed-problem {
+  flex: 1 1 100%;
+}
+
+/* A link in a text being typed in is drawn as the player draws it, though a click on it does not follow it. */
+.ed-frame [data-rich] a {
+  color: var(--dc-evidence);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 .ed-tb-chip-wrap {
   position: relative;
 }

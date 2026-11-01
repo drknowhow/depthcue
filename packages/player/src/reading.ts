@@ -1,17 +1,22 @@
-import type { Deck, Scene } from "@depthcue/core";
+import { type Deck, readsMarkup, type Scene, textFlow } from "@depthcue/core";
 import { h } from "./dom.ts";
 import { assetUrl } from "./safe.ts";
 import { type RenderContext, renderChartTable, renderSources } from "./scene.ts";
 import { renderTable } from "./table.ts";
+import { renderFlow } from "./text.ts";
 
-/** The words of a scene when its author wrote no reading text: headings and body text, in order. */
-function fallbackText(scene: Scene): string[] {
-  const lines: string[] = [];
-  if (scene.summary) lines.push(scene.summary.text);
+/**
+ * The words of a scene when its author wrote no reading text: headings and body text, in order, with the formatting
+ * and lists of a scene that reads markup. A scene below 0.3 gives its text as written.
+ */
+function fallbackText(scene: Scene): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  if (scene.summary) out.push(h("p", {}, scene.summary.text));
   for (const block of scene.blocks) {
-    if (block.type === "text" && block.role !== "caption") lines.push(block.text);
+    if (block.type !== "text" || block.role === "caption") continue;
+    out.push(...(readsMarkup(scene) ? renderFlow(textFlow(scene, block)) : [h("p", {}, block.text)]));
   }
-  return lines;
+  return out;
 }
 
 function evidence(scene: Scene, ctx: RenderContext): HTMLElement[] {
@@ -50,7 +55,7 @@ export function renderReading(deck: Deck, scenes: readonly Scene[], ctx: RenderC
         "article",
         { class: "dc-reading-scene", "data-scene": scene.id },
         h("h2", {}, scene.title),
-        ...(scene.reading ? [scene.reading.text] : fallbackText(scene)).map((text) => h("p", {}, text)),
+        ...(scene.reading ? [h("p", {}, scene.reading.text)] : fallbackText(scene)),
         ...evidence(scene, ctx),
         renderSources(scene, ctx),
       ),

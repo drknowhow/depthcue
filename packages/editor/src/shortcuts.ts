@@ -231,6 +231,25 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
       keys: [["Esc"]],
     },
     {
+      id: "bold",
+      group: "Typing in a text",
+      does: "Bold the selected words",
+      keys: [["Mod", "B"]],
+      // Handled where the text is, which also keeps the key from the palette: `defaultPrevented` ends it here.
+    },
+    {
+      id: "italic",
+      group: "Typing in a text",
+      does: "Italicize the selected words",
+      keys: [["Mod", "I"]],
+    },
+    {
+      id: "link",
+      group: "Typing in a text",
+      does: "Link the selected words: an address that starts https:// or mailto:",
+      keys: [["Mod", "K"]],
+    },
+    {
       id: "bar-value",
       group: "On a chart bar",
       does: "Change its value, five steps with Shift",

@@ -16,6 +16,8 @@ export interface TextSample {
   fg: Rgba;
   /** Background the text sits on, every translucent layer already composited. Always opaque. */
   bg: Rgba;
+  /** The tone the text is colored with, by its block or by a span of it, when it is. */
+  tone?: string;
 }
 
 export interface Box {
@@ -191,6 +193,7 @@ export async function measureLayout(): Promise<LayoutMeasure> {
     words += own.split(/\s+/).length;
     const style = getComputedStyle(element);
     const fg = parse(style.color);
+    const tone = element.closest("[data-tone]")?.getAttribute("data-tone");
     text.push({
       id: owner(element),
       text: own.slice(0, 60),
@@ -198,6 +201,7 @@ export async function measureLayout(): Promise<LayoutMeasure> {
       weight: Number(style.fontWeight),
       fg: { ...fg, a: fg.a * opacityOf(element) },
       bg: background(element),
+      ...(tone ? { tone } : {}),
     });
   }
 
@@ -378,7 +382,7 @@ export function layoutDiagnostics(
       "text-too-small",
       id,
       `Text in ${id ? `"${id}"` : "the scene"} renders at ${sample.fontPx}px, under the ${minFontPx}px minimum: "${sample.text}".`,
-      "The template sets text size from the stage. Use a larger viewport or a roomier template; text size is not set per block.",
+      "The template sets text size from the stage. Use a larger viewport or a roomier template, or give a block that has size s the size m.",
     );
   }
   for (const [id, { sample, ratio }] of faint) {
@@ -386,7 +390,9 @@ export function layoutDiagnostics(
       "low-contrast",
       id,
       `Text in ${id ? `"${id}"` : "the scene"} has a contrast ratio of ${ratio.toFixed(2)}:1; WCAG AA needs ${requiredContrast(sample.fontPx, sample.weight)}:1: "${sample.text}".`,
-      'Colors come from the theme and the deck palette. Try the other theme with deck.set { theme: "ink" } or { theme: "paper" }, or change the palette\'s colors with deck.set { palette: { ... } }.',
+      sample.tone
+        ? `The text is colored "${sample.tone}". Use another tone, make the block a heading or size l or xl, which draw large text, or change "${sample.tone}" in the deck's palette with deck.set { palette: { ... } }.`
+        : 'Colors come from the theme and the deck palette. Try the other theme with deck.set { theme: "ink" } or { theme: "paper" }, or change the palette\'s colors with deck.set { palette: { ... } }.',
     );
   }
 
