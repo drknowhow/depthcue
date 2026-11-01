@@ -2,7 +2,7 @@
  * What each schema version adds, so a file declares the version its fields need and is read as that version. A file
  * is rewritten as a newer version only when it gains something of that version, as the operations do, never by
  * loading it. 0.3 changes how text reads, so upgrading a scene to 0.3 also escapes its text: a `*` that was a star
- * stays a star.
+ * stays a star. 0.4 reads text as 0.3 does, so a scene below 0.3 that gains a 0.4 part is escaped on the way too.
  */
 import { escapeText, type Flow, literalText, parseText, visibleText } from "./inline.ts";
 import { SCHEMA_VERSIONS, TEXT_LIMITS } from "./schema.ts";
@@ -14,6 +14,7 @@ type TextBlock = Extract<Block, { type: "text" }>;
 const rank = (version: string): number => SCHEMA_VERSIONS.indexOf(version as SchemaVersion);
 /** True when `version` is `min` or later. */
 export const versionAtLeast = (version: string, min: SchemaVersion): boolean => rank(version) >= rank(min);
+const newest = (a: SchemaVersion, b: SchemaVersion): SchemaVersion => (rank(b) > rank(a) ? b : a);
 
 /** True when the scene's text is markup: from 0.3. Below that, text is shown exactly as it is written. */
 export const readsMarkup = (scene: Pick<Scene, "schemaVersion">): boolean =>
@@ -21,15 +22,19 @@ export const readsMarkup = (scene: Pick<Scene, "schemaVersion">): boolean =>
 
 /** The properties of a text block that came with 0.3. */
 export const TEXT_STYLE_KEYS = ["tone", "size", "align"] as const;
-/** The properties of deck.json that came with 0.3. */
-export const DECK_STYLE_KEYS = ["palette", "fonts"] as const;
+/** The properties of any block that came with 0.4: the template slot it sits in and the style it takes. */
+export const BLOCK_BRAND_KEYS = ["slot", "style"] as const;
+/** The properties of deck.json that came after 0.1, with the version each came with. */
+export const DECK_KEYS_BY_VERSION = { palette: "0.3", fonts: "0.3", brand: "0.4" } as const;
+
+type Part = { name: string; version: SchemaVersion; path: string };
 
 /**
  * What a block uses that its scene's version must have, by the name its diagnostic code takes, with the path. The
  * operations call this before a block is checked, so it takes anything without failing.
  */
-function newerParts(block: Block): Array<{ name: string; version: SchemaVersion; path: string }> {
-  const out: Array<{ name: string; version: SchemaVersion; path: string }> = [];
+function newerParts(block: Block): Part[] {
+  const out: Part[] = [];
   if (block === null || typeof block !== "object") return out;
   if (block.type === "table" || block.type === "chart")
     out.push({ name: block.type, version: "0.3", path: "" });
@@ -37,28 +42,30 @@ function newerParts(block: Block): Array<{ name: string; version: SchemaVersion;
     for (const key of TEXT_STYLE_KEYS)
       if (block[key] !== undefined) out.push({ name: key, version: "0.3", path: `/${key}` });
   }
+  for (const key of BLOCK_BRAND_KEYS)
+    if (block[key] !== undefined) out.push({ name: key, version: "0.4", path: `/${key}` });
   if (block.frame !== undefined) out.push({ name: "frame", version: "0.2", path: "/frame" });
   return out;
 }
 
 /** The oldest version that has everything the block uses. */
 export function blockNeeds(block: Block): SchemaVersion {
-  return newerParts(block).reduce<SchemaVersion>(
-    (most, part) => (rank(part.version) > rank(most) ? part.version : most),
-    "0.1",
-  );
+  return newerParts(block).reduce<SchemaVersion>((most, part) => newest(most, part.version), "0.1");
 }
 
-/** The oldest version that has everything the scene uses. */
+/** The oldest version that has everything the scene uses: its blocks, and a template, which came with 0.4. */
 export const sceneNeeds = (scene: Scene): SchemaVersion =>
-  (Array.isArray(scene.blocks) ? scene.blocks : []).reduce<SchemaVersion>((most, block) => {
-    const need = blockNeeds(block);
-    return rank(need) > rank(most) ? need : most;
-  }, "0.1");
+  (Array.isArray(scene.blocks) ? scene.blocks : []).reduce<SchemaVersion>(
+    (most, block) => newest(most, blockNeeds(block)),
+    scene.template === undefined ? "0.1" : "0.4",
+  );
 
 /** The oldest version that has everything deck.json uses. */
 export const deckNeeds = (deck: Deck): SchemaVersion =>
-  DECK_STYLE_KEYS.some((key) => deck[key] !== undefined) ? "0.3" : "0.1";
+  Object.entries(DECK_KEYS_BY_VERSION).reduce<SchemaVersion>(
+    (most, [key, version]) => (deck[key as keyof Deck] === undefined ? most : newest(most, version)),
+    "0.1",
+  );
 
 const tooOld = (
   file: string,
@@ -73,33 +80,40 @@ const tooOld = (
   file,
   path,
   message: `${what} came with schema ${version}, but this file says schemaVersion "${declared}".`,
-  fix: `Remove it, then set it again with depthcue apply or deck_apply: the tool rewrites the file as ${version}${version === "0.3" ? " and escapes its text, so the text keeps its meaning" : ""}.`,
+  fix: `Remove it, then set it again with depthcue apply or deck_apply: the tool rewrites the file as ${version}${escapes(version, declared, file) ? " and escapes its text, so the text keeps its meaning" : ""}.`,
 });
+/** Whether raising the file says it escapes text: a 0.3 part always has, and a 0.4 part does for a scene below 0.3. */
+const escapes = (version: string, declared: string, file: string): boolean =>
+  version === "0.3" || (rank(declared) < rank("0.3") && file !== "deck.json");
 
 /**
- * Errors for 0.3 parts of a scene that declares an older version, under `<part>-needs-version`, such as
- * `tone-needs-version` or `table-needs-version`. Frames have their own check, in frames.ts. Setting the version by hand
- * is not the fix this suggests: the text of a scene changes meaning at 0.3, and the tool escapes it on the way.
+ * Errors for 0.3 and 0.4 parts of a scene that declares an older version, under `<part>-needs-version`, such as
+ * `tone-needs-version`, `table-needs-version`, `slot-needs-version` or `template-needs-version`. Frames have their own
+ * check, in frames.ts. Setting the version by hand is not the fix this suggests: the text of a scene changes meaning at
+ * 0.3, and the tool escapes it on the way.
  */
 export function checkSceneVersion(scene: Scene, file: string): Diagnostic[] {
-  if (readsMarkup(scene)) return [];
+  const declared = rank(scene.schemaVersion);
   const out: Diagnostic[] = [];
+  if (scene.template !== undefined && declared < rank("0.4"))
+    out.push(tooOld(file, "/template", "template", "0.4", scene.schemaVersion, '"template"'));
   scene.blocks.forEach((block, i) => {
     for (const part of newerParts(block)) {
-      if (part.version !== "0.3") continue;
+      if (part.name === "frame" || rank(part.version) <= declared) continue;
       const what = part.path === "" ? `A ${part.name} block` : `"${part.name}"`;
-      out.push(tooOld(file, `/blocks/${i}${part.path}`, part.name, "0.3", scene.schemaVersion, what));
+      out.push(tooOld(file, `/blocks/${i}${part.path}`, part.name, part.version, scene.schemaVersion, what));
     }
   });
   return out;
 }
 
-/** Errors for a palette or font pair in a deck.json that declares a version before 0.3. */
+/** Errors for a palette, font pair or brand in a deck.json that declares a version before the one each came with. */
 export function checkDeckVersion(deck: Deck, file = "deck.json"): Diagnostic[] {
-  if (versionAtLeast(deck.schemaVersion, "0.3")) return [];
-  return DECK_STYLE_KEYS.filter((key) => deck[key] !== undefined).map((key) =>
-    tooOld(file, `/${key}`, key, "0.3", deck.schemaVersion, `"${key}"`),
-  );
+  return Object.entries(DECK_KEYS_BY_VERSION)
+    .filter(
+      ([key, version]) => deck[key as keyof Deck] !== undefined && rank(deck.schemaVersion) < rank(version),
+    )
+    .map(([key, version]) => tooOld(file, `/${key}`, key, version, deck.schemaVersion, `"${key}"`));
 }
 
 const lists = (block: TextBlock): { lists: boolean } => ({ lists: block.role === "body" });
@@ -131,13 +145,13 @@ export function upgradeScene(scene: Scene): Scene {
 
 /**
  * The scene at the version its content needs, when that is newer than the one it says: 0.2 for a frame, and for a
- * 0.3 part, 0.3 by `upgradeScene`. A scene that needs nothing newer, or says a version there is no such thing as,
- * comes back as it is.
+ * 0.3 or 0.4 part, that version by way of `upgradeScene`, so its text keeps its meaning. A scene that needs nothing
+ * newer, or says a version there is no such thing as, comes back as it is.
  */
 export function raiseScene(scene: Scene): Scene {
   const need = sceneNeeds(scene);
   if (rank(scene.schemaVersion) < 0 || rank(need) <= rank(scene.schemaVersion)) return scene;
-  return need === "0.3" ? upgradeScene(scene) : { ...scene, schemaVersion: need };
+  return { ...(versionAtLeast(need, "0.3") ? upgradeScene(scene) : scene), schemaVersion: need };
 }
 
 /** deck.json at the version its content needs, when that is newer than the one it says. */

@@ -1,13 +1,16 @@
 import { closest, explain } from "./diagnostics.ts";
 import { checkChanges, type Doc, revisionOf, sceneRevision } from "./doc.ts";
 import type { Frame } from "./frames.ts";
-import { validateOps } from "./generated/validators.js";
 import { escapeText } from "./inline.ts";
+import { own } from "./own.ts";
 import { canonicalJson } from "./revision.ts";
 import { ID_PATTERN, opsSchema, SCHEMA_VERSION } from "./schema.ts";
-import type { Block, Deck, Diagnostic, Scene } from "./types.ts";
+import { schemaValidator } from "./schemacheck.ts";
+import type { Block, BlockStyle, Brand, Deck, Diagnostic, Scene, Template } from "./types.ts";
 import { scenePath } from "./validate.ts";
-import { blockNeeds, raiseDeck, raiseScene, readsMarkup, upgradeScene } from "./versions.ts";
+import { blockNeeds, raiseDeck, raiseScene, readsMarkup, upgradeScene, versionAtLeast } from "./versions.ts";
+
+const validateOps = /* @__PURE__ */ schemaValidator(opsSchema);
 
 /** Properties to write; a null value deletes an optional property. */
 type Nullable<T> = { [K in keyof T]?: T[K] | null };
@@ -16,8 +19,16 @@ export type DeckChanges = Nullable<
   Pick<Deck, "title" | "language" | "theme" | "palette" | "fonts" | "modules">
 >;
 export type SceneChanges = Nullable<
-  Pick<Scene, "title" | "layout" | "lead" | "summary" | "sources" | "reading" | "steps" | "notes">
+  Pick<
+    Scene,
+    "title" | "layout" | "template" | "lead" | "summary" | "sources" | "reading" | "steps" | "notes"
+  >
 >;
+/** What `brand.set` may write. The id is given once, when the brand is made, and never changes. */
+export type BrandChanges = Nullable<Omit<Brand, "schemaVersion" | "styles" | "$schema">>;
+/** A template to write. Its `id` and `schemaVersion` may be left out: the operation's id and 0.4. */
+export type NewTemplate = Omit<Template, "schemaVersion" | "id"> &
+  Partial<Pick<Template, "schemaVersion" | "id">>;
 /** Any block property except `id` and `type`; the result is checked against the block's own shape. */
 export type BlockChanges = Record<string, unknown>;
 /** A scene to add. `schemaVersion` may be left out. */
@@ -37,7 +48,13 @@ export type Op =
   | { op: "block.move"; scene: string; id: string; after: string | null }
   | { op: "block.set"; scene: string; id: string; set: BlockChanges }
   | { op: "block.frame"; scene: string; id: string; frame: Frame }
-  | { op: "block.unframe"; scene: string; id: string };
+  | { op: "block.unframe"; scene: string; id: string }
+  /** Makes the deck's brand, with `id` and `name`, or changes it. Null takes the brand off the deck. */
+  | { op: "brand.set"; set: BrandChanges | null }
+  /** Writes a component style of the brand's, or removes it with null. */
+  | { op: "style.set"; id: string; style: BlockStyle | null }
+  /** Writes a template of the brand's, or removes it with null. */
+  | { op: "template.set"; id: string; template: NewTemplate | null };
 
 export type ApplyFailureCode =
   /** `baseRev` is not the document's current revision. Read it again and redo the edit. */
@@ -63,8 +80,10 @@ export interface ApplySuccess {
   /** Scenes whose content differs from before, added ones included, in deck order. */
   changed: string[];
   removed: string[];
-  /** True when deck.json content changed: title, language, theme, palette, fonts, modules or scene order. */
+  /** True when deck.json content changed: title, language, theme, palette, fonts, brand, modules or scene order. */
   deckChanged: boolean;
+  /** True when brand.json or a template changed, was made or was removed. */
+  brandChanged: boolean;
   diagnostics: Diagnostic[];
 }
 
@@ -73,6 +92,8 @@ export type ApplyResult = ApplySuccess | ApplyFailure;
 interface Work {
   deck: Deck;
   scenes: Record<string, Scene>;
+  brand: Brand | undefined;
+  templates: Record<string, Template> | undefined;
 }
 
 const ID_RE = new RegExp(ID_PATTERN);
@@ -81,6 +102,7 @@ export const DECK_KEYS = ["title", "language", "theme", "palette", "fonts", "mod
 export const SCENE_KEYS = [
   "title",
   "layout",
+  "template",
   "lead",
   "summary",
   "sources",
@@ -95,7 +117,20 @@ const REDIRECTS: Record<string, string> = {
   scenes: "Use scene.add, scene.remove and scene.move.",
   blocks: "Use block.add, block.remove, block.move and block.set.",
   type: "A block's type never changes. Add a new block and remove the old one.",
+  brand: 'Use brand.set: it writes brand/brand.json and the deck\'s "brand" together.',
+  styles: "Use style.set, one style at a time.",
 };
+/** The properties `brand.set` may write. */
+export const BRAND_KEYS = [
+  "id",
+  "name",
+  "colors",
+  "fonts",
+  "logos",
+  "chrome",
+  "lock",
+  "hideBuiltIn",
+] as const;
 
 function problem(index: number, path: string, code: string, message: string, fix?: string): Diagnostic {
   return {
@@ -152,7 +187,7 @@ function checkKeys(
       `/set/${key}`,
       "forbidden-property",
       `"${key}" cannot be changed with ${where}.`,
-      REDIRECTS[key] ?? (guess ? `Did you mean "${guess}"?` : `Allowed here: ${allowed.join(", ")}.`),
+      own(REDIRECTS, key) ?? (guess ? `Did you mean "${guess}"?` : `Allowed here: ${allowed.join(", ")}.`),
     );
   }
   return undefined;
@@ -253,8 +288,103 @@ function rewrite(work: Work, scene: Scene, block: Block, next: Block) {
   };
 }
 
+const noBrand = (index: number, name: string): Diagnostic =>
+  problem(
+    index,
+    "",
+    "no-brand",
+    `The deck has no brand, and ${name} writes into one.`,
+    'Make the brand first, in the same operations: {"op": "brand.set", "set": {"id": "acme", "name": "Acme"}}.',
+  );
+
+function setBrand(work: Work, op: Extract<Op, { op: "brand.set" }>, index: number): Diagnostic | undefined {
+  if (op.set === null) {
+    if (work.brand === undefined) return noBrand(index, "brand.set null");
+    work.brand = undefined;
+    work.templates = undefined;
+    work.deck = patch(work.deck, { brand: null });
+    return undefined;
+  }
+  const bad = checkKeys(index, op.set, BRAND_KEYS, "brand.set");
+  if (bad) return bad;
+  if (work.brand === undefined) {
+    for (const key of ["id", "name"] as const) {
+      if (typeof op.set[key] === "string") continue;
+      return problem(
+        index,
+        "/set",
+        "missing-property",
+        `A new brand needs "${key}".`,
+        'Give it an id and a name: {"op": "brand.set", "set": {"id": "acme", "name": "Acme"}}.',
+      );
+    }
+    work.brand = patch({ schemaVersion: "0.4" } as Brand, op.set);
+    work.templates = {};
+    work.deck = { ...work.deck, brand: work.brand.id };
+    return undefined;
+  }
+  if (has(op.set, "id") && op.set.id !== work.brand.id) {
+    return problem(
+      index,
+      "/set/id",
+      "forbidden-property",
+      `The brand's id is "${work.brand.id}", and an id never changes.`,
+      "Take the brand off with brand.set null, then make a new one with the new id.",
+    );
+  }
+  work.brand = patch(work.brand, op.set);
+  return undefined;
+}
+
+function setStyle(work: Work, op: Extract<Op, { op: "style.set" }>, index: number): Diagnostic | undefined {
+  if (work.brand === undefined) return noBrand(index, "style.set");
+  // A computed key in a literal defines the property, so no id can reach a prototype.
+  const styles: Record<string, BlockStyle> =
+    op.style === null ? { ...work.brand.styles } : { ...work.brand.styles, [op.id]: op.style };
+  if (op.style === null) {
+    if (!has(styles, op.id)) return unknownId(index, "/id", op.id, "style", Object.keys(styles));
+    delete styles[op.id];
+  }
+  work.brand = patch(work.brand, { styles: Object.keys(styles).length > 0 ? styles : null });
+  return undefined;
+}
+
+function setTemplate(
+  work: Work,
+  op: Extract<Op, { op: "template.set" }>,
+  index: number,
+): Diagnostic | undefined {
+  if (work.brand === undefined) return noBrand(index, "template.set");
+  let templates: Record<string, Template> = { ...work.templates };
+  if (op.template === null) {
+    if (!has(templates, op.id)) return unknownId(index, "/id", op.id, "template", Object.keys(templates));
+    delete templates[op.id];
+  } else {
+    const given = op.template as Record<string, unknown>;
+    if (has(given, "id") && given.id !== op.id) {
+      return problem(
+        index,
+        "/template/id",
+        "template-id-mismatch",
+        `The template says the id "${String(given.id)}", but the operation writes "${op.id}".`,
+        `Leave "id" out of the template, or make it "${op.id}".`,
+      );
+    }
+    // A computed key in a literal defines the property, so no id can reach a prototype.
+    templates = { ...templates, [op.id]: { schemaVersion: "0.4", id: op.id, ...op.template } as Template };
+  }
+  work.templates = templates;
+  return undefined;
+}
+
 function step(work: Work, op: Op, index: number): Diagnostic | undefined {
   switch (op.op) {
+    case "brand.set":
+      return setBrand(work, op, index);
+    case "style.set":
+      return setStyle(work, op, index);
+    case "template.set":
+      return setTemplate(work, op, index);
     case "deck.set": {
       const bad = checkKeys(index, op.set, DECK_KEYS, "deck.set");
       if (bad) return bad;
@@ -316,7 +446,11 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
       if (!has(work.scenes, op.id)) return unknownId(index, "/id", op.id, "scene", work.deck.scenes);
       const bad = checkKeys(index, op.set, SCENE_KEYS, "scene.set");
       if (bad) return bad;
-      work.scenes[op.id] = patch(work.scenes[op.id] as Scene, op.set);
+      const scene = work.scenes[op.id] as Scene;
+      // A scene that gains a template is 0.4, so it is upgraded first, as block.set upgrades for a slot: text written
+      // later in the same operations is then read as markup whichever of the two came first.
+      const base = typeof op.set.template === "string" && !readsMarkup(scene) ? upgradeScene(scene) : scene;
+      work.scenes[op.id] = patch(base, op.set);
       return undefined;
     }
     case "scene.upgrade": {
@@ -377,7 +511,7 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
             `/set/${key}`,
             "forbidden-property",
             `"${key}" cannot be changed with block.set.`,
-            REDIRECTS[key],
+            own(REDIRECTS, key),
           );
         }
       }
@@ -406,9 +540,12 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
   }
 }
 
-/** True when `block` has a 0.3 part and `scene` is older, so the scene must be upgraded to hold it. */
+/**
+ * True when `block` has a 0.3 or 0.4 part and `scene` is older than 0.3, so the scene must be upgraded to hold it:
+ * both read text as markup.
+ */
 const needsUpgrade = (scene: Scene, block: Block): boolean =>
-  !readsMarkup(scene) && blockNeeds(block) === "0.3";
+  !readsMarkup(scene) && versionAtLeast(blockNeeds(block), "0.3");
 
 /**
  * Text that an operation wrote into a scene below 0.3 and that would read differently as markup, as a warning: the
@@ -464,7 +601,12 @@ export function applyOps(doc: Doc, ops: unknown, baseRev: string): ApplyResult {
     return fail("bad-op", prevRev, explain(validateOps.errors, ops, opsSchema, "ops"));
   }
 
-  const work: Work = { deck: doc.deck, scenes: { ...doc.scenes } };
+  const work: Work = {
+    deck: doc.deck,
+    scenes: { ...doc.scenes },
+    brand: doc.brand,
+    templates: doc.templates,
+  };
   for (const [index, op] of (ops as Op[]).entries()) {
     const bad = step(work, op, index);
     if (bad) return fail("bad-op", prevRev, [bad]);
@@ -472,20 +614,27 @@ export function applyOps(doc: Doc, ops: unknown, baseRev: string): ApplyResult {
 
   // A file says the version its content needs, as the tool writes the version of a new scene: 0.2 for a frame.
   for (const [id, scene] of Object.entries(work.scenes)) {
-    if (scene !== doc.scenes[id]) work.scenes[id] = raiseScene(scene);
+    if (scene !== own(doc.scenes, id)) work.scenes[id] = raiseScene(scene);
   }
   if (work.deck !== doc.deck) work.deck = raiseDeck(work.deck);
 
-  const next: Doc = { deck: work.deck, scenes: work.scenes, assets: doc.assets };
+  const next: Doc = {
+    deck: work.deck,
+    scenes: work.scenes,
+    assets: doc.assets,
+    ...(work.brand === undefined ? {} : { brand: work.brand, templates: work.templates ?? {} }),
+    ...(doc.brandFiles === undefined ? {} : { brandFiles: doc.brandFiles }),
+  };
   const diagnostics = checkChanges(doc, next);
   if (diagnostics.some((d) => d.severity === "error")) return fail("invalid-deck", prevRev, diagnostics);
   for (const id of next.deck.scenes) {
     const scene = next.scenes[id] as Scene;
-    if (scene !== doc.scenes[id]) diagnostics.push(...literalWarnings(doc.scenes[id], scene));
+    const was = own(doc.scenes, id);
+    if (scene !== was) diagnostics.push(...literalWarnings(was, scene));
   }
 
   const changed = next.deck.scenes.filter((id) => {
-    const before = doc.scenes[id];
+    const before = own(doc.scenes, id);
     return before === undefined || sceneRevision(before) !== sceneRevision(next.scenes[id] as Scene);
   });
   return {
@@ -496,6 +645,9 @@ export function applyOps(doc: Doc, ops: unknown, baseRev: string): ApplyResult {
     changed,
     removed: doc.deck.scenes.filter((id) => !has(next.scenes, id)),
     deckChanged: canonicalJson(doc.deck) !== canonicalJson(next.deck),
+    brandChanged:
+      canonicalJson({ brand: doc.brand, templates: doc.templates }) !==
+      canonicalJson({ brand: next.brand, templates: next.templates }),
     diagnostics,
   };
 }

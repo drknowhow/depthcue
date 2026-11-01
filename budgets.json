@@ -1,5 +1,5 @@
 {
-  "$comment": "Speed budgets from docs/PLAN.md; the player script and styles limits add up to its 150 KB Brotli player budget; the editor's add up to 120 KB. A module row carries the budget its manifest promises, and a test keeps the two equal. The lease, broadcast and presenter scripts are loaded only by a page that asks for them, and the exported page's script holds the player, the chart and the clip module in one classic file, and the core code row is the part of @depthcue/core that the player bundles for it and for the clip module. CI fails when a measured size exceeds its limit. A budget whose file is missing also fails, so a renamed output cannot silently pass.",
+  "$comment": "Speed budgets from docs/PLAN.md; the player script and styles limits add up to its 150 KB Brotli player budget; the editor's script and styles add up to 120 KB, and its brand checks are a chunk it fetches only for a deck with a brand. A module row carries the budget its manifest promises, and a test keeps the two equal. The lease, broadcast and presenter scripts are loaded only by a page that asks for them, and the exported page's script holds the player, the chart and the clip module in one classic file, and the core code row is the part of @depthcue/core that the player bundles for it and for the clip module. CI fails when a measured size exceeds its limit. A budget whose file is missing also fails, so a renamed output cannot silently pass.",
   "budgets": [
     {
       "name": "core runtime",
@@ -72,6 +72,12 @@
       "file": "packages/editor/dist/editor.js",
       "metric": "brotli",
       "limitBytes": 92160
+    },
+    {
+      "name": "editor brand checks",
+      "file": "packages/editor/dist/brandcheck.js",
+      "metric": "brotli",
+      "limitBytes": 6144
     },
     {
       "name": "editor styles",

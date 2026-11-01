@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "urn:depthcue:schema:0.3:deck",
+  "$id": "urn:depthcue:schema:0.4:deck",
   "title": "Depthcue deck manifest",
   "type": "object",
   "additionalProperties": false,
@@ -21,7 +21,8 @@
       "enum": [
         "0.1",
         "0.2",
-        "0.3"
+        "0.3",
+        "0.4"
       ]
     },
     "id": {
@@ -93,6 +94,10 @@
         "classic",
         "technical"
       ]
+    },
+    "brand": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,63}$"
     },
     "scenes": {
       "type": "array",

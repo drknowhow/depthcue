@@ -1,0 +1,207 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:depthcue:schema:0.4:template",
+  "title": "Depthcue template",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "description",
+    "slots"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "schemaVersion": {
+      "enum": [
+        "0.4"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,63}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "background": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color"
+      ],
+      "properties": {
+        "color": {
+          "enum": [
+            "bg",
+            "surface",
+            "text",
+            "action",
+            "evidence"
+          ]
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^images/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*\\.(jpg|jpeg|png|webp|svg)$",
+          "maxLength": 200
+        },
+        "scrim": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "dependencies": {
+        "image": [
+          "scrim"
+        ],
+        "scrim": [
+          "image"
+        ]
+      }
+    },
+    "chrome": {
+      "enum": [
+        "full",
+        "minimal",
+        "none"
+      ]
+    },
+    "slots": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "role",
+          "frame",
+          "hint"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "role": {
+            "enum": [
+              "title",
+              "subtitle",
+              "claim",
+              "body",
+              "picture",
+              "chart",
+              "table",
+              "content"
+            ]
+          },
+          "frame": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "w": {
+                "type": "number",
+                "minimum": 5,
+                "maximum": 100
+              },
+              "h": {
+                "type": "number",
+                "minimum": 5,
+                "maximum": 100
+              }
+            }
+          },
+          "accepts": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "heading",
+                "body",
+                "caption",
+                "quote",
+                "image",
+                "table",
+                "chart",
+                "clip"
+              ]
+            }
+          },
+          "style": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "valign": {
+            "enum": [
+              "top",
+              "middle",
+              "bottom"
+            ]
+          },
+          "hint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "if": {
+          "properties": {
+            "role": {
+              "const": "claim"
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "else": {
+          "properties": {
+            "accepts": {}
+          },
+          "required": [
+            "accepts"
+          ]
+        }
+      }
+    }
+  }
+}

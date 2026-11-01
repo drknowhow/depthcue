@@ -1,9 +1,13 @@
 import {
   ASSET_PATTERN,
   COLOR_PATTERN,
+  FAMILY_PATTERN,
+  FONT_FILE_PATTERN,
   FRAME_MIN,
   ID_PATTERN,
+  IMAGE_FILE_PATTERN,
   LANGUAGE_PATTERN,
+  LOGO_FILE_PATTERN,
   MODULE_SETTING_PATTERN,
   URL_PATTERN,
 } from "./schema.ts";
@@ -75,6 +79,12 @@ export const PATTERN_HINTS: Record<string, string> = {
   [URL_PATTERN]: "Use a full http or https URL.",
   [MODULE_SETTING_PATTERN]: 'Write "off", or the version the deck needs, such as "1" or "1.2".',
   [COLOR_PATTERN]: 'Write a color as "#" and six hex digits, such as "#2b55e6".',
+  [FONT_FILE_PATTERN]:
+    'A font file is in the brand folder\'s fonts/, such as "fonts/Acme-Regular.woff2" (woff2, woff, ttf or otf).',
+  [LOGO_FILE_PATTERN]: 'A logo is in the brand folder\'s logos/, such as "logos/acme.svg" (svg or png).',
+  [IMAGE_FILE_PATTERN]:
+    'An image is in the brand folder\'s images/, such as "images/cover.jpg" (jpg, png, webp or svg).',
+  [FAMILY_PATTERN]: "Write the family name alone, without quotes, semicolons or braces.",
 };
 
 /** What a number outside its range in a frame should be, since the schema's own limits do not say percent of what. */
@@ -183,6 +193,18 @@ function explainOne(error: RawError, data: Json, root: Json): Explained {
         message: `Needs at least ${params.limit} item${params.limit === 1 ? "" : "s"}.`,
         fix: "Add one.",
       };
+    case "maxProperties":
+      return {
+        code: "too-many",
+        message: `More than ${params.limit} entries.`,
+        fix: `Keep ${params.limit} or fewer.`,
+      };
+    case "dependencies":
+      return {
+        code: "missing-property",
+        message: `"${params.property}" needs "${params.missingProperty}" beside it.`,
+        fix: `Add "${params.missingProperty}", or remove "${params.property}".`,
+      };
     case "minProperties":
       return {
         code: "too-few",
@@ -206,8 +228,8 @@ function explainOne(error: RawError, data: Json, root: Json): Explained {
     case "type":
       return {
         code: "wrong-type",
-        message: `Expected ${params.type}, got ${kind(value)}.`,
-        fix: `Use a ${params.type}.`,
+        message: `Expected ${String(params.type).replace(",", " or ")}, got ${kind(value)}.`,
+        fix: `Use a ${String(params.type).replace(",", " or ")}.`,
       };
     case "minimum":
       return {

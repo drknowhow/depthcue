@@ -23,7 +23,7 @@ import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
 import { loadDeckDir } from "./loader.ts";
 import { loadReviewDir, recordPersonWrite, saveReviewDir } from "./review-file.ts";
-import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
+import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
 
 export interface EditContext {
   /** The deck folder, already resolved to its real path. */
@@ -59,7 +59,8 @@ function authorized(request: IncomingMessage, ctx: EditContext): string | undefi
   return crossOrigin(request, ctx.origins());
 }
 
-const SAVEABLE = /^(deck\.json|scenes\/[^/\\]+\.json)$/;
+/** What the editor may write: deck.json, the scenes, and the brand's brand.json and templates. */
+const SAVEABLE = /^(deck\.json|scenes\/[^/\\]+\.json|brand\/brand\.json|brand\/templates\/[^/\\]+\.json)$/;
 
 /** The change ids a save says are still the agent's. Anything that is not a short list of short strings is ignored. */
 export const keptAgent = (value: unknown): string[] =>
@@ -95,7 +96,7 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
     if (!SAVEABLE.test(path) || typeof text !== "string") {
       return send(response, 400, {
         error: "bad-request",
-        message: `"${path}" is not a file the editor may write. Only deck.json and scenes/<id>.json.`,
+        message: `"${path}" is not a file the editor may write. Only deck.json, scenes/<id>.json, brand/brand.json and brand/templates/<id>.json.`,
       });
     }
     files[path] = text;
@@ -118,7 +119,11 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
       rev: diskRev,
     });
   }
-  const next = loadDoc({ text: files, assets: onDisk.assets });
+  const next = loadDoc({
+    text: files,
+    assets: onDisk.assets,
+    ...(onDisk.brandFiles ? { brandFiles: onDisk.brandFiles } : {}),
+  });
   if (!next.doc) {
     return send(response, 422, {
       error: "invalid",
@@ -135,6 +140,13 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
   } catch (error) {
     if (error instanceof ChangedOnDiskError) {
       return send(response, 409, { error: "stale", message: error.message, rev: diskRev });
+    }
+    if (error instanceof RefusedSaveError) {
+      return send(response, 422, {
+        error: "refused-save",
+        message: "Something in the deck folder stops the save, so nothing was written.",
+        diagnostics: error.diagnostics.map(plain),
+      });
     }
     throw error;
   }
@@ -154,6 +166,7 @@ function deck(response: ServerResponse, ctx: EditContext) {
     rev: revisionOf(opened.doc),
     text: files.text,
     assets: files.assets,
+    brandFiles: [...(files.brandFiles ?? [])],
     warnings: opened.diagnostics.filter((d) => d.severity === "warning").map(plain),
   });
 }

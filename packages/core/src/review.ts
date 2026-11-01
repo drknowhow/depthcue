@@ -18,12 +18,14 @@ import {
   type SceneChanges,
 } from "./apply.ts";
 import { assetsOf } from "./assets.ts";
+import type { BrandPart } from "./brand.ts";
+import { checkBrandFile, checkTemplateFile } from "./brandcheck.ts";
 import { closest } from "./diagnostics.ts";
 import { type Doc, revisionOf } from "./doc.ts";
 import { canonicalJson, sha256Hex } from "./revision.ts";
-import type { Block, Deck, Diagnostic, Scene } from "./types.ts";
+import type { Block, Brand, Deck, Diagnostic, Scene, Template } from "./types.ts";
 import { checkManifest, checkScenePart, scenePath } from "./validate.ts";
-import { readsMarkup, upgradeScene } from "./versions.ts";
+import { raiseDeck, readsMarkup, upgradeScene } from "./versions.ts";
 
 /** Where the review of a deck is kept: next to `deck.json`, and not under `scenes/` or `assets/`. */
 export const REVIEW_FILE = "review.json";
@@ -37,6 +39,12 @@ export interface Review {
   /** The deck as it was when it was last reviewed. */
   deck: Deck;
   scenes: Record<string, Scene>;
+  /**
+   * The brand and its templates as they were, for a branded deck: the scenes of the reviewed deck are checked against
+   * them. Changes to a brand are not listed one by one yet: accepting a change takes the brand as it is now.
+   */
+  brand?: Brand;
+  templates?: Record<string, Template>;
   /** Ids of the changes the agent made and nobody has accepted or reverted, sorted. */
   agent: string[];
 }
@@ -404,10 +412,40 @@ function buildOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
   return ops;
 }
 
-/** The reviewed deck as a `Doc`. Its assets are the deck folder's, and the ones it names that were since deleted. */
-export function baselineOf(review: Review, assets: ReadonlySet<string>): Doc {
+/**
+ * The reviewed deck as a `Doc`. Its assets are the deck folder's, and the ones it names that were since deleted. Given
+ * the brand folder's files, it has those too, for a reviewed deck with a brand.
+ */
+export function baselineOf(
+  review: Review,
+  assets: ReadonlySet<string>,
+  brandFiles?: ReadonlySet<string>,
+): Doc {
   const named = Object.values(review.scenes).flatMap(assetsOf);
-  return { deck: review.deck, scenes: review.scenes, assets: new Set([...assets, ...named]) };
+  return {
+    deck: review.deck,
+    scenes: review.scenes,
+    assets: new Set([...assets, ...named]),
+    ...(review.brand === undefined ? {} : { brand: review.brand, templates: review.templates ?? {} }),
+    ...(brandFiles === undefined ? {} : { brandFiles }),
+  };
+}
+
+/**
+ * The reviewed deck with the current deck's brand. A change to the brand is not one that is reviewed on its own yet, so
+ * a change copied into the reviewed deck finds the templates and styles it names as they are now.
+ */
+function withBrandOf(base: Doc, current: Doc): Doc {
+  const { brand: _brand, ...unbranded } = base.deck;
+  const deck =
+    current.deck.brand === undefined ? unbranded : raiseDeck({ ...base.deck, brand: current.deck.brand });
+  return {
+    deck: deck as Deck,
+    scenes: base.scenes,
+    assets: base.assets,
+    ...(current.brand === undefined ? {} : { brand: current.brand, templates: current.templates ?? {} }),
+    ...(current.brandFiles === undefined ? {} : { brandFiles: current.brandFiles }),
+  };
 }
 
 /** A review whose reviewed deck is `doc`, with nothing for the agent to answer for yet. */
@@ -417,6 +455,7 @@ export function startReview(doc: Doc, agent: readonly string[] = []): Review {
     rev: revisionOf(doc),
     deck: doc.deck,
     scenes: Object.fromEntries(doc.deck.scenes.map((id) => [id, doc.scenes[id] as Scene])),
+    ...(doc.brand === undefined ? {} : { brand: doc.brand, templates: { ...doc.templates } }),
     agent: [...agent],
   };
 }
@@ -489,7 +528,7 @@ export function acceptChanges(
   current: Doc,
   ids: readonly string[] | "all",
 ): Accepted | ReviewFailure {
-  const base = baselineOf(review, current.assets);
+  const base = withBrandOf(baselineOf(review, current.assets), current);
   const have = diffDocs(base, current);
   if (ids === "all") return { ok: true, review: startReview(current), accepted: have.map((c) => c.id) };
   const chosen = choose(have, ids);
@@ -527,6 +566,7 @@ const unchanged = (doc: Doc): ApplySuccess => ({
   changed: [],
   removed: [],
   deckChanged: false,
+  brandChanged: false,
   diagnostics: [],
 });
 
@@ -565,7 +605,7 @@ export function revertOps(
   current: Doc,
   ids: readonly string[] | "all",
 ): RevertPlan | ReviewFailure {
-  const base = baselineOf(review, current.assets);
+  const base = baselineOf(review, current.assets, current.brandFiles);
   const have = diffDocs(base, current);
   const chosen = ids === "all" ? have.map((change) => change.id) : choose(have, ids);
   if (!Array.isArray(chosen)) return chosen;
@@ -585,7 +625,7 @@ export function revertOps(
  * ones a person reverted and then undid, which come back as the agent's and not as the person's own.
  */
 export function foldEdit(review: Review, before: Doc, after: Doc, keep: readonly string[] = []): Review {
-  let base = baselineOf(review, after.assets);
+  let base = withBrandOf(baselineOf(review, after.assets), after);
   const kept = new Set(keep);
   for (const { id } of diffDocs(before, after)) {
     if (kept.has(id)) continue;
@@ -666,7 +706,25 @@ export function readReview(text: string | undefined): ReadReview {
   }
   const at = (prefix: string, found: Diagnostic[]): Diagnostic[] =>
     found.map((d) => ({ ...d, file: REVIEW_FILE, path: `${prefix}${d.path}` }));
-  const problems = at("/deck", checkManifest(data.deck));
+  if (data.brand !== undefined && !isRecord(data.templates)) {
+    return refuse("/templates", "bad-shape", 'A review with a "brand" needs its "templates".', START_OVER);
+  }
+  const templates = (data.templates ?? {}) as Record<string, unknown>;
+  const problems =
+    data.brand === undefined
+      ? []
+      : [
+          ...at("/brand", checkBrandFile(data.brand)),
+          ...Object.entries(templates).flatMap(([id, template]) =>
+            at(`/templates/${id}`, checkTemplateFile(template, id)),
+          ),
+        ];
+  if (problems.length > 0) return { ok: false, diagnostics: problems };
+  const part: BrandPart =
+    data.brand === undefined
+      ? {}
+      : { brand: data.brand as unknown as Brand, templates: templates as Record<string, Template> };
+  problems.push(...at("/deck", checkManifest(data.deck, "deck.json", part.brand)));
   if (problems.length > 0) return { ok: false, diagnostics: problems };
 
   const deck = data.deck as unknown as Deck;
@@ -690,12 +748,13 @@ export function readReview(text: string | undefined): ReadReview {
       problems.push(
         error(`/scenes/${id}`, "missing-scene", `Scene "${id}" is listed but has no content.`, START_OVER),
       );
-    } else problems.push(...at(`/scenes/${id}`, checkScenePart(scene, scenePath(id), id, assets, deck)));
+    } else
+      problems.push(...at(`/scenes/${id}`, checkScenePart(scene, scenePath(id), id, assets, deck, part)));
   }
   if (problems.some((d) => d.severity === "error")) return { ok: false, diagnostics: problems };
 
   const review = data as unknown as Review;
-  if (revisionOf({ deck, scenes, assets }) !== review.rev) {
+  if (revisionOf({ deck, scenes, assets, ...part }) !== review.rev) {
     return refuse(
       "/rev",
       "rev-mismatch",

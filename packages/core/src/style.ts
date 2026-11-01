@@ -1,11 +1,14 @@
 /**
- * A deck's look: the colors of its theme preset with its palette's changes on top, and its font pair. Colors are
- * always named, never written on a block as hex, so a change to the palette restyles the whole deck. The checks here
- * hold every color that text is drawn in to WCAG 2's contrast minimum on both backgrounds a slide uses.
+ * A deck's look: the colors of its theme preset, with its brand's palette for that preset on top and then its own
+ * palette's changes, and its font pair. Colors are always named, never written on a block as hex, so a change to the
+ * palette restyles the whole deck. The checks here hold every color that text is drawn in to WCAG 2's contrast minimum
+ * on both backgrounds a slide uses.
  */
+import { type SceneKit, textOn } from "./brand.ts";
 import { type Flow, parseText, type Span } from "./inline.ts";
+import { own } from "./own.ts";
 import type { FONT_PAIRS, PALETTE_COLORS, THEME_COLORS, THEMES } from "./schema.ts";
-import type { Block, Deck, Diagnostic, Scene } from "./types.ts";
+import type { Block, Brand, Deck, Diagnostic, Scene } from "./types.ts";
 import { readsMarkup } from "./versions.ts";
 
 export type ThemeName = (typeof THEMES)[number];
@@ -51,12 +54,25 @@ export interface DeckStyle {
   fonts: FontPair;
 }
 
-/** What a deck's colors and fonts come to: its theme's preset, with each color its palette names put in its place. */
-export function styleOf(deck: Pick<Deck, "theme" | "palette" | "fonts">): DeckStyle {
+/** What of a brand decides a deck's colors and fonts. */
+export type BrandLook = Pick<Brand, "colors" | "fonts" | "lock">;
+
+/** The built-in pair a brand's fonts come to: the pair it names, or the one its own faces fall back to. */
+export const brandPair = (brand: BrandLook | undefined): FontPair | undefined =>
+  typeof brand?.fonts === "string" ? brand.fonts : brand?.fonts?.fallback;
+
+/**
+ * What a deck's colors and fonts come to: its theme's preset, then its brand's palette for that preset, then each color
+ * its own palette names, and its own font pair before its brand's. A brand that locks the deck keeps both its own.
+ */
+export function styleOf(deck: Pick<Deck, "theme" | "palette" | "fonts">, brand?: BrandLook): DeckStyle {
+  const own: Pick<Deck, "palette" | "fonts"> = brand?.lock ? {} : deck;
+  // The brand's chart colors sit in its palette, but are no theme color.
+  const { chart: _, ...branded } = brand?.colors?.[deck.theme] ?? {};
   return {
     theme: deck.theme,
-    colors: { ...PRESETS[deck.theme], ...deck.palette },
-    fonts: deck.fonts ?? DEFAULT_FONTS,
+    colors: { ...PRESETS[deck.theme], ...branded, ...own.palette },
+    fonts: own.fonts ?? brandPair(brand) ?? DEFAULT_FONTS,
   };
 }
 
@@ -98,36 +114,69 @@ function worst(style: DeckStyle, color: ThemeColor): { against: ThemeColor; rati
 }
 
 /**
- * Checks a valid deck's colors, in deck.json, as errors under `palette-low-contrast`. Text, muted and evidence need
- * 4.5:1 on bg and on surface, because the player draws body text, captions and source links in them. Action needs
- * 3:1, the minimum for large text: a block that uses it for smaller text is held to 4.5:1 by `checkTones`. The line
- * color is not text, and the state colors are not the palette's.
+ * The pairs of colors that miss the contrast minimum, as errors under `palette-low-contrast`. `own` gives the path of
+ * a color the file being checked sets, and `fallback` the path for a pair whose colors it sets neither of, or nothing
+ * to leave such a pair to the file that does set them.
  */
-export function checkPalette(deck: Deck, file = "deck.json"): Diagnostic[] {
-  const style = styleOf(deck);
-  const changed = (name: string): boolean => deck.palette !== undefined && Object.hasOwn(deck.palette, name);
+function contrastProblems(
+  colors: Colors,
+  own: (name: ThemeColor) => string | undefined,
+  file: string,
+  fallback: string | undefined,
+  where = "",
+): Diagnostic[] {
   const out: Diagnostic[] = [];
   for (const color of [...SMALL_TEXT, "action"] as const) {
     const need = color === "action" ? CONTRAST.large : CONTRAST.text;
     for (const against of BACKGROUNDS) {
-      const ratio = contrastRatio(style.colors[color], style.colors[against]);
+      const ratio = contrastRatio(colors[color], colors[against]);
       if (ratio >= need) continue;
-      const lighter = luminance(style.colors[color]) > luminance(style.colors[against]);
+      const mine = own(color);
+      const theirs = own(against);
+      const path = mine ?? theirs ?? fallback;
+      if (path === undefined) continue;
+      const lighter = luminance(colors[color]) > luminance(colors[against]);
       const fore = `make "${color}" ${lighter ? "lighter" : "darker"}`;
       const back = `make "${against}" ${lighter ? "darker" : "lighter"}`;
-      const both = changed(color) === changed(against);
-      const change = both ? `${fore}, or ${back},` : changed(color) ? fore : back;
+      const both = (mine === undefined) === (theirs === undefined);
+      const change = both ? `${fore}, or ${back},` : mine ? fore : back;
       out.push({
         severity: "error",
         code: "palette-low-contrast",
         file,
-        path: changed(color) ? `/palette/${color}` : changed(against) ? `/palette/${against}` : "/theme",
-        message: `"${color}" (${style.colors[color]}) on "${against}" (${style.colors[against]}) has a contrast of ${shown(ratio)}, under the ${need}:1 that ${color === "action" ? "even large text" : "text"} needs.`,
+        path,
+        message: `${where}"${color}" (${colors[color]}) on "${against}" (${colors[against]}) has a contrast of ${shown(ratio)}, under the ${need}:1 that ${color === "action" ? "even large text" : "text"} needs.`,
         fix: `${change.charAt(0).toUpperCase()}${change.slice(1)} until the two reach ${need}:1.`,
       });
     }
   }
   return out;
+}
+
+/**
+ * Checks a valid deck's colors, in deck.json, as errors under `palette-low-contrast`. Text, muted and evidence need
+ * 4.5:1 on bg and on surface, because the player draws body text, captions and source links in them. Action needs
+ * 3:1, the minimum for large text: a block that uses it for smaller text is held to 4.5:1 by `checkTones`. The line
+ * color is not text, and the state colors are not the palette's. In a branded deck a pair the deck's palette has no
+ * part in is the brand's to answer for, and `checkBrandColors` reports it in brand.json.
+ */
+export function checkPalette(deck: Deck, file = "deck.json", brand?: BrandLook): Diagnostic[] {
+  const own = (name: string): string | undefined =>
+    !brand?.lock && deck.palette !== undefined && Object.hasOwn(deck.palette, name)
+      ? `/palette/${name}`
+      : undefined;
+  return contrastProblems(styleOf(deck, brand).colors, own, file, brand ? undefined : "/theme");
+}
+
+/** Checks a brand's palette for each preset it changes, by the same rules as `checkPalette`, in brand.json. */
+export function checkBrandColors(brand: BrandLook, file: string): Diagnostic[] {
+  return (Object.keys(PRESETS) as ThemeName[]).flatMap((theme) => {
+    const palette = brand.colors?.[theme];
+    if (palette === undefined) return [];
+    const own = (name: string): string | undefined =>
+      Object.hasOwn(palette, name) ? `/colors/${theme}/${name}` : undefined;
+    return contrastProblems({ ...PRESETS[theme], ...palette }, own, file, undefined, `On ${theme} slides, `);
+  });
 }
 
 /**
@@ -159,17 +208,56 @@ export function tonesInText(flow: readonly Flow[]): Set<string> {
  * Checks the tones a scene's text uses against the deck's colors, as errors under `tone-low-contrast`: text that is
  * not large needs 4.5:1 on bg and on surface. `checkPalette` holds every tone to at least 3:1 already, so this matters
  * for a block that colors small text with a tone only large text may use, such as an accent between 3:1 and 4.5:1.
+ *
+ * Given the deck's kit, a text block that takes a style (its own, or its slot's) or sits on a template's colored
+ * background is checked on the colors it resolves to, under `block-low-contrast`: its own tone and size win over the
+ * style's, it sits on the style's fill or else on the template's background, and with no tone of its own it is drawn
+ * in the style's tone or in the one that reads on what it sits on. The template's own text color is the template's to
+ * answer for (`template-low-contrast`), so a block that changes nothing of it is not checked again.
  */
-export function checkTones(scene: Scene, style: DeckStyle, file: string): Diagnostic[] {
+export function checkTones(scene: Scene, style: DeckStyle, file: string, kit?: SceneKit): Diagnostic[] {
   const out: Diagnostic[] = [];
+  const template = kit && scene.template !== undefined ? own(kit.templates, scene.template) : undefined;
+  const backdrop = template?.background?.image === undefined ? template?.background?.color : undefined;
   scene.blocks.forEach((block, i) => {
-    if (block.type !== "text" || isLargeText(block)) return;
+    if (block.type !== "text") return;
+    const id = block.style ?? template?.slots.find((slot) => slot.id === block.slot)?.style;
+    const look = kit && id !== undefined ? own(kit.styles, id) : undefined;
+    const spans = () =>
+      readsMarkup(scene)
+        ? tonesInText(parseText(block.text, { lists: block.role === "body" }))
+        : new Set<string>();
+    if (look || backdrop) {
+      const fill = look?.fill === "none" ? undefined : look?.fill;
+      const grounds: readonly ThemeColor[] = fill ? [fill] : backdrop ? [backdrop] : BACKGROUNDS;
+      const size = block.size ?? look?.size;
+      const large = block.role === "heading" || size === "l" || size === "xl";
+      const need = large ? CONTRAST.large : CONTRAST.text;
+      const tone = block.tone ?? look?.tone ?? textOn(fill ?? backdrop ?? "bg");
+      const used = [...spans()].filter((span) => span !== tone).map((span) => [span, "/text"]);
+      if (block.tone || look)
+        used.unshift([tone, block.tone ? "/tone" : block.style ? "/style" : block.slot ? "/slot" : ""]);
+      for (const [name, at] of used as Array<[ThemeColor, string]>) {
+        const ground = grounds.find(
+          (against) => contrastRatio(style.colors[name], style.colors[against]) < need,
+        );
+        if (ground === undefined) continue;
+        out.push({
+          severity: "error",
+          code: "block-low-contrast",
+          file,
+          path: `/blocks/${i}${at}`,
+          message: `The text is drawn in "${name}" (${style.colors[name]}) on "${ground}" (${style.colors[ground]}), a contrast of ${shown(contrastRatio(style.colors[name], style.colors[ground]))}, under the ${need}:1 that ${large ? "large text" : "text of this size"} needs.`,
+          fix: `Give the block another tone${large ? "" : " or size l or xl"}, or pick another style.`,
+        });
+      }
+      return;
+    }
+    if (isLargeText(block)) return;
     const used: Array<{ tone: string; path: string }> = [];
     if (block.tone) used.push({ tone: block.tone, path: `/blocks/${i}/tone` });
-    if (readsMarkup(scene)) {
-      for (const tone of tonesInText(parseText(block.text, { lists: block.role === "body" }))) {
-        if (tone !== block.tone) used.push({ tone, path: `/blocks/${i}/text` });
-      }
+    for (const tone of spans()) {
+      if (tone !== block.tone) used.push({ tone, path: `/blocks/${i}/text` });
     }
     for (const { tone, path } of used) {
       const { against, ratio } = worst(style, tone as ThemeColor);
@@ -188,5 +276,7 @@ export function checkTones(scene: Scene, style: DeckStyle, file: string): Diagno
 }
 
 /** A key that changes exactly when a deck's colors do, to tell whether its scenes need their tones checked again. */
-export const colorsKey = (deck: Pick<Deck, "theme" | "palette">): string =>
-  JSON.stringify(styleOf({ theme: deck.theme, ...(deck.palette ? { palette: deck.palette } : {}) }).colors);
+export const colorsKey = (deck: Pick<Deck, "theme" | "palette">, brand?: BrandLook): string =>
+  JSON.stringify(
+    styleOf({ theme: deck.theme, ...(deck.palette ? { palette: deck.palette } : {}) }, brand).colors,
+  );

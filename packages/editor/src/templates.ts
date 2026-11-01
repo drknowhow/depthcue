@@ -13,7 +13,7 @@ import {
 } from "@depthcue/core";
 import { CHART_KIND_LABELS } from "@depthcue/player";
 
-export type Layout = Scene["layout"];
+export type Layout = NonNullable<Scene["layout"]>;
 export type Lead = NonNullable<Scene["lead"]>;
 export type TextRole = Extract<Block, { type: "text" }>["role"];
 

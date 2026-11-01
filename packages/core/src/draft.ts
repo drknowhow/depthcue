@@ -1,6 +1,6 @@
 import { checkDoc, type Doc, revisionOf } from "./doc.ts";
 import type { Session } from "./session.ts";
-import type { Deck, Diagnostic, Scene } from "./types.ts";
+import type { Brand, Deck, Diagnostic, Scene, Template } from "./types.ts";
 
 export const DRAFT_FORMAT = "depthcue-draft/1";
 
@@ -62,6 +62,7 @@ export function serializeDraft(session: Pick<Session, "doc" | "rev" | "savedRev"
     rev: session.rev,
     deck: doc.deck,
     scenes: doc.deck.scenes.map((id) => doc.scenes[id]),
+    ...(doc.brand === undefined ? {} : { brand: doc.brand, templates: doc.templates ?? {} }),
   });
 }
 
@@ -159,11 +160,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * Reads a draft left by a crashed or closed session. It never throws and never changes the store: a draft that
  * does not parse, fails validation or does not match its own revision comes back as `unusable`, and the caller
- * decides whether to discard it. `context` describes the deck as saved now.
+ * decides whether to discard it. `context` describes the deck as saved now: its assets, the brand folder's files, and
+ * its revision.
  */
 export function recoverDraft(
   store: DraftStore,
-  context: { assets: ReadonlySet<string>; savedRev: string },
+  context: { assets: ReadonlySet<string>; brandFiles?: ReadonlySet<string>; savedRev: string },
 ): Recovery {
   let text: string | null;
   try {
@@ -189,7 +191,18 @@ export function recoverDraft(
     if (!isRecord(scene) || typeof scene.id !== "string") return unusable("A scene in the draft has no id.");
     scenes[scene.id] = scene as unknown as Scene;
   }
-  const doc: Doc = { deck: data.deck as unknown as Deck, scenes, assets: context.assets };
+  if (data.brand !== undefined && (!isRecord(data.brand) || !isRecord(data.templates))) {
+    return unusable("The draft's brand is missing its templates.");
+  }
+  const doc: Doc = {
+    deck: data.deck as unknown as Deck,
+    scenes,
+    assets: context.assets,
+    ...(data.brand === undefined
+      ? {}
+      : { brand: data.brand as unknown as Brand, templates: data.templates as Record<string, Template> }),
+    ...(context.brandFiles === undefined ? {} : { brandFiles: context.brandFiles }),
+  };
   const errors = checkDoc(doc).filter((d) => d.severity === "error");
   if (errors.length > 0) return unusable("The draft no longer passes validation.", errors);
   if (revisionOf(doc) !== data.rev)

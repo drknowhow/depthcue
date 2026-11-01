@@ -10,6 +10,7 @@ import {
   type Session,
 } from "@depthcue/core";
 import type { Api, DeckPayload } from "./api.ts";
+import { loadBrandChecks, waitedForBrandChecks } from "./brandchecks.ts";
 import { type CommentBook, createCommentBook } from "./commentbook.ts";
 import { createHistory, type History } from "./history.ts";
 import { createReviewBook, type ReviewBook } from "./reviewbook.ts";
@@ -98,8 +99,31 @@ export interface EditorStore {
  */
 const isCueMap = (path: string) => path.endsWith(".cues.json");
 
-const docOf = (payload: DeckPayload): Doc | undefined =>
-  loadDoc({ text: payload.text, assets: payload.assets }).doc ?? undefined;
+/** What the store says when the brand checks' chunk does not arrive, as when the network fails or the build changed. */
+export const CHECKS_FAILED = "Could not load the brand checks; reload the page.";
+
+/** Fetches the brand checks, rejecting with `CHECKS_FAILED` when they do not arrive. */
+async function checksIn(): Promise<void> {
+  try {
+    await loadBrandChecks();
+  } catch {
+    throw new Error(CHECKS_FAILED);
+  }
+}
+
+/**
+ * Reads the deck from the server's files, fetching the brand checks first when a check had to wait for them. Rejects
+ * with `CHECKS_FAILED` when they cannot be fetched.
+ */
+async function docOf(payload: DeckPayload): Promise<Doc | undefined> {
+  const files = { text: payload.text, assets: payload.assets, brandFiles: payload.brandFiles ?? [] };
+  let loaded = loadDoc(files);
+  if (waitedForBrandChecks(loaded.diagnostics)) {
+    await checksIn();
+    loaded = loadDoc(files);
+  }
+  return loaded.doc ?? undefined;
+}
 
 /**
  * Opens the deck from the server into a core session and restores a draft left by an earlier visit. It keeps
@@ -114,7 +138,7 @@ export async function openStore(
   options: StoreOptions = {},
 ): Promise<EditorStore> {
   const payload = await api.loadDeck();
-  const initial = docOf(payload);
+  const initial = await docOf(payload);
   if (!initial) throw new Error("The deck on disk does not pass validation. Run `depthcue check`.");
   const drafts = draftsFor(initial.deck.id);
 
@@ -166,7 +190,19 @@ export async function openStore(
     },
   });
 
-  const recovery = recoverDraft(drafts, { assets: initial.assets, savedRev: session.rev });
+  const recover = () =>
+    recoverDraft(drafts, {
+      assets: initial.assets,
+      ...(initial.brandFiles === undefined ? {} : { brandFiles: initial.brandFiles }),
+      savedRev: session.rev,
+    });
+  let recovery = recover();
+  // A draft with a brand on a deck that has none on disk waits for the brand checks; it is not thrown away for that,
+  // nor when they cannot be fetched: the deck does not open, and the draft is there for the next try.
+  if (recovery.status === "unusable" && waitedForBrandChecks(recovery.diagnostics)) {
+    await checksIn();
+    recovery = recover();
+  }
   if (recovery.status === "found") {
     if (recovery.diskChanged) {
       held = recovery.doc;
@@ -234,15 +270,16 @@ export async function openStore(
   /** Takes the files on disk in as the clean document. False when they cannot be read or do not validate. */
   async function reload(note: string): Promise<boolean> {
     let fresh: DeckPayload;
+    let doc: Doc | undefined;
     try {
       fresh = await api.loadDeck();
+      doc = await docOf(fresh);
     } catch (error) {
       message = (error as Error).message;
       failed = true;
       notify();
       return false;
     }
-    const doc = docOf(fresh);
     if (!doc) {
       message = "The files on disk do not pass validation right now.";
       failed = true;
@@ -350,13 +387,27 @@ export async function openStore(
       } catch {
         return; // half-written or briefly invalid while someone saves; the next change event tries again
       }
+      // Read before the check below, since reading may wait for the brand checks to load.
+      let doc: Doc | undefined;
+      let broken: string | undefined;
+      try {
+        doc = await docOf(fresh);
+      } catch (error) {
+        broken = (error as Error).message;
+      }
       if (saving || epoch !== seen) {
         // A save was running or finished while the files were being read, so what came back may predate it.
         if (saving) pendingSync = true;
         else await store.syncFromDisk();
         return;
       }
-      const doc = docOf(fresh);
+      if (broken !== undefined) {
+        // The files on disk cannot be checked here, so they are not taken in.
+        failed = true;
+        message = broken;
+        notify();
+        return;
+      }
       if (!doc) return;
       session.addAssets(fresh.assets.filter((path) => !isCueMap(path)));
       if (fresh.rev === diskRev) return;

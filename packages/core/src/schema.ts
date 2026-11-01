@@ -5,15 +5,28 @@
 /**
  * Versions a file may declare, oldest first. 0.2 adds the optional block `frame`. 0.3 adds the deck's `palette` and
  * `fonts`, a text block's `tone`, `size` and `align`, the `table` and `chart` blocks, and reads the text of text
- * blocks as markup (see inline.ts). A file is read as the version it declares, so the text of an older scene stays
- * exactly as written.
+ * blocks as markup (see inline.ts). 0.4 adds the deck's `brand`, a scene's `template`, a block's `slot` and `style`,
+ * and the brand and template files; it reads text as 0.3 does. A file is read as the version it declares, so the text
+ * of an older scene stays exactly as written.
  */
-export const SCHEMA_VERSIONS = ["0.1", "0.2", "0.3"] as const;
-/** The version the tool writes into a new scene. */
-export const SCHEMA_VERSION = "0.3" as const;
+export const SCHEMA_VERSIONS = ["0.1", "0.2", "0.3", "0.4"] as const;
+/** The version the tool writes into a new scene. 0.4 reads exactly as 0.3, so a new scene shows the same either way. */
+export const SCHEMA_VERSION = "0.4" as const;
+/** The versions a brand or a template file may declare: both came with 0.4. A test keeps this the tail of the list above. */
+export const BRAND_SCHEMA_VERSIONS = ["0.4"] as const;
 
 export const ID_PATTERN = "^[a-z][a-z0-9-]{1,63}$";
 export const ASSET_PATTERN = "^assets/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*$";
+/**
+ * Files of a brand, named relative to the `brand/` folder: fonts, logos and images, each in its own folder and of the
+ * kinds a browser shows. Like an asset path, none climbs out of its folder.
+ */
+export const FONT_FILE_PATTERN = "^fonts/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*\\.(woff2|woff|ttf|otf)$";
+export const LOGO_FILE_PATTERN = "^logos/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*\\.(svg|png)$";
+export const IMAGE_FILE_PATTERN =
+  "^images/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*\\.(jpg|jpeg|png|webp|svg)$";
+/** A font family name: no quote, backslash, semicolon, brace or angle bracket, so it is safe inside CSS. */
+export const FAMILY_PATTERN = "^[^\"'\\\\;{}<>]+$";
 export const LANGUAGE_PATTERN = "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$";
 export const URL_PATTERN = "^https?://[^\\s]+$";
 /** What a deck says about a module: `off`, or the version it needs, such as `1` or `1.2`. */
@@ -57,6 +70,93 @@ export const TEXT_SIZES = ["s", "m", "l", "xl"] as const;
 export const TEXT_ALIGNS = ["start", "center", "end"] as const;
 export const COLUMN_KINDS = ["text", "number"] as const;
 export const CHART_KINDS = ["bar", "stacked-bar", "line", "area", "scatter", "donut"] as const;
+
+/**
+ * The kinds of block a template slot accepts and a style applies to: a text block by its role, any other by its type.
+ * A `bar-chart` is a `chart` here, so a slot or a style for charts takes the old block too.
+ */
+export const BLOCK_KINDS = [
+  "heading",
+  "body",
+  "caption",
+  "quote",
+  "image",
+  "table",
+  "chart",
+  "clip",
+] as const;
+/** Which of the deck's faces a style sets its text in. */
+export const STYLE_FONTS = ["display", "body", "mono"] as const;
+export const STYLE_WEIGHTS = ["regular", "bold"] as const;
+/** `upper` and `lower` set every letter in that case; `none` shows the text as written. */
+export const STYLE_CASES = ["none", "upper", "lower"] as const;
+/** A style's text color: one of the tones, or `bg` for reversed text on a dark fill. */
+export const STYLE_TONES = ["text", "muted", "action", "evidence", "bg"] as const;
+/** What a style fills its block with: nothing, or a palette color. */
+export const STYLE_FILLS = ["none", "surface", "action", "evidence", "text"] as const;
+export const STYLE_BORDERS = ["none", "line", "action"] as const;
+/** A bar of the accent color along one edge of the block: down its start side, or along its top. */
+export const STYLE_EDGES = ["none", "start", "top"] as const;
+/** The steps a style's corner radius and padding take. */
+export const STYLE_STEPS = ["none", "s", "m", "l"] as const;
+/** Where a brand's logo sits on a slide. `start` and `end` follow the deck's language, as text alignment does. */
+export const LOGO_CORNERS = ["top-start", "top-end", "bottom-start", "bottom-end"] as const;
+export const LOGO_SIZES = ["s", "m", "l"] as const;
+/** Where the footer line and the slide number sit along the bottom of a slide. */
+export const CHROME_PLACES = ["start", "center", "end"] as const;
+/** A bar of the action color on every slide: none, along the top, or down the start side. */
+export const ACCENTS = ["none", "top", "start"] as const;
+/** How much of the brand's chrome a template shows: all of it, the logo alone, or nothing. */
+export const TEMPLATE_CHROME = ["full", "minimal", "none"] as const;
+/**
+ * What a template slot is for. PowerPoint keeps it as a placeholder's type: a brand import reads it from a layout's
+ * placeholders, and the export writes placeholders of that type. A `claim` slot is where the scene's claim is drawn and
+ * takes no blocks; a `content` slot takes any block.
+ */
+export const SLOT_ROLES = [
+  "title",
+  "subtitle",
+  "claim",
+  "body",
+  "picture",
+  "chart",
+  "table",
+  "content",
+] as const;
+const TEXT_KINDS = ["heading", "body", "caption", "quote"] as const;
+/** The kinds of block a slot of each role may take: its `accepts` lists some of them, and `checkTemplate` holds it. */
+export const ROLE_KINDS: Readonly<Record<(typeof SLOT_ROLES)[number], readonly string[]>> = {
+  title: ["heading"],
+  subtitle: TEXT_KINDS,
+  claim: [],
+  body: TEXT_KINDS,
+  picture: ["image"],
+  chart: ["chart"],
+  table: ["table"],
+  content: BLOCK_KINDS,
+};
+/** Where a slot's blocks sit in its frame, as a PowerPoint placeholder's anchor. Left out, at the top. */
+export const VALIGNS = ["top", "middle", "bottom"] as const;
+/** The palette colors a template's background may take. */
+export const BACKGROUND_COLORS = ["bg", "surface", "text", "action", "evidence"] as const;
+export const FONT_STYLES = ["normal", "italic"] as const;
+export const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
+/** What a brand may hide of Depthcue's own: its templates, its styles, or both. */
+export const BUILT_IN_SETS = ["templates", "styles"] as const;
+/** How big a brand and its templates may be. */
+export const BRAND_LIMITS = {
+  name: 80,
+  styles: 24,
+  styleName: 40,
+  chart: 6,
+  faceFiles: 8,
+  slots: 12,
+  slotMax: 8,
+  description: 200,
+  hint: 160,
+  footer: 120,
+  alt: 250,
+} as const;
 
 /**
  * Character limits per text role, counted on the text the audience sees: markup, link addresses and list markers do
@@ -110,6 +210,8 @@ const textBlock = {
     align: { enum: TEXT_ALIGNS },
     sourceIds: idList,
     frame,
+    slot: id,
+    style: id,
   },
   allOf: [
     {
@@ -139,6 +241,8 @@ const imageBlock = {
     caption: { type: "string", minLength: 1, maxLength: TEXT_LIMITS.caption },
     sourceIds: idList,
     frame,
+    slot: id,
+    style: id,
   },
 } as const;
 
@@ -167,6 +271,8 @@ const barChartBlock = {
     },
     sourceIds: idList,
     frame,
+    slot: id,
+    style: id,
   },
 } as const;
 
@@ -182,6 +288,8 @@ const clipBlock = {
     alt: { type: "string", minLength: 1, maxLength: 250 },
     sourceIds: idList,
     frame,
+    slot: id,
+    style: id,
   },
 } as const;
 
@@ -218,11 +326,13 @@ const tableBlock = {
         properties: { label: columnLabel, kind: { enum: COLUMN_KINDS }, unit: dataUnit },
       },
     },
-    rows: rows(1, DATA_LIMITS.columns),
+    rows: /* @__PURE__ */ rows(1, DATA_LIMITS.columns),
     /** Whether the column labels show as a header row. Left out, they do. */
     header: { type: "boolean" },
     sourceIds: idList,
     frame,
+    slot: id,
+    style: id,
   },
 } as const;
 
@@ -252,9 +362,11 @@ const chartBlock = {
         properties: { label: columnLabel, unit: dataUnit },
       },
     },
-    rows: rows(2, DATA_LIMITS.series + 1),
+    rows: /* @__PURE__ */ rows(2, DATA_LIMITS.series + 1),
     sourceIds: idList,
     frame,
+    slot: id,
+    style: id,
   },
 } as const;
 
@@ -270,19 +382,27 @@ const source = {
   },
 } as const;
 
+/**
+ * A scene. It is drawn by a built-in `layout` or by a `template`, exactly one of the two, which `checkSceneForm`
+ * checks so the message can say both ways out. In a template scene each block names its `slot`, unless it is pinned
+ * over the slots, and the claim is drawn in the template's claim slot.
+ */
 export const sceneSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.3:scene",
+  $id: "urn:depthcue:schema:0.4:scene",
   title: "Depthcue scene",
+  $comment:
+    "A scene has exactly one of layout and template; depthcue check says so when it has neither or both.",
   type: "object",
   additionalProperties: false,
-  required: ["schemaVersion", "id", "title", "layout", "blocks"],
+  required: ["schemaVersion", "id", "title", "blocks"],
   properties: {
     $schema: schemaRef,
     schemaVersion,
     id,
     title: { type: "string", minLength: 1, maxLength: 120 },
     layout: { enum: LAYOUTS },
+    template: id,
     lead: { enum: LEADS },
     summary: {
       type: "object",
@@ -326,10 +446,25 @@ export const sceneSchema = {
 } as const;
 
 const color = { type: "string", pattern: COLOR_PATTERN, maxLength: 7 } as const;
+/** Colors that replace a preset's, by name: a deck's, and a brand's for each preset. */
+const palette = {
+  type: "object",
+  additionalProperties: false,
+  minProperties: 1,
+  properties: {
+    bg: color,
+    surface: color,
+    line: color,
+    text: color,
+    muted: color,
+    action: color,
+    evidence: color,
+  },
+} as const;
 
 export const deckSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.3:deck",
+  $id: "urn:depthcue:schema:0.4:deck",
   title: "Depthcue deck manifest",
   type: "object",
   additionalProperties: false,
@@ -343,27 +478,260 @@ export const deckSchema = {
     /** The preset the colors start from. */
     theme: { enum: THEMES },
     /** Colors that replace the preset's, by name. Contrast between them is checked by `checkPalette`. */
-    palette: {
-      type: "object",
-      additionalProperties: false,
-      minProperties: 1,
-      properties: {
-        bg: color,
-        surface: color,
-        line: color,
-        text: color,
-        muted: color,
-        action: color,
-        evidence: color,
-      },
-    },
+    palette,
     fonts: { enum: FONT_PAIRS },
+    /** The id of the brand in the deck's `brand/` folder, whose `brand.json` must say the same id. */
+    brand: id,
     scenes: { type: "array", items: id, uniqueItems: true, minItems: 1, maxItems: 200 },
     modules: {
       type: "object",
       propertyNames: id,
       additionalProperties: { type: "string", pattern: MODULE_SETTING_PATTERN, maxLength: 16 },
     },
+  },
+} as const;
+
+/** A brand's palette for a preset: a deck palette's colors, and the series colors of charts on that preset's slides. */
+const brandPalette = {
+  ...palette,
+  properties: {
+    ...palette.properties,
+    /** In order. Without them a chart takes its colors from the palette. */
+    chart: { type: "array", minItems: 1, maxItems: BRAND_LIMITS.chart, items: color },
+  },
+} as const;
+
+const brandVersion = { enum: BRAND_SCHEMA_VERSIONS } as const;
+const brandName = { type: "string", minLength: 1, maxLength: BRAND_LIMITS.name } as const;
+/** Typed as strings, so Ajv checks the list for repeats without its deep-equal helper, which a standalone module lacks. */
+const kinds = {
+  type: "array",
+  minItems: 1,
+  uniqueItems: true,
+  items: { type: "string", enum: BLOCK_KINDS },
+} as const;
+
+/**
+ * One face of a brand's own: its family, and the files that carry it, by weight and style, with the license they are
+ * carried under. A face with no files is installed on the viewers' machines, needs no license here, and is what a
+ * PowerPoint theme names.
+ */
+const face = {
+  type: "object",
+  additionalProperties: false,
+  required: ["family"],
+  properties: {
+    family: { type: "string", minLength: 1, maxLength: 64, pattern: FAMILY_PATTERN },
+    /** An SPDX id such as `OFL-1.1`, or the license's name. */
+    license: { type: "string", minLength: 1, maxLength: 120 },
+    /** Left out for a face that is installed on the viewers' machines and not carried by the deck. */
+    files: {
+      type: "array",
+      minItems: 1,
+      maxItems: BRAND_LIMITS.faceFiles,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["file", "weight", "style"],
+        properties: {
+          file: { type: "string", pattern: FONT_FILE_PATTERN, maxLength: 200 },
+          weight: { enum: FONT_WEIGHTS },
+          style: { enum: FONT_STYLES },
+        },
+      },
+    },
+  },
+  dependencies: { files: ["license"] },
+} as const;
+
+/** The brand's own faces, and the built-in pair the deck falls back to while they load or when they are missing. */
+export const facesSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["display", "body", "fallback"],
+  properties: { display: face, body: face, mono: face, fallback: { enum: FONT_PAIRS } },
+} as const;
+
+/**
+ * A component style: a named look a block takes with `"style": "<id>"`, from a bounded set of properties, for the kinds
+ * of block in `for`. A block's own tone, size and align win over its style's.
+ */
+export const blockStyleSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "for"],
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: BRAND_LIMITS.styleName },
+    for: kinds,
+    font: { enum: STYLE_FONTS },
+    size: { enum: TEXT_SIZES },
+    weight: { enum: STYLE_WEIGHTS },
+    case: { enum: STYLE_CASES },
+    tone: { enum: STYLE_TONES },
+    fill: { enum: STYLE_FILLS },
+    border: { enum: STYLE_BORDERS },
+    edge: { enum: STYLE_EDGES },
+    radius: { enum: STYLE_STEPS },
+    pad: { enum: STYLE_STEPS },
+    align: { enum: TEXT_ALIGNS },
+  },
+} as const;
+
+/**
+ * `brand/brand.json`. Files it names are relative to the `brand/` folder. Which logos it needs, which files exist and
+ * whether its colors reach the contrast minimums are facts the schema cannot state; `checkBrand` checks them.
+ */
+export const brandSchema = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "urn:depthcue:schema:0.4:brand",
+  title: "Depthcue brand",
+  type: "object",
+  additionalProperties: false,
+  required: ["schemaVersion", "id", "name"],
+  properties: {
+    $schema: schemaRef,
+    schemaVersion: brandVersion,
+    id,
+    name: brandName,
+    /**
+     * A palette for each preset, each with its own chart colors, so each can reach 3:1 on its own background. The
+     * brand's goes on the preset's, and a deck's own palette on top, unless locked.
+     */
+    colors: {
+      type: "object",
+      additionalProperties: false,
+      minProperties: 1,
+      properties: { paper: brandPalette, ink: brandPalette },
+    },
+    /** A built-in pair, or the brand's own faces. */
+    fonts: {
+      type: ["string", "object"],
+      if: { type: "string" },
+      then: { enum: FONT_PAIRS },
+      else: facesSchema,
+    },
+    /** A logo for light slides, one for dark slides, or both, and what it says to someone who cannot see it. */
+    logos: {
+      type: "object",
+      additionalProperties: false,
+      required: ["alt"],
+      properties: {
+        light: { type: "string", pattern: LOGO_FILE_PATTERN, maxLength: 200 },
+        dark: { type: "string", pattern: LOGO_FILE_PATTERN, maxLength: 200 },
+        alt: { type: "string", minLength: 1, maxLength: BRAND_LIMITS.alt },
+      },
+    },
+    /** What sits on every slide, as on a PowerPoint slide master. */
+    chrome: {
+      type: "object",
+      additionalProperties: false,
+      minProperties: 1,
+      properties: {
+        logo: {
+          type: "object",
+          additionalProperties: false,
+          required: ["corner", "size"],
+          properties: { corner: { enum: LOGO_CORNERS }, size: { enum: LOGO_SIZES } },
+        },
+        footer: {
+          type: "object",
+          additionalProperties: false,
+          required: ["text", "place"],
+          properties: {
+            text: { type: "string", minLength: 1, maxLength: BRAND_LIMITS.footer },
+            place: { enum: CHROME_PLACES },
+          },
+        },
+        number: {
+          type: "object",
+          additionalProperties: false,
+          required: ["place"],
+          properties: { place: { enum: CHROME_PLACES } },
+        },
+        accent: { enum: ACCENTS },
+      },
+    },
+    /** The brand's component styles, by id. One with the id of a built-in style replaces it. */
+    styles: {
+      type: "object",
+      propertyNames: id,
+      maxProperties: BRAND_LIMITS.styles,
+      additionalProperties: blockStyleSchema,
+    },
+    /** True refuses a deck palette and a deck font pair, so a deck cannot drift off the brand. */
+    lock: { type: "boolean" },
+    /** Depthcue's own templates or styles that this brand's decks do not offer. */
+    hideBuiltIn: {
+      type: "array",
+      minItems: 1,
+      uniqueItems: true,
+      items: { type: "string", enum: BUILT_IN_SETS },
+    },
+  },
+} as const;
+
+/**
+ * A slot of a template: what it is for, where on the slide it sits, which kinds of block it takes and how many, the
+ * style its blocks take unless they name one, and a hint that tells a person or an agent what goes there. A `claim`
+ * slot holds the scene's claim, so it has no `accepts`; every other slot has one, which its role bounds.
+ */
+const slot = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "role", "frame", "hint"],
+  properties: {
+    id,
+    role: { enum: SLOT_ROLES },
+    frame,
+    accepts: kinds,
+    style: id,
+    /** How many blocks the slot stacks. Left out, one. */
+    max: { type: "integer", minimum: 1, maximum: BRAND_LIMITS.slotMax },
+    /** True when a scene of this template should fill the slot; an empty one is a warning, not an error. */
+    required: { type: "boolean" },
+    valign: { enum: VALIGNS },
+    hint: { type: "string", minLength: 1, maxLength: BRAND_LIMITS.hint },
+  },
+  if: { properties: { role: { const: "claim" } }, required: ["role"] },
+  else: { properties: { accepts: {} }, required: ["accepts"] },
+} as const;
+
+/**
+ * `brand/templates/<id>.json`, and the shape of a built-in template: a slide layout with named slots. Its file name is
+ * its id. That slots lie on the slide and whether they overlap are sums the schema cannot state; `checkTemplate` does.
+ */
+export const templateSchema = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "urn:depthcue:schema:0.4:template",
+  title: "Depthcue template",
+  type: "object",
+  additionalProperties: false,
+  required: ["schemaVersion", "id", "name", "description", "slots"],
+  properties: {
+    $schema: schemaRef,
+    schemaVersion: brandVersion,
+    id,
+    name: { type: "string", minLength: 1, maxLength: BRAND_LIMITS.styleName },
+    /** When to use it, for the template picker and for an agent choosing one. */
+    description: { type: "string", minLength: 1, maxLength: BRAND_LIMITS.description },
+    /**
+     * The slide's color, or a brand image with `color` laid over it at `scrim` percent, so text on it can be read.
+     * Left out, the slide's own background.
+     */
+    background: {
+      type: "object",
+      additionalProperties: false,
+      required: ["color"],
+      properties: {
+        color: { enum: BACKGROUND_COLORS },
+        image: { type: "string", pattern: IMAGE_FILE_PATTERN, maxLength: 200 },
+        scrim: { type: "number", minimum: 0, maximum: 100 },
+      },
+      dependencies: { image: ["scrim"], scrim: ["image"] },
+    },
+    /** How much of the brand's chrome shows. Left out, all of it. */
+    chrome: { enum: TEMPLATE_CHROME },
+    slots: { type: "array", minItems: 1, maxItems: BRAND_LIMITS.slots, items: slot },
   },
 } as const;
 
@@ -380,6 +748,9 @@ export const OP_NAMES = [
   "block.set",
   "block.frame",
   "block.unframe",
+  "brand.set",
+  "style.set",
+  "template.set",
 ] as const;
 
 const object = { type: "object" } as const;
@@ -387,6 +758,8 @@ const object = { type: "object" } as const;
 const position = { type: ["string", "null"], pattern: ID_PATTERN } as const;
 /** Properties to write; a null value deletes an optional property. Values are checked on the result. */
 const changes = { type: "object", minProperties: 1 } as const;
+/** A whole thing to write, or null to remove it. */
+const whole = { type: ["object", "null"] } as const;
 
 const op = <Name extends string, Properties extends object, Required extends readonly string[]>(
   name: Name,
@@ -401,12 +774,13 @@ const op = <Name extends string, Properties extends object, Required extends rea
   }) as const;
 
 /**
- * The command vocabulary. Shapes are checked here; the values inside `scene`, `block` and `set` are checked
- * against the scene schema on the document the operations produce, so errors point at the real file and path.
+ * The command vocabulary. Shapes are checked here; the values inside `scene`, `block`, `set`, `style` and `template`
+ * are checked against their own schemas on the document the operations produce, so errors point at the real file and
+ * path. `brand.set` with `set: null` takes the brand off the deck; `style.set` and `template.set` with null remove one.
  */
 export const opsSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.3:ops",
+  $id: "urn:depthcue:schema:0.4:ops",
   title: "Depthcue operations",
   type: "array",
   minItems: 1,
@@ -415,18 +789,21 @@ export const opsSchema = {
     type: "object",
     discriminator: { propertyName: "op" },
     oneOf: [
-      op("deck.set", { set: changes }, ["set"]),
-      op("scene.add", { scene: object, after: position }, ["scene"]),
-      op("scene.remove", { id }, ["id"]),
-      op("scene.move", { id, after: position }, ["id", "after"]),
-      op("scene.set", { id, set: changes }, ["id", "set"]),
-      op("scene.upgrade", { id }, ["id"]),
-      op("block.add", { scene: id, block: object, after: position }, ["scene", "block"]),
-      op("block.remove", { scene: id, id }, ["scene", "id"]),
-      op("block.move", { scene: id, id, after: position }, ["scene", "id", "after"]),
-      op("block.set", { scene: id, id, set: changes }, ["scene", "id", "set"]),
-      op("block.frame", { scene: id, id, frame }, ["scene", "id", "frame"]),
-      op("block.unframe", { scene: id, id }, ["scene", "id"]),
+      /* @__PURE__ */ op("deck.set", { set: changes }, ["set"]),
+      /* @__PURE__ */ op("scene.add", { scene: object, after: position }, ["scene"]),
+      /* @__PURE__ */ op("scene.remove", { id }, ["id"]),
+      /* @__PURE__ */ op("scene.move", { id, after: position }, ["id", "after"]),
+      /* @__PURE__ */ op("scene.set", { id, set: changes }, ["id", "set"]),
+      /* @__PURE__ */ op("scene.upgrade", { id }, ["id"]),
+      /* @__PURE__ */ op("block.add", { scene: id, block: object, after: position }, ["scene", "block"]),
+      /* @__PURE__ */ op("block.remove", { scene: id, id }, ["scene", "id"]),
+      /* @__PURE__ */ op("block.move", { scene: id, id, after: position }, ["scene", "id", "after"]),
+      /* @__PURE__ */ op("block.set", { scene: id, id, set: changes }, ["scene", "id", "set"]),
+      /* @__PURE__ */ op("block.frame", { scene: id, id, frame }, ["scene", "id", "frame"]),
+      /* @__PURE__ */ op("block.unframe", { scene: id, id }, ["scene", "id"]),
+      /* @__PURE__ */ op("brand.set", { set: whole }, ["set"]),
+      /* @__PURE__ */ op("style.set", { id, style: whole }, ["id", "style"]),
+      /* @__PURE__ */ op("template.set", { id, template: whole }, ["id", "template"]),
     ],
   },
 } as const;
@@ -489,7 +866,7 @@ const comment = {
  */
 export const commentsSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.3:comments",
+  $id: "urn:depthcue:schema:0.4:comments",
   title: "Depthcue comments",
   type: "object",
   additionalProperties: false,
@@ -504,7 +881,7 @@ export const commentsSchema = {
 /** The commands for comments. They run on the comments file, with the deck read for the block a comment points at. */
 export const commentOpsSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.3:comment-ops",
+  $id: "urn:depthcue:schema:0.4:comment-ops",
   title: "Depthcue comment operations",
   type: "array",
   minItems: 1,

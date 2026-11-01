@@ -1,14 +1,14 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "urn:depthcue:schema:0.3:scene",
+  "$id": "urn:depthcue:schema:0.4:scene",
   "title": "Depthcue scene",
+  "$comment": "A scene has exactly one of layout and template; depthcue check says so when it has neither or both.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schemaVersion",
     "id",
     "title",
-    "layout",
     "blocks"
   ],
   "properties": {
@@ -20,7 +20,8 @@
       "enum": [
         "0.1",
         "0.2",
-        "0.3"
+        "0.3",
+        "0.4"
       ]
     },
     "id": {
@@ -38,6 +39,10 @@
         "claim-evidence",
         "text-media"
       ]
+    },
+    "template": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,63}$"
     },
     "lead": {
       "enum": [
@@ -178,6 +183,14 @@
                     "maximum": 100
                   }
                 }
+              },
+              "slot": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "style": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             },
             "allOf": [
@@ -315,6 +328,14 @@
                     "maximum": 100
                   }
                 }
+              },
+              "slot": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "style": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             }
           },
@@ -407,6 +428,14 @@
                     "maximum": 100
                   }
                 }
+              },
+              "slot": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "style": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             }
           },
@@ -482,6 +511,14 @@
                     "maximum": 100
                   }
                 }
+              },
+              "slot": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "style": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             }
           },
@@ -599,6 +636,14 @@
                     "maximum": 100
                   }
                 }
+              },
+              "slot": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "style": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             }
           },
@@ -723,6 +768,14 @@
                     "maximum": 100
                   }
                 }
+              },
+              "slot": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "style": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             }
           }

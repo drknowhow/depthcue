@@ -5,16 +5,46 @@ export type {
   ApplyResult,
   ApplySuccess,
   BlockChanges,
+  BrandChanges,
   DeckChanges,
   NewScene,
+  NewTemplate,
   Op,
   SceneChanges,
 } from "./apply.ts";
-export { applyOps } from "./apply.ts";
+export { applyOps, BRAND_KEYS } from "./apply.ts";
 export type { AssetRef } from "./assets.ts";
 export { assetRefs, assetsOf } from "./assets.ts";
+export type { BackgroundColor, BrandPart, SceneKit } from "./brand.ts";
+export {
+  BRAND_DIR,
+  BRAND_FILE,
+  blockStylesOf,
+  brandFilePath,
+  checkSceneBrand,
+  claimSlot,
+  isTemplateFile,
+  kindOf,
+  kitOf,
+  slotMax,
+  TEMPLATES_DIR,
+  templateIdOf,
+  templatePath,
+  templatesOf,
+  textOn,
+} from "./brand.ts";
+export type { BrandData, BrandRead, Look } from "./brandcheck.ts";
+export {
+  checkBrand,
+  checkBrandFile,
+  checkTemplate,
+  checkTemplateFile,
+  looksOf,
+  readBrand,
+} from "./brandcheck.ts";
 export type { BuildEntry, BuildTarget } from "./build.ts";
 export { buildOf, placeInBuild, revealable, STEPS_MAX } from "./build.ts";
+export { BUILT_IN_STYLES, BUILT_IN_TEMPLATES } from "./builtins.ts";
 export type {
   Anchor,
   Comment,
@@ -71,10 +101,10 @@ export { chartFromBarChart, checkData, columnKinds, replaceBlockOps } from "./da
 export type { RawError } from "./diagnostics.ts";
 export { explain } from "./diagnostics.ts";
 export type { Doc, LoadResult } from "./doc.ts";
-export { checkDoc, docToFiles, loadDoc, revisionOf, sceneRevision } from "./doc.ts";
+export { brandPartOf, checkDoc, docToFiles, loadDoc, revisionOf, sceneRevision } from "./doc.ts";
 export type { Autosave, AutosaveOptions, DraftStore, Recovery, Timers } from "./draft.ts";
 export { attachAutosave, DRAFT_FORMAT, memoryDraftStore, recoverDraft, serializeDraft } from "./draft.ts";
-export type { ExportData } from "./exported.ts";
+export type { DeckLook, ExportData, LookFace } from "./exported.ts";
 export { EXPORT_FORMAT } from "./exported.ts";
 export type { Frame } from "./frames.ts";
 export { checkFrames, FRAME_MIN, frameOf, hasFrames, SAFE_MARGIN } from "./frames.ts";
@@ -112,7 +142,11 @@ export {
   LEASE_RUN_LIMIT_MS,
   REVOKE_TEXT,
 } from "./lease.ts";
+export type { LookSource } from "./look.ts";
+export { lookOf } from "./look.ts";
 export { checkReferences } from "./references.ts";
+export type { Layout, Retemplated } from "./retemplate.ts";
+export { retemplate } from "./retemplate.ts";
 export type {
   Accepted,
   Author,
@@ -145,6 +179,11 @@ export {
 } from "./review.ts";
 export {
   ASSET_PATTERN,
+  BLOCK_KINDS,
+  BRAND_LIMITS,
+  BRAND_SCHEMA_VERSIONS,
+  blockStyleSchema,
+  brandSchema,
   CHART_KINDS,
   COLOR_PATTERN,
   COLUMN_KINDS,
@@ -164,8 +203,10 @@ export {
   OP_NAMES,
   opsSchema,
   PALETTE_COLORS,
+  ROLE_KINDS,
   SCHEMA_VERSION,
   SCHEMA_VERSIONS,
+  SLOT_ROLES,
   sceneSchema,
   TEXT_ALIGNS,
   TEXT_LIMITS,
@@ -175,14 +216,18 @@ export {
   THEME_COLORS,
   THEMES,
   TONES,
+  templateSchema,
+  VALIGNS,
 } from "./schema.ts";
 export type { ApplyOptions, Session, SessionEvent, SessionEventType } from "./session.ts";
 export { createSession } from "./session.ts";
 export type { Placed, Placement, Slot, SlotName } from "./slots.ts";
 export { addBlock, placeBlock, slotOf, slotsOf } from "./slots.ts";
-export type { DeckStyle, FontPair, PaletteColor, ThemeColor, ThemeName } from "./style.ts";
+export type { BrandLook, DeckStyle, FontPair, PaletteColor, ThemeColor, ThemeName } from "./style.ts";
 export {
+  brandPair,
   CONTRAST,
+  checkBrandColors,
   checkPalette,
   checkTones,
   contrastRatio,
@@ -192,7 +237,19 @@ export {
   PRESETS,
   styleOf,
 } from "./style.ts";
-export type { Block, BlockType, Deck, Diagnostic, Scene, Severity } from "./types.ts";
+export type {
+  Block,
+  BlockKind,
+  BlockStyle,
+  BlockType,
+  Brand,
+  Deck,
+  Diagnostic,
+  Scene,
+  Severity,
+  Template,
+  TemplateSlot,
+} from "./types.ts";
 export type { DeckFiles } from "./validate.ts";
 export { checkDeckFiles, checkManifest, checkScene, MANIFEST_FILE, scenePath } from "./validate.ts";
 export type { SchemaVersion } from "./versions.ts";

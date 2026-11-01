@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.4",
+  "id": "welcome",
+  "title": "Welcome",
+  "template": "cover",
+  "blocks": [
+    {
+      "id": "welcome-kicker",
+      "type": "text",
+      "role": "caption",
+      "text": "Third quarter review",
+      "slot": "kicker"
+    },
+    {
+      "id": "welcome-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Where the harbor grew",
+      "slot": "title"
+    },
+    {
+      "id": "welcome-byline",
+      "type": "text",
+      "role": "body",
+      "text": "The analytics team, for the October planning meeting",
+      "slot": "byline"
+    }
+  ]
+}

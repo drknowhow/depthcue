@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "0.4",
+  "id": "context",
+  "title": "Context",
+  "layout": "text-media",
+  "blocks": [
+    { "id": "context-kicker", "type": "text", "role": "caption", "text": "Context", "style": "kicker" },
+    { "id": "context-heading", "type": "text", "role": "heading", "text": "The quarter started slow" },
+    {
+      "id": "context-body",
+      "type": "text",
+      "role": "body",
+      "text": "Two of the three berths were closed for **dredging** until the middle of August.",
+      "style": "quiet-panel"
+    },
+    {
+      "id": "context-quote",
+      "type": "text",
+      "role": "quote",
+      "text": "We planned for a flat quarter, and the second half surprised us.",
+      "style": "callout"
+    }
+  ]
+}

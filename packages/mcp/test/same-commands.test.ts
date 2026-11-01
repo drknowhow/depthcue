@@ -152,6 +152,51 @@ describe("one command layer under the editor and the agent tools", () => {
     expect(snapshot(byEditor)).not.toEqual(snapshot(demo));
   });
 
+  it("gives the same files for the same edit of a branded deck, its brand folder included", async () => {
+    const branded = fileURLToPath(new URL("../../../fixtures/decks/v0-4-brand", import.meta.url));
+    const withBrand = (dir: string) => {
+      const files = snapshot(dir);
+      const walk = (at: string): string[] =>
+        readdirSync(join(dir, at), { withFileTypes: true }).flatMap((entry) =>
+          entry.isDirectory() ? walk(`${at}/${entry.name}`) : [`${at}/${entry.name}`],
+        );
+      for (const path of walk("brand")) files[path] = readFileSync(join(dir, path), "utf8");
+      return files;
+    };
+    const ops: Op[] = [
+      { op: "style.set", id: "figure", style: { name: "Figure", for: ["chart"] } },
+      { op: "block.set", scene: "growth", id: "growth-chart", set: { style: "figure" } },
+      { op: "scene.set", id: "growth", set: { template: "two-column" } },
+      { op: "block.set", scene: "growth", id: "growth-chart", set: { slot: "left" } },
+      { op: "block.set", scene: "growth", id: "growth-note", set: { slot: "right" } },
+      { op: "template.set", id: "chart-and-note", template: null },
+    ];
+    const byEditor = join(root, "by-editor");
+    const byAgent = join(root, "by-agent");
+    cpSync(branded, byEditor, { recursive: true });
+    cpSync(branded, byAgent, { recursive: true });
+    const start = revisionOnDisk(byAgent);
+
+    const opened = await openEditor(byEditor);
+    editor = opened.store;
+    closeEditor = opened.close;
+    expect(editor.session.doc.brand?.id).toBe("harbor");
+    expect(editor.session.apply(ops).ok).toBe(true);
+    await editor.save();
+    expect(editor.status.save).toBe("saved");
+
+    const connected = await connect(byAgent);
+    agent = connected.client;
+    depthcue = connected.server;
+    expect((await deckApply(agent, start, ops)).isError).toBe(false);
+
+    const saved = withBrand(byEditor);
+    expect(saved).toEqual(withBrand(byAgent));
+    expect(Object.keys(saved)).not.toContain("brand/templates/chart-and-note.json");
+    expect(Object.keys(saved)).toContain("brand/logos/harbor.svg");
+    expect(revisionOnDisk(byEditor)).toBe(revisionOnDisk(byAgent));
+  });
+
   it("refuses a stale base revision the same way from both sides, and writes nothing", async () => {
     folder = join(root, "deck");
     cpSync(demo, folder, { recursive: true });

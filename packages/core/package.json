@@ -13,7 +13,9 @@
     "./schema/scene.schema.json": "./schema/scene.schema.json",
     "./schema/ops.schema.json": "./schema/ops.schema.json",
     "./schema/comments.schema.json": "./schema/comments.schema.json",
-    "./schema/comment-ops.schema.json": "./schema/comment-ops.schema.json"
+    "./schema/comment-ops.schema.json": "./schema/comment-ops.schema.json",
+    "./schema/brand.schema.json": "./schema/brand.schema.json",
+    "./schema/template.schema.json": "./schema/template.schema.json"
   },
   "files": [
     "dist",
@@ -24,10 +26,8 @@
     "build": "vite build && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "dependencies": {
-    "ajv": "^8.20.0"
-  },
   "devDependencies": {
+    "ajv": "^8.20.0",
     "json-schema-to-ts": "^3.1.1"
   }
 }

@@ -13,7 +13,7 @@ import {
 } from "@depthcue/core";
 import { openDeck } from "./deck-api.ts";
 import { loadReviewDir, saveReviewDir } from "./review-file.ts";
-import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
+import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
 
 export interface ChangeList {
   /** The deck's revision now. */
@@ -46,7 +46,8 @@ export type ReviewCode =
   | "unknown-change"
   | "bad-op"
   | "invalid-deck"
-  | "changed-on-disk";
+  | "changed-on-disk"
+  | "refused-save";
 
 export interface ReviewRefusal {
   ok: false;
@@ -72,6 +73,8 @@ const HINTS: Record<ReviewCode, string> = {
     "Nothing was changed: the result would not be a valid deck. The change may depend on another one, which has to be handled with it.",
   "changed-on-disk":
     "The deck folder changed while this was being done. Nothing was written. Read it again and retry.",
+  "refused-save":
+    "Nothing was written: something in the deck folder stops the save, as the diagnostics say. Change the folder, then retry.",
 };
 
 const refuse = (
@@ -171,6 +174,7 @@ export function revertInFolder(folder: string, ids: readonly string[] | "all"): 
     try {
       written = saveDeckDir(folder, read.doc, result.doc);
     } catch (error) {
+      if (error instanceof RefusedSaveError) return refuse("refused-save", error.diagnostics);
       if (!(error instanceof ChangedOnDiskError)) throw error;
       return refuse("changed-on-disk");
     }

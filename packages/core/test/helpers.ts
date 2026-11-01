@@ -14,15 +14,27 @@ function walk(dir: string): string[] {
   });
 }
 
+/** A deck folder as the CLI's loader reads it: JSON as text, assets listed, and a brand's other files listed. */
 export function loadDir(dir: string): DeckFiles {
   const text: Record<string, string> = {};
   const assets: string[] = [];
+  const brandFiles: string[] = [];
   for (const full of walk(dir)) {
     const path = relative(dir, full).split(sep).join("/");
     if (path.endsWith(".json")) text[path] = readFileSync(full, "utf8");
+    else if (path.startsWith("brand/")) brandFiles.push(path);
     else assets.push(path);
   }
-  return { text, assets };
+  return brandFiles.length > 0 ? { text, assets, brandFiles } : { text, assets };
+}
+
+/** The branded fixture deck: a brand of its own, two templates, two styles, and a layout scene and two template ones. */
+export const brandDir = fileURLToPath(new URL("../../../fixtures/decks/v0-4-brand", import.meta.url));
+
+export function brandDoc(): Doc {
+  const { doc, diagnostics } = loadDoc(loadDir(brandDir));
+  if (!doc) throw new Error(`the branded deck should load: ${JSON.stringify(diagnostics)}`);
+  return doc;
 }
 
 export function scene(overrides: Record<string, unknown> = {}): Record<string, unknown> {

@@ -8,11 +8,15 @@ export interface ApiDiagnostic {
   fix?: string;
 }
 
-/** The deck as the server has it: the revision, the JSON files as text, and the files under assets/. */
+/**
+ * The deck as the server has it: the revision, the JSON files as text, the files under assets/, and the brand folder's
+ * fonts, logos and images. A server from before brands sends no `brandFiles`.
+ */
 export interface DeckPayload {
   rev: string;
   text: Record<string, string>;
   assets: string[];
+  brandFiles?: string[];
   warnings: ApiDiagnostic[];
 }
 
