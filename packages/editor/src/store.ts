@@ -10,6 +10,7 @@ import {
   type Session,
 } from "@depthcue/core";
 import type { Api, DeckPayload } from "./api.ts";
+import { loadBrandChecks, waitedForBrandChecks } from "./brandchecks.ts";
 import { type CommentBook, createCommentBook } from "./commentbook.ts";
 import { createHistory, type History } from "./history.ts";
 import { createReviewBook, type ReviewBook } from "./reviewbook.ts";
@@ -98,9 +99,16 @@ export interface EditorStore {
  */
 const isCueMap = (path: string) => path.endsWith(".cues.json");
 
-const docOf = (payload: DeckPayload): Doc | undefined =>
-  loadDoc({ text: payload.text, assets: payload.assets, brandFiles: payload.brandFiles ?? [] }).doc ??
-  undefined;
+/** Reads the deck from the server's files, fetching the brand checks first when a check had to wait for them. */
+async function docOf(payload: DeckPayload): Promise<Doc | undefined> {
+  const files = { text: payload.text, assets: payload.assets, brandFiles: payload.brandFiles ?? [] };
+  let loaded = loadDoc(files);
+  if (waitedForBrandChecks(loaded.diagnostics)) {
+    await loadBrandChecks();
+    loaded = loadDoc(files);
+  }
+  return loaded.doc ?? undefined;
+}
 
 /**
  * Opens the deck from the server into a core session and restores a draft left by an earlier visit. It keeps
@@ -115,7 +123,7 @@ export async function openStore(
   options: StoreOptions = {},
 ): Promise<EditorStore> {
   const payload = await api.loadDeck();
-  const initial = docOf(payload);
+  const initial = await docOf(payload);
   if (!initial) throw new Error("The deck on disk does not pass validation. Run `depthcue check`.");
   const drafts = draftsFor(initial.deck.id);
 
@@ -167,11 +175,18 @@ export async function openStore(
     },
   });
 
-  const recovery = recoverDraft(drafts, {
-    assets: initial.assets,
-    ...(initial.brandFiles === undefined ? {} : { brandFiles: initial.brandFiles }),
-    savedRev: session.rev,
-  });
+  const recover = () =>
+    recoverDraft(drafts, {
+      assets: initial.assets,
+      ...(initial.brandFiles === undefined ? {} : { brandFiles: initial.brandFiles }),
+      savedRev: session.rev,
+    });
+  let recovery = recover();
+  // A draft with a brand on a deck that has none on disk waits for the brand checks; it is not thrown away for that.
+  if (recovery.status === "unusable" && waitedForBrandChecks(recovery.diagnostics)) {
+    await loadBrandChecks();
+    recovery = recover();
+  }
   if (recovery.status === "found") {
     if (recovery.diskChanged) {
       held = recovery.doc;
@@ -247,7 +262,7 @@ export async function openStore(
       notify();
       return false;
     }
-    const doc = docOf(fresh);
+    const doc = await docOf(fresh);
     if (!doc) {
       message = "The files on disk do not pass validation right now.";
       failed = true;
@@ -355,13 +370,14 @@ export async function openStore(
       } catch {
         return; // half-written or briefly invalid while someone saves; the next change event tries again
       }
+      // Read before the check below, since reading may wait for the brand checks to load.
+      const doc = await docOf(fresh);
       if (saving || epoch !== seen) {
         // A save was running or finished while the files were being read, so what came back may predate it.
         if (saving) pendingSync = true;
         else await store.syncFromDisk();
         return;
       }
-      const doc = docOf(fresh);
       if (!doc) return;
       session.addAssets(fresh.assets.filter((path) => !isCueMap(path)));
       if (fresh.rev === diskRev) return;
