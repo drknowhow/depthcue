@@ -260,6 +260,13 @@
   margin-top: 0.75em;
 }
 
+.dc-placeholder {
+  padding: 1.25em;
+  border: 1px dashed var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-surface);
+}
+
 /* Title */
 
 .dc-scene[data-layout="title"] .dc-stack {

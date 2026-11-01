@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.1",
+  "id": "share",
+  "title": "Share of orders",
+  "layout": "claim-evidence",
+  "summary": {
+    "id": "share-claim",
+    "text": "Channel B now leads, 60 to 40.",
+    "evidenceIds": ["share-chart"]
+  },
+  "blocks": [
+    {
+      "id": "share-chart",
+      "type": "bar-chart",
+      "title": "Share of orders",
+      "unit": "%",
+      "data": [{ "label": "Channel A", "value": 40 }, { "label": "Channel B", "value": 60 }],
+      "sourceIds": ["share-source"]
+    },
+    { "id": "share-note", "type": "text", "role": "caption", "text": "**Preliminary**, not audited" }
+  ],
+  "sources": [
+    { "id": "share-source", "title": "Quarterly order snapshot", "url": "https://example.com/orders" }
+  ],
+  "steps": [
+    { "id": "share-step-claim", "reveal": ["share-claim"] },
+    { "id": "share-step-chart", "reveal": ["share-chart"] }
+  ]
+}

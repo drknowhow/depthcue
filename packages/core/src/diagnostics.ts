@@ -1,5 +1,6 @@
 import {
   ASSET_PATTERN,
+  COLOR_PATTERN,
   FRAME_MIN,
   ID_PATTERN,
   LANGUAGE_PATTERN,
@@ -73,6 +74,7 @@ export const PATTERN_HINTS: Record<string, string> = {
   [LANGUAGE_PATTERN]: 'Use a language tag such as "en" or "pt-BR".',
   [URL_PATTERN]: "Use a full http or https URL.",
   [MODULE_SETTING_PATTERN]: 'Write "off", or the version the deck needs, such as "1" or "1.2".',
+  [COLOR_PATTERN]: 'Write a color as "#" and six hex digits, such as "#2b55e6".',
 };
 
 /** What a number outside its range in a frame should be, since the schema's own limits do not say percent of what. */
@@ -180,6 +182,12 @@ function explainOne(error: RawError, data: Json, root: Json): Explained {
         code: "too-few",
         message: `Needs at least ${params.limit} item${params.limit === 1 ? "" : "s"}.`,
         fix: "Add one.",
+      };
+    case "minProperties":
+      return {
+        code: "too-few",
+        message: `Needs at least ${params.limit} propert${params.limit === 1 ? "y" : "ies"}.`,
+        fix: "Add one, or leave the whole object out.",
       };
     case "uniqueItems":
       return {

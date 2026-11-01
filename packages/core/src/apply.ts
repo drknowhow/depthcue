@@ -1,15 +1,20 @@
 import { closest, explain } from "./diagnostics.ts";
 import { checkChanges, type Doc, revisionOf, sceneRevision } from "./doc.ts";
-import { type Frame, hasFrames } from "./frames.ts";
+import type { Frame } from "./frames.ts";
 import { validateOps } from "./generated/validators.js";
+import { escapeText } from "./inline.ts";
 import { canonicalJson } from "./revision.ts";
 import { ID_PATTERN, opsSchema, SCHEMA_VERSION } from "./schema.ts";
 import type { Block, Deck, Diagnostic, Scene } from "./types.ts";
+import { scenePath } from "./validate.ts";
+import { blockNeeds, raiseDeck, raiseScene, readsMarkup, upgradeScene } from "./versions.ts";
 
 /** Properties to write; a null value deletes an optional property. */
 type Nullable<T> = { [K in keyof T]?: T[K] | null };
 
-export type DeckChanges = Nullable<Pick<Deck, "title" | "language" | "theme" | "modules">>;
+export type DeckChanges = Nullable<
+  Pick<Deck, "title" | "language" | "theme" | "palette" | "fonts" | "modules">
+>;
 export type SceneChanges = Nullable<
   Pick<Scene, "title" | "layout" | "lead" | "summary" | "sources" | "reading" | "steps" | "notes">
 >;
@@ -25,6 +30,8 @@ export type Op =
   | { op: "scene.remove"; id: string }
   | { op: "scene.move"; id: string; after: string | null }
   | { op: "scene.set"; id: string; set: SceneChanges }
+  /** Rewrites a scene below 0.3 as 0.3, escaping its text so that it keeps its meaning. A 0.3 scene stays as it is. */
+  | { op: "scene.upgrade"; id: string }
   | { op: "block.add"; scene: string; block: Block; after?: string | null }
   | { op: "block.remove"; scene: string; id: string }
   | { op: "block.move"; scene: string; id: string; after: string | null }
@@ -56,7 +63,7 @@ export interface ApplySuccess {
   /** Scenes whose content differs from before, added ones included, in deck order. */
   changed: string[];
   removed: string[];
-  /** True when deck.json content changed: title, language, theme, modules or scene order. */
+  /** True when deck.json content changed: title, language, theme, palette, fonts, modules or scene order. */
   deckChanged: boolean;
   diagnostics: Diagnostic[];
 }
@@ -70,7 +77,7 @@ interface Work {
 
 const ID_RE = new RegExp(ID_PATTERN);
 /** The properties `deck.set` and `scene.set` may write. Review compares exactly these, so the two cannot drift. */
-export const DECK_KEYS = ["title", "language", "theme", "modules"] as const;
+export const DECK_KEYS = ["title", "language", "theme", "palette", "fonts", "modules"] as const;
 export const SCENE_KEYS = [
   "title",
   "layout",
@@ -282,7 +289,8 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
         op.after,
       );
       if (isProblem(ids)) return ids;
-      work.scenes[scene.id] = { schemaVersion: SCHEMA_VERSION, ...op.scene } as Scene;
+      // A scene that says an older version and has newer parts is raised now, so later operations see 0.3.
+      work.scenes[scene.id] = raiseScene({ schemaVersion: SCHEMA_VERSION, ...op.scene } as Scene);
       work.deck = { ...work.deck, scenes: ids.map((entry) => entry.id) };
       return undefined;
     }
@@ -311,9 +319,14 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
       work.scenes[op.id] = patch(work.scenes[op.id] as Scene, op.set);
       return undefined;
     }
+    case "scene.upgrade": {
+      if (!has(work.scenes, op.id)) return unknownId(index, "/id", op.id, "scene", work.deck.scenes);
+      work.scenes[op.id] = upgradeScene(work.scenes[op.id] as Scene);
+      return undefined;
+    }
     case "block.add": {
-      const scene = sceneOf(work, index, op.scene);
-      if (isProblem(scene)) return scene;
+      const found = sceneOf(work, index, op.scene);
+      if (isProblem(found)) return found;
       const block = op.block as unknown as Record<string, unknown>;
       if (typeof block.id !== "string") {
         return problem(
@@ -324,6 +337,8 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
           'Add an "id" to the block.',
         );
       }
+      // A block with a 0.3 part upgrades its scene first, so the block's own text is read as markup.
+      const scene = needsUpgrade(found, op.block) ? upgradeScene(found) : found;
       const blocks = place(index, "block", scene.blocks, op.block, op.after);
       if (isProblem(blocks)) return blocks;
       work.scenes[op.scene] = { ...scene, blocks };
@@ -366,7 +381,14 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
           );
         }
       }
-      rewrite(work, named.scene, named.block, patch(named.block, op.set));
+      const next = patch(named.block, op.set);
+      if (needsUpgrade(named.scene, next)) {
+        // The scene is upgraded before the change is made, so text the change writes is read as markup.
+        const at = named.scene.blocks.indexOf(named.block);
+        const upgraded = upgradeScene(named.scene);
+        const old = upgraded.blocks[at] as Block;
+        rewrite(work, upgraded, old, patch(old, op.set));
+      } else rewrite(work, named.scene, named.block, next);
       return undefined;
     }
     case "block.frame":
@@ -384,9 +406,34 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
   }
 }
 
-/** A scene that has a frame says schema 0.2. The tool writes that, as it does the version of a new scene. */
-const declareFrames = (scene: Scene): Scene =>
-  scene.schemaVersion === "0.1" && hasFrames(scene) ? { ...scene, schemaVersion: SCHEMA_VERSION } : scene;
+/** True when `block` has a 0.3 part and `scene` is older, so the scene must be upgraded to hold it. */
+const needsUpgrade = (scene: Scene, block: Block): boolean =>
+  !readsMarkup(scene) && blockNeeds(block) === "0.3";
+
+/**
+ * Text that an operation wrote into a scene below 0.3 and that would read differently as markup, as a warning: the
+ * scene shows it exactly as written, which is seldom what an agent that wrote `**` meant.
+ */
+function literalWarnings(before: Scene | undefined, after: Scene): Diagnostic[] {
+  if (readsMarkup(after)) return [];
+  const out: Diagnostic[] = [];
+  const old = new Map((before?.blocks ?? []).map((block) => [block.id, block]));
+  after.blocks.forEach((block, i) => {
+    if (block.type !== "text") return;
+    const was = old.get(block.id);
+    if (was?.type === "text" && was.text === block.text) return;
+    if (escapeText(block.text, { lists: block.role === "body" }) === block.text) return;
+    out.push({
+      severity: "warning",
+      code: "text-is-literal",
+      file: scenePath(after.id),
+      path: `/blocks/${i}/text`,
+      message: `Scene "${after.id}" is at schema ${after.schemaVersion}, so this text shows exactly as written: markup in it is not read.`,
+      fix: `To use markup, run scene.upgrade on "${after.id}" first, then write the text again. Leave it if the characters are meant.`,
+    });
+  });
+  return out;
+}
 
 function fail(code: ApplyFailureCode, rev: string, diagnostics: Diagnostic[]): ApplyFailure {
   return { ok: false, code, rev, diagnostics };
@@ -423,13 +470,19 @@ export function applyOps(doc: Doc, ops: unknown, baseRev: string): ApplyResult {
     if (bad) return fail("bad-op", prevRev, [bad]);
   }
 
+  // A file says the version its content needs, as the tool writes the version of a new scene: 0.2 for a frame.
   for (const [id, scene] of Object.entries(work.scenes)) {
-    if (scene !== doc.scenes[id]) work.scenes[id] = declareFrames(scene);
+    if (scene !== doc.scenes[id]) work.scenes[id] = raiseScene(scene);
   }
+  if (work.deck !== doc.deck) work.deck = raiseDeck(work.deck);
 
   const next: Doc = { deck: work.deck, scenes: work.scenes, assets: doc.assets };
   const diagnostics = checkChanges(doc, next);
   if (diagnostics.some((d) => d.severity === "error")) return fail("invalid-deck", prevRev, diagnostics);
+  for (const id of next.deck.scenes) {
+    const scene = next.scenes[id] as Scene;
+    if (scene !== doc.scenes[id]) diagnostics.push(...literalWarnings(doc.scenes[id], scene));
+  }
 
   const changed = next.deck.scenes.filter((id) => {
     const before = doc.scenes[id];

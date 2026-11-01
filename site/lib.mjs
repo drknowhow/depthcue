@@ -99,6 +99,11 @@ const quantity = (low, high, unit) => {
 export function describe(node) {
   if (node.const !== undefined) return `always \`${JSON.stringify(node.const)}\``;
   if (node.enum) return `one of ${node.enum.map((value) => `\`${value}\``).join(", ")}`;
+  // A node that takes several types, such as a table cell: text, a number or null.
+  if (Array.isArray(node.type)) {
+    const each = node.type.map((type) => (type === "null" ? "null" : describe({ ...node, type })));
+    return `${each.slice(0, -1).join(", ")} or ${each.at(-1)}`;
+  }
   if (node.type === "string") {
     if (node.pattern === ID_PATTERN) return "an id";
     if (node.pattern?.startsWith("^assets/")) return "a path under `assets/`";

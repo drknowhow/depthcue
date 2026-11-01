@@ -2,10 +2,15 @@
  * JSON Schema source of truth for a deck folder (draft-07 keywords only).
  * `pnpm schema` writes the published .schema.json files and the compiled validators from these objects.
  */
-/** Versions a file may declare. 0.2 adds the optional block `frame`; a 0.1 file is read as it is. */
-export const SCHEMA_VERSIONS = ["0.1", "0.2"] as const;
+/**
+ * Versions a file may declare, oldest first. 0.2 adds the optional block `frame`. 0.3 adds the deck's `palette` and
+ * `fonts`, a text block's `tone`, `size` and `align`, the `table` and `chart` blocks, and reads the text of text
+ * blocks as markup (see inline.ts). A file is read as the version it declares, so the text of an older scene stays
+ * exactly as written.
+ */
+export const SCHEMA_VERSIONS = ["0.1", "0.2", "0.3"] as const;
 /** The version the tool writes into a new scene. */
-export const SCHEMA_VERSION = "0.2" as const;
+export const SCHEMA_VERSION = "0.3" as const;
 
 export const ID_PATTERN = "^[a-z][a-z0-9-]{1,63}$";
 export const ASSET_PATTERN = "^assets/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*$";
@@ -13,14 +18,58 @@ export const LANGUAGE_PATTERN = "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$";
 export const URL_PATTERN = "^https?://[^\\s]+$";
 /** What a deck says about a module: `off`, or the version it needs, such as `1` or `1.2`. */
 export const MODULE_SETTING_PATTERN = "^(off|[0-9]{1,4}(\\.[0-9]{1,4}){0,2})$";
+/** A color in a deck's palette: `#` and six hex digits. */
+export const COLOR_PATTERN = "^#[0-9A-Fa-f]{6}$";
 
 export const LAYOUTS = ["title", "claim-evidence", "text-media"] as const;
+/** The two presets a deck's colors start from. */
 export const THEMES = ["paper", "ink"] as const;
 export const LEADS = ["human", "agent", "shared"] as const;
 export const TEXT_ROLES = ["heading", "body", "caption", "quote"] as const;
 
-/** Character limits per text role; the renderer measures real boxes, these keep the source honest. */
+/** Every color a theme names, as brand/tokens.json has them under `color.theme`. */
+export const THEME_COLORS = [
+  "bg",
+  "surface",
+  "line",
+  "text",
+  "muted",
+  "action",
+  "evidence",
+  "state",
+  "on-state",
+] as const;
+/**
+ * The theme colors a deck's `palette` may change. `state` and `on-state` are left out: they mark live, current and
+ * done in Depthcue's own controls, never on a slide, so recoloring them would change nothing the audience sees.
+ */
+export const PALETTE_COLORS = ["bg", "surface", "line", "text", "muted", "action", "evidence"] as const;
+/**
+ * The palette colors that may color text, by a text block's `tone` or a `[label]{tone}` span. They are roles with
+ * contrast duties, not a palette for data: a chart's series colors are not stored, and come from the deck's palette
+ * by series position. The backgrounds and the line color are not tones: text in those would sit on itself.
+ */
+export const TONES = ["text", "muted", "action", "evidence"] as const;
+/** The four font pairs a deck may choose. `editorial` is Instrument Serif with Space Grotesk, the default. */
+export const FONT_PAIRS = ["editorial", "modern", "classic", "technical"] as const;
+export const TEXT_SIZES = ["s", "m", "l", "xl"] as const;
+/** Where the lines of a text block sit: `start` and `end` follow the deck's language, so they suit any script. */
+export const TEXT_ALIGNS = ["start", "center", "end"] as const;
+export const COLUMN_KINDS = ["text", "number"] as const;
+export const CHART_KINDS = ["bar", "stacked-bar", "line", "area", "scatter", "donut"] as const;
+
+/**
+ * Character limits per text role, counted on the text the audience sees: markup, link addresses and list markers do
+ * not count. The renderer measures real boxes; these keep the source honest.
+ */
 export const TEXT_LIMITS = { heading: 90, body: 600, caption: 160, quote: 300 } as const;
+/**
+ * Limits on the stored text, markup included. Each is more than twice the limit above, so a scene upgraded to 0.3,
+ * whose text gets a backslash before each character that would otherwise be markup, always fits.
+ */
+export const TEXT_SOURCE_LIMITS = { heading: 240, body: 1600, caption: 400, quote: 800 } as const;
+/** How big a table or a chart may be. A chart's first column holds its categories; each other one is a series. */
+export const DATA_LIMITS = { columns: 12, rows: 30, series: 6, donutParts: 6, cell: 120, label: 40 } as const;
 
 const id = { type: "string", pattern: ID_PATTERN } as const;
 const idList = { type: "array", items: id, uniqueItems: true, maxItems: 32 } as const;
@@ -43,6 +92,10 @@ const assetPath = { type: "string", pattern: ASSET_PATTERN, maxLength: 200 } as 
 const schemaVersion = { enum: SCHEMA_VERSIONS } as const;
 const schemaRef = { type: "string", maxLength: 300 } as const;
 
+/**
+ * A text block. Its `text` is markup in a scene of 0.3 or later and literal below; the limit on what the audience
+ * sees depends on that, so `checkText` counts it, and the schema holds only the stored length.
+ */
 const textBlock = {
   type: "object",
   additionalProperties: false,
@@ -51,22 +104,25 @@ const textBlock = {
     id,
     type: { const: "text" },
     role: { enum: TEXT_ROLES },
-    text: { type: "string", minLength: 1, maxLength: TEXT_LIMITS.body },
+    text: { type: "string", minLength: 1, maxLength: TEXT_SOURCE_LIMITS.body },
+    tone: { enum: TONES },
+    size: { enum: TEXT_SIZES },
+    align: { enum: TEXT_ALIGNS },
     sourceIds: idList,
     frame,
   },
   allOf: [
     {
       if: { properties: { role: { const: "heading" } }, required: ["role"] },
-      then: { properties: { text: { type: "string", maxLength: TEXT_LIMITS.heading } } },
+      then: { properties: { text: { type: "string", maxLength: TEXT_SOURCE_LIMITS.heading } } },
     },
     {
       if: { properties: { role: { const: "caption" } }, required: ["role"] },
-      then: { properties: { text: { type: "string", maxLength: TEXT_LIMITS.caption } } },
+      then: { properties: { text: { type: "string", maxLength: TEXT_SOURCE_LIMITS.caption } } },
     },
     {
       if: { properties: { role: { const: "quote" } }, required: ["role"] },
-      then: { properties: { text: { type: "string", maxLength: TEXT_LIMITS.quote } } },
+      then: { properties: { text: { type: "string", maxLength: TEXT_SOURCE_LIMITS.quote } } },
     },
   ],
 } as const;
@@ -129,6 +185,79 @@ const clipBlock = {
   },
 } as const;
 
+const dataTitle = { type: "string", minLength: 1, maxLength: 120 } as const;
+const dataUnit = { type: "string", minLength: 1, maxLength: 16 } as const;
+const columnLabel = { type: "string", minLength: 1, maxLength: DATA_LIMITS.label } as const;
+/** One cell: text, a number, or null for an empty one. Which a column takes is checked by `checkData`. */
+const cell = { type: ["string", "number", "null"], minLength: 1, maxLength: DATA_LIMITS.cell } as const;
+/** The rows of a table or a chart: one array per row, with one cell per column, which `checkData` checks. */
+const rows = (minCells: number, maxCells: number) =>
+  ({
+    type: "array",
+    minItems: 1,
+    maxItems: DATA_LIMITS.rows,
+    items: { type: "array", minItems: minCells, maxItems: maxCells, items: cell },
+  }) as const;
+
+const tableBlock = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "type", "columns", "rows"],
+  properties: {
+    id,
+    type: { const: "table" },
+    title: dataTitle,
+    columns: {
+      type: "array",
+      minItems: 1,
+      maxItems: DATA_LIMITS.columns,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label"],
+        properties: { label: columnLabel, kind: { enum: COLUMN_KINDS }, unit: dataUnit },
+      },
+    },
+    rows: rows(1, DATA_LIMITS.columns),
+    /** Whether the column labels show as a header row. Left out, they do. */
+    header: { type: "boolean" },
+    sourceIds: idList,
+    frame,
+  },
+} as const;
+
+/**
+ * A chart. Its data has the shape of a table's, so one grid edits both and a change of `kind` keeps it: the first
+ * column holds the categories (for a scatter, the x numbers), and each column after it is a series of numbers. A
+ * series has no stored color: the player gives it one from the deck's palette by its position.
+ */
+const chartBlock = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "type", "kind", "columns", "rows"],
+  properties: {
+    id,
+    type: { const: "chart" },
+    kind: { enum: CHART_KINDS },
+    title: dataTitle,
+    unit: dataUnit,
+    columns: {
+      type: "array",
+      minItems: 2,
+      maxItems: DATA_LIMITS.series + 1,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label"],
+        properties: { label: columnLabel, unit: dataUnit },
+      },
+    },
+    rows: rows(2, DATA_LIMITS.series + 1),
+    sourceIds: idList,
+    frame,
+  },
+} as const;
+
 const source = {
   type: "object",
   additionalProperties: false,
@@ -143,7 +272,7 @@ const source = {
 
 export const sceneSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.2:scene",
+  $id: "urn:depthcue:schema:0.3:scene",
   title: "Depthcue scene",
   type: "object",
   additionalProperties: false,
@@ -172,7 +301,7 @@ export const sceneSchema = {
       items: {
         type: "object",
         discriminator: { propertyName: "type" },
-        oneOf: [textBlock, imageBlock, barChartBlock, clipBlock],
+        oneOf: [textBlock, imageBlock, barChartBlock, clipBlock, tableBlock, chartBlock],
       },
     },
     sources: { type: "array", maxItems: 32, items: source },
@@ -196,9 +325,11 @@ export const sceneSchema = {
   },
 } as const;
 
+const color = { type: "string", pattern: COLOR_PATTERN, maxLength: 7 } as const;
+
 export const deckSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.2:deck",
+  $id: "urn:depthcue:schema:0.3:deck",
   title: "Depthcue deck manifest",
   type: "object",
   additionalProperties: false,
@@ -209,7 +340,24 @@ export const deckSchema = {
     id,
     title: { type: "string", minLength: 1, maxLength: 120 },
     language: { type: "string", pattern: LANGUAGE_PATTERN, maxLength: 35 },
+    /** The preset the colors start from. */
     theme: { enum: THEMES },
+    /** Colors that replace the preset's, by name. Contrast between them is checked by `checkPalette`. */
+    palette: {
+      type: "object",
+      additionalProperties: false,
+      minProperties: 1,
+      properties: {
+        bg: color,
+        surface: color,
+        line: color,
+        text: color,
+        muted: color,
+        action: color,
+        evidence: color,
+      },
+    },
+    fonts: { enum: FONT_PAIRS },
     scenes: { type: "array", items: id, uniqueItems: true, minItems: 1, maxItems: 200 },
     modules: {
       type: "object",
@@ -225,6 +373,7 @@ export const OP_NAMES = [
   "scene.remove",
   "scene.move",
   "scene.set",
+  "scene.upgrade",
   "block.add",
   "block.remove",
   "block.move",
@@ -257,7 +406,7 @@ const op = <Name extends string, Properties extends object, Required extends rea
  */
 export const opsSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.2:ops",
+  $id: "urn:depthcue:schema:0.3:ops",
   title: "Depthcue operations",
   type: "array",
   minItems: 1,
@@ -271,6 +420,7 @@ export const opsSchema = {
       op("scene.remove", { id }, ["id"]),
       op("scene.move", { id, after: position }, ["id", "after"]),
       op("scene.set", { id, set: changes }, ["id", "set"]),
+      op("scene.upgrade", { id }, ["id"]),
       op("block.add", { scene: id, block: object, after: position }, ["scene", "block"]),
       op("block.remove", { scene: id, id }, ["scene", "id"]),
       op("block.move", { scene: id, id, after: position }, ["scene", "id", "after"]),
@@ -339,7 +489,7 @@ const comment = {
  */
 export const commentsSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.2:comments",
+  $id: "urn:depthcue:schema:0.3:comments",
   title: "Depthcue comments",
   type: "object",
   additionalProperties: false,
@@ -354,7 +504,7 @@ export const commentsSchema = {
 /** The commands for comments. They run on the comments file, with the deck read for the block a comment points at. */
 export const commentOpsSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "urn:depthcue:schema:0.2:comment-ops",
+  $id: "urn:depthcue:schema:0.3:comment-ops",
   title: "Depthcue comment operations",
   type: "array",
   minItems: 1,

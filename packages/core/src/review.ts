@@ -23,6 +23,7 @@ import { type Doc, revisionOf } from "./doc.ts";
 import { canonicalJson, sha256Hex } from "./revision.ts";
 import type { Block, Deck, Diagnostic, Scene } from "./types.ts";
 import { checkManifest, checkScenePart, scenePath } from "./validate.ts";
+import { readsMarkup, upgradeScene } from "./versions.ts";
 
 /** Where the review of a deck is kept: next to `deck.json`, and not under `scenes/` or `assets/`. */
 export const REVIEW_FILE = "review.json";
@@ -199,8 +200,25 @@ function sceneDiffs(was: Scene, now: Scene): Difference[] {
 }
 
 /**
+ * `scene` in the form `other` reads text in. Text below 0.3 is literal and from 0.3 is markup, so when only one side
+ * of a comparison was upgraded, the older one is compared, and its values copied, upgraded too: an upgrade alone is
+ * no change, and a value copied from the older side keeps its meaning on the newer one.
+ */
+const inStep = (scene: Scene, other: Scene | undefined): Scene =>
+  other !== undefined && readsMarkup(other) && !readsMarkup(scene) ? upgradeScene(scene) : scene;
+
+/** `doc` with each scene put in the form the same scene of `like` reads text in. */
+const alignedTo = (doc: Doc, like: Doc): Doc => ({
+  ...doc,
+  scenes: Object.fromEntries(
+    Object.entries(doc.scenes).map(([id, scene]) => [id, inStep(scene, like.scenes[id])]),
+  ),
+});
+
+/**
  * What differs between two decks, in a fixed order: the deck's own properties, the scene order, then each scene of
- * `current` in its order, with its properties, its block order and its blocks, and last the scenes that are gone.
+ * `current` in its order, with its properties, its block order and its blocks, and last the scenes that are gone. A
+ * scene that one side upgraded to 0.3 is compared by meaning, so the escaping an upgrade does is no change.
  */
 export function diffDocs(base: Doc, current: Doc): Difference[] {
   const out = fieldDiffs(record(base.deck), record(current.deck), DECK_KEYS, { scope: "deck" }, "deck");
@@ -209,7 +227,7 @@ export function diffDocs(base: Doc, current: Doc): Difference[] {
   for (const id of current.deck.scenes) {
     const now = current.scenes[id] as Scene;
     const was = base.scenes[id];
-    if (was) out.push(...sceneDiffs(was, now));
+    if (was) out.push(...sceneDiffs(inStep(was, now), inStep(now, was)));
     else out.push(make(`scene:${id}`, "scene", "added", { scene: id }, { after: now }));
   }
   for (const id of base.deck.scenes) {
@@ -296,11 +314,15 @@ const into = <T>(map: Map<string, T>, key: string, start: () => T): T => {
 };
 
 /**
- * Operations that turn `from` into `to` for the chosen differences, which were found by comparing the two. Properties
- * are set first, then things removed, things added where they stand in `to` and the order last. They are meant to run
+ * Operations that turn `from` into `to` for the chosen differences, which were found by comparing the two. A scene
+ * that `to` has at 0.3 and `from` below is upgraded first, so the markup copied into it reads as markup. Properties
+ * are set next, then things removed, things added where they stand in `to` and the order last. They are meant to run
  * as one transaction, which is checked as a whole, so a step in between may be one that would not be valid alone.
  */
 function buildOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
+  // Blocks copied from `to` come in the form `from` reads text in, as the picked values do.
+  const target = alignedTo(to, from);
+  const upgrade = new Set<string>();
   const deckSet: Record<string, unknown> = {};
   const sceneSet = new Map<string, Record<string, unknown>>();
   const blockSet = new Map<string, Map<string, Record<string, unknown>>>();
@@ -316,6 +338,8 @@ function buildOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
     const field = change.field as string;
     const scene = change.scene as string;
     const block = change.block as string;
+    const [was, will] = [from.scenes[scene], to.scenes[scene]];
+    if (was && will && readsMarkup(will) && !readsMarkup(was)) upgrade.add(scene);
     if (change.scope === "deck") {
       if (field === "scenes") sceneOrder = true;
       else deckSet[field] = value;
@@ -338,7 +362,7 @@ function buildOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
     }
   }
 
-  const ops: Op[] = [];
+  const ops: Op[] = [...upgrade].map((id): Op => ({ op: "scene.upgrade", id }));
   if (Object.keys(deckSet).length > 0) ops.push({ op: "deck.set", set: deckSet as DeckChanges });
   for (const [id, set] of sceneSet) ops.push({ op: "scene.set", id, set: set as SceneChanges });
   for (const [scene, blocks] of blockSet) {
@@ -362,9 +386,9 @@ function buildOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
     const blocks = (from.scenes[scene] as Scene).blocks
       .map((block) => block.id)
       .filter((id) => !gone?.has(id));
-    const target = (to.scenes[scene] as Scene).blocks;
-    const ids = target.map((block) => block.id);
-    for (const [index, block] of target.entries()) {
+    const wanted = (target.scenes[scene] as Scene).blocks;
+    const ids = wanted.map((block) => block.id);
+    for (const [index, block] of wanted.entries()) {
       if (!blockAdd.get(scene)?.has(block.id)) continue;
       const after = precedingIn(ids, index, blocks);
       blocks.splice(after === null ? 0 : blocks.indexOf(after) + 1, 0, block.id);
@@ -580,7 +604,10 @@ export function foldEdit(review: Review, before: Doc, after: Doc, keep: readonly
  */
 export function recordAgentEdit(review: Review, before: Doc, after: Doc): Review {
   const base = baselineOf(review, after.assets);
-  const earlier = new Map(diffDocs(base, before).map((change) => [change.id, canonicalJson(change)]));
+  // A scene the agent only upgraded holds the same changes as before, in the newer form: they stay whose they were.
+  const earlier = new Map(
+    diffDocs(base, alignedTo(before, after)).map((change) => [change.id, canonicalJson(change)]),
+  );
   const agent = new Set(review.agent);
   for (const change of diffDocs(base, after)) {
     if (earlier.get(change.id) !== canonicalJson(change)) agent.add(change.id);
@@ -663,7 +690,7 @@ export function readReview(text: string | undefined): ReadReview {
       problems.push(
         error(`/scenes/${id}`, "missing-scene", `Scene "${id}" is listed but has no content.`, START_OVER),
       );
-    } else problems.push(...at(`/scenes/${id}`, checkScenePart(scene, scenePath(id), id, assets)));
+    } else problems.push(...at(`/scenes/${id}`, checkScenePart(scene, scenePath(id), id, assets, deck)));
   }
   if (problems.some((d) => d.severity === "error")) return { ok: false, diagnostics: problems };
 

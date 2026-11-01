@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.3",
+  "id": "overview",
+  "title": "Channel B now leads",
+  "layout": "title",
+  "blocks": [
+    {
+      "id": "overview-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Channel **B** now leads",
+      "size": "xl",
+      "align": "center",
+      "tone": "action"
+    },
+    {
+      "id": "overview-body",
+      "type": "text",
+      "role": "body",
+      "text": "Orders grew *fastest* in [channel B]{action}, see [the report](https://example.com/q3) or [write to us](mailto:team@example.com).\nThe method:\n- same quarter\n- one count per order\n1. returns excluded\n2. 5 \\* 3 is a star, not italic",
+      "size": "m",
+      "align": "start"
+    },
+    {
+      "id": "overview-note",
+      "type": "text",
+      "role": "caption",
+      "text": "Figures are *preliminary*.",
+      "tone": "muted"
+    }
+  ]
+}

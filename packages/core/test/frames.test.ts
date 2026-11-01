@@ -57,16 +57,17 @@ const pinned = (frame: unknown) =>
   });
 
 describe("the schema versions", () => {
-  it("accepts 0.1 and 0.2 and says which are allowed when given another", () => {
+  it("accepts 0.1, 0.2 and 0.3 and says which are allowed when given another", () => {
     expect(checkScene(scene({ schemaVersion: "0.1" }), "scenes/a.json")).toEqual([]);
     expect(checkScene(scene({ schemaVersion: "0.2" }), "scenes/a.json")).toEqual([]);
-    const found = first(checkScene(scene({ schemaVersion: "0.3" }), "scenes/a.json"));
+    expect(checkScene(scene({ schemaVersion: "0.3" }), "scenes/a.json")).toEqual([]);
+    const found = first(checkScene(scene({ schemaVersion: "0.4" }), "scenes/a.json"));
     expect(found).toMatchObject({ code: "bad-value", path: "/schemaVersion" });
-    expect(found.fix).toContain("Use one of: 0.1, 0.2.");
+    expect(found.fix).toContain("Use one of: 0.1, 0.2, 0.3.");
   });
 
-  it("writes 0.2 into a new scene", () => {
-    expect(SCHEMA_VERSION).toBe("0.2");
+  it("writes 0.3 into a new scene", () => {
+    expect(SCHEMA_VERSION).toBe("0.3");
   });
 
   it("keeps the demo deck, written for 0.1, valid and at 0.1", () => {
@@ -635,8 +636,8 @@ describe("explaining a number outside its range", () => {
 });
 
 describe("the operations vocabulary", () => {
-  it("lists the two frame operations after the nine that came before", () => {
-    expect(OP_NAMES).toHaveLength(11);
+  it("lists the two frame operations last, after the ten that came before and scene.upgrade of 0.3", () => {
+    expect(OP_NAMES).toHaveLength(12);
     expect(OP_NAMES.slice(-2)).toEqual(["block.frame", "block.unframe"]);
   });
 });

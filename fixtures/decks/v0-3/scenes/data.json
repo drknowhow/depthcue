@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "0.3",
+  "id": "data",
+  "title": "The numbers",
+  "layout": "claim-evidence",
+  "summary": {
+    "id": "data-claim",
+    "text": "Channel B now leads, 60 to 40.",
+    "evidenceIds": ["data-chart", "data-table"]
+  },
+  "blocks": [
+    {
+      "id": "data-chart",
+      "type": "chart",
+      "kind": "bar",
+      "title": "Share of orders by quarter",
+      "unit": "%",
+      "columns": [{ "label": "Quarter" }, { "label": "Channel A" }, { "label": "Channel B" }],
+      "rows": [["Q1", 55, 45], ["Q2", 48, 52], ["Q3", 40, 60]],
+      "sourceIds": ["data-source"]
+    },
+    {
+      "id": "data-table",
+      "type": "table",
+      "title": "Orders, latest quarter",
+      "columns": [
+        { "label": "Channel" },
+        { "label": "Orders", "kind": "number" },
+        { "label": "Share", "kind": "number", "unit": "%" }
+      ],
+      "rows": [["Channel A", 4000, 40], ["Channel B", 6000, 60], ["Not known", null, null]],
+      "sourceIds": ["data-source"]
+    },
+    {
+      "id": "data-mix",
+      "type": "chart",
+      "kind": "donut",
+      "title": "Where channel B orders come from",
+      "columns": [{ "label": "Source" }, { "label": "Orders" }],
+      "rows": [["Search", 3000], ["Direct", 2000], ["Referral", 1000]],
+      "sourceIds": ["data-source"]
+    }
+  ],
+  "sources": [{ "id": "data-source", "title": "Quarterly order snapshot", "asset": "assets/report.csv" }],
+  "steps": [
+    { "id": "data-step-claim", "reveal": ["data-claim"] },
+    { "id": "data-step-evidence", "reveal": ["data-chart", "data-table"] }
+  ]
+}
