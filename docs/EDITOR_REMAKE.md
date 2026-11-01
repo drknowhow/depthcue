@@ -82,6 +82,8 @@ All three are warnings, so a deck with them still loads and presents, and they c
 `checkFrames` in the core. The rules that need a laid-out page (text that does not fit, overlap, a pinned block
 larger than its frame) are judged from a render, so `depthcue render` and `deck_render` give them. The problem
 ribbon shows both kinds; it has no rules of its own. A Fix button exists only where the fix is deterministic.
+`depthcue edit` answers the render rules too: the editor asks `GET /_depthcue/api/layout?scene=<id>`, and the server
+renders that scene from the files on disk with the same browser and rules as `depthcue render`.
 
 ### Agents
 
@@ -203,8 +205,15 @@ that scene's title. Pressing the sentence chooses the block and gives it the key
 each scene's warnings (`adviceOf`), keeps the answer per scene object, and changes text and visibility without
 rebuilding a control, so nothing under a drag or a caret is redrawn. A screen reader hears the count, the place and
 the sentence through a status that is not repeated when nothing changed. Fix appears only for a problem that one
-change settles the same way every time: a pinned block in the margin gets Back to layout. Alt text and sources need a
-person, so those problems have no Fix.
+change settles the same way every time: a pinned block in the margin, or one that its frame is too small for, gets
+Back to layout. Alt text and sources need a person, and so does text that does not fit, so those problems have no Fix.
+
+What a render found is as of the last save, because a render shows the files on disk. The editor asks once the deck is
+saved and has been still for a moment, the scene on show first and then the others in deck order, and it keeps the
+last answer for a scene until the next one arrives, so a problem does not blink while someone types. An answer to a
+deck that has changed since is dropped. The server starts a headless browser for the first question, answers one
+question at a time, and closes the browser after 30 seconds with nothing to check. A machine with no browser says so
+once, is left alone for a minute, and then the ribbon lists only what the core finds, as it did before.
 
 An area that holds nothing gets a dashed place on the slide, drawn by the editor only, never by the player or the
 export: Evidence while the claim cites nothing, Support when every block is cited, Media on a slide of text, Text on

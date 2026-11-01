@@ -14,9 +14,18 @@ export interface Problem {
   fix: { label: string; ops: Op[] } | undefined;
 }
 
+/** A problem a render of the saved deck found on a scene, with the block it is about already named. */
+export interface Found {
+  code: string;
+  message: string;
+  block: string | undefined;
+}
+
 export interface RibbonHooks {
   /** The scene on show: a problem on another scene says which. */
   scene(): string;
+  /** What a render found wrong with a scene when it was last checked. Without it the ribbon lists what the core finds. */
+  found?(sceneId: string): readonly Found[];
   /** Takes the person to a problem: its scene, and its block chosen. `focus` also puts the keyboard in the block. */
   go(problem: Problem, focus: boolean): void;
   /** Applies the fix of a problem. */
@@ -38,12 +47,15 @@ export interface Ribbon {
 /**
  * The fixes that are the same every time, by the code of the problem. A problem with no entry here has no Fix button:
  * writing alt text or naming a source needs a person, and so does deciding whether a block belongs at the edge.
+ * A frame that its content runs out of is put back in the template for the same reason a frame in the margin is.
  */
+const BACK_TO_LAYOUT = {
+  label: "Back to layout",
+  ops: (scene: string, id: string): Op[] => [{ op: "block.unframe", scene, id }],
+};
 const FIXES: Record<string, { label: string; ops(scene: string, block: string): Op[] }> = {
-  "frame-outside-safe-area": {
-    label: "Back to layout",
-    ops: (scene, id) => [{ op: "block.unframe", scene, id }],
-  },
+  "frame-outside-safe-area": BACK_TO_LAYOUT,
+  "frame-overflow": BACK_TO_LAYOUT,
 };
 
 /** What the checks say about a scene. A scene is replaced when it changes, so the answer is kept per scene object. */
@@ -57,24 +69,42 @@ const adviceFor = (scene: Scene): readonly Diagnostic[] => {
   return found;
 };
 
-/** Every problem in the deck, in the order of its scenes and blocks. */
-export function problemsOf(session: Session): Problem[] {
+/**
+ * Every problem in the deck, in the order of its scenes: what the core finds in the scene, then what a render found.
+ * `found` is the render's answer for a scene, and a block it names that has since gone is not listed.
+ */
+export function problemsOf(session: Session, found?: (sceneId: string) => readonly Found[]): Problem[] {
   const out: Problem[] = [];
+  const seen = new Map<string, number>();
+  const add = (sceneId: string, code: string, block: string | undefined, text: string) => {
+    const key = `${sceneId}/${block ?? ""}/${code}`;
+    // Two problems of one kind on one block, such as a picture overlapped by two others, need names of their own.
+    const again = seen.get(key) ?? 0;
+    seen.set(key, again + 1);
+    const fixer = block === undefined ? undefined : FIXES[code];
+    out.push({
+      key: again === 0 ? key : `${key}#${again}`,
+      scene: sceneId,
+      block,
+      text,
+      fix: fixer && block !== undefined ? { label: fixer.label, ops: fixer.ops(sceneId, block) } : undefined,
+    });
+  };
   for (const sceneId of session.doc.deck.scenes) {
     const scene = session.doc.scenes[sceneId];
     if (!scene) continue;
     for (const diagnostic of adviceFor(scene)) {
       const at = /^\/blocks\/(\d+)/.exec(diagnostic.path)?.[1];
-      const block = at === undefined ? undefined : scene.blocks[Number(at)]?.id;
-      const fixer = block === undefined ? undefined : FIXES[diagnostic.code];
-      out.push({
-        key: `${sceneId}/${block ?? ""}/${diagnostic.code}`,
-        scene: sceneId,
-        block,
-        text: diagnostic.message,
-        fix:
-          fixer && block !== undefined ? { label: fixer.label, ops: fixer.ops(sceneId, block) } : undefined,
-      });
+      add(
+        sceneId,
+        diagnostic.code,
+        at === undefined ? undefined : scene.blocks[Number(at)]?.id,
+        diagnostic.message,
+      );
+    }
+    for (const item of found?.(sceneId) ?? []) {
+      if (item.block !== undefined && !scene.blocks.some((block) => block.id === item.block)) continue;
+      add(sceneId, item.code, item.block, item.message);
     }
   }
   return out;
@@ -148,7 +178,7 @@ export function createRibbon(session: Session, hooks: RibbonHooks): Ribbon {
 
   function render() {
     const stayOn = current()?.key;
-    problems = problemsOf(session);
+    problems = problemsOf(session, hooks.found);
     const same = stayOn === undefined ? -1 : problems.findIndex((problem) => problem.key === stayOn);
     at = same >= 0 ? same : Math.min(at, Math.max(problems.length - 1, 0));
     paint();

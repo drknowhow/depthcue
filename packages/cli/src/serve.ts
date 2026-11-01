@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { type EditContext, handleEditApi } from "./edit-api.ts";
+import { createLayoutChecker, type LayoutChecker } from "./edit-layout.ts";
 import { createLeaseRelay, RELAY_PREFIX } from "./lease-relay.ts";
 
 export interface ServeOptions {
@@ -21,6 +22,8 @@ export interface ServeOptions {
    * to `/present`, and the token-protected write calls under `/_depthcue/api/` are answered.
    */
   editorDir?: string;
+  /** Answers the editor's layout questions. By default a render in a headless browser, started when first asked. */
+  layout?: LayoutChecker;
 }
 
 export interface RunningServer {
@@ -216,7 +219,9 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
 
   const origins = () =>
     LOOPBACK_NAMES.map((name) => `http://${name === "::1" ? "[::1]" : name}:${boundPort}`);
-  const edit: EditContext | undefined = token === undefined ? undefined : { folder, token, origins };
+  const layout = token === undefined ? undefined : (options.layout ?? createLayoutChecker(folder));
+  const edit: EditContext | undefined =
+    token === undefined ? undefined : { folder, token, origins, ...(layout ? { layout } : {}) };
   const relay = createLeaseRelay({
     token: agentToken,
     origins,
@@ -330,7 +335,9 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
             relay.close();
             watcher.close();
             for (const client of listeners) client.end();
-            server.close(() => done());
+            // A render under way finishes first, so the browser it holds is not left running.
+            const rendering = layout?.close() ?? Promise.resolve();
+            server.close(() => void rendering.finally(done));
             // A call that is waiting gets its answer first ("the server is shutting down"), not a reset.
             setImmediate(() => server.closeAllConnections());
           }),
