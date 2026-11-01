@@ -71,13 +71,34 @@ const regex = (source: string): RegExp => {
   return found;
 };
 
-/** Schemas whose keywords have been looked at, so each is looked at once. */
+const unsupported = (what: string): never => {
+  throw new Error(`schemacheck: unsupported ${what}`);
+};
+const allSchemas = (list: unknown): boolean => Array.isArray(list) && list.every(isObject);
+
+/**
+ * Schemas whose keywords have been looked at, so each is looked at once. A known keyword in a form `check` does not
+ * read throws too: a list of `items` (a tuple), a boolean where a schema goes (but `additionalProperties: false`), and
+ * `dependencies` that name a schema rather than a list of properties.
+ */
 const vetted = new WeakSet<Schema>();
 function vet(schema: Schema): void {
   if (vetted.has(schema)) return;
   known ??= new Set([...QUIET, ...ANY, ...Object.values(GROUPS).flat()]);
-  for (const keyword in schema)
-    if (!known.has(keyword)) throw new Error(`schemacheck: unsupported keyword ${keyword}`);
+  for (const keyword in schema) if (!known.has(keyword)) unsupported(`keyword ${keyword}`);
+  for (const keyword of ["items", "propertyNames", "if", "then", "else", "additionalProperties"]) {
+    const sub = schema[keyword];
+    if (sub !== undefined && !isObject(sub) && !(keyword === "additionalProperties" && sub === false))
+      unsupported(`form of ${keyword}`);
+  }
+  for (const keyword of ["allOf", "oneOf"])
+    if (schema[keyword] !== undefined && !allSchemas(schema[keyword])) unsupported(`form of ${keyword}`);
+  const { properties, dependencies } = schema;
+  if (properties !== undefined && !(isObject(properties) && allSchemas(Object.values(properties))))
+    unsupported("form of properties");
+  const names = (list: unknown) => Array.isArray(list) && list.every((name) => typeof name === "string");
+  if (dependencies !== undefined && !(isObject(dependencies) && Object.values(dependencies).every(names)))
+    unsupported("form of dependencies");
   if (schema.oneOf !== undefined && !isObject(schema.discriminator))
     throw new Error("schemacheck: oneOf works only with a discriminator");
   const items = typesOf(schema.items);

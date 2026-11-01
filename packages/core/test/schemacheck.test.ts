@@ -430,4 +430,36 @@ describe("schemaValidator", () => {
       schemaValidator({ type: "array", uniqueItems: true, items: { type: "object" } })([]),
     ).toThrow(/uniqueItems works only/);
   });
+
+  it("throws on a form of a known keyword it does not read, before looking at any value", () => {
+    const branch = { type: "object", properties: { kind: { const: "a" } } };
+    const forms: Array<[string, object]> = [
+      ["items", { type: "array", items: [{ type: "string" }] }],
+      ["items", { type: "array", items: true }],
+      ["additionalProperties", { type: "object", additionalProperties: true }],
+      ["additionalProperties", { type: "object", additionalProperties: [] }],
+      ["propertyNames", { type: "object", propertyNames: false }],
+      ["properties", { type: "object", properties: { a: true } }],
+      ["properties", { type: "object", properties: [{ type: "string" }] }],
+      ["allOf", { allOf: [true] }],
+      ["allOf", { allOf: { type: "string" } }],
+      ["oneOf", { type: "object", discriminator: { propertyName: "kind" }, oneOf: [branch, false] }],
+      ["if", { if: true, then: { type: "string" } }],
+      ["then", { if: { type: "string" }, then: false }],
+      ["else", { if: { type: "string" }, else: true }],
+      ["dependencies", { type: "object", dependencies: { a: { required: ["b"] } } }],
+      ["dependencies", { type: "object", dependencies: { a: true } }],
+      ["dependencies", { type: "object", dependencies: { a: [1] } }],
+      ["dependencies", { type: "object", dependencies: ["a"] }],
+    ];
+    for (const [keyword, schema] of forms) {
+      // null reaches no keyword of these schemas but type, so only the look at the schema itself can throw.
+      expect(() => schemaValidator(schema)(null), keyword).toThrow(
+        `schemacheck: unsupported form of ${keyword}`,
+      );
+    }
+    // The one boolean the schemas use is still read.
+    const closed = schemaValidator({ type: "object", additionalProperties: false });
+    expect(closed({ a: 1 })).toBe(false);
+  });
 });
