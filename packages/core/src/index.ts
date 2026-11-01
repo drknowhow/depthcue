@@ -22,6 +22,7 @@ export {
   blockStylesOf,
   brandFilePath,
   checkSceneBrand,
+  claimSlot,
   isTemplateFile,
   kindOf,
   kitOf,
@@ -32,8 +33,15 @@ export {
   templatesOf,
   textOn,
 } from "./brand.ts";
-export type { BrandData, BrandRead } from "./brandcheck.ts";
-export { checkBrand, checkBrandFile, checkTemplate, checkTemplateFile, readBrand } from "./brandcheck.ts";
+export type { BrandData, BrandRead, Look } from "./brandcheck.ts";
+export {
+  checkBrand,
+  checkBrandFile,
+  checkTemplate,
+  checkTemplateFile,
+  looksOf,
+  readBrand,
+} from "./brandcheck.ts";
 export type { BuildEntry, BuildTarget } from "./build.ts";
 export { buildOf, placeInBuild, revealable, STEPS_MAX } from "./build.ts";
 export { BUILT_IN_STYLES, BUILT_IN_TEMPLATES } from "./builtins.ts";
@@ -195,8 +203,10 @@ export {
   OP_NAMES,
   opsSchema,
   PALETTE_COLORS,
+  ROLE_KINDS,
   SCHEMA_VERSION,
   SCHEMA_VERSIONS,
+  SLOT_ROLES,
   sceneSchema,
   TEXT_ALIGNS,
   TEXT_LIMITS,
@@ -207,6 +217,7 @@ export {
   THEMES,
   TONES,
   templateSchema,
+  VALIGNS,
 } from "./schema.ts";
 export type { ApplyOptions, Session, SessionEvent, SessionEventType } from "./session.ts";
 export { createSession } from "./session.ts";

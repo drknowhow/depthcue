@@ -72,6 +72,16 @@
               "type": "string",
               "pattern": "^#[0-9A-Fa-f]{6}$",
               "maxLength": 7
+            },
+            "chart": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 6,
+              "items": {
+                "type": "string",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "maxLength": 7
+              }
             }
           }
         },
@@ -114,19 +124,19 @@
               "type": "string",
               "pattern": "^#[0-9A-Fa-f]{6}$",
               "maxLength": 7
+            },
+            "chart": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 6,
+              "items": {
+                "type": "string",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "maxLength": 7
+              }
             }
           }
         }
-      }
-    },
-    "chart": {
-      "type": "array",
-      "minItems": 1,
-      "maxItems": 6,
-      "items": {
-        "type": "string",
-        "pattern": "^#[0-9A-Fa-f]{6}$",
-        "maxLength": 7
       }
     },
     "fonts": {
@@ -158,8 +168,7 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "family",
-              "license"
+              "family"
             ],
             "properties": {
               "family": {
@@ -213,14 +222,18 @@
                   }
                 }
               }
+            },
+            "dependencies": {
+              "files": [
+                "license"
+              ]
             }
           },
           "body": {
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "family",
-              "license"
+              "family"
             ],
             "properties": {
               "family": {
@@ -274,14 +287,18 @@
                   }
                 }
               }
+            },
+            "dependencies": {
+              "files": [
+                "license"
+              ]
             }
           },
           "mono": {
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "family",
-              "license"
+              "family"
             ],
             "properties": {
               "family": {
@@ -335,6 +352,11 @@
                   }
                 }
               }
+            },
+            "dependencies": {
+              "files": [
+                "license"
+              ]
             }
           },
           "fallback": {

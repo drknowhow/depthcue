@@ -108,6 +108,35 @@ export const CHROME_PLACES = ["start", "center", "end"] as const;
 export const ACCENTS = ["none", "top", "start"] as const;
 /** How much of the brand's chrome a template shows: all of it, the logo alone, or nothing. */
 export const TEMPLATE_CHROME = ["full", "minimal", "none"] as const;
+/**
+ * What a template slot is for. PowerPoint keeps it as a placeholder's type: a brand import reads it from a layout's
+ * placeholders, and the export writes placeholders of that type. A `claim` slot is where the scene's claim is drawn and
+ * takes no blocks; a `content` slot takes any block.
+ */
+export const SLOT_ROLES = [
+  "title",
+  "subtitle",
+  "claim",
+  "body",
+  "picture",
+  "chart",
+  "table",
+  "content",
+] as const;
+const TEXT_KINDS = ["heading", "body", "caption", "quote"] as const;
+/** The kinds of block a slot of each role may take: its `accepts` lists some of them, and `checkTemplate` holds it. */
+export const ROLE_KINDS: Readonly<Record<(typeof SLOT_ROLES)[number], readonly string[]>> = {
+  title: ["heading"],
+  subtitle: TEXT_KINDS,
+  claim: [],
+  body: TEXT_KINDS,
+  picture: ["image"],
+  chart: ["chart"],
+  table: ["table"],
+  content: BLOCK_KINDS,
+};
+/** Where a slot's blocks sit in its frame, as a PowerPoint placeholder's anchor. Left out, at the top. */
+export const VALIGNS = ["top", "middle", "bottom"] as const;
 /** The palette colors a template's background may take. */
 export const BACKGROUND_COLORS = ["bg", "surface", "text", "action", "evidence"] as const;
 export const FONT_STYLES = ["normal", "italic"] as const;
@@ -355,7 +384,8 @@ const source = {
 
 /**
  * A scene. It is drawn by a built-in `layout` or by a `template`, exactly one of the two, which `checkSceneForm`
- * checks so the message can say both ways out. In a template scene each block names its `slot`.
+ * checks so the message can say both ways out. In a template scene each block names its `slot`, unless it is pinned
+ * over the slots, and the claim is drawn in the template's claim slot.
  */
 export const sceneSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
@@ -461,6 +491,16 @@ export const deckSchema = {
   },
 } as const;
 
+/** A brand's palette for a preset: a deck palette's colors, and the series colors of charts on that preset's slides. */
+const brandPalette = {
+  ...palette,
+  properties: {
+    ...palette.properties,
+    /** In order. Without them a chart takes its colors from the palette. */
+    chart: { type: "array", minItems: 1, maxItems: BRAND_LIMITS.chart, items: color },
+  },
+} as const;
+
 const brandVersion = { enum: BRAND_SCHEMA_VERSIONS } as const;
 const brandName = { type: "string", minLength: 1, maxLength: BRAND_LIMITS.name } as const;
 /** Typed as strings, so Ajv checks the list for repeats without its deep-equal helper, which a standalone module lacks. */
@@ -471,11 +511,15 @@ const kinds = {
   items: { type: "string", enum: BLOCK_KINDS },
 } as const;
 
-/** One face of a brand's own: its family, its license, and the files that carry it, by weight and style. */
+/**
+ * One face of a brand's own: its family, and the files that carry it, by weight and style, with the license they are
+ * carried under. A face with no files is installed on the viewers' machines, needs no license here, and is what a
+ * PowerPoint theme names.
+ */
 const face = {
   type: "object",
   additionalProperties: false,
-  required: ["family", "license"],
+  required: ["family"],
   properties: {
     family: { type: "string", minLength: 1, maxLength: 64, pattern: FAMILY_PATTERN },
     /** An SPDX id such as `OFL-1.1`, or the license's name. */
@@ -497,6 +541,7 @@ const face = {
       },
     },
   },
+  dependencies: { files: ["license"] },
 } as const;
 
 /** The brand's own faces, and the built-in pair the deck falls back to while they load or when they are missing. */
@@ -548,15 +593,16 @@ export const brandSchema = {
     schemaVersion: brandVersion,
     id,
     name: brandName,
-    /** A palette for each preset. The brand's goes on the preset's, and a deck's own palette on top, unless locked. */
+    /**
+     * A palette for each preset, each with its own chart colors, so each can reach 3:1 on its own background. The
+     * brand's goes on the preset's, and a deck's own palette on top, unless locked.
+     */
     colors: {
       type: "object",
       additionalProperties: false,
       minProperties: 1,
-      properties: { paper: palette, ink: palette },
+      properties: { paper: brandPalette, ink: brandPalette },
     },
-    /** Series colors for charts, in order. Without them a chart takes its colors from the palette. */
-    chart: { type: "array", minItems: 1, maxItems: BRAND_LIMITS.chart, items: color },
     /** A built-in pair, or the brand's own faces. */
     fonts: {
       type: ["string", "object"],
@@ -625,15 +671,17 @@ export const brandSchema = {
 } as const;
 
 /**
- * A slot of a template: where on the slide it sits, which kinds of block it takes and how many, the style its blocks
- * take unless they name one, and a hint that tells a person or an agent what goes there.
+ * A slot of a template: what it is for, where on the slide it sits, which kinds of block it takes and how many, the
+ * style its blocks take unless they name one, and a hint that tells a person or an agent what goes there. A `claim`
+ * slot holds the scene's claim, so it has no `accepts`; every other slot has one, which its role bounds.
  */
 const slot = {
   type: "object",
   additionalProperties: false,
-  required: ["id", "frame", "accepts", "hint"],
+  required: ["id", "role", "frame", "hint"],
   properties: {
     id,
+    role: { enum: SLOT_ROLES },
     frame,
     accepts: kinds,
     style: id,
@@ -641,8 +689,11 @@ const slot = {
     max: { type: "integer", minimum: 1, maximum: BRAND_LIMITS.slotMax },
     /** True when a scene of this template should fill the slot; an empty one is a warning, not an error. */
     required: { type: "boolean" },
+    valign: { enum: VALIGNS },
     hint: { type: "string", minLength: 1, maxLength: BRAND_LIMITS.hint },
   },
+  if: { properties: { role: { const: "claim" } }, required: ["role"] },
+  else: { properties: { accepts: {} }, required: ["accepts"] },
 } as const;
 
 /**

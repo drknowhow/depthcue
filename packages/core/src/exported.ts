@@ -40,7 +40,7 @@ export interface DeckLook {
   theme: (typeof THEMES)[number];
   /** Every color of the theme: its preset, then the brand's palette for it, then the deck's own. */
   colors: Record<(typeof THEME_COLORS)[number], string>;
-  /** Series colors for charts, in order; empty when charts take theirs from the palette. */
+  /** Series colors for charts, in order: the brand's for the deck's theme, or empty when charts take the palette's. */
   chart: string[];
   /** The built-in pair the deck is drawn in, and that the brand's faces fall back to while they load. */
   fonts: (typeof FONT_PAIRS)[number];

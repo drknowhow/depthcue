@@ -1,4 +1,4 @@
-import { BRAND_FILE, type BrandPart, templateIdOf, templatePath } from "./brand.ts";
+import { BRAND_FILE, type BrandPart, kitOf, templateIdOf, templatePath } from "./brand.ts";
 import { readBrand } from "./brandcheck.ts";
 import { canonicalJson, sha256Hex } from "./revision.ts";
 import { checkTones, colorsKey, styleOf } from "./style.ts";
@@ -161,7 +161,7 @@ export function checkChanges(before: Doc, after: Doc): Diagnostic[] {
     if (scene !== undefined && scene !== before.scenes[id]) {
       out.push(...checkScenePart(scene, scenePath(id), id, after.assets, deck, deck ? part : undefined));
     } else if (scene !== undefined && deck !== undefined && recolored) {
-      out.push(...checkTones(scene, styleOf(deck, after.brand), scenePath(id)));
+      out.push(...checkTones(scene, styleOf(deck, after.brand), scenePath(id), kitOf(part)));
     }
   }
   return out;

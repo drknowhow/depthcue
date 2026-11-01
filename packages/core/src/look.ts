@@ -72,7 +72,7 @@ export function lookOf(source: LookSource): DeckLook {
   return {
     theme: style.theme,
     colors: { ...style.colors },
-    chart: [...(brand?.chart ?? [])],
+    chart: [...(brand?.colors?.[deck.theme]?.chart ?? [])],
     fonts: style.fonts,
     ...(typeof fonts === "object"
       ? {

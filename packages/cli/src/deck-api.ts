@@ -38,7 +38,8 @@ const blockSummary = (block: Block) => ({
 
 /**
  * The templates and component styles a scene of the deck may name, its brand's and Depthcue's own, as an agent needs
- * them to choose: each template with its slots, what each takes and what goes there. A brand's own are marked `brand`.
+ * them to choose: each template with its slots, what each is for, what it takes and what goes there. A brand's own are
+ * marked `brand`. A claim slot takes no blocks, so it lists no `accepts`: the scene's `summary` goes there.
  */
 function kitSummary(doc: Doc) {
   const kit = kitOf(brandPartOf(doc));
@@ -52,7 +53,8 @@ function kitSummary(doc: Doc) {
       ...own(doc.templates, id),
       slots: template.slots.map((slot) => ({
         id: slot.id,
-        accepts: slot.accepts,
+        role: slot.role,
+        ...(slot.accepts ? { accepts: slot.accepts } : {}),
         hint: slot.hint,
         ...(slotMax(slot) > 1 ? { max: slotMax(slot) } : {}),
         ...(slot.required ? { required: true } : {}),

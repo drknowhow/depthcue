@@ -107,13 +107,14 @@ export function checkScenePart(
     });
   }
   if (out.some((d) => d.code !== "scene-id-mismatch")) return out;
+  const kit = part && kitOf(part);
   out.push(
     ...checkReferences(data as Scene, file),
     ...checkFrames(data as Scene, file),
     ...checkSceneVersion(data as Scene, file),
     ...checkData(data as Scene, file),
-    ...(deck ? checkTones(data as Scene, styleOf(deck, part?.brand), file) : []),
-    ...(part ? checkSceneBrand(data as Scene, kitOf(part), file) : []),
+    ...(deck ? checkTones(data as Scene, styleOf(deck, part?.brand), file, kit) : []),
+    ...(kit ? checkSceneBrand(data as Scene, kit, file) : []),
     ...checkContent(data as Scene, file),
   );
   for (const ref of assetRefs(data as Scene)) {

@@ -87,14 +87,26 @@
         "additionalProperties": false,
         "required": [
           "id",
+          "role",
           "frame",
-          "accepts",
           "hint"
         ],
         "properties": {
           "id": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "role": {
+            "enum": [
+              "title",
+              "subtitle",
+              "claim",
+              "body",
+              "picture",
+              "chart",
+              "table",
+              "content"
+            ]
           },
           "frame": {
             "type": "object",
@@ -158,11 +170,36 @@
           "required": {
             "type": "boolean"
           },
+          "valign": {
+            "enum": [
+              "top",
+              "middle",
+              "bottom"
+            ]
+          },
           "hint": {
             "type": "string",
             "minLength": 1,
             "maxLength": 160
           }
+        },
+        "if": {
+          "properties": {
+            "role": {
+              "const": "claim"
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "else": {
+          "properties": {
+            "accepts": {}
+          },
+          "required": [
+            "accepts"
+          ]
         }
       }
     }

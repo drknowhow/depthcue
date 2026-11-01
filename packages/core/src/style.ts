@@ -4,7 +4,9 @@
  * palette restyles the whole deck. The checks here hold every color that text is drawn in to WCAG 2's contrast minimum
  * on both backgrounds a slide uses.
  */
+import { type SceneKit, textOn } from "./brand.ts";
 import { type Flow, parseText, type Span } from "./inline.ts";
+import { own } from "./own.ts";
 import type { FONT_PAIRS, PALETTE_COLORS, THEME_COLORS, THEMES } from "./schema.ts";
 import type { Block, Brand, Deck, Diagnostic, Scene } from "./types.ts";
 import { readsMarkup } from "./versions.ts";
@@ -65,9 +67,11 @@ export const brandPair = (brand: BrandLook | undefined): FontPair | undefined =>
  */
 export function styleOf(deck: Pick<Deck, "theme" | "palette" | "fonts">, brand?: BrandLook): DeckStyle {
   const own: Pick<Deck, "palette" | "fonts"> = brand?.lock ? {} : deck;
+  // The brand's chart colors sit in its palette, but are no theme color.
+  const { chart: _, ...branded } = brand?.colors?.[deck.theme] ?? {};
   return {
     theme: deck.theme,
-    colors: { ...PRESETS[deck.theme], ...brand?.colors?.[deck.theme], ...own.palette },
+    colors: { ...PRESETS[deck.theme], ...branded, ...own.palette },
     fonts: own.fonts ?? brandPair(brand) ?? DEFAULT_FONTS,
   };
 }
@@ -204,17 +208,56 @@ export function tonesInText(flow: readonly Flow[]): Set<string> {
  * Checks the tones a scene's text uses against the deck's colors, as errors under `tone-low-contrast`: text that is
  * not large needs 4.5:1 on bg and on surface. `checkPalette` holds every tone to at least 3:1 already, so this matters
  * for a block that colors small text with a tone only large text may use, such as an accent between 3:1 and 4.5:1.
+ *
+ * Given the deck's kit, a text block that takes a style (its own, or its slot's) or sits on a template's colored
+ * background is checked on the colors it resolves to, under `block-low-contrast`: its own tone and size win over the
+ * style's, it sits on the style's fill or else on the template's background, and with no tone of its own it is drawn
+ * in the style's tone or in the one that reads on what it sits on. The template's own text color is the template's to
+ * answer for (`template-low-contrast`), so a block that changes nothing of it is not checked again.
  */
-export function checkTones(scene: Scene, style: DeckStyle, file: string): Diagnostic[] {
+export function checkTones(scene: Scene, style: DeckStyle, file: string, kit?: SceneKit): Diagnostic[] {
   const out: Diagnostic[] = [];
+  const template = kit && scene.template !== undefined ? own(kit.templates, scene.template) : undefined;
+  const backdrop = template?.background?.image === undefined ? template?.background?.color : undefined;
   scene.blocks.forEach((block, i) => {
-    if (block.type !== "text" || isLargeText(block)) return;
+    if (block.type !== "text") return;
+    const id = block.style ?? template?.slots.find((slot) => slot.id === block.slot)?.style;
+    const look = kit && id !== undefined ? own(kit.styles, id) : undefined;
+    const spans = () =>
+      readsMarkup(scene)
+        ? tonesInText(parseText(block.text, { lists: block.role === "body" }))
+        : new Set<string>();
+    if (look || backdrop) {
+      const fill = look?.fill === "none" ? undefined : look?.fill;
+      const grounds: readonly ThemeColor[] = fill ? [fill] : backdrop ? [backdrop] : BACKGROUNDS;
+      const size = block.size ?? look?.size;
+      const large = block.role === "heading" || size === "l" || size === "xl";
+      const need = large ? CONTRAST.large : CONTRAST.text;
+      const tone = block.tone ?? look?.tone ?? textOn(fill ?? backdrop ?? "bg");
+      const used = [...spans()].filter((span) => span !== tone).map((span) => [span, "/text"]);
+      if (block.tone || look)
+        used.unshift([tone, block.tone ? "/tone" : block.style ? "/style" : block.slot ? "/slot" : ""]);
+      for (const [name, at] of used as Array<[ThemeColor, string]>) {
+        const ground = grounds.find(
+          (against) => contrastRatio(style.colors[name], style.colors[against]) < need,
+        );
+        if (ground === undefined) continue;
+        out.push({
+          severity: "error",
+          code: "block-low-contrast",
+          file,
+          path: `/blocks/${i}${at}`,
+          message: `The text is drawn in "${name}" (${style.colors[name]}) on "${ground}" (${style.colors[ground]}), a contrast of ${shown(contrastRatio(style.colors[name], style.colors[ground]))}, under the ${need}:1 that ${large ? "large text" : "text of this size"} needs.`,
+          fix: `Give the block another tone${large ? "" : " or size l or xl"}, or pick another style.`,
+        });
+      }
+      return;
+    }
+    if (isLargeText(block)) return;
     const used: Array<{ tone: string; path: string }> = [];
     if (block.tone) used.push({ tone: block.tone, path: `/blocks/${i}/tone` });
-    if (readsMarkup(scene)) {
-      for (const tone of tonesInText(parseText(block.text, { lists: block.role === "body" }))) {
-        if (tone !== block.tone) used.push({ tone, path: `/blocks/${i}/text` });
-      }
+    for (const tone of spans()) {
+      if (tone !== block.tone) used.push({ tone, path: `/blocks/${i}/text` });
     }
     for (const { tone, path } of used) {
       const { against, ratio } = worst(style, tone as ThemeColor);

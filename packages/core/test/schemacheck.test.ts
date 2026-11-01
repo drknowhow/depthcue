@@ -108,8 +108,10 @@ const fullBrand = {
   schemaVersion: "0.4",
   id: "acme",
   name: "Acme",
-  colors: { paper: { action: "#0B6E6E", bg: "#FFFFFF" }, ink: { text: "#F0F0F0" } },
-  chart: ["#0B6E6E", "#2D4BB8"],
+  colors: {
+    paper: { action: "#0B6E6E", bg: "#FFFFFF", chart: ["#0B6E6E", "#2D4BB8"] },
+    ink: { text: "#F0F0F0" },
+  },
   fonts: {
     display: {
       family: "Acme Sans",
@@ -117,7 +119,7 @@ const fullBrand = {
       files: [{ file: "fonts/a.woff2", weight: 700, style: "normal" }],
     },
     body: { family: "Acme Text", license: "OFL-1.1" },
-    mono: { family: "Acme Mono", license: "OFL-1.1" },
+    mono: { family: "Acme Mono" },
     fallback: "modern",
   },
   logos: { light: "logos/a.svg", dark: "logos/b.png", alt: "Acme" },
@@ -139,7 +141,16 @@ const imageTemplate = {
   background: { color: "text", image: "images/cover.jpg", scrim: 40 },
   chrome: "none",
   slots: [
-    { id: "title", frame: { x: 5, y: 60, w: 90, h: 30 }, accepts: ["heading"], hint: "The title.", max: 2 },
+    {
+      id: "title",
+      role: "title",
+      frame: { x: 5, y: 60, w: 90, h: 30 },
+      accepts: ["heading"],
+      hint: "The title.",
+      max: 2,
+      valign: "middle",
+    },
+    { id: "claim", role: "claim", frame: { x: 5, y: 5, w: 90, h: 30 }, hint: "The claim.", style: "big" },
   ],
 };
 

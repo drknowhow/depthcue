@@ -301,3 +301,28 @@ describe("a pinned block in the player", () => {
     expect(node()?.dataset.revealed).toBe("true");
   });
 });
+
+describe("a template scene, until the player places its slots", () => {
+  const scene = sceneWith({
+    schemaVersion: "0.4",
+    layout: undefined,
+    template: "statement",
+    summary: { id: "t-claim", text: "Demand doubled.", evidenceIds: ["t-chart"] },
+    blocks: [
+      { ...chart, slot: "evidence" },
+      { ...body, slot: "evidence", frame },
+      { ...image, frame },
+    ],
+  });
+
+  it("draws the claim first, in a box of its own, and keeps a block pinned with no slot out of every box", () => {
+    const section = renderScene(scene, ctx);
+    const boxes = [...section.querySelectorAll<HTMLElement>(".dc-slot")];
+    expect(boxes.map((box) => box.dataset.slot)).toEqual(["claim", "evidence"]);
+    expect(boxes[0]?.querySelector(".dc-claim")?.textContent).toBe("Demand doubled.");
+    // The pinned body still holds its place in its slot; the overlay has none to hold.
+    expect(placesIn(boxes[1]).slice(1)).toEqual(["t-chart", "ghost"]);
+    expect(section.querySelectorAll(".dc-ghost")).toHaveLength(1);
+    expect(idsIn(section.querySelector(".dc-pins"))).toEqual(["t-body", "t-image"]);
+  });
+});

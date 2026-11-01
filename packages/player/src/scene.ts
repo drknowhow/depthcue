@@ -168,11 +168,16 @@ function ghost(node: HTMLElement): HTMLElement {
 
 /**
  * A template scene, for now: one labeled region per slot its blocks name, in the order the slots first appear, each
- * holding its blocks in order. The player has not yet the template itself, so the slots are stacked, not placed.
+ * holding its blocks in order, after the claim's. The player has not yet the template itself, so the slots are
+ * stacked, not placed. A block pinned with no slot is in none: it sits only at its frame.
  */
-function slotRegions(entries: ReadonlyArray<{ block: Block; slot: HTMLElement }>): HTMLElement[] {
-  const slots = new Map<string, HTMLElement[]>();
+function slotRegions(
+  entries: ReadonlyArray<{ block: Block; slot: HTMLElement }>,
+  claim: HTMLElement | null,
+): HTMLElement[] {
+  const slots = new Map<string, HTMLElement[]>(claim ? [["claim", [claim]]] : []);
   for (const { block, slot } of entries) {
+    if (block.slot === undefined && block.frame) continue;
     const id = block.slot ?? "";
     slots.set(id, [...(slots.get(id) ?? []), slot]);
   }
@@ -201,18 +206,18 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
     blocks.filter((entry) => pick(entry.block)).map((entry) => entry.slot);
   const pinned = blocks.flatMap(({ block, node }) => (block.frame ? [pin(node, block.frame)] : []));
 
+  const claim = scene.summary
+    ? h(
+        "h2",
+        { class: "dc-claim", "data-id": scene.summary.id, ...gateAttributes(scene.summary.id, gated) },
+        scene.summary.text,
+      )
+    : null;
   let body: HTMLElement[];
   if (scene.template !== undefined) {
-    body = slotRegions(blocks);
+    body = slotRegions(blocks, claim);
   } else if (scene.layout === "claim-evidence") {
     const evidenceIds = new Set(scene.summary?.evidenceIds ?? []);
-    const claim = scene.summary
-      ? h(
-          "h2",
-          { class: "dc-claim", "data-id": scene.summary.id, ...gateAttributes(scene.summary.id, gated) },
-          scene.summary.text,
-        )
-      : null;
     const headings = nodes((block) => !claim && block.type === "text" && block.role === "heading");
     const evidence = nodes((block) => evidenceIds.has(block.id));
     const support = nodes(

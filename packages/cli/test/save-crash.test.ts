@@ -93,6 +93,7 @@ const SOLO: Op = {
     slots: [
       {
         id: "head",
+        role: "subtitle",
         frame: { x: 8, y: 8, w: 84, h: 24 },
         accepts: ["caption", "heading"],
         max: 2,
@@ -100,6 +101,7 @@ const SOLO: Op = {
       },
       {
         id: "text",
+        role: "body",
         frame: { x: 8, y: 36, w: 84, h: 56 },
         accepts: ["body", "quote"],
         max: 2,

@@ -9,13 +9,14 @@ import {
   blockStylesOf,
   brandFilePath,
   kitOf,
+  listed,
   type SceneKit,
   templatePath,
   textOn,
 } from "./brand.ts";
 import { explain } from "./diagnostics.ts";
 import { own } from "./own.ts";
-import { brandSchema, templateSchema } from "./schema.ts";
+import { brandSchema, ROLE_KINDS, THEMES, templateSchema } from "./schema.ts";
 import { schemaValidator } from "./schemacheck.ts";
 import { CONTRAST, checkBrandColors, contrastRatio, luminance, styleOf } from "./style.ts";
 import type { BlockStyle, Brand, Deck, Diagnostic, Template } from "./types.ts";
@@ -139,7 +140,10 @@ const chromePlaces = (brand: Brand): string[] => {
   ];
 };
 
-/** The facts across a sound brand and its templates that the schema cannot state. */
+/**
+ * The facts across a sound brand and its templates that the schema cannot state. Chart colors, styles and templates
+ * are checked on every preset the brand gives a palette for, and on the deck's.
+ */
 export function checkBrand(deck: Deck, part: BrandPart, brandFiles: ReadonlySet<string>): Diagnostic[] {
   const brand = part.brand as Brand;
   const out: Diagnostic[] = [];
@@ -239,31 +243,48 @@ export function checkBrand(deck: Deck, part: BrandPart, brandFiles: ReadonlySet<
   }
 
   out.push(...checkBrandColors(brand, BRAND_FILE));
-  const colors = styleOf(deck, brand).colors;
-  brand.chart?.forEach((color, i) => {
-    const ratio = contrastRatio(color, colors.bg);
-    if (ratio >= CONTRAST.large) return;
-    out.push(
-      error(
-        BRAND_FILE,
-        `/chart/${i}`,
-        "chart-low-contrast",
-        `Chart color ${i + 1} (${color}) on the ${deck.theme} slide (${colors.bg}) has a contrast of ${Math.floor(ratio * 100) / 100}:1, under the 3:1 a bar or a line needs to be seen.`,
-        `Make it ${luminance(colors.bg) > 0.18 ? "darker" : "lighter"} until it reaches 3:1.`,
-      ),
-    );
-  });
-  for (const [id, style] of Object.entries(brand.styles ?? {})) {
-    out.push(...checkStyleContrast(style, colors, BRAND_FILE, `/styles/${id}`));
+  const looks = looksOf(deck, brand);
+  for (const { theme, colors } of looks) {
+    brand.colors?.[theme]?.chart?.forEach((color, i) => {
+      const ratio = contrastRatio(color, colors.bg);
+      if (ratio >= CONTRAST.large) return;
+      out.push(
+        error(
+          BRAND_FILE,
+          `/colors/${theme}/chart/${i}`,
+          "chart-low-contrast",
+          `Chart color ${i + 1} (${color}) on ${theme} slides (${colors.bg}) has a contrast of ${Math.floor(ratio * 100) / 100}:1, under the 3:1 a bar or a line needs to be seen.`,
+          `Make it ${luminance(colors.bg) > 0.18 ? "darker" : "lighter"} until it reaches 3:1.`,
+        ),
+      );
+    });
+    for (const [id, style] of Object.entries(brand.styles ?? {})) {
+      out.push(...checkStyleContrast(style, colors, BRAND_FILE, `/styles/${id}`, theme));
+    }
   }
   const styles = blockStylesOf(part);
   for (const [id, template] of Object.entries(part.templates ?? {})) {
-    out.push(...checkTemplate(template, styles, colors, deck.theme, brandFiles, templatePath(id)));
+    out.push(...checkTemplate(template, styles, looks, brandFiles, templatePath(id)));
   }
   return out;
 }
 
 type Colors = ReturnType<typeof styleOf>["colors"];
+/** The colors of one preset, as a deck of the brand draws it. */
+export interface Look {
+  theme: (typeof THEMES)[number];
+  colors: Colors;
+}
+
+/**
+ * The presets a brand's colors are checked on: each one it gives a palette for, and the deck's own, which carries the
+ * deck's palette too. A deck that changes its theme is checked again then, on the new one.
+ */
+export const looksOf = (deck: Deck, brand: Brand | undefined): Look[] =>
+  THEMES.filter((theme) => theme === deck.theme || brand?.colors?.[theme] !== undefined).map((theme) => ({
+    theme,
+    colors: styleOf(theme === deck.theme ? deck : { theme }, brand).colors,
+  }));
 
 /** The color a style's text is drawn in: its tone, or the one that reads on its fill. */
 export const styleTone = (style: BlockStyle): keyof Colors =>
@@ -271,7 +292,13 @@ export const styleTone = (style: BlockStyle): keyof Colors =>
   (style.fill === undefined || style.fill === "none" || style.fill === "surface" ? "text" : "bg");
 
 /** A style's text against what it sits on: its fill, or the slide and its panels when it has none. */
-function checkStyleContrast(style: BlockStyle, colors: Colors, file: string, path: string): Diagnostic[] {
+function checkStyleContrast(
+  style: BlockStyle,
+  colors: Colors,
+  file: string,
+  path: string,
+  theme: string,
+): Diagnostic[] {
   const tone = styleTone(style);
   const large = style.size === "l" || style.size === "xl" || style.for.every((kind) => kind === "heading");
   const need = large ? CONTRAST.large : CONTRAST.text;
@@ -285,7 +312,7 @@ function checkStyleContrast(style: BlockStyle, colors: Colors, file: string, pat
         file,
         `${path}/${style.tone ? "tone" : "fill"}`,
         "style-low-contrast",
-        `The style's text, "${tone}" (${colors[tone]}), on "${ground}" (${colors[ground]}) has a contrast of ${Math.floor(ratio * 100) / 100}:1, under the ${need}:1 its text needs.`,
+        `On ${theme} slides, the style's text, "${tone}" (${colors[tone]}), on "${ground}" (${colors[ground]}) has a contrast of ${Math.floor(ratio * 100) / 100}:1, under the ${need}:1 its text needs.`,
         `Pick another tone or fill, ${large ? "" : "make it size l or xl, "}or change the colors in the palette.`,
       ),
     ];
@@ -297,16 +324,16 @@ const overlap = (a: Template["slots"][number]["frame"], b: Template["slots"][num
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /**
- * A sound template's facts: slot ids are unique and their frames lie on the slide, the style a slot gives its blocks
- * exists and is for every kind the slot takes, its background image exists, and text reads on its background. Slots
- * that overlap are a warning: a designer may mean it. An image background is a warning too: only `depthcue render` can
- * measure text on a picture.
+ * A sound template's facts: slot ids are unique and their frames lie on the slide, each slot takes only blocks its
+ * role allows and a claim slot none, there is one claim slot at most, the style a slot gives its blocks exists and is
+ * for every kind the slot takes (a claim is drawn as a heading), its background image exists, and text reads on its
+ * background on each of `looks`. Slots that overlap are a warning: a designer may mean it. An image background is a
+ * warning too: only `depthcue render` can measure text on a picture.
  */
 export function checkTemplate(
   template: Template,
   styles: Readonly<Record<string, BlockStyle>>,
-  colors: Colors,
-  theme: string,
+  looks: readonly Look[],
   brandFiles: ReadonlySet<string>,
   file: string,
 ): Diagnostic[] {
@@ -314,6 +341,34 @@ export function checkTemplate(
   const seen = new Set<string>();
   template.slots.forEach((slot, i) => {
     const at = `/slots/${i}`;
+    const allowed = ROLE_KINDS[slot.role];
+    const wrong = slot.accepts?.filter((kind) => !allowed.includes(kind)) ?? [];
+    if (wrong.length > 0) {
+      out.push(
+        error(
+          file,
+          `${at}/accepts`,
+          "slot-role-mismatch",
+          slot.role === "claim"
+            ? "A claim slot holds the scene's claim and takes no blocks."
+            : `A ${slot.role} slot takes ${listed(allowed)}, not ${listed(wrong)}.`,
+          slot.role === "claim"
+            ? 'Remove "accepts", or give the slot another role.'
+            : `Take ${listed(wrong)} out of "accepts", or make the role "content", which takes any block.`,
+        ),
+      );
+    }
+    if (slot.role === "claim" && template.slots.findIndex((other) => other.role === "claim") < i) {
+      out.push(
+        error(
+          file,
+          `${at}/role`,
+          "two-claim-slots",
+          "The template has another claim slot, and a scene has one claim.",
+          "Give this slot another role.",
+        ),
+      );
+    }
     if (seen.has(slot.id)) {
       out.push(
         error(
@@ -363,14 +418,16 @@ export function checkTemplate(
           ),
         );
       } else {
-        const missing = slot.accepts.filter((kind) => !(style.for as readonly string[]).includes(kind));
+        const missing = (slot.accepts ?? ["heading"]).filter(
+          (kind) => !(style.for as readonly string[]).includes(kind),
+        );
         if (missing.length > 0) {
           out.push(
             error(
               file,
               `${at}/style`,
               "style-wrong-kind",
-              `The slot takes ${missing.join(", ")}, which the style "${slot.style}" is not for.`,
+              `The slot ${slot.accepts ? "takes" : "draws its claim as"} ${missing.join(", ")}, which the style "${slot.style}" is not for.`,
               "Pick a style made for every kind the slot takes, or take those kinds out of accepts.",
             ),
           );
@@ -402,8 +459,9 @@ export function checkTemplate(
     );
   } else if (background !== undefined) {
     const ink = textOn(background.color);
-    const ratio = contrastRatio(colors[ink], colors[background.color]);
-    if (ratio < CONTRAST.text) {
+    for (const { theme, colors } of looks) {
+      const ratio = contrastRatio(colors[ink], colors[background.color]);
+      if (ratio >= CONTRAST.text) continue;
       out.push(
         error(
           file,

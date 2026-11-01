@@ -903,9 +903,18 @@ describe("a branded deck", () => {
     const cover = outline.templates.find((template: { id: string }) => template.id === "cover");
     expect(cover).toMatchObject({ brand: true });
     for (const slot of cover.slots) {
+      expect(slot.role, slot.id).toMatch(/\w/);
       expect(slot.accepts.length, slot.id).toBeGreaterThan(0);
       expect(slot.hint, slot.id).toMatch(/\w/);
     }
+    // A claim slot takes the scene's claim, not blocks, so it lists nothing it accepts.
+    const statement = outline.templates.find((template: { id: string }) => template.id === "statement");
+    expect(statement.slots[0]).toEqual({
+      id: "claim",
+      role: "claim",
+      hint: expect.any(String),
+      required: true,
+    });
     expect(outline.templates.map((template: { id: string }) => template.id)).toEqual(
       expect.arrayContaining(["section", "two-column", "cover", "chart-and-note"]),
     );

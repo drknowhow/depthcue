@@ -85,6 +85,7 @@ const TEMPLATE: Op = {
     slots: [
       {
         id: "quotes",
+        role: "body",
         frame: { x: 8, y: 16, w: 84, h: 68 },
         accepts: ["quote"],
         max: 2,
@@ -95,7 +96,7 @@ const TEMPLATE: Op = {
   },
 };
 const BRAND_OPS: Op[] = [
-  { op: "brand.set", set: { name: "Harbor Group", chart: ["#0B6E6E", "#2D4BB8"] } },
+  { op: "brand.set", set: { name: "Harbor Group", colors: { paper: { chart: ["#0B6E6E", "#2D4BB8"] } } } },
   STYLE,
   TEMPLATE,
   { op: "block.set", scene: "growth", id: "growth-chart", set: { style: "figure" } },
@@ -130,7 +131,10 @@ describe("a branded deck through the CLI", () => {
       ].sort(),
     );
     const brand = readJson(dir, "brand/brand.json");
-    expect(brand).toMatchObject({ name: "Harbor Group", chart: ["#0B6E6E", "#2D4BB8"] });
+    expect(brand).toMatchObject({
+      name: "Harbor Group",
+      colors: { paper: { chart: ["#0B6E6E", "#2D4BB8"] } },
+    });
     expect(brand.styles.figure).toEqual({ name: "Figure", for: ["chart", "table"], pad: "s" });
     expect(readJson(dir, "brand/templates/quote-wall.json")).toMatchObject({
       schemaVersion: "0.4",

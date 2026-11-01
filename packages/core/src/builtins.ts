@@ -3,18 +3,10 @@
  * brand's template or style with the same id replaces one of these, and a brand can hide them (`hideBuiltIn`). The
  * player never imports this file: the server and the export hand it the templates a deck uses (see `lookOf`).
  */
-import type { BlockStyle, Template } from "./types.ts";
+import type { BlockKind, BlockStyle, Template } from "./types.ts";
 
 /** Every kind of block but a heading: what a column of a slide takes. */
-const column = (): Template["slots"][number]["accepts"] => [
-  "body",
-  "quote",
-  "caption",
-  "image",
-  "table",
-  "chart",
-  "clip",
-];
+const column = (): BlockKind[] => ["body", "quote", "caption", "image", "table", "chart", "clip"];
 
 export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
   section: {
@@ -28,12 +20,15 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
     slots: [
       {
         id: "kicker",
+        role: "body",
         frame: { x: 8, y: 24, w: 84, h: 8 },
         accepts: ["caption"],
+        valign: "bottom",
         hint: "A short label above the name, such as Part 2.",
       },
       {
         id: "title",
+        role: "title",
         frame: { x: 8, y: 34, w: 84, h: 22 },
         accepts: ["heading"],
         required: true,
@@ -41,9 +36,35 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
       },
       {
         id: "lede",
+        role: "subtitle",
         frame: { x: 8, y: 60, w: 70, h: 16 },
         accepts: ["body"],
         hint: "One sentence on what the section covers.",
+      },
+    ],
+  },
+  statement: {
+    schemaVersion: "0.4",
+    id: "statement",
+    name: "Statement",
+    description: "One claim, stated large, with the evidence that backs it below.",
+    slots: [
+      {
+        id: "claim",
+        role: "claim",
+        frame: { x: 6, y: 6, w: 88, h: 26 },
+        required: true,
+        valign: "bottom",
+        hint: "The claim, as one sentence the evidence below supports.",
+      },
+      {
+        id: "evidence",
+        role: "content",
+        frame: { x: 6, y: 38, w: 88, h: 54 },
+        accepts: column(),
+        max: 3,
+        required: true,
+        hint: "What backs the claim: a chart, a table, a picture or a short text, cited by the claim.",
       },
     ],
   },
@@ -56,6 +77,7 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
     slots: [
       {
         id: "title",
+        role: "title",
         frame: { x: 6, y: 6, w: 88, h: 14 },
         accepts: ["heading"],
         required: true,
@@ -63,6 +85,7 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
       },
       {
         id: "left",
+        role: "content",
         frame: { x: 6, y: 24, w: 42, h: 68 },
         accepts: column(),
         max: 3,
@@ -71,6 +94,7 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
       },
       {
         id: "right",
+        role: "content",
         frame: { x: 52, y: 24, w: 42, h: 68 },
         accepts: column(),
         max: 3,

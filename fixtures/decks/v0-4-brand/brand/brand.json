@@ -2,8 +2,10 @@
   "schemaVersion": "0.4",
   "id": "harbor",
   "name": "Harbor Analytics",
-  "colors": { "paper": { "action": "#0B6E6E", "evidence": "#2D4BB8" } },
-  "chart": ["#0B6E6E", "#2D4BB8", "#B4531F"],
+  "colors": {
+    "paper": { "action": "#0B6E6E", "evidence": "#2D4BB8", "chart": ["#0B6E6E", "#2D4BB8", "#B4531F"] },
+    "ink": { "chart": ["#4FC4C4", "#8FA5FF", "#F0A06A"] }
+  },
   "fonts": "modern",
   "logos": { "light": "logos/harbor.svg", "alt": "Harbor Analytics" },
   "chrome": {

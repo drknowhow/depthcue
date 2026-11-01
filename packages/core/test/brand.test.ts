@@ -13,6 +13,9 @@ import {
   checkScene,
   checkSceneBrand,
   checkSceneVersion,
+  checkTemplate,
+  checkTemplateFile,
+  checkTones,
   type DeckFiles,
   type Diagnostic,
   type Doc,
@@ -196,9 +199,49 @@ describe("a scene against its deck's templates and styles", () => {
     ]);
   });
 
-  it("refuses a claim in a template scene, and a slot in a layout scene", () => {
-    const claim = { ...growth, summary: { id: "claim", text: "Ships rose." } } as Scene;
-    expect(codes(checkSceneBrand(claim, kit, "f"))).toEqual(["claim-in-template"]);
+  it("keeps a template scene's claim in its template's claim slot, and refuses one with nowhere to go", () => {
+    const summary = { id: "claim", text: "Ships rose a third.", evidenceIds: ["growth-chart"] };
+    expect(checkSceneBrand({ ...growth, summary } as Scene, kit, "f")).toMatchObject([
+      {
+        severity: "error",
+        code: "claim-without-slot",
+        path: "/summary",
+        message: 'The template "chart-and-note" has no claim slot, so the scene\'s claim has no place to go.',
+        fix: 'Move the scene to a template with a claim slot (statement), or remove "summary".',
+      },
+    ]);
+    const chart = { ...growth.blocks[1], slot: "evidence" };
+    expect(
+      checkSceneBrand(withBlocks(growth, [chart], { template: "statement", summary }), kit, "f"),
+    ).toEqual([]);
+    // Without a claim the required claim slot is empty, and no block may stand in for it.
+    expect(
+      checkSceneBrand(withBlocks(growth, [heading("claim"), chart], { template: "statement" }), kit, "f"),
+    ).toMatchObject([
+      {
+        code: "slot-refuses-block",
+        path: "/blocks/0/slot",
+        message: 'The slot "claim" holds the scene\'s claim, and takes no block.',
+      },
+      {
+        severity: "warning",
+        code: "slot-empty",
+        message: 'The slot "claim" of the template "statement" is empty.',
+      },
+    ]);
+    const hidden = kitOf({
+      ...brandPartOf(brandDoc()),
+      brand: { ...brandDoc().brand, hideBuiltIn: ["templates"] } as never,
+    });
+    expect(checkSceneBrand({ ...growth, summary } as Scene, hidden, "f")).toMatchObject([
+      {
+        code: "claim-without-slot",
+        fix: 'Remove "summary": none of the deck\'s templates has a claim slot.',
+      },
+    ]);
+  });
+
+  it("refuses a slot in a layout scene", () => {
     const context = brandDoc().scenes.context as Scene;
     const slotted = withBlocks(context, [heading("title")]);
     expect(checkSceneBrand(slotted, kit, "f")).toMatchObject([
@@ -206,10 +249,75 @@ describe("a scene against its deck's templates and styles", () => {
     ]);
   });
 
-  it("lets a pinned block of a template scene float over the slots, in a slot of its own kind", () => {
-    const pinned = heading("title", { id: "pinned", frame: { x: 70, y: 70, w: 20, h: 20 } });
-    const doc = applied(brandDoc(), [{ op: "block.add", scene: "growth", block: pinned as never }]);
+  it("counts a pinned block in its slot, and lets a pinned block with no slot float over the template", () => {
+    const frame = { x: 70, y: 70, w: 20, h: 20 };
+    // Pinned, the title still fills its required slot and takes the one place it has.
+    const [title, ...rest] = growth.blocks;
+    expect(checkSceneBrand(withBlocks(growth, [{ ...title, frame }, ...rest]), kit, "f")).toEqual([]);
+    const second = heading("title", { id: "second", frame });
+    expect(checkSceneBrand(withBlocks(growth, [...growth.blocks, second]), kit, "f")).toMatchObject([
+      { code: "slot-over-max", path: "/blocks/3/slot" },
+    ]);
+    // With no slot it is an overlay: allowed, and it fills no slot.
+    const overlay = { ...heading(), id: "overlay", frame };
+    expect(checkSceneBrand(withBlocks(growth, [...growth.blocks, overlay]), kit, "f")).toEqual([]);
+    expect(checkSceneBrand(withBlocks(growth, [overlay, ...rest]), kit, "f")).toMatchObject([
+      { severity: "warning", code: "slot-empty", message: expect.stringContaining('"title"') },
+    ]);
+    const doc = applied(brandDoc(), [{ op: "block.add", scene: "growth", block: overlay as never }]);
     expect(errors(checkDoc(doc))).toEqual([]);
+    // Unpinned, a block with no slot is still refused.
+    expect(apply(doc, [{ op: "block.unframe", scene: "growth", id: "overlay" }])).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: "missing-slot", path: "/blocks/3" }],
+    });
+  });
+
+  it("checks a styled block's text on the colors it resolves to, its own size and tone over its style's", () => {
+    const doc = brandDoc();
+    // An accent that reaches the 3:1 large text needs, and not the 4.5:1 of smaller text.
+    const style = styleOf({ ...doc.deck, palette: { action: "#D2552E" } }, doc.brand);
+    const one = (scene: Scene, block: object): Scene => ({ ...scene, blocks: [block] }) as Scene;
+    const context = doc.scenes.context as Scene;
+    const stat = { id: "n", type: "text", role: "body", text: "42%", style: "stat" };
+    // The style draws it xl, so 3:1 is enough, until the block makes itself small or takes a tone of its own.
+    expect(checkTones(one(context, stat), style, "f", kit)).toEqual([]);
+    expect(checkTones(one(context, { ...stat, size: "s" }), style, "f", kit)).toMatchObject([
+      {
+        code: "block-low-contrast",
+        path: "/blocks/0/style",
+        message: expect.stringMatching(
+          /^The text is drawn in "action" \(#D2552E\) on "bg" \(#F5F2EA\), .* under the 4\.5:1 that text of this size needs\.$/,
+        ),
+      },
+    ]);
+    expect(checkTones(one(context, { ...stat, size: "s", tone: "text" }), style, "f", kit)).toEqual([]);
+    // A slot's style is the block's when it names none: the note slot's panel puts the text on the surface.
+    const growth = doc.scenes.growth as Scene;
+    const note = { ...growth.blocks[2], text: "Up [12%]{action}." };
+    expect(checkTones(one(growth, note), style, "f", kit)).toMatchObject([
+      {
+        code: "block-low-contrast",
+        path: "/blocks/0/text",
+        message: expect.stringContaining('on "surface"'),
+      },
+    ]);
+    // On a template's colored background: the cover's is the accent, which the slide's text color does not read on.
+    const welcome = doc.scenes.welcome as Scene;
+    const byline = { ...welcome.blocks[2], tone: "text" };
+    expect(checkTones(one(welcome, byline), styleOf(doc.deck, doc.brand), "f", kit)).toMatchObject([
+      {
+        code: "block-low-contrast",
+        path: "/blocks/0/tone",
+        message: expect.stringContaining('"text" (#14161B) on "action" (#0B6E6E)'),
+      },
+    ]);
+    expect(
+      apply(doc, [{ op: "block.set", scene: "welcome", id: "welcome-byline", set: { tone: "text" } }]),
+    ).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: "block-low-contrast", file: "scenes/welcome.json", path: "/blocks/2/tone" }],
+    });
   });
 });
 
@@ -399,9 +507,11 @@ describe("a brand's own files", () => {
   });
 
   it("explains a broken brand.json in its own file, and checks the scenes against nothing", () => {
-    const found = checked({ [BRAND_FILE]: { ...brand, chart: [], lock: "yes" } });
+    const colors = { paper: { ...brand.colors.paper, chart: [] } };
+    const found = checked({ [BRAND_FILE]: { ...brand, colors, lock: "yes", chart: ["#0B6E6E"] } });
     expect(found).toMatchObject([
-      { code: "too-few", file: BRAND_FILE, path: "/chart" },
+      { code: "unknown-property", file: BRAND_FILE, path: "/chart", fix: expect.stringContaining("colors") },
+      { code: "too-few", file: BRAND_FILE, path: "/colors/paper/chart" },
       { code: "wrong-type", file: BRAND_FILE, path: "/lock" },
     ]);
   });
@@ -470,6 +580,28 @@ describe("a brand's own files", () => {
     ]);
   });
 
+  it("asks for a license only for a face whose files the deck carries", () => {
+    const files = [{ file: "fonts/HT-Bold.woff2", weight: 700, style: "normal" }];
+    const fonts = {
+      display: { family: "Harbor Sans" },
+      body: { family: "Harbor Text", files },
+      fallback: "classic",
+    };
+    const on = { brandFiles: ["brand/logos/harbor.svg", "brand/fonts/HT-Bold.woff2"] };
+    expect(checked({ [BRAND_FILE]: { ...brand, fonts } }, on)).toMatchObject([
+      {
+        code: "missing-property",
+        path: "/fonts/body",
+        message: '"files" needs "license" beside it.',
+        fix: 'Add "license", or remove "files".',
+      },
+    ]);
+    const licensed = { ...fonts, body: { ...fonts.body, license: "OFL-1.1" } };
+    expect(checked({ [BRAND_FILE]: { ...brand, fonts: licensed } }, on)).toMatchObject([
+      { severity: "warning", code: "face-without-files", path: "/fonts/display" },
+    ]);
+  });
+
   it("refuses a deck palette or font pair while the brand is locked", () => {
     const deck = { ...json("deck.json"), palette: { action: "#0B6E6E" }, fonts: "classic" };
     expect(checked({ "deck.json": deck, [BRAND_FILE]: { ...brand, lock: true } })).toMatchObject([
@@ -480,19 +612,46 @@ describe("a brand's own files", () => {
   });
 
   it("checks the brand's palettes, chart colors and styles for contrast", () => {
-    const colors = { paper: { action: "#9FD8D8" }, ink: { text: "#333333" } };
-    const found = checked({ [BRAND_FILE]: { ...brand, colors, chart: ["#0B6E6E", "#F2F2F2"] } });
+    const colors = { paper: { action: "#9FD8D8", chart: ["#0B6E6E", "#F2F2F2"] }, ink: { text: "#333333" } };
+    const found = checked({ [BRAND_FILE]: { ...brand, colors } });
     const at = found.filter((d) => d.severity === "error").map((d) => [d.code, d.path]);
     expect(at).toContainEqual(["palette-low-contrast", "/colors/paper/action"]);
     expect(at).toContainEqual(["palette-low-contrast", "/colors/ink/text"]);
-    expect(at).toContainEqual(["chart-low-contrast", "/chart/1"]);
+    expect(at).toContainEqual(["chart-low-contrast", "/colors/paper/chart/1"]);
     expect(found.find((d) => d.path === "/colors/ink/text")?.message).toMatch(/^On ink slides, /);
     const styles = {
       ...brand.styles,
       faint: { name: "Faint", for: ["body"], tone: "action", fill: "evidence" },
     };
+    // The fixture's brand gives a palette for both presets, so the style is checked on both.
     expect(checked({ [BRAND_FILE]: { ...brand, styles } })).toMatchObject([
-      { code: "style-low-contrast", path: "/styles/faint/tone" },
+      {
+        code: "style-low-contrast",
+        path: "/styles/faint/tone",
+        message: expect.stringMatching(/^On paper slides, /),
+      },
+      {
+        code: "style-low-contrast",
+        path: "/styles/faint/tone",
+        message: expect.stringMatching(/^On ink slides, /),
+      },
+    ]);
+  });
+
+  it("checks chart colors, styles and templates on every preset the brand gives a palette for", () => {
+    // The deck is on paper. The brand's ink accent reaches the 3:1 large text needs, not the 4.5:1 of the small
+    // kicker or of the cover's text on it, and its ink chart color is as dark as the ink slide.
+    const ink = { action: "#C0502A", chart: ["#1A1C20"] };
+    const found = checked({ [BRAND_FILE]: { ...brand, colors: { ...brand.colors, ink } } });
+    expect(found.map((d) => [d.code, d.file, d.path])).toEqual([
+      ["chart-low-contrast", BRAND_FILE, "/colors/ink/chart/0"],
+      ["style-low-contrast", BRAND_FILE, "/styles/kicker/tone"],
+      ["template-low-contrast", "brand/templates/cover.json", "/background/color"],
+    ]);
+    expect(found.map((d) => d.message)).toEqual([
+      expect.stringContaining("on ink slides"),
+      expect.stringMatching(/^On ink slides, /),
+      expect.stringContaining("on ink slides"),
     ]);
   });
 
@@ -520,6 +679,69 @@ describe("a brand's own files", () => {
     const dim = { [BRAND_FILE]: { ...brand, colors: { paper: { action: "#3FA7A7" } } } };
     expect(errors(checked(dim))).toContain("template-low-contrast");
   });
+
+  it("holds a slot's role and what it accepts to each other, with one claim slot at most", () => {
+    const [kicker, title, byline] = cover.slots;
+    const frame = (y: number) => ({ x: 8, y, w: 20, h: 5 });
+    const slots = [
+      { ...title, accepts: ["heading", "body"] },
+      { ...byline, role: "picture" },
+      { ...kicker, id: "claim", role: "claim" },
+      { id: "again", role: "claim", frame: frame(84), hint: "A second claim.", style: "quiet-panel" },
+      { ...kicker, id: "any", role: "content", accepts: ["clip", "heading"], frame: frame(90) },
+    ];
+    const found = checked({ "brand/templates/cover.json": { ...cover, slots } });
+    expect(found.filter((d) => d.file === "brand/templates/cover.json")).toMatchObject([
+      {
+        code: "slot-role-mismatch",
+        path: "/slots/0/accepts",
+        message: "A title slot takes heading, not body.",
+      },
+      {
+        code: "slot-role-mismatch",
+        path: "/slots/1/accepts",
+        message: "A picture slot takes image, not body and caption.",
+        fix: 'Take body and caption out of "accepts", or make the role "content", which takes any block.',
+      },
+      {
+        code: "slot-role-mismatch",
+        path: "/slots/2/accepts",
+        message: "A claim slot holds the scene's claim and takes no blocks.",
+        fix: 'Remove "accepts", or give the slot another role.',
+      },
+      { code: "two-claim-slots", path: "/slots/3/role" },
+      {
+        code: "style-wrong-kind",
+        path: "/slots/3/style",
+        message: 'The slot draws its claim as heading, which the style "quiet-panel" is not for.',
+      },
+    ]);
+    // Every slot says what it is for, and every slot but a claim slot what it takes.
+    const { role: _, ...roleless } = title;
+    const { accepts: __, ...open } = title;
+    const shape = checked({
+      "brand/templates/cover.json": { ...cover, slots: [roleless, open, { ...kicker, valign: "center" }] },
+    });
+    expect(shape).toMatchObject([
+      { code: "missing-property", path: "/slots/0", message: 'Missing "role".' },
+      { code: "missing-property", path: "/slots/1", message: 'Missing "accepts".' },
+      { code: "bad-value", path: "/slots/2/valign", fix: "Use one of: top, middle, bottom." },
+    ]);
+  });
+
+  it("ships templates that pass their own checks, one of them with a claim slot", () => {
+    const looks = (["paper", "ink"] as const).map((theme) => ({ theme, colors: PRESETS[theme] }));
+    for (const template of Object.values(BUILT_IN_TEMPLATES)) {
+      expect(checkTemplateFile(template, template.id, "f")).toEqual([]);
+      expect(checkTemplate(template, BUILT_IN_STYLES, looks, new Set(), "f")).toEqual([]);
+    }
+    expect(BUILT_IN_TEMPLATES.statement?.slots[0]).toMatchObject({
+      id: "claim",
+      role: "claim",
+      required: true,
+    });
+    expect(BUILT_IN_TEMPLATES.statement?.slots[0]?.accepts).toBeUndefined();
+  });
 });
 
 describe("resolution", () => {
@@ -531,6 +753,7 @@ describe("resolution", () => {
       "chart-and-note",
       "cover",
       "section",
+      "statement",
       "two-column",
     ]);
     expect(templatesOf({ ...part, templates: { section: mine } }).section?.name).toBe("Our section");
@@ -582,6 +805,11 @@ describe("lookOf", () => {
     expect(look.theme).toBe("paper");
     expect(look.colors.action).toBe("#0B6E6E");
     expect(look.chart).toEqual(["#0B6E6E", "#2D4BB8", "#B4531F"]);
+    expect(Object.keys(look.colors)).not.toContain("chart");
+    // Each preset has its own chart colors, which reach 3:1 on its own background.
+    const dark = lookOf({ ...brandDoc(), deck: { ...brandDoc().deck, theme: "ink" } });
+    expect(dark.chart).toEqual(["#4FC4C4", "#8FA5FF", "#F0A06A"]);
+    expect(dark.colors.action).toBe(PRESETS.ink.action);
     expect(look.fonts).toBe("modern");
     expect(look.faces).toBeUndefined();
     expect(look.chrome).toEqual({
@@ -675,10 +903,11 @@ describe("brand.set", () => {
   });
 
   it("checks the brand it writes, in brand.json", () => {
-    expect(apply(brandDoc(), [{ op: "brand.set", set: { chart: ["#0B6E6E", "red"] } }])).toMatchObject({
+    const colors = { paper: { chart: ["#0B6E6E", "red"] } };
+    expect(apply(brandDoc(), [{ op: "brand.set", set: { colors } }])).toMatchObject({
       ok: false,
       code: "invalid-deck",
-      diagnostics: [{ code: "bad-format", file: BRAND_FILE, path: "/chart/1" }],
+      diagnostics: [{ code: "bad-format", file: BRAND_FILE, path: "/colors/paper/chart/1" }],
     });
   });
 
@@ -869,115 +1098,98 @@ describe("retemplate", () => {
       ok: false,
       diagnostics: expect.arrayContaining([expect.objectContaining({ code: "missing-slot" })]),
     });
+    // The kicker's accent is not readable on the section's dark background, so it gives up its style too.
+    expect(apply(doc, [{ op: "block.remove", scene: "context", id: "context-quote" }, ...ops])).toMatchObject(
+      {
+        ok: false,
+        diagnostics: [{ code: "block-low-contrast", path: "/blocks/0/style" }],
+      },
+    );
     const decided = applied(doc, [
       { op: "block.remove", scene: "context", id: "context-quote" },
-      { op: "block.set", scene: "context", id: "context-body", set: { style: null } },
+      { op: "block.set", scene: "context", id: "context-kicker", set: { style: null } },
       ...ops,
     ]);
     expect(decided.scenes.context?.blocks.map((block) => block.slot)).toEqual(["kicker", "title", "lede"]);
   });
 
-  it("turns a claim into a heading in a slot, since a template has no place for one", () => {
+  it("keeps the claim and its evidence in a template's claim slot, and lists it when there is none", () => {
+    const summary = { id: "context-claim", text: "Two *berths* were shut.", evidenceIds: ["context-body"] };
     const doc = applied(brandDoc(), [
       ...retemplate(brandDoc(), "context", { layout: "claim-evidence" }).ops,
-      {
-        op: "scene.set",
-        id: "context",
-        set: {
-          summary: { id: "context-claim", text: "Two *berths* were shut.", evidenceIds: ["context-body"] },
-        },
-      },
+      { op: "scene.set", id: "context", set: { summary } },
     ]);
-    const { ops, unplaced } = retemplate(doc, "context", { template: "section" });
-    expect(ops[0]).toEqual({
-      op: "scene.set",
-      id: "context",
-      set: { template: "section", layout: null, summary: null },
+    const kept = retemplate(doc, "context", { template: "statement" });
+    expect(kept.ops).toEqual([
+      { op: "scene.set", id: "context", set: { template: "statement", layout: null } },
+      { op: "block.set", scene: "context", id: "context-kicker", set: { slot: "evidence" } },
+      { op: "block.set", scene: "context", id: "context-body", set: { slot: "evidence" } },
+      { op: "block.set", scene: "context", id: "context-quote", set: { slot: "evidence" } },
+    ]);
+    // The heading has no slot here; the claim needs none of a block's.
+    expect(kept.unplaced).toEqual(["context-heading"]);
+    const moved = applied(doc, [
+      { op: "block.remove", scene: "context", id: "context-heading" },
+      ...kept.ops,
+    ]);
+    expect(moved.scenes.context?.summary).toEqual(summary);
+    expect(moved.scenes.context?.blocks.map((block) => block.id)).not.toContain("context-claim");
+
+    // A template with no claim slot lists the claim first, and the move applies once it is decided.
+    const none = retemplate(doc, "context", { template: "two-column" });
+    expect(none.unplaced).toEqual(["context-claim"]);
+    expect(
+      none.ops.some((op) => op.op === "block.add" || (op.op === "scene.set" && "summary" in op.set)),
+    ).toBe(false);
+    expect(apply(doc, none.ops)).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: "claim-without-slot", path: "/summary" })],
     });
-    expect(ops[1]).toEqual({
-      op: "block.add",
-      scene: "context",
-      block: {
-        id: "context-claim",
-        type: "text",
-        role: "heading",
-        text: "Two \\*berths\\* were shut.",
-        slot: "title",
-      },
-      after: null,
-    });
-    expect(unplaced).toEqual(expect.arrayContaining(["context-heading"]));
+    const decided = apply(doc, [{ op: "scene.set", id: "context", set: { summary: null } }, ...none.ops]);
+    expect(decided).toMatchObject({ ok: true });
   });
 
-  it("lists a claim the scene has no room for as a block, and its operations apply once it is decided", () => {
-    const roomy: Op = {
-      op: "template.set",
-      id: "roomy",
-      template: {
-        name: "Roomy",
-        description: "A title and room for everything else.",
-        slots: [
-          { id: "title", frame: { x: 5, y: 5, w: 90, h: 15 }, accepts: ["heading"], hint: "The point." },
-          ...["left", "right"].map((id, i) => ({
-            id,
-            frame: { x: 5 + i * 46, y: 25, w: 44, h: 70 },
-            accepts: ["heading", "body", "caption", "quote"] as Array<
-              "heading" | "body" | "caption" | "quote"
-            >,
-            max: 8,
-            hint: "Everything else.",
-          })),
-        ],
+  it("gives a pinned block a slot with room like any other, and keeps one no slot takes pinned over the slots", () => {
+    const frame = { x: 60, y: 30, w: 35, h: 50 };
+    // A pinned chart that no slot of section takes stays pinned, out of its old slot, instead of being left over.
+    const pinned = applied(brandDoc(), [{ op: "block.frame", scene: "growth", id: "growth-chart", frame }]);
+    const moved = retemplate(pinned, "growth", { template: "section" });
+    expect(moved).toEqual({
+      ops: [
+        { op: "scene.set", id: "growth", set: { template: "section", layout: null } },
+        { op: "block.set", scene: "growth", id: "growth-chart", set: { slot: null } },
+        { op: "block.set", scene: "growth", id: "growth-note", set: { slot: "lede" } },
+      ],
+      unplaced: [],
+    });
+    expect(applied(pinned, moved.ops).scenes.growth?.blocks.map((block) => block.slot)).toEqual([
+      "title",
+      undefined,
+      "lede",
+    ]);
+    // A pinned heading takes the title's one place, so the heading after it has none.
+    const headings = applied(brandDoc(), [
+      { op: "block.frame", scene: "context", id: "context-heading", frame },
+      {
+        op: "block.add",
+        scene: "context",
+        block: { id: "context-more", type: "text", role: "heading", text: "More" } as never,
       },
-    };
-    const withClaim = (count: number): Doc => {
-      const doc = applied(brandDoc(), [
-        roomy,
-        { op: "block.set", scene: "context", id: "context-quote", set: { style: null } },
-        ...Array.from(
-          { length: count - 4 },
-          (_, i): Op => ({
-            op: "block.add",
-            scene: "context",
-            block: { id: `more-${i}`, type: "text", role: "body", text: `Point ${i}.` } as never,
-          }),
-        ),
-        {
-          op: "scene.set",
-          id: "context",
-          set: {
-            summary: { id: "context-claim", text: "Two berths were shut.", evidenceIds: ["context-body"] },
-          },
-        },
-      ]);
-      expect(doc.scenes.context?.blocks).toHaveLength(count);
-      return doc;
-    };
-
-    const full = withClaim(12);
-    const moved = retemplate(full, "context", { template: "roomy" });
-    expect(moved.unplaced).toEqual(["context-claim"]);
-    expect(moved.ops[0]).toEqual({
-      op: "scene.set",
-      id: "context",
-      set: { template: "roomy", layout: null },
+    ]);
+    const crowded = retemplate(headings, "context", { template: "section" });
+    expect(crowded.ops).toContainEqual({
+      op: "block.set",
+      scene: "context",
+      id: "context-heading",
+      set: { slot: "title" },
     });
-    expect(moved.ops.some((op) => op.op === "block.add")).toBe(false);
-    expect(apply(full, moved.ops)).toMatchObject({
-      ok: false,
-      diagnostics: [expect.objectContaining({ code: "claim-in-template" })],
-    });
-    // Decided: the claim goes, and the move applies as it is.
-    const decided = apply(full, [{ op: "scene.set", id: "context", set: { summary: null } }, ...moved.ops]);
-    expect(decided).toMatchObject({ ok: true });
-
-    // With room for one more block, the claim becomes one and nothing is left over.
-    const roomFor = withClaim(11);
-    const fits = retemplate(roomFor, "context", { template: "roomy" });
-    expect(fits.unplaced).toEqual([]);
-    const result = apply(roomFor, fits.ops);
-    expect(result).toMatchObject({ ok: true });
-    if (result.ok) expect(result.doc.scenes.context?.blocks).toHaveLength(12);
+    expect(crowded.unplaced).toEqual(["context-quote", "context-more"]);
+    // A block already pinned over a template's slots stays over the new one's, though a slot would take it.
+    const overlay = { id: "badge", type: "text", role: "body", text: "New", frame } as never;
+    const welcome = applied(brandDoc(), [{ op: "block.add", scene: "welcome", block: overlay }]);
+    const columns = retemplate(welcome, "welcome", { template: "two-column" });
+    expect(columns.unplaced).toEqual([]);
+    expect(columns.ops.filter((op) => op.op === "block.set" && op.id === "badge")).toEqual([]);
   });
 
   it("keeps a block in a slot of the same id, and moves a scene back to a layout by clearing slots", () => {

@@ -103,7 +103,7 @@ const choices = (wanted: string, options: readonly string[], what: string): stri
 };
 
 /** "heading, body and image" */
-const listed = (items: readonly string[]): string =>
+export const listed = (items: readonly string[]): string =>
   items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 
 /** A palette or a font pair in deck.json while its brand locks them, as errors under `brand-locked`. */
@@ -146,12 +146,18 @@ export function checkSceneForm(scene: Partial<Scene>, file: string): Diagnostic[
   return [];
 }
 
+/** A template's claim slot, where a scene's claim is drawn. */
+export const claimSlot = (template: Template): TemplateSlot | undefined =>
+  template.slots.find((slot) => slot.role === "claim");
+
 /**
  * Facts about the templates, slots and styles a sound scene names, which only the deck's kit can tell: the template
  * and each style exist, every block of a template scene sits in a slot that takes its kind and has room for it, a block
- * of a layout scene names no slot, a style is for the kind of block that takes it, and a template scene has no claim.
- * A required slot left empty is a warning: the scene may still be in progress. A pinned block names a slot like any
- * other, for its kind and its style, but floats at its frame, so it neither fills a slot nor counts toward its `max`.
+ * of a layout scene names no slot, a style is for the kind of block that takes it, and a template scene's claim has a
+ * claim slot to go in. A required slot left empty is a warning: the scene may still be in progress; the claim fills a
+ * claim slot. A pinned block in a slot belongs to it like any other, filling it, counting toward its `max` and taking
+ * its style; only its place comes from its frame. A pinned block with no slot is an overlay over the template, and is
+ * allowed: it fills no slot, and is checked as any block is but for its slot.
  */
 export function checkSceneBrand(scene: Scene, kit: SceneKit, file: string): Diagnostic[] {
   const out: Diagnostic[] = [];
@@ -211,27 +217,33 @@ export function checkSceneBrand(scene: Scene, kit: SceneKit, file: string): Diag
     );
     return out;
   }
-  if (scene.summary) {
+  const claim = claimSlot(template);
+  if (scene.summary && !claim) {
+    const others = Object.keys(kit.templates).filter((id) => claimSlot(kit.templates[id] as Template));
     out.push(
       error(
         file,
         "/summary",
-        "claim-in-template",
-        "A template scene has no place for a claim.",
-        "Put the claim's words in a heading block in one of the template's slots, or use the claim-evidence layout.",
+        "claim-without-slot",
+        `The template "${template.id}" has no claim slot, so the scene's claim has no place to go.`,
+        others.length > 0
+          ? `Move the scene to a template with a claim slot (${others.join(", ")}), or remove "summary".`
+          : 'Remove "summary": none of the deck\'s templates has a claim slot.',
       ),
     );
   }
   const slots = new Map(template.slots.map((slot) => [slot.id, slot]));
-  const filled = new Map<string, number>();
+  const filled = new Map<string, number>(claim && scene.summary ? [[claim.id, 1]] : []);
   scene.blocks.forEach((block, i) => {
     if (block.slot === undefined) {
+      // A pinned block with no slot is an overlay, drawn at its frame over the template.
+      if (block.frame !== undefined) return;
       out.push(
         error(
           file,
           `/blocks/${i}`,
           "missing-slot",
-          `The block "${block.id}" names no slot, and every block of a template scene sits in one.`,
+          `The block "${block.id}" names no slot, and every block of a template scene sits in one unless it is pinned.`,
           `Add "slot". The template "${template.id}" has: ${[...slots.keys()].join(", ")}.`,
         ),
       );
@@ -251,20 +263,20 @@ export function checkSceneBrand(scene: Scene, kit: SceneKit, file: string): Diag
       return;
     }
     const kind = kindOf(block);
-    if (!(slot.accepts as readonly string[]).includes(kind)) {
+    if (!(slot.accepts as readonly string[] | undefined)?.includes(kind)) {
       out.push(
         error(
           file,
           `/blocks/${i}/slot`,
           "slot-refuses-block",
-          `The slot "${slot.id}" takes ${listed(slot.accepts)}, not a ${kind}.`,
+          slot.accepts
+            ? `The slot "${slot.id}" takes ${listed(slot.accepts)}, not a ${kind}.`
+            : `The slot "${slot.id}" holds the scene's claim, and takes no block.`,
           `Put the block in a slot that takes a ${kind}, or pick another template.`,
         ),
       );
       return;
     }
-    // A pinned block floats over the slots at its frame: it names a slot that takes it, but takes no room in it.
-    if (block.frame !== undefined) return;
     const count = (filled.get(slot.id) ?? 0) + 1;
     filled.set(slot.id, count);
     if (count === slotMax(slot) + 1) {

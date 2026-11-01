@@ -125,7 +125,6 @@ export const BRAND_KEYS = [
   "id",
   "name",
   "colors",
-  "chart",
   "fonts",
   "logos",
   "chrome",
