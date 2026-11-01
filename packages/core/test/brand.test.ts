@@ -780,6 +780,25 @@ describe("slots and templates through block.set and scene.set", () => {
     expect(quote.scenes.opening?.schemaVersion).toBe("0.4");
   });
 
+  it("reads text written in the same operations as markup, whether the template or the slots came first", () => {
+    const doc = demoDoc();
+    const { ops } = retemplate(doc, "opening", { template: "section" });
+    const [moveScene, ...slots] = ops as [Op, ...Op[]];
+    const text: Op = { op: "block.set", scene: "opening", id: "opening-sub", set: { text: "**bold**" } };
+    for (const order of [
+      [moveScene, text, ...slots],
+      [moveScene, ...slots, text],
+      [...slots, moveScene, text],
+    ]) {
+      const result = apply(doc, order);
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      const sub = result.doc.scenes.opening?.blocks.find((block) => block.id === "opening-sub");
+      expect(sub).toMatchObject({ text: "**bold**" });
+      expect(codes(result.diagnostics)).not.toContain("text-is-literal");
+    }
+  });
+
   it("writes new scenes as 0.4", () => {
     const doc = applied(demoDoc(), [
       {

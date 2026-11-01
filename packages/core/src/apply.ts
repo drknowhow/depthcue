@@ -447,7 +447,11 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
       if (!has(work.scenes, op.id)) return unknownId(index, "/id", op.id, "scene", work.deck.scenes);
       const bad = checkKeys(index, op.set, SCENE_KEYS, "scene.set");
       if (bad) return bad;
-      work.scenes[op.id] = patch(work.scenes[op.id] as Scene, op.set);
+      const scene = work.scenes[op.id] as Scene;
+      // A scene that gains a template is 0.4, so it is upgraded first, as block.set upgrades for a slot: text written
+      // later in the same operations is then read as markup whichever of the two came first.
+      const base = typeof op.set.template === "string" && !readsMarkup(scene) ? upgradeScene(scene) : scene;
+      work.scenes[op.id] = patch(base, op.set);
       return undefined;
     }
     case "scene.upgrade": {
