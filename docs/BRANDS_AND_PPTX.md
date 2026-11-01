@@ -208,7 +208,9 @@ library, and per-block raw hex colors.
   machine), `body-without-bold`, `chrome-crowded` (two chrome parts in one place), `background-unmeasured` (until
   step 3 measures text on an image). Templates: `duplicate-id` for slots, `frame-off-slide`, `slots-overlap`,
   `slot-role-mismatch`, `two-claim-slots`, `unknown-style`, `style-wrong-kind` (a claim slot's style must be for
-  headings, as the claim is drawn as one) and `template-low-contrast` (text on a strong background is drawn in `bg`).
+  headings, as the claim is drawn as one) and `template-low-contrast` (text on a strong background is drawn in `bg`;
+  at `/slots/<i>/style`, a slot style's tone with no fill under it on the background color, which is how a claim slot
+  or a slot of charts, which no scene check reads, is held to it).
   The chart, style and template checks run on every preset the brand gives a palette for, and on the deck's theme
   (`looksOf`), so a brand that reads on paper and fails on ink fails in a paper deck too.
 - **Styled blocks.** A text block with a style, its own or its slot's, or on a template's colored background, is

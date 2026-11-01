@@ -327,7 +327,7 @@ const overlap = (a: Template["slots"][number]["frame"], b: Template["slots"][num
  * A sound template's facts: slot ids are unique and their frames lie on the slide, each slot takes only blocks its
  * role allows and a claim slot none, there is one claim slot at most, the style a slot gives its blocks exists and is
  * for every kind the slot takes (a claim is drawn as a heading), its background image exists, and text reads on its
- * background on each of `looks`. Slots that overlap are a warning: a designer may mean it. An image background is a
+ * background color on each of `looks`, in the template's own color and in the tone of each slot's style. Slots that overlap are a warning: a designer may mean it. An image background is a
  * warning too: only `depthcue render` can measure text on a picture.
  */
 export function checkTemplate(
@@ -339,6 +339,8 @@ export function checkTemplate(
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
   const seen = new Set<string>();
+  const background = template.background;
+  const backdrop = background?.image === undefined ? background?.color : undefined;
   template.slots.forEach((slot, i) => {
     const at = `/slots/${i}`;
     const allowed = ROLE_KINDS[slot.role];
@@ -432,10 +434,31 @@ export function checkTemplate(
             ),
           );
         }
+        // A tone with no fill under it is drawn on the background; a fill is checked with the brand's styles. A
+        // claim slot has no blocks to check, and is large text, drawn as a heading.
+        const tone = style.tone;
+        if (backdrop !== undefined && tone !== undefined && (style.fill ?? "none") === "none") {
+          const kinds = slot.accepts ?? ["heading"];
+          const large =
+            style.size === "l" || style.size === "xl" || kinds.every((kind) => kind === "heading");
+          const need = large ? CONTRAST.large : CONTRAST.text;
+          for (const { theme, colors } of looks) {
+            const ratio = contrastRatio(colors[tone], colors[backdrop]);
+            if (ratio >= need) continue;
+            out.push(
+              error(
+                file,
+                `${at}/style`,
+                "template-low-contrast",
+                `The slot "${slot.id}" draws its ${slot.role === "claim" ? "claim" : "text"} in "${tone}" (${colors[tone]}), the style "${slot.style}"'s tone, on "${backdrop}" (${colors[backdrop]}), a contrast of ${Math.floor(ratio * 100) / 100}:1 on ${theme} slides, under the ${need}:1 it needs.`,
+                "Give the slot a style whose tone reads on the background, or pick another background color.",
+              ),
+            );
+          }
+        }
       }
     }
   });
-  const background = template.background;
   if (background?.image !== undefined) {
     if (!brandFiles.has(brandFilePath(background.image))) {
       out.push(
