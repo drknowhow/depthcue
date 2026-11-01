@@ -190,6 +190,34 @@ change, so an agent finds the review through the editor and the terminal, not th
 revert that would bring back a block naming an image file that has since been deleted from `assets/` is refused,
 because the deck would not be valid.
 
+### The review drawer
+
+The top bar has a Review button. It reads "Agent changed 3" while the agent has changes nobody answered, "Changed 1"
+when only hand edits are waiting, and "Reviewed" when nothing is. It opens a drawer over the right of the stage with a
+row for each change: where it is, the old value struck out, the new value marked, and Accept and Revert. Accept all is at
+the top, and Esc closes the drawer. A scene with changes shows a "Changed" mark on its thumbnail, and its name for a
+screen reader gives the count. The palette has a command for the drawer too. In a window narrower than 1280 px the
+button is left out while there is nothing to review, so the top bar keeps room for the deck's title.
+
+The editor works the list out itself from the review file and the deck in the page, so an edit, an Undo or the agent's
+next write shows at once. Edits the person has not saved yet are left out, because saving copies them into the review.
+The editor asks the edit server for `?review=1` events and reads the file again on each one.
+
+Accept writes the review file against the revision the editor read. If the agent wrote in between, the editor reads the
+file again and makes the choice again, once. Revert runs the operations from `revertOps` as one ordinary edit, so the
+Undo button and Ctrl+Z take it back and autosave saves it. Both are refused while the files changed on disk under unsaved
+edits, because the review would then describe a deck that is not the one on disk.
+
+Undo and Redo go through `history.ts`, which keeps an accept in line with the session's own steps. An accept is undone
+by writing the earlier review back, and only while the review file is still as the accept left it. If an agent or a hand
+edit changed it since, Undo says so and leaves the file alone. Loading the files again, which the editor does when an
+agent writes the deck, forgets these steps along with the session's own.
+
+Undoing a revert brings the change back as the agent's. Without help a save would copy it into the reviewed deck as the
+person's own edit, and it would drop off the list. So the editor remembers the changes that were reverted and then undone,
+and sends their ids with the next save (`keepAgent`); the server leaves them out of the fold and marks them as the agent's
+again. The memory is dropped for a change the person edits again afterwards.
+
 ## Rules for every change
 
 - Core commands stay the only way to change a deck, from the editor, the CLI and MCP.

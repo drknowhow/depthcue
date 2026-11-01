@@ -11,6 +11,8 @@ import { createLayoutWatch, type LayoutWatch } from "./layout-watch.ts";
 import { createPalette } from "./palette.ts";
 import { deckPanel, panelHost } from "./panels.ts";
 import { createQuickBar } from "./quickbar.ts";
+import { createReviewDrawer } from "./reviewdrawer.ts";
+import { countsByScene, summaryOf } from "./reviewview.ts";
 import { createRibbon } from "./ribbon.ts";
 import { createSceneBar } from "./scenebar.ts";
 import { createShortcuts, keyName } from "./shortcuts.ts";
@@ -70,6 +72,13 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     hint.textContent = text ?? "";
     hint.toggleAttribute("data-problem", text !== undefined);
   };
+  // Undo and redo take back the latest thing done: an edit, or an answer given in the drawer of changes.
+  const said = (outcome: Promise<string | undefined>) =>
+    void outcome.then((text) => {
+      if (text !== undefined) showProblem(text);
+    });
+  const undoNow = () => said(store.history.undo());
+  const redoNow = () => said(store.history.redo());
   // The cues of a clip are a file beside its video. They load, and change, apart from the deck's own edits.
   const cues = createCueBook(store.cueApi, {
     problem: showProblem,
@@ -99,6 +108,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     // The count of a field is in the toolbar; this line is for what was refused.
     hint: (text, problem) => showProblem(problem ? text : undefined),
     comments: { book: store.comments, changed: () => renderComments() },
+    history: { undo: undoNow, redo: redoNow },
     select: (id) => selectBlock(id),
     deselect: () => selectBlock(undefined),
     remove: (id) => toolbar.remove(id),
@@ -127,8 +137,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
 
   const deckTitle = h("h1", { class: "ed-deck" });
   const status = h("span", { class: "ed-status", role: "status", "aria-live": "polite" });
-  const undo = button("undo", "Undo", () => session.undo());
-  const redo = button("redo", "Redo", () => session.redo());
+  const undo = button("undo", "Undo", undoNow);
+  const redo = button("redo", "Redo", redoNow);
   const retry = button("retry", "Try again", () => void store.save());
   retry.hidden = true;
   const deckChip = popoverChip(
@@ -173,6 +183,28 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     const pins = canvas.comments;
     if (pins) pins.setShowResolved(!pins.showResolved);
   });
+  // Review: what changed since the deck was last looked at, mostly by the agent. The button says how many, and opens the
+  // drawer that lists them with the two answers. Like the comment buttons, the words give way to the icon in a narrow window.
+  const reviewCount = h("span", { class: "ed-count" });
+  const reviewWords = h("span", { class: "ed-bar-words" }, "Reviewed");
+  const reviewButton = h(
+    "button",
+    { type: "button", "data-action": "review", "aria-expanded": "false", "aria-controls": "ed-review" },
+    h("span", { class: "ed-icon ed-icon-review", "aria-hidden": "true" }),
+    reviewWords,
+    reviewCount,
+  );
+  const drawer = createReviewDrawer(session, store.review, {
+    goTo(sceneId, blockId) {
+      select(sceneId);
+      selectBlock(blockId);
+    },
+    closed: () => reviewButton.focus({ preventScroll: true }),
+  });
+  reviewButton.addEventListener("click", () => {
+    drawer.toggle();
+    renderReview();
+  });
   const sceneBar = createSceneBar(session, {
     edits: editsFor("scene"),
     problem: showProblem,
@@ -191,6 +223,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       status,
       retry,
       deckChip.chip.wrap,
+      reviewButton,
       commentsButton,
       resolvedButton,
       present,
@@ -201,6 +234,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     select: (id) => select(id),
     act: (ops, options) => session.apply(ops, options),
     comments: () => countsOf(store.comments.state.comments, session.doc).byScene,
+    changed: () => countsByScene(store.review.changes()),
   });
   const quick = createQuickBar(session, {
     edits: editsFor("quick"),
@@ -238,8 +272,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     add: (kind) => void adder.quick(kind),
     pickImage: () => quick.pickImage(),
     comment: () => toggleCommenting(),
-    undo: () => session.undo(),
-    redo: () => session.redo(),
+    undo: undoNow,
+    redo: redoNow,
     save: () => void store.save(),
     pin() {
       if (selectedBlock === undefined) return false;
@@ -272,8 +306,15 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         autoLayout: () => sceneBar.autoLayout(),
         ribbon,
         goTo: (id) => select(id),
-        undo: () => session.undo(),
-        redo: () => session.redo(),
+        undo: undoNow,
+        redo: redoNow,
+        canUndo: () => store.history.canUndo,
+        canRedo: () => store.history.canRedo,
+        toggleReview: () => {
+          drawer.toggle();
+          renderReview();
+        },
+        reviewOpen: () => drawer.isOpen,
         save: () => void store.save(),
         present: () => void window.open(present.href, "_blank", "noopener"),
         showKeys: () => shortcuts.open(),
@@ -283,7 +324,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   });
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
-  const floor = h("div", { class: "ed-stage" }, stage, quick.element);
+  const floor = h("div", { class: "ed-stage" }, stage, quick.element, drawer.element);
   const root = h(
     "div",
     { class: "ed-app" },
@@ -313,8 +354,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     deckTitle.textContent = deck.title;
     document.title = `${deck.title} · Depthcue editor`;
     const state = store.status;
-    undo.toggleAttribute("disabled", !session.canUndo);
-    redo.toggleAttribute("disabled", !session.canRedo);
+    undo.toggleAttribute("disabled", !store.history.canUndo);
+    redo.toggleAttribute("disabled", !store.history.canRedo);
     retry.hidden = state.save !== "error" || state.conflict !== undefined;
     status.dataset.state = state.save;
     status.textContent =
@@ -361,9 +402,37 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     quick.setCommenting(pins.tool);
   }
 
+  /** The Review button: how many changes the agent made that nobody has answered, and whether the drawer is open. */
+  function renderReview() {
+    const { problem, ready } = store.review.state;
+    const { agent, outside } = summaryOf(store.review.changes());
+    const pending = agent > 0 ? agent : outside;
+    reviewWords.textContent = agent > 0 ? "Agent changed" : outside > 0 ? "Changed" : "Reviewed";
+    reviewCount.textContent = pending > 0 ? String(pending) : "";
+    reviewButton.dataset.state = pending > 0 ? "changed" : "clear";
+    const plural = `${pending} ${pending === 1 ? "change" : "changes"}`;
+    const said = problem
+      ? `The review cannot be read. ${problem}`
+      : !ready
+        ? "Reading the review"
+        : agent > 0
+          ? `The agent changed ${plural} to review`
+          : outside > 0
+            ? `${plural} made outside the editor to review`
+            : "Nothing to review";
+    reviewButton.setAttribute(
+      "aria-label",
+      `${said}. ${drawer.isOpen ? "Press to close the list." : "Press to open the list."}`,
+    );
+    reviewButton.title = said;
+    reviewButton.setAttribute("aria-expanded", String(drawer.isOpen));
+    drawer.render();
+  }
+
   /** The popovers and buttons of the bar, redrawn from the deck. Saving changes none of it, so a save skips this. */
   function renderBar() {
     renderStatus();
+    renderReview();
     renderComments();
     sceneBar.render(selected, typingIn === "scene");
     quick.render(selected, typingIn === "quick");
@@ -472,6 +541,13 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderComments();
     renderScenes();
   });
+  // The review is read again when the agent writes, and an answer given in the drawer changes it. The marks follow.
+  const unsubscribeReview = store.review.subscribe(() => {
+    renderReview();
+    renderScenes();
+  });
+  // An answer that took Undo with it changes what the buttons can do, and nothing else tells the bar.
+  const unsubscribeHistory = store.history.subscribe(renderStatus);
 
   // A click on the stage that lands on no block, and not on the toolbar or the build badges, lets go of the choice.
   // The quick bar is beside the stage and not in it, so a press on the bar keeps the choice its adds go after.
@@ -509,6 +585,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       unsubscribeSession();
       unsubscribeStore();
       unsubscribeComments();
+      unsubscribeReview();
+      unsubscribeHistory();
+      drawer.destroy();
       strip.destroy();
       sceneBar.destroy();
       quick.destroy();

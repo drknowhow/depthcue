@@ -11,9 +11,16 @@ import {
   cueMapPath,
   docToFiles,
   emptyComments,
+  foldEdit,
   loadDoc,
   type Op,
+  type Review,
+  readReview,
+  recordAgentEdit,
+  reviewRevision,
+  reviewToText,
   revisionOf,
+  startReview,
 } from "@depthcue/core";
 import type {
   Api,
@@ -24,6 +31,9 @@ import type {
   CueList,
   DeckPayload,
   LayoutAnswer,
+  ReviewAnswer,
+  ReviewSaveResult,
+  SaveOptions,
   SaveResult,
 } from "../src/api.ts";
 
@@ -42,7 +52,7 @@ function readDemo(): { text: Record<string, string>; assets: string[] } {
 export class FakeServer implements Api {
   text: Record<string, string>;
   assets: string[];
-  saves: Array<{ files: Record<string, string>; baseRev: string }> = [];
+  saves: Array<{ files: Record<string, string>; baseRev: string; options: SaveOptions | undefined }> = [];
   uploads: string[] = [];
   loads = 0;
   /** Makes the next save answer with this instead of running. */
@@ -87,6 +97,18 @@ export class FakeServer implements Api {
   commentGate: Promise<void> | undefined;
   /** The time written into a new message. A test sets it to know what it will read back. */
   clock = "2026-11-01T10:00:00.000Z";
+  /** The review file, as the server keeps it. `undefined` is no file: nobody has started a review. */
+  review: Review | undefined;
+  /** Makes loadReview answer that the file cannot be read, with this message, like a review.json that is not valid. */
+  reviewBroken: string | undefined;
+  reviewLoads = 0;
+  reviewSaves: Array<{ review: Review; baseRev: string }> = [];
+  /** Makes the next saveReview answer with this instead of running. */
+  nextReviewSave: ReviewSaveResult | undefined;
+  /** Runs inside a review save before it answers, so a test can change the review mid-request. */
+  duringReviewSave: (() => void) | undefined;
+  /** Holds loadReview's answers, which are read when the call is made, until this settles. */
+  reviewGate: Promise<void> | undefined;
 
   constructor() {
     const demo = readDemo();
@@ -110,6 +132,58 @@ export class FakeServer implements Api {
     return result.rev;
   }
 
+  /**
+   * An edit made through the agent's tools: the files change and the review marks what changed as the agent's, the way
+   * `deck_apply` leaves them. A review is started from the deck as it was if nobody had.
+   */
+  agentEdit(ops: Op[]): string {
+    const { doc } = loadDoc({ text: this.text, assets: this.assets });
+    if (!doc) throw new Error("the fake server's deck should be valid");
+    const rev = this.external(ops);
+    const { doc: after } = loadDoc({ text: this.text, assets: this.assets });
+    if (!after) throw new Error("the fake server's deck should be valid");
+    this.review = recordAgentEdit(this.review ?? startReview(doc), doc, after);
+    return rev;
+  }
+
+  get reviewRev(): string {
+    return this.review ? reviewRevision(this.review) : "none";
+  }
+
+  async loadReview(): Promise<ReviewAnswer> {
+    this.reviewLoads += 1;
+    const answer: ReviewAnswer =
+      this.reviewBroken === undefined
+        ? { ok: true, rev: this.reviewRev, review: this.review && structuredClone(this.review) }
+        : { ok: false, message: this.reviewBroken };
+    await this.reviewGate;
+    return answer;
+  }
+
+  async saveReview(review: Review, baseRev: string): Promise<ReviewSaveResult> {
+    this.reviewSaves.push({ review: structuredClone(review), baseRev });
+    this.duringReviewSave?.();
+    if (this.nextReviewSave) {
+      const answer = this.nextReviewSave;
+      this.nextReviewSave = undefined;
+      return answer;
+    }
+    if (baseRev !== this.reviewRev) {
+      return { ok: false, kind: "stale", rev: this.reviewRev, message: "The review changed on disk." };
+    }
+    // The server reads what it is sent as it would the file, so a review that would not load is refused.
+    const read = readReview(reviewToText(review));
+    if (!read.ok || !read.review) {
+      return {
+        ok: false,
+        kind: "rejected",
+        message: read.ok ? "Empty." : (read.diagnostics[0]?.message ?? "Refused."),
+      };
+    }
+    this.review = read.review;
+    return { ok: true, rev: this.reviewRev, review: structuredClone(read.review) };
+  }
+
   async loadDeck(): Promise<DeckPayload> {
     this.loads += 1;
     if (this.loadFails) throw new Error("scenes/opening.json: not valid JSON");
@@ -118,8 +192,8 @@ export class FakeServer implements Api {
     return answer;
   }
 
-  async save(files: Record<string, string>, baseRev: string): Promise<SaveResult> {
-    this.saves.push({ files, baseRev });
+  async save(files: Record<string, string>, baseRev: string, options?: SaveOptions): Promise<SaveResult> {
+    this.saves.push({ files, baseRev, options });
     this.duringSave?.();
     if (this.nextSave) {
       const answer = this.nextSave;
@@ -129,11 +203,15 @@ export class FakeServer implements Api {
     if (baseRev !== this.rev) {
       return { ok: false, kind: "stale", rev: this.rev, message: "The deck changed on disk." };
     }
+    const before = loadDoc({ text: this.text, assets: this.assets }).doc;
     const loaded = loadDoc({ text: files, assets: this.assets });
     if (!loaded.doc) {
       return { ok: false, kind: "rejected", message: "Invalid.", diagnostics: [] };
     }
     this.text = docToFiles(loaded.doc);
+    // A person's save is theirs to have made, so the review takes it in, as the real server does.
+    if (this.review && before)
+      this.review = foldEdit(this.review, before, loaded.doc, options?.keepAgent ?? []);
     return { ok: true, rev: revisionOf(loaded.doc) };
   }
 

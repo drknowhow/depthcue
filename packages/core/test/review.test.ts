@@ -17,6 +17,7 @@ import {
   readReview,
   recordAgentEdit,
   revertChanges,
+  revertOps,
   reviewChanges,
   reviewRevision,
   reviewToText,
@@ -623,6 +624,23 @@ describe("reverting a change", () => {
     ]);
   });
 
+  it("gives the operations of a revert for a caller that runs them itself", () => {
+    const base = demoDoc();
+    const now = edit(base, [
+      { op: "deck.set", set: { title: "T" } },
+      { op: "block.remove", scene: "method", id: "method-body" },
+    ]);
+    const review = startReview(base);
+    const plan = revertOps(review, now, "all");
+    if (!plan.ok) throw new Error("the plan should be made");
+    expect(plan.reverted).toEqual(["deck/title", "scene:method/block:method-body"]);
+    expect(edit(now, plan.ops)).toEqual(reverted(revertChanges(review, now, "all")).doc);
+    // Nothing was run: the deck is as it was, and a change that is not one is refused as it is by `revertChanges`.
+    expect(now.deck.title).toBe("T");
+    expect(refused(revertOps(review, now, ["deck/titel"]) as ReviewFailure).unknown).toEqual(["deck/titel"]);
+    expect(revertOps(review, base, "all")).toEqual({ ok: true, ops: [], reverted: [] });
+  });
+
   it("puts the order back with the fewest moves", () => {
     const base = demoDoc();
     const now = edit(base, [
@@ -786,6 +804,26 @@ describe("who made a change", () => {
     const folded = foldEdit(review, agentEdit, person);
     expect(reviewChanges(folded, person)).toEqual([]);
     expect(folded.agent).toEqual([]);
+  });
+
+  it("keeps a change the person reverted and undid as the agent's, and folds the rest of the same save", () => {
+    const base = demoDoc();
+    const agentEdit = edit(base, [{ op: "deck.set", set: { title: "Agent's" } }]);
+    const review = recordAgentEdit(startReview(base), base, agentEdit);
+    const afterRevert = reverted(revertChanges(review, agentEdit, ["deck/title"]));
+    expect(afterRevert.review.agent).toEqual([]);
+    // Undoing the revert and typing a note in one save: the title is the agent's again, the note is the person's.
+    const undone = edit(afterRevert.doc, [
+      { op: "deck.set", set: { title: "Agent's" } },
+      { op: "scene.set", id: "opening", set: { notes: "Mine" } },
+    ]);
+    const kept = foldEdit(afterRevert.review, afterRevert.doc, undone, ["deck/title"]);
+    expect(reviewChanges(kept, undone).map((c) => [c.id, c.by])).toEqual([["deck/title", "agent"]]);
+    expect(kept.scenes.opening?.notes).toBe("Mine");
+    // Without the hint the same save folds the title in, and it is nobody's to review.
+    expect(reviewChanges(foldEdit(afterRevert.review, afterRevert.doc, undone), undone)).toEqual([]);
+    // A kept id that is no longer a change is not kept.
+    expect(foldEdit(afterRevert.review, afterRevert.doc, afterRevert.doc, ["deck/title"]).agent).toEqual([]);
   });
 
   it("leaves an edit inside something the agent added with the thing it is in", () => {

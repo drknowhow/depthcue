@@ -11,7 +11,10 @@ import {
   cueMapPath,
   type Diagnostic,
   loadDoc,
+  type Review,
   readCueMap,
+  readReview,
+  reviewRevision,
   revisionOf,
 } from "@depthcue/core";
 import { applyCommentsToFolder, readFolderComments } from "./comments-api.ts";
@@ -19,7 +22,7 @@ import { openDeck } from "./deck-api.ts";
 import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
 import { loadDeckDir } from "./loader.ts";
-import { recordPersonWrite } from "./review-file.ts";
+import { loadReviewDir, recordPersonWrite, saveReviewDir } from "./review-file.ts";
 import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
 
 export interface EditContext {
@@ -57,6 +60,12 @@ function authorized(request: IncomingMessage, ctx: EditContext): string | undefi
 }
 
 const SAVEABLE = /^(deck\.json|scenes\/[^/\\]+\.json)$/;
+
+/** The change ids a save says are still the agent's. Anything that is not a short list of short strings is ignored. */
+export const keptAgent = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((id): id is string => typeof id === "string" && id.length <= 400).slice(0, 500)
+    : [];
 
 async function save(request: IncomingMessage, response: ServerResponse, ctx: EditContext) {
   if (!String(request.headers["content-type"]).startsWith("application/json")) {
@@ -119,8 +128,9 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
   }
   try {
     const written = saveDeckDir(ctx.folder, current.doc, next.doc);
-    // What the person changed is theirs: it goes into the reviewed deck, so it is never listed as the agent's.
-    recordPersonWrite(ctx.folder, current.doc, next.doc);
+    // What the person changed is theirs: it goes into the reviewed deck, so it is never listed as the agent's. The
+    // editor names the changes a person reverted and then undid, which come back as the agent's.
+    recordPersonWrite(ctx.folder, current.doc, next.doc, keptAgent(body.keepAgent));
     return send(response, 200, { rev: revisionOf(next.doc), written });
   } catch (error) {
     if (error instanceof ChangedOnDiskError) {
@@ -436,6 +446,89 @@ async function applyComments(request: IncomingMessage, response: ServerResponse,
   });
 }
 
+/** The revision the editor names as `baseRev` when there is no review.json, so a first write is checked too. */
+export const NO_REVIEW = "none";
+
+const revisionOfReview = (review: Review | undefined): string =>
+  review === undefined ? NO_REVIEW : reviewRevision(review);
+
+/**
+ * The review beside the deck: the deck as it was last reviewed and the ids of the changes the agent made. The editor
+ * works out the changes itself, against the deck it has open, so unsaved edits and undo are counted. A review file
+ * that is not valid is reported and left alone, so a hand edit survives.
+ */
+function loadReview(response: ServerResponse, ctx: EditContext) {
+  const read = loadReviewDir(ctx.folder);
+  if (!read.ok) {
+    return send(response, 422, {
+      error: "unreadable-review",
+      message:
+        "review.json is not valid, so the editor lists no changes and will not change the file. Delete it to start a new review.",
+      diagnostics: read.diagnostics.map(plain),
+    });
+  }
+  return send(response, 200, { rev: revisionOfReview(read.review), review: read.review ?? null });
+}
+
+/**
+ * Replaces the review for the editor, against the revision it read: an accept moves the reviewed deck on, and undoing
+ * one puts the earlier review back. The file is checked as it is on every read, so nothing that would not read back
+ * is written. Reverting is not here: it is an edit of the deck, which the editor makes and saves like any other.
+ */
+async function replaceReview(request: IncomingMessage, response: ServerResponse, ctx: EditContext) {
+  if (!String(request.headers["content-type"]).startsWith("application/json")) {
+    return send(response, 415, { error: "bad-request", message: "Send application/json." });
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse((await readBody(request, MAX_SAVE_BYTES)).toString("utf8"));
+  } catch (error) {
+    if (error instanceof TooLarge) {
+      return send(response, 413, { error: "too-large", message: "The review is too large to save." });
+    }
+    return send(response, 400, { error: "bad-request", message: "The body is not valid JSON." });
+  }
+  if (!isRecord(body) || typeof body.baseRev !== "string" || !isRecord(body.review)) {
+    return send(response, 400, {
+      error: "bad-request",
+      message: "Send { baseRev: string, review: Review }.",
+    });
+  }
+  const checked = readReview(JSON.stringify(body.review));
+  if (!checked.ok || checked.review === undefined) {
+    return send(response, 422, {
+      error: "invalid",
+      message: "That is not a review the editor may write, so nothing was written.",
+      diagnostics: (checked.ok ? [] : checked.diagnostics).map(plain),
+    });
+  }
+  const current = loadReviewDir(ctx.folder);
+  if (!current.ok) {
+    return send(response, 422, {
+      error: "unreadable-review",
+      message: "review.json is not valid, so it was left alone. Delete it to start a new review.",
+      diagnostics: current.diagnostics.map(plain),
+    });
+  }
+  const rev = revisionOfReview(current.review);
+  if (rev !== body.baseRev) {
+    return send(response, 409, {
+      error: "stale",
+      message: "The review changed on disk after the editor read it. Nothing was written.",
+      rev,
+    });
+  }
+  try {
+    saveReviewDir(ctx.folder, current.review, checked.review);
+  } catch (error) {
+    if (error instanceof ChangedOnDiskError) {
+      return send(response, 409, { error: "stale", message: error.message, rev });
+    }
+    throw error;
+  }
+  return send(response, 200, { rev: reviewRevision(checked.review), review: checked.review });
+}
+
 /** Handles `/_depthcue/api/*`. Returns false when the path is not an edit API path. */
 export async function handleEditApi(
   request: IncomingMessage,
@@ -463,6 +556,9 @@ export async function handleEditApi(
     else if (route === "/_depthcue/api/comments" && request.method === "GET") loadComments(response, ctx);
     else if (route === "/_depthcue/api/comments" && request.method === "POST")
       await applyComments(request, response, ctx);
+    else if (route === "/_depthcue/api/review" && request.method === "GET") loadReview(response, ctx);
+    else if (route === "/_depthcue/api/review" && request.method === "POST")
+      await replaceReview(request, response, ctx);
     else {
       send(response, 404, { error: "not-found", message: "There is no such editor call." });
     }

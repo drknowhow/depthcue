@@ -516,6 +516,31 @@ export function revertChanges(
   current: Doc,
   ids: readonly string[] | "all",
 ): Reverted | ReviewFailure {
+  const plan = revertOps(review, current, ids);
+  if (!plan.ok) return plan;
+  if (plan.ops.length === 0) return { ...unchanged(current), reverted: [], review: prune(review, current) };
+  const result = applyOps(current, plan.ops, revisionOf(current));
+  if (!result.ok) return failed(result);
+  return { ...result, reverted: plan.reverted, review: prune(review, result.doc) };
+}
+
+export interface RevertPlan {
+  ok: true;
+  /** One transaction: valid as a whole, though a step in between may not be valid alone. */
+  ops: Op[];
+  reverted: string[];
+}
+
+/**
+ * The operations `revertChanges` would run, for a caller that has a document of its own to run them on, such as the
+ * editor's session, where they become one undo step. They are not checked against the deck: the caller's `apply` does
+ * that, and refuses with the reason when the result would not be a valid deck.
+ */
+export function revertOps(
+  review: Review,
+  current: Doc,
+  ids: readonly string[] | "all",
+): RevertPlan | ReviewFailure {
   const base = baselineOf(review, current.assets);
   const have = diffDocs(base, current);
   const chosen = ids === "all" ? have.map((change) => change.id) : choose(have, ids);
@@ -526,27 +551,27 @@ export function revertChanges(
     base,
     diffDocs(current, base).filter((change) => wanted.has(change.id)),
   );
-  if (ops.length === 0) return { ...unchanged(current), reverted: [], review: prune(review, current) };
-  const result = applyOps(current, ops, revisionOf(current));
-  if (!result.ok) return failed(result);
-  return { ...result, reverted: chosen, review: prune(review, result.doc) };
+  return { ok: true, ops, reverted: chosen };
 }
 
 /**
  * A person's edit, which is theirs to have made and not the agent's to answer for: whatever they changed is copied
  * into the reviewed deck too. A change inside something the agent added has no place there to go, and stays with the
- * thing it is in.
+ * thing it is in. `keep` names changes that are not folded and are marked as the agent's again: the editor sends the
+ * ones a person reverted and then undid, which come back as the agent's and not as the person's own.
  */
-export function foldEdit(review: Review, before: Doc, after: Doc): Review {
+export function foldEdit(review: Review, before: Doc, after: Doc, keep: readonly string[] = []): Review {
   let base = baselineOf(review, after.assets);
+  const kept = new Set(keep);
   for (const { id } of diffDocs(before, after)) {
+    if (kept.has(id)) continue;
     const have = diffDocs(base, after);
     const picked = have.filter((change) => change.id === id);
     if (picked.length === 0) continue;
     const result = applyOps(base, buildOps(base, after, picked), revisionOf(base));
     if (result.ok) base = result.doc;
   }
-  return prune({ ...startReview(base), agent: review.agent }, after);
+  return prune({ ...startReview(base), agent: [...review.agent, ...kept] }, after);
 }
 
 /**

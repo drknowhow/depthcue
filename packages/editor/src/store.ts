@@ -11,6 +11,8 @@ import {
 } from "@depthcue/core";
 import type { Api, DeckPayload } from "./api.ts";
 import { type CommentBook, createCommentBook } from "./commentbook.ts";
+import { createHistory, type History } from "./history.ts";
+import { createReviewBook, type ReviewBook } from "./reviewbook.ts";
 
 export type SaveState = "saved" | "dirty" | "saving" | "error";
 
@@ -60,6 +62,15 @@ export interface EditorStore {
    * edit to the deck never saves them. Read it again with `comments.sync()` when the server says they changed.
    */
   readonly comments: CommentBook;
+  /**
+   * The changes since the deck was last reviewed, and the answers to them. Also a file of its own: it is read again
+   * with `review.sync()` when the server says it changed, and a save of the deck sends it what the review needs to know.
+   */
+  readonly review: ReviewBook;
+  /** Undo and redo: the session's, and the steps taken outside it, such as accepting a change, in their place among them. */
+  readonly history: History;
+  /** The deck as the files on disk have it, as far as this editor knows. The session's document is that and the unsaved edits. */
+  readonly saved: Doc;
   readonly status: EditorStatus;
   subscribe(listener: () => void): () => void;
   /** Saves now, without waiting out the autosave delay. Ctrl+S and the retry button call it. */
@@ -108,9 +119,20 @@ export async function openStore(
   const drafts = draftsFor(initial.deck.id);
 
   const session = createSession(initial);
+  /** The document the files on disk hold, for telling the person's unsaved edits from the changes already reviewed. */
+  let onDisk: Doc = initial;
+  const history = createHistory(session);
   // Read in the background: the deck is what the visitor came for, and the pins appear when the answer is in.
   const comments = createCommentBook(api);
   void comments.sync();
+  const review = createReviewBook(api, session, history, () => onDisk, {
+    // Accepting copies the unsaved deck into the review, which is not what is on disk until the person picks a side.
+    blocked: () =>
+      conflict
+        ? "The files changed on disk while you were editing. Reload them, or keep your version first."
+        : undefined,
+  });
+  void review.sync();
   let diskRev = payload.rev;
   let saving = false;
   let failed = false;
@@ -228,6 +250,7 @@ export async function openStore(
       return false;
     }
     diskRev = fresh.rev;
+    onDisk = doc;
     conflict = undefined;
     failed = false;
     session.reset(doc);
@@ -244,6 +267,11 @@ export async function openStore(
     },
     layoutApi: { loadLayout: (scene) => api.loadLayout(scene) },
     comments,
+    review,
+    history,
+    get saved() {
+      return onDisk;
+    },
     get status() {
       // "dirty" means edits that nothing is about to save; with autosave a countdown or a save is under way.
       const pending = timer !== undefined || resave;
@@ -270,15 +298,21 @@ export async function openStore(
         resave = true; // the running save started before the latest edit, so another one follows it
         return;
       }
-      const files = docToFiles(session.doc);
+      const sent = session.doc;
+      const files = docToFiles(sent);
+      // Changes the person reverted and then undid are the agent's again, which the files alone do not say.
+      const keepAgent = review.keepAgent();
       saving = true;
       message = undefined;
       notify();
-      const result = await api.save(files, diskRev);
+      const result = await api.save(files, diskRev, keepAgent.length > 0 ? { keepAgent } : undefined);
       saving = false;
       epoch += 1;
       if (result.ok) {
         diskRev = result.rev;
+        onDisk = sent;
+        // The server copied these edits into the reviewed deck, so the review is read again before anything redraws.
+        void review.sync();
         failed = false;
         if (draft?.kind === "restored") draft = undefined; // it is on disk now, so there is nothing to discard
         session.markSaved(result.rev);
@@ -328,11 +362,13 @@ export async function openStore(
       if (fresh.rev === diskRev) return;
       if (fresh.rev === session.rev) {
         diskRev = fresh.rev;
+        onDisk = session.doc;
         conflict = undefined;
         failed = false;
         session.markSaved();
       } else if (!session.dirty) {
         diskRev = fresh.rev;
+        onDisk = doc;
         conflict = undefined;
         failed = false;
         session.reset(doc);
@@ -400,6 +436,8 @@ export async function openStore(
       cancelAutosave();
       autosave.stop();
       comments.dispose();
+      review.dispose();
+      history.dispose();
       listeners.clear();
     },
   };

@@ -103,6 +103,7 @@ export type {
   Difference,
   ReadReview,
   Reverted,
+  RevertPlan,
   Review,
   ReviewFailure,
 } from "./review.ts";
@@ -117,6 +118,7 @@ export {
   readReview,
   recordAgentEdit,
   revertChanges,
+  revertOps,
   reviewChanges,
   reviewRevision,
   reviewToText,

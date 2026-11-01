@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  acceptChanges,
   COMMENTS_FILE,
   commentsRevision,
   docToFiles,
@@ -21,11 +22,14 @@ import {
   REVIEW_FILE,
   readCueMap,
   reviewChanges,
+  reviewRevision,
+  reviewToText,
   revisionOf,
+  startReview,
 } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyToFolder } from "../src/deck-api.ts";
-import { assetName, sniffImage } from "../src/edit-api.ts";
+import { assetName, keptAgent, NO_REVIEW, sniffImage } from "../src/edit-api.ts";
 import type { LayoutAnswer, LayoutChecker } from "../src/edit-layout.ts";
 import { loadDeckDir } from "../src/loader.ts";
 import { loadReviewDir } from "../src/review-file.ts";
@@ -925,6 +929,166 @@ describe("comments", () => {
   it("answers no other method", async () => {
     expect((await call(COMMENTS, { method: "DELETE" })).status).toBe(404);
     expect((await call(COMMENTS, { ...json({}), method: "PUT" })).status).toBe(404);
+  });
+});
+
+describe("review", () => {
+  const REVIEW = "/_depthcue/api/review";
+  const post = (body: unknown, extra: Call = {}) => call(REVIEW, { ...json(body), ...extra });
+  const onDisk = () => readFileSync(join(folder, REVIEW_FILE), "utf8");
+  /** The agent retitles the deck, which starts a review with that one change in it. */
+  const agentRetitles = () => {
+    const outcome = applyToFolder(
+      folder,
+      [{ op: "deck.set", set: { title: "The agent's title" } }],
+      revisionOf(readDeck()),
+    );
+    expect(outcome.ok).toBe(true);
+    const read = loadReviewDir(folder);
+    if (!read.ok || read.review === undefined) throw new Error("the agent's edit should start a review");
+    return read.review;
+  };
+  /** The files of the deck with another title, as the editor sends it. */
+  const titled = (title: string) => {
+    const doc = readDeck();
+    return docToFiles({ ...doc, deck: { ...doc.deck, title } });
+  };
+
+  it("reads no review from a deck nobody has started to review, and makes no file", async () => {
+    const answer = await call(REVIEW);
+    expect(answer.status).toBe(200);
+    expect(answer.json).toEqual({ rev: NO_REVIEW, review: null });
+    expect(existsSync(join(folder, REVIEW_FILE))).toBe(false);
+  });
+
+  it("reads the review with the revision to name in the next write", async () => {
+    const review = agentRetitles();
+    const answer = await call(REVIEW);
+    expect(answer.status).toBe(200);
+    expect(answer.json).toEqual({ rev: reviewRevision(review), review });
+  });
+
+  it("reports a review that is not valid, and leaves it alone", async () => {
+    writeFileSync(join(folder, REVIEW_FILE), "{ not json");
+    const answer = await call(REVIEW);
+    expect(answer.status).toBe(422);
+    expect(answer.json.error).toBe("unreadable-review");
+    expect(readFileSync(join(folder, REVIEW_FILE), "utf8")).toBe("{ not json");
+  });
+
+  it("replaces the review against the revision the editor read, and answers with the new one", async () => {
+    const review = agentRetitles();
+    const next = acceptChanges(review, readDeck(), "all");
+    if (!next.ok) throw new Error("accept should work");
+    const answer = await post({ baseRev: reviewRevision(review), review: next.review });
+    expect(answer.status).toBe(200);
+    expect(answer.json).toEqual({ rev: reviewRevision(next.review), review: next.review });
+    expect(onDisk()).toBe(reviewToText(next.review));
+  });
+
+  it("starts a review when there is none, if the editor says it read none", async () => {
+    const started = startReview(readDeck());
+    const answer = await post({ baseRev: NO_REVIEW, review: started });
+    expect(answer.status).toBe(200);
+    expect(onDisk()).toBe(reviewToText(started));
+  });
+
+  it("refuses a stale revision and says what is there now, writing nothing", async () => {
+    const review = agentRetitles();
+    const before = onDisk();
+    const answer = await post({ baseRev: "0000000000000000", review: startReview(readDeck()) });
+    expect(answer.status).toBe(409);
+    expect(answer.json).toMatchObject({ error: "stale", rev: reviewRevision(review) });
+    expect(onDisk()).toBe(before);
+    const none = await post({ baseRev: NO_REVIEW, review: startReview(readDeck()) });
+    expect(none.status).toBe(409);
+  });
+
+  it("refuses what would not read back as a review, writing nothing", async () => {
+    const review = agentRetitles();
+    const before = onDisk();
+    for (const bad of [
+      { ...review, format: "other" },
+      { ...review, rev: "0000000000000000" },
+      { rev: "x" },
+    ]) {
+      const answer = await post({ baseRev: reviewRevision(review), review: bad });
+      expect(answer.status, JSON.stringify(bad).slice(0, 40)).toBe(422);
+      expect(answer.json.error).toBe("invalid");
+    }
+    expect(onDisk()).toBe(before);
+  });
+
+  it("refuses a body that is not what it takes, and a review file that is not valid", async () => {
+    expect((await post({ baseRev: "x" })).status).toBe(400);
+    expect((await post({ review: {} })).status).toBe(400);
+    expect(
+      (await call(REVIEW, { method: "POST", body: "{", headers: { "Content-Type": "application/json" } }))
+        .status,
+    ).toBe(400);
+    expect((await call(REVIEW, { method: "POST", body: "{}" })).status).toBe(415);
+    writeFileSync(join(folder, REVIEW_FILE), "{ not json");
+    const answer = await post({ baseRev: NO_REVIEW, review: startReview(readDeck()) });
+    expect(answer.status).toBe(422);
+    expect(answer.json.error).toBe("unreadable-review");
+    expect(readFileSync(join(folder, REVIEW_FILE), "utf8")).toBe("{ not json");
+  });
+
+  it("is for the editor alone: a call with no token or from another origin is refused", async () => {
+    expect((await call(REVIEW, { token: false })).status).toBe(403);
+    expect((await post({ baseRev: NO_REVIEW, review: {} }, { token: false })).status).toBe(403);
+    expect((await call(REVIEW, { headers: { Origin: "http://evil.example" } })).status).toBe(403);
+  });
+
+  it("keeps a change a save names as the agent's still, when the person reverted it and undid that", async () => {
+    agentRetitles();
+    const SAVE = "/_depthcue/api/save";
+    // The person reverts: the title goes back to what it was when the deck was reviewed, and the change is gone.
+    const reverted = await call(
+      SAVE,
+      json({ baseRev: revisionOf(readDeck()), files: titled("Why channel B now leads") }),
+    );
+    expect(reverted.status).toBe(200);
+    expect(loadReviewDir(folder)).toMatchObject({ ok: true, review: { agent: [] } });
+    // They undo it. The save says the title is the agent's, so it is listed again and not taken as the person's own.
+    const undone = await call(
+      SAVE,
+      json({
+        baseRev: revisionOf(readDeck()),
+        files: titled("The agent's title"),
+        keepAgent: ["deck/title", 7, "x".repeat(500)],
+      }),
+    );
+    expect(undone.status).toBe(200);
+    const read = loadReviewDir(folder);
+    if (!read.ok || read.review === undefined) throw new Error("the review should be there");
+    expect(reviewChanges(read.review, readDeck()).map((c) => [c.id, c.by])).toEqual([
+      ["deck/title", "agent"],
+    ]);
+    // A save with no such list takes the same edit as the person's, and nothing is left to review.
+    await call(SAVE, json({ baseRev: revisionOf(readDeck()), files: titled("Why channel B now leads") }));
+    const again = await call(
+      SAVE,
+      json({ baseRev: revisionOf(readDeck()), files: titled("The agent's title") }),
+    );
+    expect(again.status).toBe(200);
+    const last = loadReviewDir(folder);
+    if (!last.ok || last.review === undefined) throw new Error("the review should be there");
+    expect(reviewChanges(last.review, readDeck())).toEqual([]);
+  });
+});
+
+describe("the changes a save says are the agent's", () => {
+  it("takes a list of short strings and nothing else", () => {
+    expect(keptAgent("deck/title")).toEqual([]);
+    expect(keptAgent(undefined)).toEqual([]);
+    expect(keptAgent(["deck/title", 7, null, "x".repeat(400)])).toEqual(["deck/title", "x".repeat(400)]);
+    expect(keptAgent(["x".repeat(401)])).toEqual([]);
+  });
+
+  it("takes no more than it can use", () => {
+    const many = Array.from({ length: 600 }, (_, index) => `scene:s${index}`);
+    expect(keptAgent(many)).toEqual(many.slice(0, 500));
   });
 });
 
