@@ -1,10 +1,13 @@
-import type { ApplyOptions, Op } from "@depthcue/core";
+import { type ApplyOptions, type Op, type SlotName, slotsOf } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { createAdder } from "./adder.ts";
 import { createCanvas } from "./canvas.ts";
 import { popoverChip } from "./chip.ts";
-import { listCommands } from "./commands.ts";
+import { afterWhenMoving } from "./cleanup.ts";
+import { createBlockClipboard, type Here } from "./clipboard.ts";
+import { type CommandSources, listCommands } from "./commands.ts";
 import { countsOf } from "./commentview.ts";
+import { createContextMenu } from "./contextmenu.ts";
 import { createCueBook } from "./cues.ts";
 import { type Edits, problemOf } from "./fields.ts";
 import { createLayoutWatch, type LayoutWatch } from "./layout-watch.ts";
@@ -20,6 +23,7 @@ import type { DraftNotice, EditorStore } from "./store.ts";
 import { createStoryboard } from "./storyboard.ts";
 import { checksByScene } from "./storyboardview.ts";
 import { createStrip } from "./strip.ts";
+import { IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
 import { createToolbar } from "./toolbar.ts";
 
 const SAVE_LABEL = {
@@ -301,46 +305,136 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     toolbar: () => toolbar.focus(),
     palette: () => palette.toggle(),
     storyboard: () => storyboard.open(),
+    // The keys of the chosen block. Copy, cut and paste come as events, which carry the clipboard with them.
+    copy: (data, cut) => clip.onCopy(data, cut),
+    paste: (data) => clip.onPaste(data),
+    duplicate(again) {
+      if (selectedBlock === undefined || !isBlock(selectedBlock)) return false;
+      // Held down, the key does nothing more, and the browser's own use of it is still kept off.
+      if (!again) clip.duplicate(selectedBlock);
+      return true;
+    },
+    // Shift+F10 and the Menu key open the menu of the right-click on what the keyboard is on.
+    menu: () => menu.openFromKeyboard(),
   });
-  // Everything the editor can do, found by typing. Each command calls what the buttons call, so it does the same thing,
-  // in the same one undo step, and is listed only while it can be done.
-  const palette = createPalette({
-    commands: () =>
-      listCommands({
-        session,
-        scene: () => selected,
-        block: () => selectedBlock,
-        add: (kind) => void adder.quick(kind),
-        pickImage: () => quick.pickImage(),
-        claim: () => adder.claim(),
-        hasVideo: () => adder.hasVideo(),
-        togglePin: (id) => toolbar.togglePin(id),
-        remove: (id) => toolbar.remove(id),
-        comment: (id) => void canvas.comments?.compose(id),
-        commentsShown: () => canvas.comments?.shown ?? false,
-        showComments: (on) => canvas.comments?.setShown(on),
-        setLead: (lead) => sceneBar.setLead(lead),
-        setLayout: (layout) => sceneBar.setLayout(layout),
-        autoLayout: () => sceneBar.autoLayout(),
-        ribbon,
-        goTo: (id) => select(id),
-        undo: undoNow,
-        redo: redoNow,
-        canUndo: () => store.history.canUndo,
-        canRedo: () => store.history.canRedo,
-        toggleReview: () => {
-          drawer.toggle();
-          renderReview();
-        },
-        reviewOpen: () => drawer.isOpen,
-        storyboard: () => storyboard.open(),
-        save: () => void store.save(),
-        present: () => void window.open(present.href, "_blank", "noopener"),
-        showKeys: () => shortcuts.open(),
-        keysOf: (id) => shortcuts.keysOf(id),
-      }),
-    keyName,
+  // Cut, copy, paste and duplicate of a block. A paste is one more add, so it is one step of Undo like the rest.
+  const clip = createBlockClipboard(session, {
+    scene: () => selected,
+    block: () => selectedBlock,
+    act: (ops) => session.apply(ops),
+    problem: showProblem,
+    remove: (id) => toolbar.remove(id),
+    added(id) {
+      selectBlock(id);
+      canvas.nodeOf(id)?.focus({ preventScroll: true });
+    },
+    room: () => canvas.room(),
   });
+  // The file chooser of "Add an image here", which puts the image into the area the menu was opened over.
+  let imageArea: SlotName | undefined;
+  const imageHere = h("input", {
+    type: "file",
+    accept: IMAGE_ACCEPT,
+    class: "ed-sr-only",
+    tabindex: "-1",
+    "aria-hidden": "true",
+  });
+  imageHere.addEventListener("change", () => {
+    const [file] = imageHere.files ?? [];
+    const area = imageArea;
+    imageHere.value = "";
+    if (!file) return;
+    void (area === undefined ? adder.quick("image", file) : adder.add(area, "image", file));
+  });
+
+  /** A block of the scene on show: the things Cut, Copy and Duplicate are for, which the claim is not. */
+  const isBlock = (id: string) =>
+    session.doc.scenes[selected]?.blocks.some((block) => block.id === id) === true;
+
+  /**
+   * What the commands call on. The palette and the right-click menu list the same commands from the same sources, so
+   * each does the same thing in the same one undo step, and is listed only while it can be done. `here` is set when the
+   * menu was opened on the empty slide: an add or a paste then goes where the pointer was.
+   */
+  function sources(here?: Here): CommandSources {
+    /** The area under the pointer, when it takes a block of that kind. Otherwise the quick bar's own choice is used. */
+    const areaFor = (kind: NewBlockKind): SlotName | undefined => {
+      const scene = session.doc.scenes[selected];
+      const slot = here?.slot;
+      if (!scene || slot === undefined) return undefined;
+      return slotsOf(scene)
+        .find((candidate) => candidate.name === slot)
+        ?.accepts.includes(kind)
+        ? slot
+        : undefined;
+    };
+    return {
+      session,
+      scene: () => selected,
+      block: () => selectedBlock,
+      add(kind) {
+        const area = areaFor(kind);
+        void (area === undefined ? adder.quick(kind) : adder.add(area, kind));
+      },
+      pickImage() {
+        const area = areaFor("image");
+        if (area === undefined) {
+          quick.pickImage();
+          return;
+        }
+        imageArea = area;
+        imageHere.click();
+      },
+      claim: () => adder.claim(),
+      hasVideo: () => adder.hasVideo(),
+      togglePin: (id) => toolbar.togglePin(id),
+      remove: (id) => toolbar.remove(id),
+      comment: (id) => void canvas.comments?.compose(id),
+      cut: (id) => void clip.cut(id),
+      copy: (id) => void clip.copy(id),
+      duplicate: (id) => clip.duplicate(id),
+      paste: () => void clip.paste(here),
+      canPaste: () => clip.canPaste(),
+      moveBlock(id, direction) {
+        const current = session.doc.scenes[selected];
+        if (!current) return;
+        const after = afterWhenMoving(
+          current.blocks.map((block) => block.id),
+          id,
+          direction,
+        );
+        if (after === undefined) return;
+        const result = session.apply([{ op: "block.move", scene: current.id, id, after }]);
+        showProblem(result.ok ? undefined : problemOf(result));
+      },
+      duplicateScene: (id) => strip.duplicate(id),
+      removeScene: (id) => strip.remove(id),
+      moveScene: (id, direction) => strip.move(id, direction),
+      commentsShown: () => canvas.comments?.shown ?? false,
+      showComments: (on) => canvas.comments?.setShown(on),
+      setLead: (lead) => sceneBar.setLead(lead),
+      setLayout: (layout) => sceneBar.setLayout(layout),
+      autoLayout: () => sceneBar.autoLayout(),
+      ribbon,
+      goTo: (id) => select(id),
+      undo: undoNow,
+      redo: redoNow,
+      canUndo: () => store.history.canUndo,
+      canRedo: () => store.history.canRedo,
+      toggleReview: () => {
+        drawer.toggle();
+        renderReview();
+      },
+      reviewOpen: () => drawer.isOpen,
+      storyboard: () => storyboard.open(),
+      save: () => void store.save(),
+      present: () => void window.open(present.href, "_blank", "noopener"),
+      showKeys: () => shortcuts.open(),
+      keysOf: (id) => shortcuts.keysOf(id),
+    };
+  }
+  // Everything the editor can do, found by typing.
+  const palette = createPalette({ commands: () => listCommands(sources()), keyName });
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
   const floor = h("div", { class: "ed-stage" }, stage, quick.element, drawer.element);
@@ -356,6 +450,47 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     palette.element,
     storyboard.element,
   );
+  // The menu of a right-click: on a block or the claim, on the empty slide, and on a scene of the strip. It chooses what
+  // was pointed at first, so what it lists is what the palette would list for that choice.
+  const menu = createContextMenu(root, {
+    stage,
+    strip: strip.element,
+    kindOf(id) {
+      const current = session.doc.scenes[selected];
+      if (current?.summary?.id === id) return "claim";
+      return current?.blocks.some((block) => block.id === id) ? "block" : undefined;
+    },
+    chosen: () =>
+      selectedBlock === undefined ? undefined : { id: selectedBlock, node: canvas.nodeOf(selectedBlock) },
+    commands(pointed) {
+      if (pointed.target === "scene") {
+        if (pointed.id !== undefined && pointed.id !== selected) select(pointed.id);
+        return listCommands(sources());
+      }
+      if (pointed.target === "slide") {
+        selectBlock(undefined);
+        return listCommands(sources({ slot: pointed.slot, at: pointed.at }));
+      }
+      selectBlock(pointed.id);
+      return listCommands(sources());
+    },
+    giveBack(pointed, ran) {
+      if (pointed.target === "slide" || pointed.id === undefined) return;
+      const node =
+        pointed.target === "scene"
+          ? [...strip.element.querySelectorAll<HTMLElement>("button[data-scene]")].find(
+              (candidate) => candidate.dataset.scene === pointed.id,
+            )
+          : canvas.nodeOf(pointed.id);
+      // A text that is open for typing takes the caret back when the menu was dismissed. After an item ran it does
+      // not: the next Ctrl+V would paste words into the text and not a block after it.
+      const typed = node?.matches("[data-edit]") ? node : node?.querySelector<HTMLElement>("[data-edit]");
+      const target = typed ? (ran ? undefined : typed) : node && node.tabIndex >= 0 ? node : undefined;
+      target?.focus({ preventScroll: true });
+    },
+    keyName,
+  });
+  root.append(menu.element, imageHere);
   host.replaceChildren(root);
   // A file dropped anywhere but on an image would open in this tab and take the editor away.
   const refuseFiles = (event: DragEvent) => {
@@ -548,6 +683,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const unsubscribeSession = session.subscribe((event) => {
     // A save changes no content, and the store tells the bar. Redrawing here would rebuild a field mid-keystroke.
     if (event.type === "saved") return;
+    // A menu open when the deck changes under it, such as an agent's edit, lists what was true before it.
+    menu.close();
     ensureSelection();
     renderScenes();
     renderBar();
@@ -602,6 +739,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     select,
     destroy() {
       shortcuts.destroy();
+      menu.destroy();
       palette.destroy();
       layout.destroy();
       ribbon.destroy();

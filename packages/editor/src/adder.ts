@@ -1,6 +1,7 @@
 import {
   type ApplyResult,
   addBlock,
+  type BlockType,
   type Op,
   type Scene,
   type Session,
@@ -41,7 +42,7 @@ export interface Adder {
  * else the first area that holds nothing, else the first area that takes it. Evidence is left out until the slide has
  * a claim to cite it. Undefined when no area takes the kind, which no layout does today.
  */
-export function slotFor(scene: Scene, kind: NewBlockKind, anchor?: string): SlotName | undefined {
+export function slotFor(scene: Scene, kind: BlockType, anchor?: string): SlotName | undefined {
   const open = slotsOf(scene).filter(
     (slot) => slot.accepts.includes(kind) && (slot.name !== "evidence" || scene.summary !== undefined),
   );
