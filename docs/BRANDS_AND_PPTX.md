@@ -326,3 +326,128 @@ Found, not fixed (older than the brand work):
 - **A scene named `constructor` crashes the review.** It passes the id pattern; `diffDocs` and `acceptChanges` read
   `base.scenes[id]` and get Object's constructor, then throw. Location: `packages/core/src/review.ts`, the scene
   lookups at lines 222, 237, 349, 394 and 397. Fix: the `own()` lookup this step added for kits.
+
+## Step 2 record: PowerPoint export
+
+- **Command.** `depthcue export <deck> --format pptx [--out <file.pptx>] [--no-notes] [--json]`; the file is
+  `<deck folder name>.pptx` in the current directory unless `--out` names it. Exit codes: 0 done, 1 the deck has
+  errors, 2 the export could not run. The errors that stop it are `player-not-built`, `no-browser`, `render-failed`,
+  `bad-out`, `out-not-ours`, `out-edited` and `write-failed`. `--json` prints the summary below as data.
+- **How it is made.** The player draws each scene at full reveal in headless Chrome or Edge at 1280 by 720, with
+  animation off and the controls hidden. `measure.ts` reads what the page laid out (the box of each block, panel and
+  picture; the face, size, color, line height and alignment of each text; a chart's series colors) and `build.ts`
+  draws it with pptxgenjs, a dependency of the CLI only. 1 px is 9525 EMU, so the stage is PowerPoint's 13.333 by 7.5
+  inch widescreen slide. Words, marks, links and numbers come from the deck; where and how they sit comes from the
+  page. A slide per scene, in deck order.
+- **What is PowerPoint's own.** Text runs with their marks, links, colors and lists; tables; charts of all six kinds
+  (`bar`, `stacked-bar`, `line`, `area`, `scatter`, `donut`) and the old `bar-chart`, each with its workbook; pictures with their alt text, drawn as PNG when PowerPoint would not show the type; speaker notes
+  (one paragraph per line; `--no-notes` leaves them out, as anyone with the file can read them); the sources as a list
+  of links; panels, rules and dots as shapes. A clip is its poster picture linked to its source, or a labeled box
+  linking to it when there is no poster; it is never embedded.
+- **The report.** The summary has the file, the number of scenes and bytes, the fonts the file names with what each is
+  used for (a viewer needs them installed to see the file as drawn), and for each slide a list of what had no
+  PowerPoint form: the chart explorer, a series told apart by marker shape (color only here), a video that is not
+  embedded, build steps (flattened, so every block shows at once), a picture hanging past the left or top edge (shown
+  whole, inside the slide), content that runs past the slide, a block the player did not draw. One note holds for
+  every slide: scenes change with no transition. Warnings the deck has are carried; errors stop the export.
+- **Overwriting.** The file carries a custom document property `DepthcueExport`, `v1:` and a sha256 digest of its
+  parts. At the output path there is nothing, a file Depthcue wrote and nobody changed, one it wrote and someone has
+  edited since (usually in PowerPoint), or something else. Only the first two are written over; the other two are
+  `out-edited` and `out-not-ours`, and nothing is touched.
+- **Same bytes.** Every date in the file is 2000-01-01, parts are written in one fixed order, the writer's counters
+  and random numbers are normalized, and charts are numbered from 1. The same deck gives the same bytes.
+- **Gaps found in real PowerPoint.** Headings fall back to an installed font when the deck's faces are not installed
+  (step 6 embeds fonts, so this stays until then). PowerPoint refuses a stacked bar chart whose data labels sit
+  outside the bar end, so stacked bars label at `inEnd`. The report warns of content that runs past the slide only
+  where the player's own page does. `panelOf` draws no gradients, shadows, per-side borders or dashed lines.
+
+## Step 4 record: brand import
+
+- **Command.** `depthcue brand import <file.potx|.pptx|.thmx> [--out <dir>] [--json]`. The default folder is
+  `<file name>-brand` in the current directory. It takes no other option. Exit codes: 0 done; 1 the file has no theme
+  with a color scheme, no layout that can be a template, or slides that are portrait (or, a fault in the import, the
+  brand it made failed the brand checks, and nothing was written); 2 the file could not be read, or the folder could
+  not be written. The refusals that exit 2 are `bad-file`, `unreadable`, `out-is-file`, `out-not-ours`, `out-in-source`
+  and `write-failed`. `--json` prints the report as data; without it the report is printed as lines.
+- **Reading.** A `.potx`, `.pptx` or `.thmx` is a zip of XML parts, read with jszip (already a dependency, none added)
+  and a small XML reader of its own that refuses a DOCTYPE, nesting past 100, more than 4000 parts, an XML part
+  over 16 MB and a picture over 64 MB. A file over 256 MB is refused before it is read. The old `.ppt`, `.pot` and
+  `.thm` are not zips and are refused with a word about that. A `.pptx` takes the master its first slide uses (the
+  first listed when it has no slide); a `.thmx` takes the theme and, when it has them, the master and layouts under
+  `theme/`. A `.thmx` with no layouts imports as a theme alone: colors and fonts, no templates. Slides, other masters
+  and theme variants are counted in the report and not imported.
+- **Colors.** The master's background says the preset: a dark one is `ink`, any other `paper`, and only that preset's
+  palette is written, which is why the report says to set `"theme"` in deck.json to it. Each name takes the theme
+  color that does the same job: `bg` the master's background when it is a plain color, else the theme's background;
+  `surface` the second background (the first, when the master already uses the second); `text` and `muted` the two
+  text colors; `evidence` the hyperlink color; `action` the first of accent 1 to 6 that reaches 3:1 on both `bg` and
+  `surface` (accent 1 when none does); `line` is worked out, 14% of the way from `bg` to `text`. The chart colors are
+  the accents in order that reach 3:1 on `bg`, no repeats, up to six, and none when no accent does. A background that
+  is lightened, darkened, a gradient or a picture is not worked out: the theme's own background color is used and the
+  report says so.
+- **Colors that fail.** A theme color that would fail a contrast rule is not written. The text side of the failing
+  pair goes back to the preset's color first, so a background the theme chose stays when the preset's text reads on
+  it; each pass sends one color back; then every color sent back is tried again with the theme's value, and kept if
+  the palette passes. The report gives each one: the theme color and where it came from, the ratio it had, the ratio
+  it needed, and the preset color used. The rules are the pairs of core's `checkBrandColors`, and a test compares the
+  two on 400 random palettes. Many themes keep the preset's `evidence` for this reason (the hyperlink color fails 4.5:1).
+- **Fonts.** The theme's heading and body Latin fonts become the display and body faces by family name, with no
+  files, so no `license`. The fallback is `classic` when the display face is a serif and `modern` otherwise; a face is
+  a serif or a sans by its PANOSE number when that says, else by its name, else a sans is assumed, and the report
+  names the rule for each. A name a brand cannot carry (a quote, brace or semicolon, or over 64 characters) is not used.
+  Font files embedded in the file (`.fntdata`, Embedded OpenType, often licensed for that one file) are named in the
+  report and never copied.
+- **Logo.** The candidates are the pictures on the master, or else those on the title layout. A logo is not rotated,
+  not over 20% of the slide, not within 0.5% of a slide edge (artwork bleeds off the edge, as Ion's ribbons do; a logo
+  is set in), and has its center in the outer 35% of the slide across and down; of those the smallest is the logo, and
+  another is never put in its place. Its size is the nearest of `s`, `m` and `l`, which stand for 5%, 8% and 12% of
+  the slide's height (`SIZE_HEIGHTS` in `logo.ts`, the one place to change if the player's sizes differ). A PNG or SVG is
+  kept as it is, in `logos/logo.png` or `logos/logo.svg`, under `logos.light` for paper and `logos.dark` for ink; an
+  SVG with a script or an outside reference is refused. A JPEG goes unchanged inside an SVG, because a brand's logo is
+  an SVG or a PNG and nothing here decodes a JPEG. EMF, WMF, GIF and unknown formats are refused, with the reason
+  and what to do. The alt text is the picture's own, else its name when that says "logo", else "<brand> logo".
+- **Chrome.** The logo's corner and size; the footer's words and place, from the master's footer placeholder or else
+  the first layout's or slide's that has words (cut at 120 characters; the place is the third of the slide it sits
+  in); the slide number's place when the placeholder is a number field or empty. The date placeholder is reported and
+  not taken. There is no accent bar.
+- **Templates.** Each layout is a template, with the id its name makes (a slug; `-2`, `-3` when taken) and the
+  placeholders as slots: `title` and `ctrTitle` a title slot taking a heading, `subTitle` a subtitle and `body` a body
+  (text), `pic` a picture, `chart` a chart, `tbl` a table, and `obj` and any other type a `content` slot, which takes
+  any block. Date, footer, slide number, header and slide image placeholders are chrome, not slots. A slot's frame is
+  in percent of the slide, from the layout or else from the master's placeholder of the same family and index; its
+  `valign` is the placeholder's anchor; its hint is the placeholder's prompt text unless that is PowerPoint's stock
+  "Click to edit"; the title slot is required. A slot that passes a slide edge by 0.5% or less is trimmed to the edge
+  and reported (Office's own picture layouts run to 100.13%). A layout's background is `bg`, `surface`, `text`,
+  `action` or `evidence` when its solid color is exactly one of the brand's, a picture (copied to `images/`, with a
+  scrim of 65), or reported and left out. A layout that hides the master's shapes is `chrome: "none"`. No imported
+  template has a claim slot, because PowerPoint has no placeholder for one; the report says so.
+- **Layouts that are not templates.** Each is listed with its reason, and none is bent to fit: a placeholder with
+  vertical text (Depthcue does not draw it), no placeholder, more than 12, a slot lying off the slide, or two slots
+  that share more than 1% of the slide across and down. Slots sharing 1% or less are touching, and are kept at their
+  frames, so core's `slots-overlap` warning still shows for them (Office's Comparison layout). A file where no layout
+  can be a template exits 1 with the reasons. Everything else that is not taken is listed too: shapes and pictures on
+  the master and layouts, the master's text styles, the date, embedded fonts, slides, other masters, theme variants.
+- **Slides that are not 16:9.** A 4:3 or other landscape file is imported with each frame kept as its share of the
+  slide, which stretches the slide to 16:9 with it; the report says so. A portrait file exits 1 and says how to fix it.
+- **Checked before written.** The brand and every template are checked as a deck would check them (`checkBrandFile`,
+  `checkTemplateFile`, `checkBrand` with the brand's files) before any file is written. An error means nothing is
+  written and the result is `brand-invalid`. The warnings are the report's: a face with no files (always, since fonts
+  are by name), overlapping slots, and the like.
+- **The folder.** The brand is `brand.json`, `templates/<id>.json`, `logos/` and `images/`, and `.depthcue-brand-import`,
+  a marker `{ "format": "depthcue-brand-import/1", "files": [...] }` that lists what was written. Importing again into
+  a folder that has the marker replaces exactly the listed files and removes the ones the new import does not make;
+  a folder with other files in it, or one that holds the source file, is refused with nothing touched, and a file that
+  cannot be imported leaves the earlier import alone. The report's `files` includes the marker. Copied into a deck as
+  `brand/`, the marker is harmless: `depthcue check` ignores it, and a test holds that.
+- **Decisions the brief left open.** The 1% touching tolerance and the 0.5% edge trim above, which came from Office's
+  own layouts; skipping vertical text; the logo's edge and size rules; the JPEG in an SVG; refusing EMF and WMF rather
+  than converting them; the restoring pass over colors sent back; taking a `.thmx` with no layouts as a theme alone;
+  the marker listing itself in `files`; never making a claim slot; scaling a 4:3 file rather than refusing it.
+- **Checked by hand.** All 43 `.thmx` files in PowerPoint's `Document Themes 16` import with no failure and no
+  `brand-invalid`, 802 templates in all. Office Theme, Retrospect and Ion were imported into a scratch folder, built
+  into decks and checked, and a contact sheet of each brand's slot frames was looked at. The player does not draw
+  template frames, fonts or chrome until step 3, so the rendered slides show the labeled slot boxes, and the look of
+  an imported brand on a slide is still to be checked after that step.
+- **Known limits.** No stock Office theme has a logo, so the logo path is tested with generated files only. The Ion-style
+  rule can still take artwork for a logo, or miss a logo set against the edge. The 34 layouts with East Asian
+  vertical text in the 43 local themes are skipped. Theme fonts are names only: a viewer without them sees the fallback pair.
