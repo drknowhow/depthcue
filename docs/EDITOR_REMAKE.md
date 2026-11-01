@@ -196,7 +196,8 @@ The top bar has a Review button. It reads "Agent changed 3" while the agent has 
 when only hand edits are waiting, and "Reviewed" when nothing is. It opens a drawer over the right of the stage with a
 row for each change: where it is, the old value struck out, the new value marked, and Accept and Revert. Accept all is at
 the top, and Esc closes the drawer. A scene with changes shows a "Changed" mark on its thumbnail, and its name for a
-screen reader gives the count. The palette has a command for the drawer too.
+screen reader gives the count. The palette has a command for the drawer too. In a window narrower than 1280 px the
+button is left out while there is nothing to review, so the top bar keeps room for the deck's title.
 
 The editor works the list out itself from the review file and the deck in the page, so an edit, an Undo or the agent's
 next write shows at once. Edits the person has not saved yet are left out, because saving copies them into the review.

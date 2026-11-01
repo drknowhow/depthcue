@@ -2700,6 +2700,8 @@ describe("comments in a real browser", () => {
       expect(bar.sideways).toBe(false);
       expect(bar.deck).toBeGreaterThan(60);
       expect(bar.lastEdge).toBeLessThanOrEqual(width);
+      // With nothing to review, the Review button is left out of a narrow bar, which keeps the room for the title.
+      expect(await page.locator("[data-action='review']").isVisible()).toBe(width >= 1280);
       // The quick bar is still one row of buttons, not a stack.
       expect(bar.quick).toBeLessThan(bar.one * 2);
       expect(await topButton().locator(".ed-count").textContent()).toBe("1");

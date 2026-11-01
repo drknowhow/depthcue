@@ -1316,6 +1316,11 @@ body {
     clip-path: inset(50%);
     white-space: nowrap;
   }
+
+  /* With nothing to review the button has nothing to say, so the bar keeps its room; the palette still opens the drawer. */
+  .ed-app .ed-actions [data-action="review"][data-state="clear"][aria-expanded="false"] {
+    display: none;
+  }
 }
 
 /*
