@@ -162,6 +162,20 @@ describe("upgrading a scene to 0.3", () => {
     expect(textOf(result.doc, "share", "share-note")).toBe("\\*\\*Preliminary\\*\\*, not audited");
   });
 
+  it("happens to each scene on its own, so one transaction may upgrade one scene and leave another", () => {
+    const doc = load(v02Dir);
+    const result = success(
+      run(doc, [
+        { op: "block.set", scene: "intro", id: "intro-title", set: { tone: "muted" } },
+        { op: "scene.set", id: "share", set: { title: "Share of all orders" } },
+      ]),
+    );
+    expect(result.changed).toEqual(["intro", "share"]);
+    expect(result.doc.scenes.intro?.schemaVersion).toBe("0.3");
+    expect(result.doc.scenes.share?.schemaVersion).toBe("0.1");
+    expect(textOf(result.doc, "share", "share-note")).toBe("**Preliminary**, not audited");
+  });
+
   it("happens to a scene added at an older version with a 0.3 part", () => {
     const doc = load(v02Dir);
     const added = {
@@ -187,6 +201,38 @@ describe("upgrading a scene to 0.3", () => {
     expect(success(run(doc, [{ op: "deck.set", set: { language: "de" } }])).doc.deck.schemaVersion).toBe(
       "0.2",
     );
+  });
+});
+
+describe("markup", () => {
+  it("is read only in a text block's text: a table cell and an image caption stay literal", () => {
+    const older = scene({
+      schemaVersion: "0.2",
+      blocks: [
+        { id: "a-text", type: "text", role: "body", text: "**x**" },
+        { id: "a-image", type: "image", asset: "assets/a.png", alt: "**x**", caption: "**x**" },
+      ],
+    }) as unknown as Scene;
+    const table = {
+      id: "a-table",
+      type: "table",
+      title: "**x**",
+      columns: [{ label: "**x**" }],
+      rows: [["**x**"]],
+    };
+    const doc: Doc = {
+      deck: { ...load(v02Dir).deck, scenes: ["demo-scene"] },
+      scenes: { "demo-scene": older },
+      assets: new Set(["assets/a.png"]),
+    };
+    const result = success(run(doc, [{ op: "block.add", scene: "demo-scene", block: table }]));
+    const after = result.doc.scenes["demo-scene"] as Scene;
+    expect(after.schemaVersion).toBe("0.3");
+    // The text block is escaped to keep its meaning; nothing else is markup, so nothing else changes.
+    expect(after.blocks[0]).toMatchObject({ text: "\\*\\*x\\*\\*" });
+    expect(after.blocks[1]).toEqual(older.blocks[1]);
+    expect(after.blocks[2]).toEqual(table);
+    expect(checkScene(after, "scenes/demo-scene.json")).toEqual([]);
   });
 });
 

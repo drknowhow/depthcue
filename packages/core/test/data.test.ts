@@ -36,7 +36,7 @@ const chart = (extra: Record<string, unknown> = {}) => ({
   id: "a-chart",
   type: "chart",
   kind: "line",
-  columns: [{ label: "Quarter" }, { label: "A" }, { label: "B", color: "evidence" }],
+  columns: [{ label: "Quarter" }, { label: "A" }, { label: "B", unit: "%" }],
   rows: [
     ["Q1", 1, 2],
     ["Q2", 3, null],
@@ -53,7 +53,7 @@ describe("tables and charts in the schema", () => {
     }
   });
 
-  it("refuse a chart with no series, an unknown kind, a series color that is not a tone and an empty cell", () => {
+  it("refuse a chart with no series, an unknown kind, a stored series color and an empty cell", () => {
     expect(codes(checkScene(sceneWith(chart({ columns: [{ label: "Only" }] })), "x.json"))).toContainEqual([
       "too-few",
       "/blocks/0/columns",
@@ -62,9 +62,10 @@ describe("tables and charts in the schema", () => {
       "bad-value",
       "/blocks/0/kind",
     ]);
-    const colored = chart({ columns: [{ label: "Q" }, { label: "A", color: "bg" }] });
+    // A series takes its color from the deck's palette by position, so a stored one is an unknown field, not dropped.
+    const colored = chart({ columns: [{ label: "Q" }, { label: "A", color: "action" }] });
     expect(codes(checkScene(sceneWith(colored), "x.json"))).toContainEqual([
-      "bad-value",
+      "unknown-property",
       "/blocks/0/columns/1/color",
     ]);
     expect(codes(checkScene(sceneWith(table({ rows: [["", 1]] })), "x.json"))).toContainEqual([

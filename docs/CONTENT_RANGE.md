@@ -34,9 +34,10 @@ duplicate.
    right alignment. Stored as a small Markdown subset inside the text (`**bold**`, `*italic*`, `[text](https://...)`,
    `[text]{action}`), which agents already write well and which diffs cleanly. Core turns it into DOM nodes, never
    into HTML, and links may only be https or mailto. Length limits count what the audience sees.
-6. **Chart types.** Bar, stacked bar, line, area, scatter and donut (up to 6 parts), with up to 6 series colored
-   from the palette, edited in the step 4 grid and switched from the right-click menu. Every chart carries its data
-   as a table for screen readers.
+6. **Chart types.** Bar, stacked bar, line, area, scatter and donut (up to 6 parts), with up to 6 series, edited in
+   the step 4 grid and switched from the right-click menu. A 0.3 file stores no series color: the chart derives each
+   one from the deck's palette by series position, the same way every time. Every chart carries its data as a table
+   for screen readers.
 7. **Close-out.** The demo deck uses each new feature. Guides, changelog, budgets, bench, and a walkthrough at 1440
    and 1024 wide.
 
@@ -90,8 +91,9 @@ Who does what:
   `align-needs-version`, `table-needs-version`, `chart-needs-version`, `palette-needs-version`,
   `fonts-needs-version`. Markup an operation writes into an older scene gets the warning `text-is-literal`.
 - **Colors.** `state` and `on-state` are not in the palette: they mark live, current and done in Depthcue's own
-  controls, never on a slide. The tones also color a `[label]{tone}` span and a chart series. `styleOf(deck)` resolves
-  the preset, the palette and the font pair (`editorial` when unset).
+  controls, never on a slide. The tones also color a `[label]{tone}` span. They are foreground roles with contrast
+  duties, not a data palette, so a chart column takes no color; a stored override can come later as an added field.
+  `styleOf(deck)` resolves the preset, the palette and the font pair (`editorial` when unset).
 - **Contrast codes.** `palette-low-contrast` (deck.json): `text`, `muted` and `evidence` need 4.5:1 on `bg` and on
   `surface`, since the player draws body text, captions and source links in them; `action` needs 3:1.
   `tone-low-contrast` (scene): a tone on text that is not large needs 4.5:1 on both. Large text is a heading or size
@@ -100,6 +102,11 @@ Who does what:
   by the space next to it alone, so italic works inside a word, and what is left of a star run after it pairs counts
   as its own run. `serializeText` writes a tree back in one canonical form; a fuzz test holds that what it writes reads
   back with the same marks and is stable.
+- **Markup scope.** Markup is read only in a text block's `text` in a scene of 0.3 or later. Every other string
+  (titles, image captions, alt text, table cells, column labels, units, source labels, notes) is always literal.
+- **Compatibility.** A Depthcue that does not know a file's version refuses the file and writes nothing. Unknown
+  fields are rejected, never dropped. Each scene upgrades on its own, when it gains a 0.3 field or through
+  `scene.upgrade`, so one transaction may upgrade some scenes and leave others.
 - **Length.** The limits per role count what the audience sees in 0.3 (`too-long` says "as shown"), and text that
   shows nothing is `too-short`. The stored length is capped at more than twice that (heading 240, body 1600, caption
   400, quote 800), so an upgraded text always fits.
@@ -120,3 +127,11 @@ Who does what:
 
 Raw hex colors on a single block, uploading your own fonts, per-block animation, bring-to-front and send-to-back
 (block order is reading order), donut charts beyond 6 parts, editable PPTX export (0.7 in `docs/PLAN.md`).
+
+Declined in review:
+
+- Stable ids for table rows and columns: data cells are edited as whole rows with `block.set`, and optional ids can
+  be added later without breaking decks.
+- A list block instead of `- ` lines: agents write markdown lists well, and a list block can be added later without
+  breaking anything.
+- Row-level and cell-level provenance: it belongs to the 0.4 data module in `docs/PLAN.md`.

@@ -41,6 +41,17 @@ describe("a table or a chart, which the player does not draw yet", () => {
     expect(second?.querySelector("figcaption")).toBeNull();
   });
 
+  it("shows its title as written, like a caption, since markup is read only in a text block's text", () => {
+    const image = { id: "t-image", type: "image", asset: "assets/a.png", alt: "A", caption: "**x**" };
+    const section = renderScene(
+      sceneWith({ schemaVersion: "0.3", blocks: [{ ...table, title: "**x**" }, image] }),
+      ctx,
+    );
+    expect(section.querySelector(".dc-placeholder figcaption")?.textContent).toBe("**x**");
+    expect(section.querySelector("[data-id='t-image'] figcaption")?.textContent).toBe("**x**");
+    expect(section.querySelector("strong")).toBeNull();
+  });
+
   it("takes part in steps and frames like any block", () => {
     const section = renderScene(
       sceneWith({

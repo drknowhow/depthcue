@@ -660,14 +660,6 @@
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 16
-                    },
-                    "color": {
-                      "enum": [
-                        "text",
-                        "muted",
-                        "action",
-                        "evidence"
-                      ]
                     }
                   }
                 }

@@ -45,8 +45,9 @@ export const THEME_COLORS = [
  */
 export const PALETTE_COLORS = ["bg", "surface", "line", "text", "muted", "action", "evidence"] as const;
 /**
- * The palette colors that may color text, by a text block's `tone` or a `[label]{tone}` span, and a chart's series.
- * The backgrounds and the line color are not among them: text in those would sit on itself.
+ * The palette colors that may color text, by a text block's `tone` or a `[label]{tone}` span. They are roles with
+ * contrast duties, not a palette for data: a chart's series colors are not stored, and come from the deck's palette
+ * by series position. The backgrounds and the line color are not tones: text in those would sit on itself.
  */
 export const TONES = ["text", "muted", "action", "evidence"] as const;
 /** The four font pairs a deck may choose. `editorial` is Instrument Serif with Space Grotesk, the default. */
@@ -227,7 +228,8 @@ const tableBlock = {
 
 /**
  * A chart. Its data has the shape of a table's, so one grid edits both and a change of `kind` keeps it: the first
- * column holds the categories (for a scatter, the x numbers), and each column after it is a series of numbers.
+ * column holds the categories (for a scatter, the x numbers), and each column after it is a series of numbers. A
+ * series has no stored color: the player gives it one from the deck's palette by its position.
  */
 const chartBlock = {
   type: "object",
@@ -247,7 +249,7 @@ const chartBlock = {
         type: "object",
         additionalProperties: false,
         required: ["label"],
-        properties: { label: columnLabel, unit: dataUnit, color: { enum: TONES } },
+        properties: { label: columnLabel, unit: dataUnit },
       },
     },
     rows: rows(2, DATA_LIMITS.series + 1),

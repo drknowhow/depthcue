@@ -15,11 +15,7 @@
       "kind": "bar",
       "title": "Share of orders by quarter",
       "unit": "%",
-      "columns": [
-        { "label": "Quarter" },
-        { "label": "Channel A", "color": "muted" },
-        { "label": "Channel B", "color": "action" }
-      ],
+      "columns": [{ "label": "Quarter" }, { "label": "Channel A" }, { "label": "Channel B" }],
       "rows": [["Q1", 55, 45], ["Q2", 48, 52], ["Q3", 40, 60]],
       "sourceIds": ["data-source"]
     },
