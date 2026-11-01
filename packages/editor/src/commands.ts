@@ -31,6 +31,12 @@ export interface CommandSources {
   goTo(sceneId: string): void;
   undo(): void;
   redo(): void;
+  /** Whether there is something to undo or redo. Without these, the session's own answer: only edits count. */
+  canUndo?(): boolean;
+  canRedo?(): boolean;
+  /** Opens the drawer of the changes since the last review, or closes it. */
+  toggleReview?(): void;
+  reviewOpen?(): boolean;
   save(): void;
   present(): void;
   showKeys(): void;
@@ -199,10 +205,20 @@ export function listCommands(from: CommandSources): Command[] {
     });
   });
 
-  if (session.canUndo)
+  if (from.canUndo?.() ?? session.canUndo)
     add({ id: "undo", title: "Undo", group: "Everywhere", keys: from.keysOf("undo"), run: from.undo });
-  if (session.canRedo)
+  if (from.canRedo?.() ?? session.canRedo)
     add({ id: "redo", title: "Redo", group: "Everywhere", keys: from.keysOf("redo"), run: from.redo });
+  const toggleReview = from.toggleReview;
+  if (toggleReview) {
+    add({
+      id: "review",
+      title: from.reviewOpen?.() ? "Close the changes" : "Review the changes since the last review",
+      group: "Everywhere",
+      words: "agent accept revert diff drawer",
+      run: toggleReview,
+    });
+  }
   add({ id: "save", title: "Save now", group: "Everywhere", keys: from.keysOf("save"), run: from.save });
   add({
     id: "present",

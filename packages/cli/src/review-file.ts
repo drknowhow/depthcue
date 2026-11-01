@@ -76,14 +76,15 @@ export function recordAgentWrite(dir: string, before: Doc, after: Doc): Diagnost
  * A person wrote the deck, `before` to `after`: what they changed is theirs, so it is folded into the reviewed deck
  * and never shows up as a change to review. Without a review there is nothing to fold into. A review that cannot be
  * updated is left alone: the person's save happened, and what it changed shows as made outside the agent's tools
- * until someone accepts it.
+ * until someone accepts it. `keep` names changes the editor says are the agent's still, for a save that undoes a
+ * revert: they are not folded in.
  */
-export function recordPersonWrite(dir: string, before: Doc, after: Doc): void {
+export function recordPersonWrite(dir: string, before: Doc, after: Doc, keep: readonly string[] = []): void {
   if (revisionOf(before) === revisionOf(after)) return;
   try {
     const read = loadReviewDir(dir);
     if (!read.ok || read.review === undefined) return;
-    const next = foldEdit(read.review, before, after);
+    const next = foldEdit(read.review, before, after, keep);
     if (reviewRevision(next) !== reviewRevision(read.review)) saveReviewDir(dir, read.review, next);
   } catch {
     // The deck is saved; see above for what a late review looks like.

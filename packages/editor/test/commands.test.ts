@@ -342,4 +342,29 @@ describe("everywhere", () => {
     get("redo").run();
     expect(calls.redo).toHaveBeenCalledTimes(1);
   });
+
+  it("asks the editor, and not the session, whether there is something to undo or redo when it can say", () => {
+    // An accepted change is something to undo although the deck did not change.
+    let steps = { undo: false, redo: false };
+    supplied = { ...supplied, canUndo: () => steps.undo, canRedo: () => steps.redo };
+    expect(ids()).not.toContain("undo");
+    steps = { undo: true, redo: true };
+    expect(ids()).toContain("undo");
+    expect(ids()).toContain("redo");
+    store.session.apply([{ op: "scene.set", id: "method", set: { notes: "x" } }]);
+    steps = { undo: false, redo: false };
+    expect(ids()).not.toContain("undo");
+  });
+
+  it("offers the drawer of changes when the editor has one, worded for whether it is open", () => {
+    expect(ids()).not.toContain("review");
+    const toggle = vi.fn();
+    let open = false;
+    supplied = { ...supplied, toggleReview: toggle, reviewOpen: () => open };
+    expect(get("review").title).toBe("Review the changes since the last review");
+    open = true;
+    expect(get("review").title).toBe("Close the changes");
+    get("review").run();
+    expect(toggle).toHaveBeenCalledTimes(1);
+  });
 });

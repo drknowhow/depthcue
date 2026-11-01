@@ -1277,6 +1277,7 @@ body {
  * The two comment buttons of the top bar: an icon, the words while the window has room for them, and a count. In a
  * narrow window the words are left to assistive technology and the tooltip, so the bar keeps room for the deck's title.
  */
+.ed-app .ed-actions [data-action="review"],
 .ed-app .ed-actions [data-action="comments"],
 .ed-app .ed-actions [data-action="resolved"] {
   gap: var(--dc-space-2);
@@ -1299,11 +1300,13 @@ body {
 }
 
 @media (max-width: 1279px) {
+  .ed-app .ed-actions [data-action="review"],
   .ed-app .ed-actions [data-action="comments"],
   .ed-app .ed-actions [data-action="resolved"] {
     gap: var(--dc-space-1);
   }
 
+  .ed-actions [data-action="review"] .ed-bar-words,
   .ed-actions [data-action="comments"] .ed-bar-words,
   .ed-actions [data-action="resolved"] .ed-bar-words {
     position: absolute;
@@ -1362,6 +1365,187 @@ body {
   color: var(--dc-text);
 }
 
+/* The Review button asks for a look while the agent has changes nobody has answered. */
+.ed-app .ed-actions [data-action="review"][data-state="changed"] {
+  border-color: var(--dc-action);
+}
+
+.ed-actions [data-action="review"] .ed-count:not(:empty) {
+  background: var(--dc-action);
+}
+
+.ed-icon-review {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3.5h5M5.5 1v5M3 12.5h5M10.5 5h3M10.5 9h3M10.5 12.5h3'/%3E%3C/svg%3E");
+}
+
+.ed-icon-close {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M3.5 3.5l9 9M12.5 3.5l-9 9'/%3E%3C/svg%3E");
+}
+
+/*
+ * The drawer of changes over the right of the stage: a row for each change with where it is, what it was struck out
+ * and what it is marked, and the two answers. On a phone it is a sheet at the foot of the screen.
+ */
+.ed-review {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  width: min(22rem, 100%);
+  border-left: 1px solid var(--dc-line);
+  background: var(--dc-surface);
+  box-shadow: -0.75rem 0 1.5rem -1rem color-mix(in srgb, var(--dc-text) 45%, transparent);
+}
+
+.ed-review[hidden] {
+  display: none;
+}
+
+.ed-review:focus-visible {
+  outline-offset: -3px;
+}
+
+.ed-review-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--dc-space-2);
+  padding: var(--dc-space-3) var(--dc-space-4);
+  border-bottom: 1px solid var(--dc-line);
+}
+
+.ed-review-head h2 {
+  flex: 1;
+  margin: 0;
+  font-family: var(--dc-font-display);
+  font-size: 1.125rem;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.ed-review-count {
+  color: var(--dc-muted);
+  font: 600 0.8125rem / 1 var(--dc-font-mono);
+}
+
+.ed-app .ed-review-head button[data-action="close-review"] {
+  padding-inline: var(--dc-space-2);
+}
+
+.ed-app .ed-review-problem {
+  margin: var(--dc-space-3) var(--dc-space-4) 0;
+}
+
+.ed-review-empty {
+  margin: 0;
+  padding: var(--dc-space-4);
+  color: var(--dc-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.ed-review-empty[hidden] {
+  display: none;
+}
+
+.ed-review-list {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.ed-ri {
+  display: grid;
+  gap: var(--dc-space-2);
+  padding: var(--dc-space-3) var(--dc-space-4);
+  border-bottom: 1px solid var(--dc-line);
+}
+
+.ed-ri-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--dc-space-2);
+}
+
+.ed-ri-where {
+  min-width: 0;
+  color: var(--dc-muted);
+  font: 600 0.6875rem / 1.4 var(--dc-font-mono);
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.ed-app button.ed-ri-where {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dc-muted);
+  font: 600 0.6875rem / 1.4 var(--dc-font-mono);
+  text-align: left;
+}
+
+.ed-app button.ed-ri-where:hover:not(:disabled) {
+  color: var(--dc-text);
+  text-decoration: underline;
+}
+
+.ed-ri-by {
+  flex-shrink: 0;
+  padding: 0 0.5em;
+  border: 1px solid var(--dc-line);
+  border-radius: 999px;
+  color: var(--dc-muted);
+  font: 600 0.6875rem / 1.25rem var(--dc-font-mono);
+  text-transform: uppercase;
+}
+
+.ed-df {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ed-df s {
+  color: var(--dc-muted);
+}
+
+.ed-df mark {
+  padding: 0 0.15em;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--dc-evidence) 24%, transparent);
+  color: inherit;
+}
+
+.ed-acts {
+  display: flex;
+  gap: var(--dc-space-2);
+}
+
+.ed-app .ed-acts button {
+  min-height: 2rem;
+}
+
+@media (max-width: 760px) {
+  .ed-review {
+    position: fixed;
+    inset: auto 0 0;
+    width: auto;
+    max-height: 70dvh;
+    border-top: 1px solid var(--dc-line);
+    border-left: 0;
+  }
+}
+
 /* The same count on a scene's thumbnail, in the lower corner; the scene's own buttons are in the upper one. */
 .ed-scene-notes {
   position: absolute;
@@ -1382,6 +1566,25 @@ body {
 }
 
 .ed-scene-notes[hidden] {
+  display: none;
+}
+
+/* A scene with changes nobody has answered says so on its picture, in the lower corner the count of comments leaves free. */
+.ed-scene-changed {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  padding: 0 0.5em;
+  border-radius: 999px;
+  background: var(--dc-action);
+  color: var(--dc-bg);
+  font: 600 0.6875rem / 1.25rem var(--dc-font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.ed-scene-changed[hidden] {
   display: none;
 }
 

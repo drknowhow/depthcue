@@ -1,4 +1,4 @@
-import type { Comment, CommentOp, Cue } from "@depthcue/core";
+import type { Comment, CommentOp, Cue, Review } from "@depthcue/core";
 
 export interface ApiDiagnostic {
   code: string;
@@ -61,10 +61,32 @@ export type CommentsSaveResult =
   | { ok: false; kind: "stale"; rev: string; message: string }
   | { ok: false; kind: "rejected" | "failed"; message: string };
 
+/**
+ * The review beside the deck as the server has it: the deck as it was last reviewed, and the ids of the changes the
+ * agent made. `rev` is the revision to send back as the base of the next write, and `review` is undefined when nobody
+ * has started a review. A file that is not valid, or a server that cannot be reached, is `ok: false` with the reason,
+ * and the editor then lists no changes and writes nothing.
+ */
+export type ReviewAnswer =
+  | { ok: true; rev: string; review: Review | undefined }
+  | { ok: false; message: string };
+
+export type ReviewSaveResult =
+  | { ok: true; rev: string; review: Review }
+  /** The review changed on disk after the editor read it; `rev` is what is there now. */
+  | { ok: false; kind: "stale"; rev: string; message: string }
+  | { ok: false; kind: "rejected" | "failed"; message: string };
+
+/** Sent with a save: what the review needs to know that the files alone do not say. */
+export interface SaveOptions {
+  /** Changes the person reverted and then undid, so the server marks them as the agent's again and not as the person's. */
+  keepAgent?: readonly string[];
+}
+
 /** What the editor needs from the server. A test can stand in for it. */
 export interface Api {
   loadDeck(): Promise<DeckPayload>;
-  save(files: Record<string, string>, baseRev: string): Promise<SaveResult>;
+  save(files: Record<string, string>, baseRev: string, options?: SaveOptions): Promise<SaveResult>;
   /** Adds an image and returns its deck path, such as "assets/photo-1a2b3c4d.png". */
   uploadAsset(file: Blob, name: string): Promise<string>;
   /** The cues of a clip, named by its deck path such as "assets/intro.mp4". */
@@ -77,6 +99,10 @@ export interface Api {
   loadComments(): Promise<CommentsAnswer>;
   /** Applies comment operations, all or none, against the revision the editor last read. */
   saveComments(ops: readonly CommentOp[], baseRev: string): Promise<CommentsSaveResult>;
+  /** The review of the deck. Never rejects: a failure is `ok: false`. */
+  loadReview(): Promise<ReviewAnswer>;
+  /** Replaces the review, against the revision the editor last read. `"none"` is the revision of no review at all. */
+  saveReview(review: Review, baseRev: string): Promise<ReviewSaveResult>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -116,13 +142,14 @@ export function createApi(token: string, send: typeof fetch = (...args) => fetch
       return answer as unknown as DeckPayload;
     },
 
-    async save(files, baseRev) {
+    async save(files, baseRev, options = {}) {
       let response: Response;
+      const keepAgent = options.keepAgent ?? [];
       try {
         response = await call("save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ baseRev, files }),
+          body: JSON.stringify({ baseRev, files, ...(keepAgent.length > 0 ? { keepAgent } : {}) }),
         });
       } catch {
         return {
@@ -228,6 +255,52 @@ export function createApi(token: string, send: typeof fetch = (...args) => fetch
         ok: false,
         kind: response.status === 422 ? "rejected" : "failed",
         message: first ? `${first.message}${first.fix ? ` ${first.fix}` : ""}` : messageOf(answer, response),
+      };
+    },
+
+    async loadReview() {
+      try {
+        const response = await call("review");
+        const answer = await body(response);
+        if (response.ok && typeof answer.rev === "string") {
+          return {
+            ok: true,
+            rev: answer.rev,
+            review: isRecord(answer.review) ? (answer.review as unknown as Review) : undefined,
+          };
+        }
+        return { ok: false, message: messageOf(answer, response) };
+      } catch {
+        return { ok: false, message: "The editor could not reach the server." };
+      }
+    },
+
+    async saveReview(review, baseRev) {
+      let response: Response;
+      try {
+        response = await call("review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseRev, review }),
+        });
+      } catch {
+        return {
+          ok: false,
+          kind: "failed",
+          message: "The editor could not reach the server. Is `depthcue edit` still running?",
+        };
+      }
+      const answer = await body(response);
+      if (response.ok && typeof answer.rev === "string" && isRecord(answer.review)) {
+        return { ok: true, rev: answer.rev, review: answer.review as unknown as Review };
+      }
+      if (response.status === 409) {
+        return { ok: false, kind: "stale", rev: String(answer.rev), message: messageOf(answer, response) };
+      }
+      return {
+        ok: false,
+        kind: response.status === 422 ? "rejected" : "failed",
+        message: messageOf(answer, response),
       };
     },
   };

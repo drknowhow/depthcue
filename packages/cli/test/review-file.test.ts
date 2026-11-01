@@ -383,6 +383,40 @@ describe("a server leaves the review alone", () => {
       listener.destroy();
     }
   });
+
+  it("tells an editor that asked about the review, on an event of its own and for nothing else", async () => {
+    const asked: string[] = [];
+    const notAsked: string[] = [];
+    const open = (query: string, into: string[]) => {
+      const listener = request({
+        host: "127.0.0.1",
+        port: server.port,
+        path: `/_depthcue/events?${query}`,
+        headers: { Host: `127.0.0.1:${server.port}` },
+      });
+      return new Promise<ReturnType<typeof request>>((started, fail) => {
+        listener.on("response", (response) => {
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => into.push(String(chunk)));
+          started(listener);
+        });
+        listener.on("error", fail);
+        listener.end();
+      });
+    };
+    const editor = await open("comments=1&review=1", asked);
+    const other = await open("comments=1", notAsked);
+    try {
+      writeFileSync(file(), reviewToText(startReview(doc())));
+      await new Promise((wait) => setTimeout(wait, 300));
+      expect(asked.join("")).toContain("event: review");
+      expect(asked.join("")).not.toContain("event: change");
+      expect(notAsked.join("")).not.toContain("event:");
+    } finally {
+      editor.destroy();
+      other.destroy();
+    }
+  });
 });
 
 describe("the built player does not carry the review code", () => {

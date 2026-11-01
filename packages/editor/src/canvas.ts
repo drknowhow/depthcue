@@ -34,6 +34,8 @@ export interface CanvasHooks {
   ghosts?: GhostHooks;
   /** The comments beside the deck. With them the slide draws a pin for each comment of the scene. */
   comments?: CommentSurface;
+  /** What Ctrl+Z and Ctrl+Y do in a field of the slide. Without it the session's own undo and redo. */
+  history?: { undo(): void; redo(): void };
 }
 
 export interface Canvas {
@@ -280,10 +282,12 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         giveBack();
       } else if (event.inputType === "historyUndo") {
         event.preventDefault();
-        session.undo();
+        if (hooks.history) hooks.history.undo();
+        else session.undo();
       } else if (event.inputType === "historyRedo") {
         event.preventDefault();
-        session.redo();
+        if (hooks.history) hooks.history.redo();
+        else session.redo();
       }
     });
     node.addEventListener("paste", (event) => {

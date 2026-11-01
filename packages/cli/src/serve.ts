@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { dirname, extname, join, resolve, sep } from "node:path";
-import { COMMENTS_FILE } from "@depthcue/core";
+import { COMMENTS_FILE, REVIEW_FILE } from "@depthcue/core";
 import { type EditContext, handleEditApi } from "./edit-api.ts";
 import { createLayoutChecker, type LayoutChecker } from "./edit-layout.ts";
 import { createLeaseRelay, RELAY_PREFIX } from "./lease-relay.ts";
@@ -218,6 +218,8 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   const listeners = new Set<ServerResponse>();
   /** The editor pages, which ask to hear about comments too. The deck and presenter windows are never in here. */
   const commentListeners = new Set<ServerResponse>();
+  /** The editor pages again, for the review. A page opened with `?comments=1` and `?review=1` is in both. */
+  const reviewListeners = new Set<ServerResponse>();
   let boundPort = 0;
 
   const origins = () =>
@@ -289,9 +291,11 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       response.write("retry: 1000\n\n");
       listeners.add(response);
       if (edit && url.searchParams.get("comments") === "1") commentListeners.add(response);
+      if (edit && url.searchParams.get("review") === "1") reviewListeners.add(response);
       request.on("close", () => {
         listeners.delete(response);
         commentListeners.delete(response);
+        reviewListeners.delete(response);
       });
       // A page that has the lease says so, and is the one an agent's calls go to.
       if (url.searchParams.get("lease") === "1") relay.attach(response);
@@ -317,9 +321,18 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
 
   let pending: ReturnType<typeof setTimeout> | undefined;
   let pendingComments: ReturnType<typeof setTimeout> | undefined;
+  let pendingReview: ReturnType<typeof setTimeout> | undefined;
   const watcher = watch(folder, { recursive: true }, (_event, name) => {
     const changed = String(name ?? "").replaceAll("\\", "/");
     if (changed.endsWith(".tmp")) return;
+    // The same for the review: no page reloads, and only an editor that asked is told.
+    if (changed === REVIEW_FILE) {
+      clearTimeout(pendingReview);
+      pendingReview = setTimeout(() => {
+        for (const client of reviewListeners) client.write("event: review\ndata: {}\n\n");
+      }, 60);
+      return;
+    }
     // A change to the comments reloads no page. The editor is told on its own event, and nothing else hears it.
     if (changed === COMMENTS_FILE) {
       clearTimeout(pendingComments);
@@ -349,6 +362,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
           new Promise<void>((done) => {
             clearTimeout(pending);
             clearTimeout(pendingComments);
+            clearTimeout(pendingReview);
             relay.close();
             watcher.close();
             for (const client of listeners) client.end();
