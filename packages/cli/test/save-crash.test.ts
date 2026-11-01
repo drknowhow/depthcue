@@ -250,6 +250,45 @@ describe("a save stopped after any file operation", () => {
   });
 });
 
+describe("a save that changes the brand's id, stopped after each file operation", () => {
+  // Not covered by the write order, as the Saving record says: the id is in both deck.json and brand.json, so one
+  // of them is written first. This pins that window and the hand edit the diagnostic names.
+  it("is brand-id-mismatch only after brand.json, and loads once deck.json takes the new id", () => {
+    const prepare = () => {
+      const dir = copy(plain);
+      const start = open(dir);
+      saveDeckDir(dir, start, applied(start, [{ op: "brand.set", set: { id: "acme", name: "Acme" } }]));
+      const before = open(dir);
+      const after = applied(before, [
+        { op: "brand.set", set: null },
+        { op: "brand.set", set: { id: "beta", name: "Beta" } },
+      ]);
+      return { dir, before, after };
+    };
+    const whole = prepare();
+    const all = stoppingAfter(Number.POSITIVE_INFINITY);
+    saveDeckDir(whole.dir, whole.before, whole.after, all);
+    expect(all.done).toEqual(["write brand/brand.json", "write deck.json"]);
+    expect(open(whole.dir).brand?.id).toBe("beta");
+    for (const k of [0, 1]) {
+      const { dir, before, after } = prepare();
+      expect(() => saveDeckDir(dir, before, after, stoppingAfter(k))).toThrow(Stop);
+      if (k === 0) {
+        expect(errorsIn(dir)).toEqual([]);
+        continue;
+      }
+      const [mismatch, ...rest] = errorsIn(dir);
+      expect(rest).toEqual([]);
+      expect(mismatch).toMatchObject({ code: "brand-id-mismatch", file: "brand/brand.json", path: "/id" });
+      expect(mismatch?.fix).toContain('set "brand" in deck.json to "beta"');
+      const deck = JSON.parse(readFileSync(join(dir, "deck.json"), "utf8"));
+      writeAtomic(dir, "deck.json", JSON.stringify({ ...deck, brand: "beta" }));
+      expect(errorsIn(dir)).toEqual([]);
+      expect(open(dir).brand?.id).toBe("beta");
+    }
+  });
+});
+
 describe("a brand made, stopped before deck.json, and saved again", () => {
   const ACME: Op = { op: "brand.set", set: { id: "acme", name: "Acme" } };
 

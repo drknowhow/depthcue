@@ -244,13 +244,20 @@ library, and per-block raw hex colors.
   operations apply once it is decided. A claim is never turned into text. A pinned block needs a slot with room like
   any other; one that no slot takes loses its slot and stays pinned, over the template, as does an overlay already
   there. Moving to a layout clears every slot.
-- **Saving.** `saveDeckDir` writes the brand's new and changed files first (brand.json still holding any style it
-  loses, and hiding or locking nothing new), then the scenes, deck.json, brand.json as it ends, and the removals, so
-  a save stopped after any file leaves a deck that loads. `save-crash.test.ts` stops nine kinds of batch after every
-  file. Not covered: a template or style whose content changes under a scene, colors checked across the two files, and
-  a brand made with scenes that use it. A save that would write under brand/ refuses, with `linked-brand-folder` and
-  no file touched, when brand/ or brand/templates/ is a link or resolves outside the deck; reading through it is
-  allowed. Making a brand over brand files left in the folder is refused as `leftover-brand-file`.
+- **Saving.** `saveDeckDir` writes the brand's new and changed files first (brand.json still holding each style it
+  loses that a scene or template on disk names, and hiding or locking nothing new), then the scenes, deck.json, the
+  removed templates, brand.json as it ends, and the other removals, brand.json's last, so a save stopped after any
+  file leaves a deck that loads. A template goes before brand.json drops a style it names or hides the built-in set
+  that has it. `save-crash.test.ts` stops twelve kinds of batch after every file. A brand taken off is, between its
+  first write and deck.json, still the deck's brand but without `lock` and `hideBuiltIn`. Not covered: a template or
+  style whose content changes under a scene; colors checked across the two files; a brand made with scenes that use
+  it; a brand id changed in one save (`brand.set` null, then a new id), which stopped after brand.json is
+  `brand-id-mismatch`, since the id is in both files, and whose fix names the hand edit (a test pins this); and, with
+  the brand at 24 styles, a style a scene uses swapped for a new one, where brand.json has 25 (`too-many`) until the
+  scenes are written. A save that would write under brand/ refuses, with `linked-brand-folder` and no file touched,
+  when brand/ or brand/templates/ is a link or resolves outside the deck; reading through it is allowed. Making a
+  brand over brand files left in the folder is refused as `leftover-brand-file`, except files the save writes with
+  the same text, so a save that made a brand and stopped can run again.
 - **Revision.** It covers brand.json and the templates, independent of formatting. A deck without a brand hashes as
   before: the v0-1 fixture stays `ec4e0cd5c59ef06a` and the demo `eb9d45889adffe19`, pinned in `brand.test.ts`. Brand
   binaries count no more than assets do. Drafts keep the brand; a review keeps the reviewed brand but lists no brand

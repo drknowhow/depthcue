@@ -154,7 +154,7 @@ export function checkBrand(deck: Deck, part: BrandPart, brandFiles: ReadonlySet<
         "/id",
         "brand-id-mismatch",
         `deck.json names the brand "${deck.brand}", but ${BRAND_FILE} has the id "${brand.id}".`,
-        `Make the two the same: "brand" in deck.json is the id in ${BRAND_FILE}.`,
+        `To keep this ${BRAND_FILE}, set "brand" in deck.json to "${brand.id}"; a save that changed the brand's id and stopped after ${BRAND_FILE} leaves the deck here. Or set "id" in ${BRAND_FILE} to "${deck.brand}".`,
       ),
     );
   }
