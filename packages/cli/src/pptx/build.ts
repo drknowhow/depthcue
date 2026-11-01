@@ -4,7 +4,7 @@
  * (`measure.ts`). What cannot be drawn is written down as it happens and goes into the report.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import path, { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   type Block,
@@ -21,6 +21,7 @@ import PptxGenJS from "pptxgenjs";
 import type {
   Box,
   ColumnPlace,
+  Edge,
   Ink,
   Item,
   Picture,
@@ -52,6 +53,8 @@ export interface BuildInput {
   measures: readonly SlideMeasure[];
   /** The deck folder, which the pictures are read from and the links to files point into. */
   folder: string;
+  /** The file the presentation will be written to: a link to a file in the deck is written relative to its folder. */
+  out: string;
   notes: boolean;
   /** How the player writes a number in the deck's language, so a table and a chart's labels read alike. */
   numberText: (value: number, language?: string) => string;
@@ -98,11 +101,25 @@ const SLIVER = 12;
 
 /**
  * A box on the slide in inches, held inside the slide when the page drew it past an edge: cut at the edge, as it is in
- * the player. A picture or chart keeps its proportions instead.
+ * the player. Past the left or top edge the part that hangs over is dropped and the rest stays where the page put it;
+ * past the right or bottom edge the box is cut by the slide itself, with a sliver kept so it never vanishes. A picture
+ * keeps its proportions instead, because cutting its box would stretch it: it is made to fit, whole.
  */
 function frameOf(page: Page, box: Box, keepShape = false): { x: number; y: number; w: number; h: number } {
   const { w: width, h: height } = page.measure.slide;
   let { x, y, w, h } = box;
+  if (!keepShape) {
+    if (x < 0) {
+      w += x;
+      x = 0;
+    }
+    if (y < 0) {
+      h += y;
+      y = 0;
+    }
+    w = Math.max(0, w);
+    h = Math.max(0, h);
+  }
   if (keepShape && w > 0 && h > 0) {
     const scale = Math.min(
       1,
@@ -194,8 +211,31 @@ function addCite(page: Page, block: Block, cite: TextPlace | undefined) {
   if (cite?.text) addText(page, `${block.id} source`, cite, plainRuns(cite.text, cite.ink, page.context));
 }
 
-/** A file in the deck as a file address, which a link can point at on the machine that made the file. */
-const fileLink = (page: Page, asset: string) => pathToFileURL(join(page.input.folder, asset)).href;
+/**
+ * Where a link to a file goes, written the way the file is found from the folder the PowerPoint file sits in: a
+ * relative address, each part percent-encoded, so an `&` in a folder's name is `%26` and no character in it can end the
+ * attribute it is written in. It names no user and no drive, so the same deck gives the same bytes wherever it lies, and
+ * the deck folder and the PowerPoint file keep working when they are moved together. Only a file on another drive has
+ * no relative address, and gets a file address with the same encoding.
+ */
+export function linkTo(from: string, target: string, flavor: typeof path = path): string {
+  const way = flavor.relative(from, target);
+  if (flavor.isAbsolute(way)) {
+    return pathToFileURL(target, { windows: flavor.sep === "\\" })
+      .href.replaceAll("&", "%26")
+      .replaceAll("<", "%3C")
+      .replaceAll(">", "%3E")
+      .replaceAll('"', "%22");
+  }
+  return way
+    .split(flavor.sep)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+/** A file in the deck, as a link that works from where the PowerPoint file is written. */
+const fileLink = (page: Page, asset: string) =>
+  linkTo(dirname(page.input.out), resolve(page.input.folder, asset));
 
 /** A picture's bytes as the writer takes them: the file when PowerPoint can show it, else what the page drew. */
 function pictureData(page: Page, asset: string, picture: Picture): string | undefined {
@@ -223,6 +263,11 @@ function addPicture(
   if (!MIME[extname(asset).toLowerCase()]) {
     page.left.push(
       `"${block.id}": ${asset} is drawn as a PNG, because PowerPoint does not show every picture type.`,
+    );
+  }
+  if (picture.picture.x < 0 || picture.picture.y < 0) {
+    page.left.push(
+      `"${block.id}": the picture hangs past the slide's left or top edge, where the player cuts it; here it is shown whole, inside the slide.`,
     );
   }
   page.slide.addImage({
@@ -258,6 +303,16 @@ function ruleBorder(rule: Rule | null): PptxGenJS.BorderProps {
   return rule ? { type: "solid", pt: pt(rule.width), color: rule.color } : { type: "none" };
 }
 
+/**
+ * A cell's margins as the writer reads them. It reads all four as points when the top one is at least 1, and all four as
+ * inches when it is less, so a cell with no top padding would have every margin read as a fraction of what it is. Below
+ * a point at the top, all four are given in inches.
+ */
+export function cellMargin(padding: Edge): [number, number, number, number] {
+  const { t, r, b, l } = padding;
+  return pt(t) >= 1 ? [pt(t), pt(r), pt(b), pt(l)] : [inch(t), inch(r), inch(b), inch(l)];
+}
+
 function tableBlock(page: Page, block: TableBlock, item: Extract<Item, { kind: "table" }>) {
   const none: PptxGenJS.BorderProps = { type: "none" };
   const cellOptions = (column: ColumnPlace, ink: Ink, rule: Rule | null) => ({
@@ -267,12 +322,7 @@ function tableBlock(page: Page, block: TableBlock, item: Extract<Item, { kind: "
     fontSize: pt(ink.px),
     color: ink.color,
     lang: page.context.language,
-    margin: [pt(column.padding.t), pt(column.padding.r), pt(column.padding.b), pt(column.padding.l)] as [
-      number,
-      number,
-      number,
-      number,
-    ],
+    margin: cellMargin(column.padding),
     border: [none, none, ruleBorder(rule), none] as [
       PptxGenJS.BorderProps,
       PptxGenJS.BorderProps,
@@ -343,6 +393,13 @@ function formatCode(unit: string | undefined): string {
   return `General"${text.replaceAll('"', "")}"`;
 }
 
+/**
+ * A series' numbers for the writer, which types them as numbers. A cell the deck leaves empty goes through as null: the
+ * writer gives it a point with no value, and the package step drops the point and empties the workbook's cell, so the
+ * chart leaves a gap there as the player does, and not a zero.
+ */
+const withGaps = (values: readonly (number | null)[]): number[] => values as unknown as number[];
+
 const CHART_KIND = {
   bar: { type: "bar", grouping: "clustered" },
   "stacked-bar": { type: "bar", grouping: "stacked" },
@@ -388,14 +445,14 @@ function chartBlock(
   } else if (scatter) {
     data = [
       { name: block.columns[0]?.label ?? "x", values: rows.map((row) => numeric(row[0]) ?? 0) },
-      ...series.map((entry) => ({ name: entry.name, values: entry.values.map((value) => value ?? 0) })),
+      ...series.map((entry) => ({ name: entry.name, values: withGaps(entry.values) })),
     ];
     seriesColors = series.map((_, at) => colors[at % 6] as string);
   } else {
     data = series.map((entry) => ({
       name: entry.name,
       labels: names,
-      values: entry.values.map((value) => value ?? 0),
+      values: withGaps(entry.values),
     }));
     seriesColors = series.map((_, at) => colors[at % 6] as string);
   }
@@ -412,6 +469,7 @@ function chartBlock(
       ? (first?.name ?? "")
       : "";
   const { x, y, w, h } = frameOf(page, item.box);
+  if (w <= 0 || h <= 0) return;
   const axisSize = pt(item.axis.px);
   const mono = item.axis.family;
   useInk(page, item.axis);
@@ -426,6 +484,8 @@ function chartBlock(
     objectName: block.id,
     altText: block.title ?? `${kind} chart`,
     chartColors: seriesColors,
+    // An empty cell is a gap, as the player leaves it: a line breaks there, and the writer's own default joins across.
+    displayBlanksAs: "gap",
     ...(block.title
       ? {
           showTitle: true,
@@ -586,8 +646,9 @@ function clipBlock(
   item: Extract<Item, { kind: "clip" }>,
 ) {
   const link = fileLink(page, block.source);
-  if (item.poster && block.poster) {
-    addPicture(page, block, block.poster, item.video, block.alt, link);
+  const poster = item.poster && block.poster ? block.poster : undefined;
+  const drawn = poster !== undefined;
+  if (poster !== undefined && addPicture(page, block, poster, item.video, block.alt, link)) {
     page.left.push(
       `"${block.id}": the video is shown as its poster and linked to ${block.source}; it is not embedded.`,
     );
@@ -612,8 +673,11 @@ function clipBlock(
       objectName: block.id,
     },
   );
+  // The picture's own line has said it could not be read; this one says what stands in for it.
   page.left.push(
-    `"${block.id}": the video has no poster, so a labeled box links to ${block.source}; it is not embedded.`,
+    drawn
+      ? `"${block.id}": a labeled box links to ${block.source} in its place; the video is not embedded.`
+      : `"${block.id}": the video has no poster, so a labeled box links to ${block.source}; it is not embedded.`,
   );
 }
 

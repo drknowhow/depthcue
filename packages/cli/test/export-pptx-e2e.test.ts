@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 import {
   type Block,
@@ -581,6 +581,13 @@ describe.each(DECKS)("export --format pptx of the %s deck", (name) => {
     }
   }, 120_000);
 
+  it("numbers the shapes of every slide from 1, none twice, tables and charts included", async () => {
+    for (const [at, slide] of shared.pptx.slides.entries()) {
+      const ids = [...slide.xml.matchAll(/<p:cNvPr id="(\d+)"/g)].map((match) => Number(match[1]));
+      expect(ids, `slide ${at + 1}`).toEqual(ids.map((_id, place) => place + 1));
+    }
+  }, 120_000);
+
   it("names only the deck's font pair, and reports the families a viewer needs", async () => {
     const { summary, pptx } = shared;
     const doc = loaded(folder);
@@ -922,8 +929,8 @@ function solidPng(width: number, height: number, [red, green, blue]: [number, nu
 }
 
 /** A copy of the demo deck with a clip scene added and built the way an author would build it. */
-async function deckWithClip(): Promise<string> {
-  const deck = join(root, "clip-deck");
+async function deckWithClip(folderName = "clip-deck"): Promise<string> {
+  const deck = join(root, folderName);
   cpSync(decks("demo"), deck, { recursive: true });
   const deckFile = join(deck, "deck.json");
   const manifest = JSON.parse(readFileSync(deckFile, "utf8"));
@@ -964,13 +971,29 @@ describe("a clip", () => {
     const clip = slide.shapes.find((shape) => shape.name === "intro-clip") as ShapeInfo;
     expect(clip.kind).toBe("pic");
     expect(clip.alt).toBe("The opening animation.");
-    expect(clip.targets).toContain(pathToFileURL(join(deck, "assets", "intro.mp4")).href);
+    // Relative to the folder the file is in: nothing of this machine is in the file.
+    expect(clip.targets).toContain("clip-deck/assets/intro.mp4");
     expect(summary.slides.at(-1)?.left.join(" ")).toContain(
       '"intro-clip": the video is shown as its poster and linked to assets/intro.mp4',
     );
     expect(pptx.names.some((name) => name.startsWith("ppt/media/"))).toBe(true);
     // The video itself is not in the file.
     expect(pptx.names.some((name) => /\.(mp4|mov|webm)$/.test(name))).toBe(false);
+  }, 120_000);
+
+  it("keeps a link well-formed and free of this machine when the deck folder is named R&D deck", async () => {
+    const deck = await deckWithClip("R&D deck");
+    const out = join(root, "clip.pptx");
+    await exported(deck, out);
+    const pptx = await Pptx.open(out);
+    const index = pptx.slides.length;
+    const rels = await pptx.text(`ppt/slides/_rels/slide${index}.xml.rels`);
+    // Every ampersand starts an entity, and the address is relative, with the ampersand percent-encoded.
+    expect(rels).not.toMatch(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/);
+    expect(rels).toContain('Target="R%26D%20deck/assets/intro.mp4"');
+    expect(rels).not.toContain("file:");
+    expect(rels).not.toContain(root);
+    for (const xml of await pptx.everything()) expect(xml).not.toContain(root);
   }, 120_000);
 
   it("is a labeled box that links to the file when there is no poster", async () => {
@@ -992,10 +1015,95 @@ describe("a clip", () => {
     ) as ShapeInfo;
     expect(clip.kind).toBe("sp");
     expect(clip.text).toBe("Video: The opening animation.");
-    expect(clip.targets).toContain(pathToFileURL(join(deck, "assets", "intro.mp4")).href);
+    expect(clip.targets).toContain("clip-deck/assets/intro.mp4");
     expect(summary.slides.at(-1)?.left.join(" ")).toContain(
       "the video has no poster, so a labeled box links to assets/intro.mp4",
     );
+  }, 120_000);
+});
+
+describe("a chart with an empty cell", () => {
+  it("leaves a gap where the player leaves one, in the chart and in its workbook", async () => {
+    const deck = join(root, "gap-deck");
+    cpSync(decks("charts"), deck, { recursive: true });
+    const sceneFile = join(deck, "scenes", "line.json");
+    const scene = JSON.parse(readFileSync(sceneFile, "utf8"));
+    const chartAt = scene.blocks.findIndex((block: { id: string }) => block.id === "line-chart");
+    scene.blocks[chartAt].rows[3][1] = null;
+    writeFileSync(sceneFile, JSON.stringify(scene));
+
+    const out = join(root, "gap.pptx");
+    await exported(deck, out);
+    const { pptx } = await expectDeckInFile(deck, out, true);
+    const slide = pptx.slides.find((candidate) =>
+      candidate.shapes.some((shape) => shape.name === "line-chart"),
+    );
+    const shape = slide?.shapes.find((candidate) => candidate.name === "line-chart") as ShapeInfo;
+    const xml = await pptx.text(shape.chart as string);
+    expect(xml).toContain('<c:dispBlanksAs val="gap"/>');
+    expect(xml).not.toContain("<c:v></c:v>");
+    const first = /<c:val>[\s\S]*?<\/c:val>/.exec(xml)?.[0] ?? "";
+    expect([...first.matchAll(/<c:pt idx="(\d+)">/g)].map((match) => Number(match[1]))).toEqual([
+      0, 1, 2, 4, 5, 6, 7,
+    ]);
+    const rels = await pptx.text(shape.chart?.replace("charts/", "charts/_rels/").concat(".rels") as string);
+    const book = rels.match(/Target="[^"]*?([^"/]*\.xlsx)"/)?.[1] as string;
+    const sheet = await (
+      await JSZip.loadAsync(
+        await (pptx.zip.file(`ppt/embeddings/${book}`) as JSZip.JSZipObject).async("uint8array"),
+      )
+    )
+      .file("xl/worksheets/sheet1.xml")
+      ?.async("string");
+    // Row 5 holds the fourth week; its first value is empty, and the second is not.
+    expect(sheet).not.toMatch(/<c r="B5"/);
+    expect(sheet).toMatch(/<c r="C5"/);
+  }, 120_000);
+});
+
+describe("words the deck wrote with characters XML cannot hold", () => {
+  it("break the line at a vertical tab, drop the rest, and leave the notes a paragraph to a line", async () => {
+    const deck = join(root, "odd-deck");
+    cpSync(decks("demo"), deck, { recursive: true });
+    const deckFile = join(deck, "deck.json");
+    const manifest = JSON.parse(readFileSync(deckFile, "utf8"));
+    writeFileSync(deckFile, JSON.stringify({ ...manifest, scenes: [...manifest.scenes, "odd"] }));
+    writeFileSync(
+      join(deck, "scenes", "odd.json"),
+      JSON.stringify({
+        schemaVersion: "0.2",
+        id: "odd",
+        title: "Odd characters",
+        layout: "text-media",
+        blocks: [
+          { id: "odd-heading", type: "text", role: "heading", text: "A heading with a bell\u0007 in it" },
+          { id: "odd-body", type: "text", role: "body", text: "First line\u000bSecond line" },
+        ],
+        notes: "Open with the number.\nThen the story.\n\nThen questions.",
+      }),
+    );
+    const out = join(root, "odd.pptx");
+    await exported(deck, out);
+    const pptx = await Pptx.open(out);
+    const slide = pptx.slides.at(-1) as SlideInfo;
+    const shape = (name: string) => slide.shapes.find((candidate) => candidate.name === name) as ShapeInfo;
+    expect(shape("odd-heading").text).toBe("A heading with a bell in it");
+    expect(shape("odd-body").text).toBe("First line\nSecond line");
+    for (const xml of await pptx.everything()) {
+      expect(
+        [...xml].some((character) => {
+          const code = character.codePointAt(0) as number;
+          return code < 0x20 ? ![0x9, 0xa, 0xd].includes(code) : code === 0xfffe || code === 0xffff;
+        }),
+      ).toBe(false);
+    }
+    const notes = await pptx.text(`ppt/notesSlides/notesSlide${pptx.slides.length}.xml`);
+    const body = /name="Notes Placeholder 2"[\s\S]*?<\/p:sp>/.exec(notes)?.[0] ?? "";
+    expect(
+      [...body.matchAll(/<a:p>([\s\S]*?)<\/a:p>/g)].map((match) =>
+        [...(match[1] as string).matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((text) => text[1]).join(""),
+      ),
+    ).toEqual(["Open with the number.", "Then the story.", "", "Then questions."]);
   }, 120_000);
 });
 

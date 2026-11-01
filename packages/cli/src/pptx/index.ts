@@ -9,7 +9,7 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import type { Diagnostic, Doc } from "@depthcue/core";
 import type { Browser } from "playwright-core";
 import { openDeck } from "../deck-api.ts";
-import { launchBrowser, RenderError } from "../render.ts";
+import { launchBrowser } from "../render.ts";
 import { builtPlayerDir, startServer } from "../serve.ts";
 import { buildPresentation, type FontUse, type SlideReport } from "./build.ts";
 import { measureSlide, type SlideMeasure } from "./measure.ts";
@@ -75,6 +75,29 @@ const DECK_NOTES = [
   "Scene changes: the player moves between scenes with a slide-over; the slides change with no transition.",
 ] as const;
 
+/**
+ * How long the page gets for the two things that wait on it, in milliseconds: the modules that hydrate after the scene
+ * shows, and the measuring itself. Neither has a clock of its own, so a page that never settles would hold the export,
+ * and the browser with it, for good. (A test shortens these; nothing else changes them.)
+ */
+export const LIMITS = { settle: 15_000, measure: 15_000 };
+
+/**
+ * The work, or a refusal when it has not finished in time. Whatever the work does later is no longer anyone's
+ * business: closing the browser makes it fail, and that failure must not go unheard and take the process down.
+ */
+function within<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  work.catch(() => undefined);
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new PptxError("render-failed", `${what} within ${ms / 1000} seconds.`)),
+      ms,
+    );
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
 async function measureScene(
   browser: Browser,
   url: string,
@@ -107,8 +130,16 @@ async function measureScene(
       );
     }
     // Modules hydrate a moment after the scene shows; measure the settled page.
-    await page.evaluate(() => (window as { depthcue?: { settled(): Promise<void> } }).depthcue?.settled());
-    return await page.evaluate(measureSlide);
+    await within(
+      page.evaluate(() => (window as { depthcue?: { settled(): Promise<void> } }).depthcue?.settled()),
+      LIMITS.settle,
+      `The player did not settle scene "${scene}"`,
+    );
+    return await within(
+      page.evaluate(measureSlide),
+      LIMITS.measure,
+      `The page did not finish measuring scene "${scene}"`,
+    );
   } finally {
     await context.close();
   }
@@ -122,15 +153,23 @@ async function measureScenes(folder: string, doc: Doc): Promise<SlideMeasure[]> 
     browser = await launchBrowser();
   } catch (error) {
     await server.close();
-    if (error instanceof RenderError) throw new PptxError("no-browser", error.message);
-    throw error;
+    throw new PptxError("no-browser", (error as Error).message);
   }
   try {
     const measures: SlideMeasure[] = [];
     for (const id of doc.deck.scenes) {
       const scene = doc.scenes[id];
       if (!scene) throw new PptxError("render-failed", `The deck names scene "${id}" and it has no file.`);
-      measures.push(await measureScene(browser, server.url, id, scene.steps?.length ?? 0));
+      try {
+        measures.push(await measureScene(browser, server.url, id, scene.steps?.length ?? 0));
+      } catch (error) {
+        // A page that times out, or a player that drew no scene, is a render that failed like any other.
+        if (error instanceof PptxError) throw error;
+        throw new PptxError(
+          "render-failed",
+          `Scene "${id}" could not be measured: ${(error as Error).message}`,
+        );
+      }
     }
     return measures;
   } finally {
@@ -186,6 +225,7 @@ export async function exportPptx(request: PptxRequest): Promise<PptxResult> {
     scenes,
     measures,
     folder: request.folder,
+    out,
     notes,
     numberText,
   });

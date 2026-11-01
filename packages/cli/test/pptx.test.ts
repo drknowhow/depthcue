@@ -222,6 +222,193 @@ describe("the package step", () => {
   });
 });
 
+// ---------------------------------------------------------------------------------------------------------------------
+// What the writer gets wrong, which the package step puts right.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** What XML 1.0 cannot hold, whatever the escaping. */
+function forbidden(xml: string): boolean {
+  return [...xml].some((character) => {
+    const code = character.codePointAt(0) as number;
+    return code < 0x20 ? ![0x9, 0xa, 0xd].includes(code) : code === 0xfffe || code === 0xffff;
+  });
+}
+
+async function rawDeck(build: (pptx: PptxGenJS) => void): Promise<Uint8Array> {
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE";
+  build(pptx);
+  return (await pptx.write({ outputType: "nodebuffer" })) as Uint8Array;
+}
+
+const xmlParts = (parts: Map<string, string>) =>
+  [...parts.entries()].filter(([name]) => /\.(xml|rels)$/.test(name));
+
+/** The parts of the workbook behind the first chart, as text. */
+async function workbookOf(bytes: Uint8Array) {
+  const zip = await JSZip.loadAsync(bytes);
+  const name = Object.keys(zip.files).find((candidate) => candidate.endsWith(".xlsx"));
+  const entry = name === undefined ? undefined : zip.file(name);
+  if (!entry) throw new Error("The file has no chart workbook.");
+  return partsOf(await entry.async("uint8array"));
+}
+
+/** The first chart, whatever number the writer's counter gave it. */
+function chartIn(parts: Map<string, string>): string {
+  const name = [...parts.keys()].find((candidate) => /^ppt\/charts\/chart\d+\.xml$/.test(candidate));
+  return part(parts, name ?? "ppt/charts/chart.xml");
+}
+
+describe("the package step puts right what the writer gets wrong", () => {
+  it("leaves no character XML forbids in any part, the workbook behind a chart included", async () => {
+    const dirty = "Bell\u0007 tab\u000b form\u000c low\u0001 end￾";
+    const raw = await rawDeck((pptx) => {
+      pptx.title = dirty;
+      const slide = pptx.addSlide();
+      slide.addText(dirty, { x: 1, y: 1, w: 5, h: 1 });
+      slide.addTable([[{ text: dirty }]], { x: 1, y: 3, w: 4, colW: [4] });
+      slide.addChart(pptx.ChartType.bar, [{ name: dirty, labels: ["a", dirty], values: [1, 2] }], {
+        x: 1,
+        y: 5,
+        w: 4,
+        h: 2,
+      });
+      slide.addNotes(dirty);
+    });
+    // The writer puts them in as they are, so this is worth checking.
+    expect(xmlParts(await partsOf(raw)).filter(([, xml]) => forbidden(xml)).length).toBeGreaterThan(3);
+    expect(xmlParts(await workbookOf(raw)).filter(([, xml]) => forbidden(xml)).length).toBeGreaterThan(0);
+
+    const finished = await finishPackage(raw);
+    for (const [name, xml] of xmlParts(await partsOf(finished))) expect(forbidden(xml), name).toBe(false);
+    for (const [name, xml] of xmlParts(await workbookOf(finished))) expect(forbidden(xml), name).toBe(false);
+    // The words around them stay.
+    const slide = part(await partsOf(finished), "ppt/slides/slide1.xml");
+    expect(wordsIn(slide)).toContain("Bell tab form low end");
+  });
+
+  it("numbers the shapes of a slide from 2 after the slide's own group, none twice", async () => {
+    const ids = (xml: string) => [...xml.matchAll(/<p:cNvPr id="(\d+)"/g)].map((match) => Number(match[1]));
+    const raw = await sample();
+    const written = ids(part(await partsOf(raw), "ppt/slides/slide1.xml"));
+    // The writer numbers a table from a sum that lands on another shape's number.
+    expect(new Set(written).size).toBeLessThan(written.length);
+
+    const finished = ids(part(await partsOf(await finishPackage(raw, HINTS)), "ppt/slides/slide1.xml"));
+    expect(finished).toEqual(finished.map((_id, at) => at + 1));
+    expect(finished.length).toBeGreaterThan(4);
+  });
+
+  it("takes the bullet and capitals marks from a run's language and from nowhere else", async () => {
+    const raw = await rawDeck((pptx) => {
+      pptx.addSlide().addText(
+        [
+          {
+            text: 'Typed as ~bu=123456 and ~caps and lang="en~bu=654321"',
+            options: { lang: "en~bu=A8341A", bullet: { indent: 14 } },
+          },
+        ],
+        { x: 1, y: 1, w: 6, h: 1 },
+      );
+    });
+    const slide = part(await partsOf(await finishPackage(raw)), "ppt/slides/slide1.xml");
+    expect(wordsIn(slide)).toEqual(['Typed as ~bu=123456 and ~caps and lang="en~bu=654321"']);
+    expect(slide).toContain('<a:buClr><a:srgbClr val="A8341A"/></a:buClr>');
+    expect(slide.match(/<a:buClr>/g)).toHaveLength(1);
+    expect(slide).not.toContain('lang="en~bu');
+  });
+
+  it("changes only the Arial the writer chooses for itself, and not one the deck chose", async () => {
+    const raw = await rawDeck((pptx) => {
+      const slide = pptx.addSlide();
+      slide.addChart(pptx.ChartType.bar, [{ name: "Orders", labels: ["Q1", "Q2"], values: [4, 5] }], {
+        x: 1,
+        y: 1,
+        w: 4,
+        h: 3,
+        catAxisLabelFontFace: "Arial",
+        valAxisLabelFontFace: "Inter",
+        dataLabelFontFace: "Inter",
+        legendFontFace: "Inter",
+      });
+    });
+    const chart = part(await partsOf(await finishPackage(raw)), "ppt/charts/chart1.xml");
+    const category = /<c:catAx>[\s\S]*?<\/c:catAx>/.exec(chart)?.[0] ?? "";
+    expect(category).toContain('<a:latin typeface="Arial"/>');
+    const value = /<c:valAx>[\s\S]*?<\/c:valAx>/.exec(chart)?.[0] ?? "";
+    expect(value).toContain('<a:latin typeface="Inter"/>');
+  });
+
+  it("keeps each line of the speaker notes as a paragraph of its own", async () => {
+    const raw = await rawDeck((pptx) => {
+      pptx.addSlide().addNotes("First line.\nSecond line.\n\nFourth, after a blank.");
+    });
+    // The writer puts them all in one run, joined by carriage return and line feed.
+    expect(part(await partsOf(raw), "ppt/notesSlides/notesSlide1.xml")).toMatch(
+      /<a:t>First line\.\r\nSecond line\.\r\n\r\nFourth, after a blank\.<\/a:t>/,
+    );
+
+    const notes = part(await partsOf(await finishPackage(raw)), "ppt/notesSlides/notesSlide1.xml");
+    const body = /name="Notes Placeholder 2"[\s\S]*?<\/p:sp>/.exec(notes)?.[0] ?? "";
+    const paragraphs = [...body.matchAll(/<a:p>([\s\S]*?)<\/a:p>/g)].map((match) =>
+      wordsIn(match[1] as string).join(""),
+    );
+    expect(paragraphs).toEqual(["First line.", "Second line.", "", "Fourth, after a blank."]);
+    expect(notes).not.toMatch(/<a:t>[^<]*\r/);
+  });
+
+  it("leaves a gap where a chart's cell is empty: no point in the chart, no value in the workbook", async () => {
+    const raw = await rawDeck((pptx) => {
+      pptx.addSlide().addChart(
+        pptx.ChartType.line,
+        [
+          { name: "Orders", labels: ["Q1", "Q2", "Q3", "Q4"], values: [4, null as unknown as number, 6, 7] },
+          { name: "Returns", labels: ["Q1", "Q2", "Q3", "Q4"], values: [1, 2, 3, 4] },
+        ],
+        { x: 1, y: 1, w: 5, h: 3, displayBlanksAs: "gap" },
+      );
+    });
+    // What the writer makes of it: a point with no value, and an empty value in the workbook.
+    expect(chartIn(await partsOf(raw))).toContain('<c:pt idx="1"><c:v></c:v></c:pt>');
+    expect(part(await workbookOf(raw), "xl/worksheets/sheet1.xml")).toContain('<c r="B3"><v></v></c>');
+
+    const finished = await finishPackage(raw);
+    const chart = part(await partsOf(finished), "ppt/charts/chart1.xml");
+    expect(chart).toContain('<c:dispBlanksAs val="gap"/>');
+    const orders = /<c:val>[\s\S]*?<\/c:val>/.exec(chart)?.[0] ?? "";
+    expect(orders).toContain('<c:ptCount val="4"/>');
+    expect([...orders.matchAll(/<c:pt idx="(\d+)">/g)].map((match) => match[1])).toEqual(["0", "2", "3"]);
+    expect(chart).not.toContain("<c:v></c:v>");
+    // The other series, and the names of the categories, are as they were.
+    expect(chart.match(/<c:pt idx="\d+"><c:v>\d<\/c:v><\/c:pt>/g)?.length).toBe(3 + 4);
+
+    const sheet = part(await workbookOf(finished), "xl/worksheets/sheet1.xml");
+    expect(sheet).not.toMatch(/<c r="B3"/);
+    for (const cell of ["B2", "B4", "B5", "C2", "C3", "C4", "C5"]) expect(sheet).toContain(`<c r="${cell}"`);
+  });
+
+  it("leaves a gap in a scatter too, where the workbook would hold an empty value", async () => {
+    const raw = await rawDeck((pptx) => {
+      pptx.addSlide().addChart(
+        pptx.ChartType.scatter,
+        [
+          { name: "Length", values: [1, 2, 3] },
+          { name: "Weight", values: [5, null as unknown as number, 9] },
+        ],
+        { x: 1, y: 1, w: 5, h: 3, displayBlanksAs: "gap" },
+      );
+    });
+    const finished = await finishPackage(raw);
+    const chart = part(await partsOf(finished), "ppt/charts/chart1.xml");
+    const weights = /<c:yVal>[\s\S]*?<\/c:yVal>/.exec(chart)?.[0] ?? "";
+    expect([...weights.matchAll(/<c:pt idx="(\d+)">/g)].map((match) => match[1])).toEqual(["0", "2"]);
+    const sheet = part(await workbookOf(finished), "xl/worksheets/sheet1.xml");
+    expect(sheet).not.toMatch(/<c r="B3"/);
+    expect(sheet).toContain('<c r="B2"');
+    expect(sheet).toContain('<c r="B4"');
+  });
+});
+
 describe("what is at the output path", () => {
   const file = () => join(root, "deck.pptx");
 
@@ -267,6 +454,45 @@ describe("what is at the output path", () => {
     writeFileSync(file(), await zip.generateAsync({ type: "nodebuffer" }));
     expect(await inspectOutput(file())).toBe("foreign");
   });
+
+  describe("how much of the file is unpacked to tell", () => {
+    /** The names of the parts unpacked while `look` runs. */
+    async function unpackedWhile(look: () => Promise<unknown>): Promise<string[]> {
+      const prototype = Object.getPrototypeOf(new JSZip().file("probe", "x").file("probe"));
+      const original = prototype.async as (this: { name: string }, ...args: unknown[]) => unknown;
+      const unpacked: string[] = [];
+      vi.spyOn(prototype, "async").mockImplementation(function (this: { name: string }, ...args: unknown[]) {
+        unpacked.push(this.name);
+        return original.apply(this, args);
+      });
+      await look();
+      return unpacked;
+    }
+
+    it("is none of it for a big file that is not ours, whose mark is looked for first", async () => {
+      const zip = new JSZip();
+      zip.file("ppt/slides/slide1.xml", "<sld/>");
+      zip.file("ppt/media/big.bin", Buffer.alloc(2_000_000, 7));
+      writeFileSync(file(), await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+      let found: string | undefined;
+      const unpacked = await unpackedWhile(async () => {
+        found = await inspectOutput(file());
+      });
+      expect(found).toBe("foreign");
+      expect(unpacked).toEqual([]);
+    });
+
+    it("is the mark first, and then the rest, for a file that has one", async () => {
+      writeFileSync(file(), await finishPackage(await sample(), HINTS));
+      let found: string | undefined;
+      const unpacked = await unpackedWhile(async () => {
+        found = await inspectOutput(file());
+      });
+      expect(found).toBe("ours");
+      expect(unpacked[0]).toBe(MARKER_PART);
+      expect(unpacked.length).toBeGreaterThan(5);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -306,6 +532,16 @@ describe("text as runs", () => {
     expect(pt(16)).toBe(12);
     expect(pt(18.5)).toBe(13.88);
     expect(inch(96)).toBe(1);
+  });
+
+  it("breaks the line at a vertical tab, as at a new line, because XML cannot hold the character", () => {
+    const runs = flowRuns(
+      [{ type: "paragraph", children: [{ type: "text", text: "one\u000btwo\nthree" }] }],
+      ink(),
+      context,
+    );
+    expect(runs.map((run) => run.text)).toEqual(["one", "two", "three"]);
+    expect(runs.map((run) => run.options?.softBreakBefore)).toEqual([undefined, true, true]);
   });
 
   it("carries bold, italic, a link and a tone as the run's own options", () => {
@@ -663,6 +899,7 @@ async function buildSynthetic(notes = true) {
     scenes,
     measures: [wordsMeasure(), numbersMeasure()],
     folder: join(root, "synthetic"),
+    out: join(root, "deck.pptx"),
     notes,
     numberText: (value) => String(value),
   });
@@ -827,6 +1064,7 @@ describe("a deck drawn from measurements", () => {
       scenes,
       measures: [tall, numbersMeasure()],
       folder: join(root, "synthetic"),
+      out: join(root, "deck.pptx"),
       notes: true,
       numberText: (value) => String(value),
     });
@@ -848,6 +1086,7 @@ describe("a deck drawn from measurements", () => {
       scenes,
       measures: [bare, numbersMeasure()],
       folder: join(root, "synthetic"),
+      out: join(root, "deck.pptx"),
       notes: true,
       numberText: (value) => String(value),
     });

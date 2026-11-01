@@ -82,6 +82,9 @@ interface Paragraph {
   bullet?: Options["bullet"];
 }
 
+/** Where a line breaks inside a paragraph: a new line, or a vertical tab, which XML cannot hold and Word calls a line break. */
+const LINE_BREAK = /[\n\v]/;
+
 /**
  * The runs of one paragraph. Its paragraph-level options go on the first run and its alignment on every run, which is
  * how the writer tells where a paragraph ends: only a run with `breakLine` does that. A line break inside a paragraph
@@ -97,7 +100,7 @@ function paragraphRuns(
   const base = inkOptions(ink, context);
   const runs: Run[] = [];
   for (const piece of pieces(paragraph.spans, {}, context, [])) {
-    piece.text.split("\n").forEach((part, at) => {
+    piece.text.split(LINE_BREAK).forEach((part, at) => {
       const options: Options = {
         ...base,
         align,
