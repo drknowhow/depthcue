@@ -151,6 +151,9 @@ describe("describe", () => {
       "a list, up to 3 items of true or false",
     );
     expect(describeNode({ type: "object", properties: { x: {} } })).toBe("an object with `x`");
+    expect(describeNode({ type: ["string", "number", "null"], maxLength: 5 })).toBe(
+      "text, up to 5 characters, a number or null",
+    );
   });
 
   it("says so when it does not know, instead of guessing", () => {
