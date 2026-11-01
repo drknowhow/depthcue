@@ -1302,7 +1302,6 @@ body {
   .ed-app .ed-actions [data-action="comments"],
   .ed-app .ed-actions [data-action="resolved"] {
     gap: var(--dc-space-1);
-    padding: 0 var(--dc-space-2);
   }
 
   .ed-actions [data-action="comments"] .ed-bar-words,
@@ -1313,6 +1312,28 @@ body {
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+}
+
+/*
+ * A laptop-sized window has less room than the bars' buttons are padded for. Their padding shrinks, and a plain "Saved"
+ * is left to its dot and its tooltip, so the top bar keeps room for the deck's title and the quick bar stays one row.
+ * A phone has its own layout below.
+ */
+@media (min-width: 761px) and (max-width: 1279px) {
+  .ed-app .ed-actions button,
+  .ed-app .ed-actions .ed-link,
+  .ed-app .ed-quick button,
+  .ed-app .ed-quick .ed-button {
+    padding-inline: var(--dc-space-2);
+  }
+
+  .ed-quick .ed-kbd {
+    margin-left: var(--dc-space-1);
+  }
+
+  .ed-status[data-quiet] {
+    font-size: 0;
   }
 }
 

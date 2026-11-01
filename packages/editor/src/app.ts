@@ -323,6 +323,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         : state.message
           ? `${SAVE_LABEL[state.save]}. ${state.message}`
           : SAVE_LABEL[state.save];
+    // A plain "Saved" says nothing the dot does not, so a narrow window may leave the word to the tooltip.
+    status.title = status.textContent;
+    status.toggleAttribute("data-quiet", state.save === "saved" && !state.message);
     present.setAttribute("href", `/present#/${encodeURIComponent(selected)}`);
   }
 

@@ -2413,7 +2413,8 @@ describe("the Ctrl K palette in a real browser", () => {
 describe("comments in a real browser", () => {
   const NOW = "2026-11-01T10:00:00.000Z";
   const block = (id: string) => page.locator(`.ed-frame [data-id='${id}']`);
-  const pins = () => page.locator(".ed-pin");
+  // The empty pin that marks where a comment being written will point is not a comment's pin.
+  const pins = () => page.locator(".ed-pin[data-pin]");
   const thread = () => page.locator(".ed-thread");
   const field = () => thread().locator("[data-comment='field']");
   const control = (name: string) => thread().locator(`[data-comment='${name}']`);
