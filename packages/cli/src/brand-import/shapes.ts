@@ -38,9 +38,11 @@ interface Transform {
   scaleY: number;
   moveX: number;
   moveY: number;
+  /** True inside a group that is rotated or flipped (or inside one), so no child's box is what is drawn. */
+  turned: boolean;
 }
 
-const IDENTITY: Transform = { scaleX: 1, scaleY: 1, moveX: 0, moveY: 0 };
+const IDENTITY: Transform = { scaleX: 1, scaleY: 1, moveX: 0, moveY: 0, turned: false };
 
 /** The box an `a:xfrm` (or `p:xfrm`) gives, and whether it is rotated. */
 function readXfrm(xfrm: XmlNode | undefined): { box?: Box; turned: boolean } {
@@ -52,10 +54,14 @@ function readXfrm(xfrm: XmlNode | undefined): { box?: Box; turned: boolean } {
   return { box: { x, y, w, h }, turned };
 }
 
-/** The transform a group applies to its children: where its own box is, against the box its children were drawn in. */
+/**
+ * The transform a group applies to its children: where its own box is, against the box its children were drawn in. A
+ * group that is rotated or flipped turns its children with it, and that is passed down rather than worked out: the boxes
+ * of what is inside are marked as not what is drawn.
+ */
 function groupTransform(group: XmlNode, outer: Transform): Transform {
   const xfrm = descend(group, "grpSpPr", "xfrm");
-  const own = readXfrm(xfrm).box;
+  const { box: own, turned } = readXfrm(xfrm);
   const chOff = child(xfrm, "chOff");
   const chExt = child(xfrm, "chExt");
   const [cx, cy, cw, ch] = [
@@ -64,14 +70,16 @@ function groupTransform(group: XmlNode, outer: Transform): Transform {
     integer(chExt, "cx"),
     integer(chExt, "cy"),
   ];
-  if (!own || cx === undefined || cy === undefined || !cw || !ch) return outer;
+  const parent = turned ? { ...outer, turned } : outer;
+  if (!own || cx === undefined || cy === undefined || !cw || !ch) return parent;
   const scaleX = own.w / cw;
   const scaleY = own.h / ch;
   return {
-    scaleX: outer.scaleX * scaleX,
-    scaleY: outer.scaleY * scaleY,
-    moveX: outer.moveX + outer.scaleX * (own.x - cx * scaleX),
-    moveY: outer.moveY + outer.scaleY * (own.y - cy * scaleY),
+    scaleX: parent.scaleX * scaleX,
+    scaleY: parent.scaleY * scaleY,
+    moveX: parent.moveX + parent.scaleX * (own.x - cx * scaleX),
+    moveY: parent.moveY + parent.scaleY * (own.y - cy * scaleY),
+    turned: parent.turned,
   };
 }
 
@@ -96,7 +104,8 @@ function readShape(node: XmlNode, at: Transform): Shape {
       : node.name === "grpSp"
         ? descend(node, "grpSpPr", "xfrm")
         : descend(node, "spPr", "xfrm");
-  const { box, turned } = readXfrm(xfrm);
+  const { box, turned: own } = readXfrm(xfrm);
+  const turned = own || at.turned;
   const idx = ph?.attrs.idx;
   return {
     kind: ph ? "placeholder" : node.name === "pic" ? "picture" : "other",

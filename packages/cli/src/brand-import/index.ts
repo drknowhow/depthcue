@@ -273,7 +273,7 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
     `These colors are for decks with the theme "${palette.preset}": set "theme": "${palette.preset}" in deck.json. The other theme keeps Depthcue's own colors.`,
   );
   notes.push(...palette.notes);
-  if (input.kind !== "thmx" && Math.abs(slide.w / slide.h / (16 / 9) - 1) > 0.01) {
+  if (Math.abs(slide.w / slide.h / (16 / 9) - 1) > 0.01) {
     notes.push(
       `The slides are ${ratioLabel(slide.w, slide.h)} (${slide.w} by ${slide.h} EMU) and Depthcue's are 16:9, so every frame was scaled: each keeps its place as a share of the slide, and the slide is stretched to 16:9 with it.`,
     );

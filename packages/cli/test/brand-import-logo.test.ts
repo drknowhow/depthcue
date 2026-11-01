@@ -327,6 +327,66 @@ describe("the logo in an import", () => {
     ).toMatch(why);
   });
 
+  describe("inside a group", () => {
+    const mark = pic({ x: 50, y: 25, w: 25, h: 45 }, { name: "Mark" });
+    const grouped = (extra: Record<string, unknown> = {}, inner: ShapeSpec = mark): ShapeSpec =>
+      ({
+        kind: "group",
+        name: "Marks",
+        frame: { x: 80, y: 0, w: 20, h: 18 },
+        drawn: { x: 0, y: 0, w: 100, h: 90 },
+        children: [inner],
+        ...extra,
+      }) as ShapeSpec;
+
+    it("is found where the group draws it, when the group only moves and scales it", async () => {
+      const done = await importFixture(make, withPictures([grouped()]));
+      expect(done.report.logo).toMatchObject({ corner: "top-end" });
+    });
+
+    it.each([
+      ["rotated", { turn: "rotate" }],
+      ["flipped across", { turn: "flipH" }],
+      ["flipped up and down", { turn: "flipV" }],
+    ])("is not taken when the group is %s", async (_, extra) => {
+      const done = await importFixture(make, withPictures([grouped(extra)]));
+      expect(done.report.logo).toBeNull();
+      expect(done.report.left).toContainEqual({
+        what: 'The picture "Mark" on the slide master',
+        why: "it is rotated or flipped",
+      });
+    });
+
+    it("is not taken when a group around its group is turned", async () => {
+      const inner = grouped({ name: "Inner", frame: { x: 85, y: 2, w: 10, h: 10 } }, mark);
+      const outer = {
+        kind: "group",
+        name: "Outer",
+        frame: { x: 80, y: 0, w: 20, h: 18 },
+        turn: "rotate",
+        children: [inner],
+      } as ShapeSpec;
+      const done = await importFixture(make, withPictures([outer]));
+      expect(done.report.logo).toBeNull();
+      expect(done.report.left.map((item) => item.why)).toContain("it is rotated or flipped");
+    });
+
+    it("is not taken when the turned group gives no space for its children", async () => {
+      const inner = pic({ x: 90, y: 5, w: 5, h: 9 }, { name: "Mark" });
+      const done = await importFixture(
+        make,
+        withPictures([grouped({ turn: "rotate", drawn: false }, inner)]),
+      );
+      expect(done.report.logo).toBeNull();
+      expect(done.report.left.map((item) => item.why)).toContain("it is rotated or flipped");
+    });
+    it("leaves a picture beside a turned group alone", async () => {
+      const beside = pic({ x: 90, y: 5, w: 5, h: 9 }, { name: "Beside" });
+      const turned = grouped({ turn: "rotate", frame: { x: 2, y: 80, w: 10, h: 10 } });
+      const done = await importFixture(make, withPictures([turned, beside]));
+      expect(done.report.logo).toMatchObject({ corner: "top-end" });
+    });
+  });
   it("is not taken when the picture is flipped", async () => {
     const done = await importFixture(
       make,

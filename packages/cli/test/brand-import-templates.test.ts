@@ -876,4 +876,12 @@ describe("a 4:3 file", () => {
     );
     expect(wide.report.notes.join("\n")).not.toContain("so every frame was scaled");
   });
+
+  it("says so for a theme file too, which carries its own slide size", async () => {
+    const wide = await importFixture(make, { kind: "thmx" });
+    const narrow = await importFixture(make, { kind: "thmx", size: { cx: 9144000, cy: 6858000 } });
+    expect(narrow.report.source.slide.ratio).toBe("4:3");
+    expect(narrow.report.notes.join("\n")).toContain("The slides are 4:3 (9144000 by 6858000 EMU)");
+    expect(wide.report.notes.join("\n")).not.toContain("so every frame was scaled");
+  });
 });

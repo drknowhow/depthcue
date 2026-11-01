@@ -95,7 +95,18 @@ export type ShapeSpec =
       cropped?: boolean;
       flipped?: boolean;
     }
-  | { kind: "shape"; name: string; frame: Frame };
+  | { kind: "shape"; name: string; frame: Frame }
+  | {
+      kind: "group";
+      name: string;
+      /** Where the group is on the slide. */
+      frame: Frame;
+      /** The box the children were drawn in, as percent of the slide. Left out, the group is not scaled; false, the file gives none. */
+      drawn?: Frame | false;
+      /** How the group is turned: a rotation, or a flip. */
+      turn?: "rotate" | "flipH" | "flipV";
+      children: ShapeSpec[];
+    };
 
 export type BgSpec =
   /** A reference to the theme's background fill list: 1001 is a solid fill, 1002 a gradient, 1003 a picture, painted in this color. */
@@ -349,6 +360,24 @@ function xfrm(frame: Frame, size: { cx: number; cy: number }, extra = ""): strin
 type Embeds = Map<string, string>;
 
 function shapeXml(spec: ShapeSpec, id: number, size: { cx: number; cy: number }, embeds: Embeds): string {
+  if (spec.kind === "group") {
+    const own = xfrm(spec.frame, size)
+      .replace("</a:xfrm>", "")
+      .replace(/^<a:xfrm/, "");
+    const drawn = spec.drawn === undefined ? spec.frame : spec.drawn;
+    const attributes =
+      spec.turn === "rotate"
+        ? ' rot="1800000"'
+        : spec.turn === "flipH"
+          ? ' flipH="1"'
+          : spec.turn === "flipV"
+            ? ' flipV="1"'
+            : "";
+    const children = spec.children
+      .map((child, at) => shapeXml(child, id * 100 + at + 1, size, embeds))
+      .join("");
+    return `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${id}" name="${esc(spec.name)}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm${attributes}${own}${drawn ? `<a:chOff x="${emu(drawn.x, size.cx)}" y="${emu(drawn.y, size.cy)}"/><a:chExt cx="${emu(drawn.w, size.cx)}" cy="${emu(drawn.h, size.cy)}"/>` : ""}</a:xfrm></p:grpSpPr>${children}</p:grpSp>`;
+  }
   if (spec.kind === "shape") {
     return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${esc(spec.name)}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(spec.frame, size)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></p:spPr></p:sp>`;
   }
@@ -401,7 +430,9 @@ function treeXml(shapes: readonly ShapeSpec[], size: { cx: number; cy: number },
 
 /** The media names a set of shapes and a background show, in the order first used. */
 function mediaOf(shapes: readonly ShapeSpec[], bg: BgSpec | undefined): string[] {
-  const names = shapes.flatMap((shape) => (shape.kind === "pic" ? [shape.media] : []));
+  const names = shapes.flatMap((shape): string[] =>
+    shape.kind === "pic" ? [shape.media] : shape.kind === "group" ? mediaOf(shape.children, undefined) : [],
+  );
   if (bg && "picture" in bg) names.push(bg.picture);
   return [...new Set(names)];
 }
