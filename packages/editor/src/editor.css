@@ -1410,10 +1410,22 @@ body {
  */
 @media (min-width: 761px) and (max-width: 1279px) {
   .ed-app .ed-actions button,
-  .ed-app .ed-actions .ed-link,
+  .ed-app .ed-actions .ed-link {
+    padding-inline: var(--dc-space-2);
+  }
+
+  /*
+   * The quick bar has a button for each kind of block, and a window that has no Space Grotesk draws them in a wider
+   * face. The test for one row runs at 1024 wide in such a face, so the buttons are padded a little closer than the top
+   * bar's, and the bar may come within half the usual gutter of the stage's edge, which leaves it room to spare.
+   */
   .ed-app .ed-quick button,
   .ed-app .ed-quick .ed-button {
-    padding-inline: var(--dc-space-2);
+    padding-inline: calc(var(--dc-space-2) * 0.75);
+  }
+
+  .ed-app .ed-quick {
+    max-width: calc(100% - 2 * var(--dc-space-2));
   }
 
   .ed-quick .ed-kbd {

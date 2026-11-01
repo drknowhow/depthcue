@@ -376,6 +376,27 @@ describe("the table block in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  it("keeps the quick bar, with its Table button, in one row at 1024 wide in a wide fallback face", async () => {
+    const { page } = await openDeck();
+    await page.setViewportSize({ width: 1024, height: 768 });
+    // A machine without Space Grotesk draws wider letters, as a Linux runner does. This makes every machine see that case.
+    await page.evaluate(() => {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync("*{font-family:Verdana,'DejaVu Sans',sans-serif !important}");
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    });
+    const seen = await page.evaluate(() => {
+      const box = (selector: string) =>
+        (document.querySelector(selector) as HTMLElement).getBoundingClientRect();
+      return { bar: box(".ed-quick"), button: box("[data-quick='table']"), stage: box(".ed-stage") };
+    });
+    expect(seen.button.width).toBeGreaterThan(0);
+    // One row, and 40 pixels of the stage to spare, so a face wider than this one still does not wrap the bar.
+    expect(seen.bar.height).toBeLessThan(seen.button.height * 2);
+    expect(seen.bar.width).toBeLessThanOrEqual(seen.stage.width - 40);
+    expect(problems).toEqual([]);
+  });
+
   it("exports a page that shows the table as a table", async () => {
     const deck = await openDeck();
     await editATable(deck);

@@ -159,6 +159,9 @@ Declined in review:
   the border, caption and toolbar.
 - **Clipboard.** Ctrl+C on a cell copies the whole table: the step 2 envelope, plus tab-separated text. Pasted HTML
   is read with `DOMParser` for text only, with script, style, noscript and template removed, and never inserted.
+- **Quick bar.** The Table button took the bar past one row at 1024 wide in a wide fallback face (DejaVu Sans, as on a
+  Linux runner). From 761 to 1279 wide its buttons are padded 6 pixels and it may come within 8 pixels of the stage,
+  which leaves 68 pixels of the stage free in DejaVu Sans and 55 in Verdana. A test forces that face and asks for 40.
 - **Core.** No change; every limit comes from `DATA_LIMITS`. `grid.ts` knows nothing of tables, so step 6 can reuse
   it for chart data.
 - **Size.** Editor script grew from 73.6 to 79.2 KB brotli of 90, so steps 3, 5 and 6 share about 10 KB. The `table`
