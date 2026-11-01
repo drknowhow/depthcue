@@ -925,6 +925,16 @@ describe("drafts and reviews of a branded deck", () => {
 
   it("refuse a review file whose brand is broken", () => {
     const review = { ...startReview(brandDoc()), brand: { id: "harbor" } };
-    expect(readReview(JSON.stringify(review))).toMatchObject({ ok: false });
+    expect(readReview(JSON.stringify(review))).toEqual({
+      ok: false,
+      diagnostics: ["schemaVersion", "name"].map((property) => ({
+        severity: "error",
+        code: "missing-property",
+        file: "review.json",
+        path: "/brand",
+        message: `Missing "${property}".`,
+        fix: `Add "${property}".`,
+      })),
+    });
   });
 });
