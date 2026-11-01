@@ -165,31 +165,54 @@ library, and per-block raw hex colors.
   scenes are written as 0.4. `scene.upgrade` still means 0.3.
 - **Doc.** A Doc gains `brand`, `templates` (the brand's, by id) and `brandFiles` (the brand folder's other files).
   `DeckFiles` gains `brandFiles`; the CLI loader reads brand.json and the templates as text and lists the rest.
-- **Built-ins and resolution.** `BUILT_IN_TEMPLATES` holds `section` and `two-column`, `BUILT_IN_STYLES` holds `callout`
-  and `stat`; step 5 adds the rest. `templatesOf` and `blockStylesOf` give the built-ins (unless the brand's
-  `hideBuiltIn` names the set) with the brand's on top by id. `styleOf(deck, brand)` takes the preset, then the
+- **Built-ins and resolution.** `BUILT_IN_TEMPLATES` holds `section`, `two-column` and `statement` (a claim slot over
+  an evidence slot of up to three blocks), `BUILT_IN_STYLES` holds `callout` and `stat`; step 5 adds the rest.
+  `templatesOf` and `blockStylesOf` give the built-ins (unless the brand's `hideBuiltIn` names the set) with the
+  brand's on top by id. `styleOf(deck, brand)` takes the preset, then the
   brand's palette for that preset, then the deck's palette; fonts are the deck's pair, then the brand's pair (or its
   faces' `fallback`), then `editorial`. A `lock`ed brand ignores the deck's palette and pair, and deck.json setting
   either is `brand-locked`.
+- **Slots.** A slot has a `role`: `title`, `subtitle`, `claim`, `body`, `picture`, `chart`, `table` or `content`. The
+  role is required, not defaulted to `content`, because step 6 writes it as the slide's placeholder type: a title
+  slot becomes the slide's title, which PowerPoint's outline, accessibility checker and screen readers read, and a
+  default would export every title nobody marked as a body box. 0.4 is unreleased, so no file has to change. Each
+  role takes some kinds of block (title a heading; subtitle and body text; picture an image; chart a chart; table a
+  table; content any), and `accepts` lists some of them: `slot-role-mismatch` otherwise. A `claim` slot is where a
+  scene's `summary` is drawn; it takes no blocks and has no `accepts`, and a template has one at most
+  (`two-claim-slots`). `valign` (`top`, `middle`, `bottom`; default `top`) places the slot's content in its frame.
 - **One look function.** `lookOf(doc)` in `look.ts` gives the `DeckLook` declared in `exported.ts`: theme, resolved
-  colors, chart colors, the pair, the brand's faces as file paths, the chrome with the logo for the theme, and the
-  styles and templates the scenes use. It is not wired yet; step 3 hands it to the player. The player imports neither
+  colors, chart colors (the brand palette's `chart` for the deck's preset: `colors.paper.chart`, `colors.ink.chart`;
+  there is no top-level `chart`), the pair, the brand's faces as file paths, the chrome with the logo for the theme,
+  and the styles and templates the scenes use. It is not wired yet; step 3 hands it to the player. The player imports neither
   it nor the registry: the player bundle has no built-in template or style in it.
 - **Scene checks.** `unknown-template`, `unknown-slot`, `unknown-style`, `style-wrong-kind`, `slot-refuses-block`,
-  `slot-over-max`, `missing-slot` (every block of a template scene names a slot), `slot-without-template`,
-  `claim-in-template`, and the warning `slot-empty` for a required slot. A pinned block still names a slot that takes
-  its kind, but floats at its frame: it neither fills the slot nor counts toward `max`.
+  `slot-over-max`, `missing-slot` (every block of a template scene names a slot, unless it is pinned),
+  `slot-without-template`, `claim-without-slot` (a template scene keeps its `summary` only on a template with a claim
+  slot; the fix names the deck's templates that have one, or says to remove the claim), and the warning `slot-empty`
+  for a required slot, which the claim fills for a claim slot. A pinned block in a slot belongs to it like any other:
+  it fills it, counts toward `max` and takes the slot's style; only its place comes from its frame. A pinned block
+  with no slot is an overlay over the template: allowed, with no diagnostic, it fills no slot and is checked as any
+  block is but for its slot.
 - **Brand checks.** `unused-brand` (brand.json or templates while deck.json names no brand) is a warning in a deck
   folder, which then leaves those files unread, so a save that makes or takes off a brand can stop between deck.json
   and the brand's files and still load; in a Doc, whose brand would be used, it stays an error. Errors: `missing-brand`
   (deck.json names a brand the folder lacks), `missing-brand-file` (a font, logo or background image not on disk),
   `missing-logo` (logos that name no file, or chrome that places a logo the brand lacks), `palette-low-contrast` at
-  `/colors/<preset>/<color>` with "On ink slides, " in front, `chart-low-contrast` (3:1 on the deck's background),
-  `style-low-contrast` (text on a fill; reversed text in `bg` passes when it reaches the minimum). Warnings:
-  `face-without-files` (the look depends on the viewer's machine), `body-without-bold`, `chrome-crowded` (two chrome
-  parts in one place), `background-unmeasured` (until step 3 measures text on an image). Templates: `duplicate-id` for
-  slots, `frame-off-slide`, `slots-overlap`, `unknown-style`, `style-wrong-kind` and `template-low-contrast` (text on a
-  strong background is drawn in `bg`). Contrast is checked for the deck's theme.
+  `/colors/<preset>/<color>` with "On ink slides, " in front, `chart-low-contrast` at `/colors/<preset>/chart/<i>`
+  (3:1 on that preset's background), `style-low-contrast` (text on a fill; reversed text in `bg` passes when it
+  reaches the minimum). A face needs `license` only when it has `files` (the schema's `dependencies`, list form): a
+  face with no files has nothing to license. Warnings: `face-without-files` (the look depends on the viewer's
+  machine), `body-without-bold`, `chrome-crowded` (two chrome parts in one place), `background-unmeasured` (until
+  step 3 measures text on an image). Templates: `duplicate-id` for slots, `frame-off-slide`, `slots-overlap`,
+  `slot-role-mismatch`, `two-claim-slots`, `unknown-style`, `style-wrong-kind` (a claim slot's style must be for
+  headings, as the claim is drawn as one) and `template-low-contrast` (text on a strong background is drawn in `bg`).
+  The chart, style and template checks run on every preset the brand gives a palette for, and on the deck's theme
+  (`looksOf`), so a brand that reads on paper and fails on ink fails in a paper deck too.
+- **Styled blocks.** A text block with a style, its own or its slot's, or on a template's colored background, is
+  checked in the colors it resolves to: the style's fill (or the template's background), the block's own `tone` and
+  `size` over the style's. Too little contrast is `block-low-contrast` at `/blocks/<i>/tone`, `/style` or `/slot`,
+  or `/text` for a span's tone. Large text needs 3:1; a style that passes at 3:1 because it is large asks 4.5:1 of a
+  block that sets size `s`. Other blocks keep `tone-low-contrast` as before.
 - **Validation.** Nothing is compiled any more. `schemacheck.ts` reads the schema objects of schema.ts at run time
   and checks deck.json, scenes, operations, comments, comment operations, brand.json and templates with them. With
   the 0.4 schema, Ajv's generated validators had pushed the editor's script to 97.2 KB brotli; without them it is
@@ -213,10 +236,11 @@ library, and per-block raw hex colors.
   template, style or `set` key gets the normal diagnostic.
 - **Changing a template.** `retemplate(doc, scene, { template } | { layout })` returns the operations and the ids of
   blocks no slot takes, which are never dropped. A block keeps its slot when the new template has it; others go to the
-  first slot that takes their kind and has room, in order. A claim becomes a heading block with the claim's id and
-  escaped text (body text when it is longer than a heading allows), since a template has no claim; its evidence links
-  are dropped. A scene already at 12 blocks has no room for it: the claim stays a claim and its id is in the unplaced
-  list, so the operations apply once it is decided. Moving to a layout clears every slot.
+  first slot that takes their kind and has room, in order. The claim stays the scene's `summary`, its `evidenceIds`
+  with it, when the new template has a claim slot; when it has none, the claim's id is in the unplaced list, and the
+  operations apply once it is decided. A claim is never turned into text. A pinned block needs a slot with room like
+  any other; one that no slot takes loses its slot and stays pinned, over the template, as does an overlay already
+  there. Moving to a layout clears every slot.
 - **Saving.** `saveDeckDir` writes the brand's new and changed files first (brand.json still holding any style it
   loses, and hiding or locking nothing new), then the scenes, deck.json, brand.json as it ends, and the removals, so
   a save stopped after any file leaves a deck that loads. `save-crash.test.ts` stops nine kinds of batch after every
@@ -229,16 +253,47 @@ library, and per-block raw hex colors.
   binaries count no more than assets do. Drafts keep the brand; a review keeps the reviewed brand but lists no brand
   change, and accepting uses the current brand.
 - **CLI, editor and MCP.** `loader.ts` reads the brand; `edit-api.ts` lets the editor save brand.json and templates and
-  sends `brandFiles`; `deck-api.ts` puts the brand, every template with its slots (id, accepts, hint, max, required)
-  and every style in the outline, and a block's slot and style in the detailed one. deck_get and deck_apply describe
-  templates, slots, styles and the three operations within the size test's limits. The editor loads and saves a
-  branded deck and lists `deck.brand`, `scene.template` and each block's `slot` and `style` as `PENDING` for steps 7
-  and 8.
+  sends `brandFiles`; `deck-api.ts` puts the brand, every template with its slots (id, role, accepts, hint, max,
+  required, style) and every style in the outline, and a block's slot and style in the detailed one. deck_get and
+  deck_apply describe templates, slots with their role, styles and the three operations within the size test's
+  limits: the tool list is 11,999 characters of 12,000, so a slot's role is how an agent learns where the claim goes. The editor loads and saves a branded deck and lists `deck.brand`, `scene.template`
+  and each block's `slot` and `style` as `PENDING` for steps 7 and 8.
+- **The editor's brand checks load on demand.** The changes above took the editor's script to 92,224 bytes, 64 over
+  its limit. What moved: core's `brandcheck.ts`, the checks of brand.json and the template files (`readBrand`,
+  `checkBrand`, `checkTemplate`, `checkBrandFile`, `checkTemplateFile`, `unusedBrand`, `looksOf`), is now
+  `dist/brandcheck.js`, 3.1 KB brotli with its own budget row of 6 KB. The editor's build puts
+  `packages/editor/src/brandchecks.ts` where core imports it; that stand-in fetches the chunk the first time a check
+  is wanted and, until it is in, answers with the error `brand-checks-loading`, so nothing passes unchecked. The store
+  then waits for the chunk and reads the deck again; it does the same for a draft, which is not thrown away for it.
+  A check that meets the error mid-edit starts the fetch and asks for another try. The chunk loads for a deck with a
+  brand, or a folder with brand files; a template scene of a deck without a brand uses only the built-in templates,
+  which tests check, so it needs nothing from the chunk. `checkSceneBrand` (a scene against its template) stays in
+  editor.js: it runs on every edit of a template scene. About 1.3 KB of what the checks use stays in editor.js too,
+  because it sits in modules the editor needs anyway, above all the brand and template schemas in schema.ts; moving
+  those out is the next lever. CLI, MCP and tests use core's module as before.
 - **Player.** A template scene draws each slot as a dashed box with its id, its blocks stacked inside, until step 3
-  places slots at their frames. The fixture's chart-and-note scene overflows that stack in `depthcue render`.
-- **Sizes.** Core runtime 45.2 to 38.8 KB gzip (limit 60). Editor script 89.3 to 89.1 KB brotli (91,195 bytes of
-  92,160; the fix round added 0.4 KB of it). Player script 10.1 to 10.3 KB (the placeholder), core code in the player
-  5.1 to 4.9 KB, exported page 13.3 to 13.2 KB.
+  places slots at their frames; the claim comes first, in a box for the `claim` slot, and an overlay sits only at its
+  frame. The fixture's chart-and-note scene overflows that stack in `depthcue render`.
+- **Sizes.** Core runtime 45.2 to 39.9 KB gzip (limit 60). Editor script 89.3 to 88.2 KB brotli (90,299 bytes of
+  92,160): the review round took it to 92,224 bytes, and moving the brand checks to their chunk took 1.9 KB back out.
+  The chunk is 3.1 KB (3,186 bytes of 6,144). Player script 10.1 to 10.3 KB (the placeholder), core code in the
+  player 5.1 to 5.0 KB, exported page 13.3 KB.
+
+### Cod's review
+
+Changed: claims on template scenes, slot roles and `valign`, pinned blocks in their slots, `license` only with
+`files`, chart colors per preset, and contrast on every palette and on styled blocks, as above. Decided, not changed:
+
+- **The revision does not cover brand file bytes or the built-ins.** It is the concurrency token for JSON operations;
+  brand files join it when step 8 adds the operations that upload them.
+- **Brand and template changes are not separate review items yet.** Step 5 has `reviewChanges` list brand.json and
+  each template, with accept and revert; step 8 shows them in the editor.
+- **Two presets only, paper and ink.** Adding more later is compatible: a palette is keyed by preset.
+- **No slot-level operations, no patch-style `template.set` or `style.set`.** They come with the editors that need
+  them, in step 8.
+- **No lock per capability, no `hideBuiltIn` per id.** Later, and compatible with today's `lock` and set names.
+- **No localized brand strings.** Later, and compatible: a string can become a string or a map of languages.
+- **No export severity profile.** Step 6, with the export it would govern.
 
 Found, not fixed (older than the brand work):
 
