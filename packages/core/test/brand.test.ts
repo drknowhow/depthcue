@@ -308,12 +308,50 @@ describe("a brand's own files", () => {
   const brand = json(BRAND_FILE);
   const cover = json("brand/templates/cover.json");
 
-  it("refuses brand files that deck.json does not name, and a named brand with no brand.json", () => {
+  it("leaves brand files deck.json does not name unread, with a warning, and refuses a named brand with no brand.json", () => {
     const deck = json("deck.json");
     const { brand: _, ...unbranded } = deck;
-    expect(checked({ "deck.json": unbranded })).toMatchObject([
-      { code: "unused-brand", file: BRAND_FILE, fix: expect.stringContaining('"brand": "harbor"') },
+    const welcome = json("scenes/welcome.json");
+    welcome.template = "section";
+    for (const slotted of welcome.blocks) slotted.slot = slotted.role === "heading" ? "title" : "lede";
+    welcome.blocks = welcome.blocks.filter((block: { role: string }) => block.role !== "caption");
+    const growth = json("scenes/growth.json");
+    delete growth.template;
+    growth.layout = "text-media";
+    for (const block of growth.blocks) delete block.slot;
+    const context = json("scenes/context.json");
+    for (const block of context.blocks) if (block.role !== "quote") delete block.style;
+    const ignored = loadDoc(
+      brandFiles({
+        "deck.json": unbranded,
+        "scenes/welcome.json": welcome,
+        "scenes/growth.json": growth,
+        "scenes/context.json": context,
+        // Even a broken template is left unread while deck.json names no brand.
+        "brand/templates/cover.json": { broken: true },
+      }),
+    );
+    expect(ignored.diagnostics).toMatchObject([
+      {
+        severity: "warning",
+        code: "unused-brand",
+        file: BRAND_FILE,
+        fix: expect.stringContaining('"brand": "harbor"'),
+      },
     ]);
+    expect(ignored.doc?.brand).toBeUndefined();
+    expect(ignored.doc?.templates).toBeUndefined();
+    // Its scenes are checked against Depthcue's own templates and styles alone.
+    expect(errors(checked({ "deck.json": unbranded }))).toEqual([
+      "unknown-template",
+      "unknown-style",
+      "unknown-style",
+      "unknown-template",
+    ]);
+    // A Doc with a brand its deck.json does not name would use it, so there it is an error.
+    const doc = brandDoc();
+    const { brand: _named, ...nameless } = doc.deck;
+    expect(checkDoc({ ...doc, deck: nameless })).toMatchObject([{ severity: "error", code: "unused-brand" }]);
     const bare = checked({
       [BRAND_FILE]: null,
       "brand/templates/cover.json": null,

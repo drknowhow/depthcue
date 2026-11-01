@@ -239,7 +239,7 @@ describe("a branded deck through the CLI", () => {
     expect((await cli("check", dir)).lines.at(-1)).toBe("0 errors, 0 warnings");
   });
 
-  it("gives a deck without a brand one with brand.set, and refuses a brand folder deck.json does not name", async () => {
+  it("gives a deck without a brand one with brand.set, and warns of a brand folder deck.json does not name", async () => {
     const dir = copy(plain);
     const result = await apply(dir, [{ op: "brand.set", set: { id: "acme", name: "Acme" } }]);
     expect(result.code, result.text).toBe(0);
@@ -250,9 +250,10 @@ describe("a branded deck through the CLI", () => {
     const stray = copy(plain);
     cpSync(join(fixture, "brand"), join(stray, "brand"), { recursive: true });
     const check = await cli("check", stray);
-    expect(check.code).toBe(1);
+    expect(check.code).toBe(0);
     expect(check.text).toContain(
-      "brand/brand.json  error  The deck folder has brand files, but deck.json names no brand",
+      "brand/brand.json  warning  The deck folder has brand files, but deck.json names no brand, so none of it is used.",
     );
+    expect(check.lines.at(-1)).toBe("0 errors, 1 warning");
   });
 });

@@ -11,7 +11,7 @@ import {
   TEMPLATES_DIR,
   templateIdOf,
 } from "./brand.ts";
-import { type BrandData, readBrand } from "./brandcheck.ts";
+import { type BrandData, readBrand, unusedBrand } from "./brandcheck.ts";
 import { checkData } from "./data.ts";
 import { explain } from "./diagnostics.ts";
 import { checkFrames } from "./frames.ts";
@@ -165,6 +165,12 @@ function brandData(files: DeckFiles): { data: BrandData; problems: Diagnostic[] 
   return { data: brand === undefined ? data : { brand, ...data }, problems };
 }
 
+/** brand.json parsed, or undefined when it is missing or not JSON: only its id is wanted, for a fix line. */
+const brandIn = (files: DeckFiles): unknown => {
+  const text = files.text[BRAND_FILE];
+  return text === undefined ? undefined : parse(text, BRAND_FILE).data;
+};
+
 /**
  * Structure of every file, plus the cross-file facts: scene files exist, asset files exist, nothing is orphaned, the
  * brand deck.json names is there and sound, and every template, slot and style a scene names is one the deck has.
@@ -192,12 +198,20 @@ export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
   let part: BrandPart | undefined;
   let brandProblems: Diagnostic[] = [];
   if (validateDeck(manifest.data)) {
-    const { data, problems } = brandData(files);
-    if (problems.length > 0) brandProblems = problems;
-    else {
-      const read = readBrand(manifest.data as Deck, data, new Set(files.brandFiles ?? []));
-      part = read.part;
-      brandProblems = read.diagnostics;
+    if ((manifest.data as Deck).brand === undefined) {
+      // Brand files deck.json does not name are left unread, with a warning, and the scenes see Depthcue's own kit.
+      part = {};
+      const paths = Object.keys(files.text).filter((file) => file === BRAND_FILE || isTemplateFile(file));
+      const first = paths.includes(BRAND_FILE) ? BRAND_FILE : paths[0];
+      if (first !== undefined) brandProblems = [unusedBrand(first, brandIn(files), "warning")];
+    } else {
+      const { data, problems } = brandData(files);
+      if (problems.length > 0) brandProblems = problems;
+      else {
+        const read = readBrand(manifest.data as Deck, data, new Set(files.brandFiles ?? []));
+        part = read.part;
+        brandProblems = read.diagnostics;
+      }
     }
   }
   const manifestErrors = checkManifest(manifest.data, MANIFEST_FILE, part?.brand);
