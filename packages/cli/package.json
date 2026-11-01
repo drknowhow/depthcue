@@ -45,6 +45,8 @@
     "@depthcue/core": "workspace:*",
     "@depthcue/editor": "workspace:*",
     "@depthcue/player": "workspace:*",
-    "playwright-core": "1.64.0"
+    "jszip": "3.10.1",
+    "playwright-core": "1.64.0",
+    "pptxgenjs": "4.0.1"
   }
 }
