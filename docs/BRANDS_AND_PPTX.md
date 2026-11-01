@@ -336,7 +336,11 @@ Found, not fixed (older than the brand work):
   the six chart colors and the brand's faces as custom properties, and takes off what an earlier look set that this one
   does not. A `Look` is a deck's theme, palette and fonts, or a `DeckLook`; a deck before 0.4 is drawn exactly as
   before. `legacy.test.ts` compares the DOM of five old decks with and without a look, and the e2e file compares
-  pixels of the v0-1, v0-2, v0-3, demo and charts decks with and without one.
+  pixels of the v0-1, v0-2, v0-3, demo and charts decks with and without one. The pictures are byte-identical on
+  Windows, and 38 of 38 renders of the five decks match main's. On the Linux runner two pages of one deck differ by a
+  few pixels (22 at most, by 14 levels at most, in a different scene each run), so the e2e comparison allows a step of
+  24 and 1% of the picture, says what it found, and a second test checks it still tells two different slides apart.
+  The cause is not known: whether two pages drawn without a look differ in the same way was not checked.
 - **Faces.** `@font-face` rules go in a constructed stylesheet (`adoptedStyleSheets`), because the page's policy
   (`style-src 'self'`) refuses a `<style>` element. A face is a safe family name and a file inside `brand/`
   (`brandUrl`); a family name with a quote, backslash, semicolon, brace or angle bracket is left out. The heading
