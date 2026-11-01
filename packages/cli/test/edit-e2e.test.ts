@@ -2097,3 +2097,122 @@ describe("keyboard shortcuts in a real browser", () => {
     expect(problems).toEqual([]);
   });
 });
+
+describe("the problem ribbon in a real browser", () => {
+  const ribbon = () => page.locator(".ed-ribbon");
+  const count = () => ribbon().locator(".ed-ribbon-count");
+  const current = () =>
+    page.locator(".ed-scene-list > li[data-current] .ed-scene").getAttribute("data-scene");
+  const PIXEL =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+  /** A block pinned by something other than the editor, as an agent would pin it. */
+  function pinOnDisk(sceneId: string, id: string, frame: { x: number; y: number; w: number; h: number }) {
+    const doc = disk();
+    const result = applyOps(doc, [{ op: "block.frame", scene: sceneId, id, frame }], revisionOf(doc));
+    if (!result.ok) throw new Error(result.diagnostics[0]?.message);
+    const text = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+    writeFileSync(join(folder, "deck.json"), text(result.doc.deck));
+    for (const changed of result.changed)
+      writeFileSync(join(folder, "scenes", `${changed}.json`), text(result.doc.scenes[changed]));
+  }
+
+  const MARGIN = { x: 1, y: 30, w: 40, h: 20 };
+  const frameOnDisk = (sceneId: string, id: string) => {
+    const block = disk().scenes[sceneId]?.blocks.find((candidate) => candidate.id === id);
+    return block?.frame;
+  };
+
+  it("says all clear for the demo deck, in a strip between the top bar and the slide", async () => {
+    await page.goto(url());
+    await count().waitFor();
+    expect(await count().textContent()).toBe("All clear");
+    expect(await ribbon().getAttribute("data-state")).toBe("clear");
+    const [bar, strip, slide] = await Promise.all([
+      page.locator(".ed-bar").boundingBox(),
+      ribbon().boundingBox(),
+      page.locator(".ed-canvas-host").boundingBox(),
+    ]);
+    if (!bar || !strip || !slide) throw new Error("the bar, the ribbon and the slide should all be drawn");
+    expect(strip.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+    expect(slide.y).toBeGreaterThanOrEqual(strip.y + strip.height - 1);
+    expect(problems).toEqual([]);
+  });
+
+  it("flags a picture that is left with its file's name, moves nothing, and clears once it is described", async () => {
+    await page.goto(url());
+    await page.locator(".ed-scene[data-scene='method']").click();
+    await page.locator(".ed-frame [data-id='method-diagram']").click();
+    const bar = page.locator(".ed-toolbar");
+    await bar.locator("[data-tb='edit']").click();
+    const before = await page.locator(".ed-canvas-host").boundingBox();
+    await bar
+      .locator("[data-field='image:upload']")
+      .setInputFiles({ name: "new.png", mimeType: "image/png", buffer: Buffer.from(PIXEL, "base64") });
+    await ribbon().locator("[data-ribbon='show']:not([hidden])").waitFor();
+    expect(await ribbon().getAttribute("data-state")).toBe("problems");
+    expect(await count().textContent()).toBe("1 thing to check");
+    expect(await ribbon().locator("[data-ribbon='show']").textContent()).toContain("alt text");
+    // A problem that appears is not allowed to push the slide down.
+    expect(await page.locator(".ed-canvas-host").boundingBox()).toEqual(before);
+    await bar.locator("[data-field='image:alt']").fill("A diagram of the method");
+    await page.locator(".ed-ribbon[data-state='clear']").waitFor();
+    await saved();
+    const written = disk().scenes.method?.blocks.find((block) => block.id === "method-diagram");
+    expect(written).toMatchObject({ alt: "A diagram of the method" });
+    expect(problems).toEqual([]);
+  });
+
+  it("puts a pinned block that reaches into the margin back in its slot with Fix, and Undo pins it again", async () => {
+    addScene({ id: "kr", title: "Ribbon", layout: "text-media", blocks: [note("kr-words", "Words.")] });
+    pinOnDisk("kr", "kr-words", MARGIN);
+    await openScene("kr", "kr-words");
+    expect(await count().textContent()).toBe("1 thing to check");
+    expect(await ribbon().locator("[data-ribbon='show']").textContent()).toContain("margin");
+    const fix = ribbon().locator("[data-ribbon='fix']");
+    expect(await fix.textContent()).toBe("Back to layout");
+    await fix.click();
+    await page.locator(".ed-ribbon[data-state='clear']").waitFor();
+    await saved();
+    expect(frameOnDisk("kr", "kr-words")).toBeUndefined();
+    await page.keyboard.press("Control+z");
+    await page.locator(".ed-ribbon[data-state='problems']").waitFor();
+    await saved();
+    expect(frameOnDisk("kr", "kr-words")).toEqual(MARGIN);
+    expect(problems).toEqual([]);
+  });
+
+  it("walks the problems of two scenes with Next and Previous, and the scene follows", async () => {
+    addScene({ id: "ka", title: "First", layout: "text-media", blocks: [note("ka-words", "Words.")] });
+    addScene({ id: "kb", title: "Second", layout: "text-media", blocks: [note("kb-words", "Words.")] });
+    pinOnDisk("ka", "ka-words", MARGIN);
+    pinOnDisk("kb", "kb-words", MARGIN);
+    await page.goto(url());
+    expect(await count().textContent()).toBe("2 things to check");
+    await ribbon().locator("[data-ribbon='next']").click();
+    expect(await current()).toBe("kb");
+    expect(await ribbon().locator(".ed-ribbon-place").textContent()).toBe("2 of 2");
+    // The block it is about is chosen, and the keyboard stays on the button, so Next can be pressed again.
+    await page.locator(".ed-toolbar").waitFor();
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-ribbon"))).toBe("next");
+    await page.keyboard.press("Enter");
+    expect(await current()).toBe("ka");
+    await ribbon().locator("[data-ribbon='previous']").click();
+    expect(await current()).toBe("kb");
+    expect(problems).toEqual([]);
+  });
+
+  it("fits a phone: the sentence wraps and the page does not scroll sideways", async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    addScene({ id: "kp", title: "Phone", layout: "text-media", blocks: [note("kp-words", "Words.")] });
+    pinOnDisk("kp", "kp-words", MARGIN);
+    await page.goto(url());
+    await ribbon().locator("[data-ribbon='show']:not([hidden])").waitFor();
+    const box = await ribbon().boundingBox();
+    if (!box) throw new Error("the ribbon should be drawn");
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+    expect(problems).toEqual([]);
+  });
+});

@@ -20,7 +20,7 @@ body {
 .ed-app {
   display: grid;
   grid-template-columns: 10.5rem minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   height: 100dvh;
 }
 
@@ -170,11 +170,87 @@ body {
   margin: 0;
 }
 
+/* Problem ribbon: always there, so a problem that appears or goes moves nothing. */
+
+.ed-ribbon {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--dc-space-3);
+  box-sizing: border-box;
+  height: 2.5rem;
+  padding: 0 var(--dc-space-4);
+  border-bottom: 1px solid var(--dc-line);
+  background: var(--dc-surface);
+  font-size: 0.875rem;
+}
+
+.ed-ribbon[data-state="clear"] {
+  background: color-mix(in srgb, var(--dc-state) 28%, var(--dc-surface));
+}
+
+.ed-ribbon-dot {
+  flex: none;
+  width: 0.5625rem;
+  height: 0.5625rem;
+  border-radius: 50%;
+  background: var(--dc-action);
+}
+
+.ed-ribbon[data-state="clear"] .ed-ribbon-dot {
+  background: var(--dc-text);
+}
+
+.ed-ribbon-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dc-space-1);
+  font-family: var(--dc-font-mono);
+  font-size: 0.75rem;
+  color: var(--dc-muted);
+}
+
+.ed-ribbon-nav[hidden] {
+  display: none;
+}
+
+.ed-app .ed-ribbon-nav button {
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0 var(--dc-space-2);
+}
+
+/* One line, so the strip is the same height whatever it says; the sentence is cut short with an ellipsis and whole in the tooltip. */
+.ed-app .ed-ribbon-text {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 2rem;
+  padding: 0;
+  border-color: transparent;
+  background: none;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.ed-app .ed-ribbon-text:hover:not(:disabled) {
+  border-color: transparent;
+  text-decoration: underline;
+}
+
+.ed-app .ed-ribbon-fix {
+  min-height: 2rem;
+  border-color: var(--dc-action);
+}
+
 /* Scene list */
 
 .ed-scenes {
   grid-column: 1;
-  grid-row: 3;
+  grid-row: 4;
   overflow: auto;
   padding: var(--dc-space-3);
   border-right: 1px solid var(--dc-line);
@@ -347,7 +423,7 @@ body {
 /* The slide's column. The quick bar floats over its foot, and the stage under the slide keeps room for it. */
 .ed-stage {
   grid-column: 2;
-  grid-row: 3;
+  grid-row: 4;
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -366,10 +442,10 @@ body {
   padding: var(--dc-space-4) var(--dc-space-4) 4.5rem;
 }
 
-/* The slide takes the width it is given, unless the height runs out first: the top bar, the hint, the quick bar and the padding are about 9rem. */
+/* The slide takes the width it is given, unless the height runs out first: the top bar, the problem ribbon, the padding, the hint and the room for the quick bar are about 13.75rem. A short window scrolls the slide under the bar instead of shrinking it past 24rem. */
 .ed-canvas-host {
   position: relative;
-  width: min(100%, calc((100dvh - 9rem) * 16 / 9));
+  width: min(100%, max(24rem, calc((100dvh - 13.75rem) * 16 / 9)));
 }
 
 .ed-app .ed-frame.dc-player {
@@ -1514,9 +1590,24 @@ body {
   }
 
   .ed-scenes,
-  .ed-stage {
+  .ed-stage,
+  .ed-ribbon {
     grid-column: auto;
     grid-row: auto;
+  }
+
+  /* On a phone the sentence wraps, and the strip grows to hold it. */
+  .ed-ribbon {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 2.5rem;
+    padding: var(--dc-space-1) var(--dc-space-4);
+  }
+
+  .ed-app .ed-ribbon-text {
+    flex-basis: 14rem;
+    overflow: visible;
+    white-space: normal;
   }
 
   /* On a phone the page scrolls and the bar sits under the slide, in the flow. */
