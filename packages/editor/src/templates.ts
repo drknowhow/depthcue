@@ -85,6 +85,10 @@ export const BLOCK_KINDS: ReadonlyArray<{ kind: NewBlockKind; label: string }> =
   { kind: "clip", label: "Clip" },
 ];
 
+/** True for a kind of block the editor can add. A layout may accept more, such as tables, that it cannot add yet. */
+export const isNewBlockKind = (kind: string): kind is NewBlockKind =>
+  BLOCK_KINDS.some((entry) => entry.kind === kind);
+
 // The core owns this rule, so the editor's flag and `depthcue check` cannot disagree about which alt text is missing.
 export { placeholderAlt };
 export const needsAlt = hasPlaceholderAlt;
@@ -136,10 +140,20 @@ export function blockLabel(block: Block): string {
       return block.alt;
     case "bar-chart":
       return block.title ?? "Bar chart";
+    case "table":
+      return block.title ?? "Table";
+    case "chart":
+      return block.title ?? "Chart";
   }
 }
 
-const KIND_LABEL = { image: "Image", clip: "Clip", "bar-chart": "Chart" } as const;
+const KIND_LABEL = {
+  image: "Image",
+  clip: "Clip",
+  "bar-chart": "Chart",
+  table: "Table",
+  chart: "Chart",
+} as const;
 
 const capital = (word: string) => `${word[0]?.toUpperCase()}${word.slice(1)}`;
 

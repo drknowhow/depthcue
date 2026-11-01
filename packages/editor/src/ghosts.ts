@@ -2,7 +2,7 @@ import { type Scene, type SlotName, slotsOf } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { actionButton, fileButton } from "./fields.ts";
 import { REGION_SLOT } from "./slotdrag.ts";
-import { BLOCK_KINDS, IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
+import { BLOCK_KINDS, IMAGE_ACCEPT, isNewBlockKind, type NewBlockKind } from "./templates.ts";
 
 export interface GhostHooks {
   /** Adds a block of `kind` to an area of the slide. An image comes with the file to upload. */
@@ -114,6 +114,6 @@ export function drawGhosts(scene: Scene, view: HTMLElement, hooks: GhostHooks): 
       : empty && (slot.name !== "evidence" || scene.summary !== undefined);
     if (!wanted) continue;
     const region = regionFor(slot.name, view);
-    region?.append(ghost(slot.name, slot.accepts, hooks));
+    region?.append(ghost(slot.name, slot.accepts.filter(isNewBlockKind), hooks));
   }
 }

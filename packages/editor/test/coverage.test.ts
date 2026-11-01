@@ -533,9 +533,38 @@ const WAYS: Record<string, Entry> = {
   },
 };
 
+/**
+ * Properties schema 0.3 added that the editor cannot edit yet, by the step of docs/CONTENT_RANGE.md that adds their
+ * controls. The step that adds a control takes its prefix out of this list and gives each property a way in WAYS.
+ */
+const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
+  ["deck.palette", "Step 3, deck style"],
+  ["deck.fonts", "Step 3, deck style"],
+  ["scene.blocks<table>", "Step 4, table block"],
+  ["scene.blocks<text>.tone", "Step 5, text styles"],
+  ["scene.blocks<text>.size", "Step 5, text styles"],
+  ["scene.blocks<text>.align", "Step 5, text styles"],
+  ["scene.blocks<chart>", "Step 6, chart types"],
+];
+const pending = (path: string) =>
+  PENDING.some(
+    ([prefix]) => path === prefix || path.startsWith(`${prefix}.`) || path.startsWith(`${prefix}[`),
+  );
+
 describe("every property of a deck can be edited", () => {
+  it("leaves a property pending only while it has no way to be edited", () => {
+    const both = Object.keys(WAYS).filter(pending);
+    expect(both, `Take these out of PENDING in test/coverage.test.ts: ${both.join(", ")}.`).toEqual([]);
+    for (const [prefix] of PENDING) {
+      expect(
+        shipped().some((path) => pending(path) && path.startsWith(prefix)),
+        prefix,
+      ).toBe(true);
+    }
+  });
+
   it("has a way, or a reason it has none, for each property in the schema", () => {
-    const known = new Set(Object.keys(WAYS));
+    const known = new Set([...Object.keys(WAYS), ...shipped().filter(pending)]);
     const missing = shipped().filter((path) => !known.has(path));
     expect(
       missing,

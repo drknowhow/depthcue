@@ -129,6 +129,16 @@ function renderBlock(
     case "bar-chart":
       node = h("figure", { class: "dc-figure dc-chart-figure" }, renderChartTable(block));
       break;
+    case "table":
+    case "chart":
+      // Until the player draws these, it holds their place with what they are and their title.
+      node = h(
+        "figure",
+        { class: "dc-figure dc-placeholder", "data-kind": block.type === "chart" ? block.kind : "table" },
+        h("p", { class: "dc-label" }, block.type === "table" ? "Table" : "Chart"),
+        block.title && h("figcaption", {}, block.title),
+      );
+      break;
   }
   node.dataset.id = block.id;
   node.classList.add("dc-block");
