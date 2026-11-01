@@ -245,7 +245,8 @@ library, and per-block raw hex colors.
   with it, when the new template has a claim slot; when it has none, the claim's id is in the unplaced list, and the
   operations apply once it is decided. A claim is never turned into text. A pinned block needs a slot with room like
   any other; one that no slot takes loses its slot and stays pinned, over the template, as does an overlay already
-  there. Moving to a layout clears every slot.
+  there. Moving to a layout clears every slot, and lists the claim as unplaced unless the layout is claim-evidence,
+  the one layout that draws it.
 - **Saving.** `saveDeckDir` writes the brand's new and changed files first (brand.json still holding each style it
   loses that a scene or template on disk names, and hiding or locking nothing new), then the scenes, deck.json, the
   removed templates, brand.json as it ends, and the other removals, brand.json's last, so a save stopped after any

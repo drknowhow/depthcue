@@ -1191,6 +1191,19 @@ describe("retemplate", () => {
     expect(decided).toMatchObject({ ok: true });
   });
 
+  it("lists the claim when moving to a layout that does not draw one, and only then", () => {
+    const summary = { id: "context-claim", text: "Two berths were shut.", evidenceIds: ["context-body"] };
+    const doc = applied(brandDoc(), [
+      ...retemplate(brandDoc(), "context", { template: "statement" }).ops,
+      { op: "scene.set", id: "context", set: { summary } },
+      { op: "block.remove", scene: "context", id: "context-heading" },
+    ]);
+    expect(retemplate(doc, "context", { layout: "text-media" }).unplaced).toEqual(["context-claim"]);
+    expect(retemplate(doc, "context", { layout: "title" }).unplaced).toEqual(["context-claim"]);
+    expect(retemplate(doc, "context", { layout: "claim-evidence" }).unplaced).toEqual([]);
+    expect(retemplate(brandDoc(), "growth", { layout: "text-media" }).unplaced).toEqual([]);
+  });
+
   it("gives a pinned block a slot with room like any other, and keeps one no slot takes pinned over the slots", () => {
     const frame = { x: 60, y: 30, w: 35, h: 50 };
     // A pinned chart that no slot of section takes stays pinned, out of its old slot, instead of being left over.
