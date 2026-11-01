@@ -269,26 +269,102 @@ const loadedFaces = (page: Page): Promise<string> =>
       .join("; "),
   );
 
+/** How two pictures differ: the pixels that differ at all, those that differ by more than a rounding, the largest step. */
+interface Difference {
+  changed: number;
+  large: number;
+  step: number;
+  of: number;
+  box: string;
+}
+
+/** A step in one channel of a pixel that rasterizing the same page twice can make, and that no change of look makes. */
+const ROUNDING = 24;
+/** The share of a picture that may differ by rounding and no more. */
+const FEW = 0.01;
+
+/** Counts how two PNGs differ, in a blank page where nothing but the picture is. */
+async function difference(blank: Page, left: Buffer, right: Buffer): Promise<Difference> {
+  return blank.evaluate(
+    async ([one, two, rounding]) => {
+      const read = async (base64: string) => {
+        const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const context = canvas.getContext("2d", {
+          willReadFrequently: true,
+        }) as OffscreenCanvasRenderingContext2D;
+        context.drawImage(bitmap, 0, 0);
+        return context.getImageData(0, 0, bitmap.width, bitmap.height);
+      };
+      const [x, y] = [await read(one as string), await read(two as string)];
+      if (x.width !== y.width || x.height !== y.height) {
+        return { changed: 1, large: 1, step: 255, of: x.width * x.height, box: "the sizes differ" };
+      }
+      let [changed, large, step] = [0, 0, 0];
+      let [left, top, right, bottom] = [x.width, x.height, -1, -1];
+      for (let at = 0; at < x.data.length; at += 4) {
+        let most = 0;
+        for (let channel = 0; channel < 4; channel++) {
+          most = Math.max(
+            most,
+            Math.abs((x.data[at + channel] as number) - (y.data[at + channel] as number)),
+          );
+        }
+        if (most === 0) continue;
+        changed++;
+        if (most > (rounding as number)) large++;
+        step = Math.max(step, most);
+        const [column, row] = [(at / 4) % x.width, Math.floor(at / 4 / x.width)];
+        [left, top, right, bottom] = [
+          Math.min(left, column),
+          Math.min(top, row),
+          Math.max(right, column),
+          Math.max(bottom, row),
+        ];
+      }
+      return {
+        changed,
+        large,
+        step,
+        of: x.width * x.height,
+        box: changed ? `${left},${top} to ${right},${bottom}` : "",
+      };
+    },
+    [left.toString("base64"), right.toString("base64"), ROUNDING] as const,
+  );
+}
+
 /**
- * Whether the stages of two pages come out as the same picture. A face that arrives late repaints, so the pictures are
- * taken again a few times before they are called different; a difference that is still there is a real one, and the
- * message says what each page had loaded and whether the first page agrees with itself.
+ * Whether the stages of two pages come out as the same picture, to within the rounding of drawing a page twice: on a
+ * Linux runner two pages of the same deck differ by a handful of faint pixels, where a different look or font changes
+ * whole letters. A face that arrives late repaints, so the pictures are taken again a few times before they are called
+ * different. What a difference was is said, in the log when it passes and in the message when it does not.
  */
-async function sameStage(a: Page, b: Page): Promise<string | undefined> {
+async function sameStage(a: Page, b: Page, note: string): Promise<string | undefined> {
   const shoot = (page: Page) => page.locator(".dc-stage").screenshot({ animations: "disabled" });
-  let left = await shoot(a);
-  let right = await shoot(b);
-  for (let attempt = 0; attempt < 4 && !left.equals(right); attempt++) {
-    await a.waitForTimeout(250);
-    await Promise.all([frames(a), frames(b)]);
-    left = await shoot(a);
-    right = await shoot(b);
+  const blank = await a.context().newPage();
+  try {
+    let left = await shoot(a);
+    let right = await shoot(b);
+    let found = left.equals(right) ? undefined : await difference(blank, left, right);
+    for (let attempt = 0; attempt < 3 && found && found.large > 0; attempt++) {
+      await a.waitForTimeout(250);
+      await Promise.all([frames(a), frames(b)]);
+      left = await shoot(a);
+      right = await shoot(b);
+      found = left.equals(right) ? undefined : await difference(blank, left, right);
+    }
+    if (!found) return undefined;
+    const said = `${note}: ${found.changed} of ${found.of} pixels differ, ${found.large} by more than ${ROUNDING}, at most by ${found.step}, within ${found.box}`;
+    if (found.large === 0 && found.changed <= found.of * FEW) {
+      console.log(said);
+      return undefined;
+    }
+    return `${said}; loaded: [${await loadedFaces(a)}] and [${await loadedFaces(b)}]`;
+  } finally {
+    await blank.close();
   }
-  if (left.equals(right)) return undefined;
-  const again = await shoot(a);
-  return `the pictures differ (${left.length} and ${right.length} bytes, the first ${
-    again.equals(left) ? "is" : "is not"
-  } the same twice); loaded: [${await loadedFaces(a)}] and [${await loadedFaces(b)}]`;
 }
 
 /** Watches a page for the errors a refused script, style or font would raise. */
@@ -757,6 +833,17 @@ describe("depthcue render, on a deck with a brand", () => {
 // ---- decks with no brand ---------------------------------------------------------------------------------------------
 
 describe("a deck with no brand", () => {
+  it("tells two different slides apart, so the comparison below is not a pass for anything", async () => {
+    const deck = copyDeck("v0-1", "v0-1");
+    const [first, second] = [await serve(deck), await serve(deck)];
+    const message = await sameStage(
+      await first.go("opening"),
+      await second.go("demand"),
+      "opening and demand",
+    );
+    expect(message).toMatch(/pixels differ, \d+ by more than/);
+  }, 60_000);
+
   for (const name of ["v0-1", "v0-2", "v0-3", "demo", "charts"]) {
     it(`${name} is drawn the same with the look the server sends as without it`, async () => {
       const deck = copyDeck(name, name);
@@ -774,7 +861,7 @@ describe("a deck with no brand", () => {
         const a = await withLook.go(scene);
         const b = await without.go(scene);
         expect(
-          await sameStage(a, b),
+          await sameStage(a, b, `${name}/${scene}`),
           `${name}/${scene} looks the same with and without a look`,
         ).toBeUndefined();
         expect(await a.locator(".dc-chrome, .dc-slot, .dc-backdrop").count(), `${name}/${scene}`).toBe(0);
