@@ -160,7 +160,7 @@ describe("operation shapes", () => {
     expect(near.diagnostics[0]?.fix).toContain('Did you mean "scene.set"?');
     const far = failure(run(demoDoc(), [{ op: "slide.explode" }]));
     expect(far.diagnostics[0]?.fix).toBe(
-      "Use one of: deck.set, scene.add, scene.remove, scene.move, scene.set, block.add, block.remove, block.move, block.set, block.frame, block.unframe.",
+      "Use one of: deck.set, scene.add, scene.remove, scene.move, scene.set, scene.upgrade, block.add, block.remove, block.move, block.set, block.frame, block.unframe.",
     );
   });
 
@@ -218,7 +218,7 @@ describe("scenes", () => {
 
   it("fills in the schema version", () => {
     const result = success(run(demoDoc(), [{ op: "scene.add", scene: newScene }]));
-    expect(result.doc.scenes["next-steps"]?.schemaVersion).toBe("0.2");
+    expect(result.doc.scenes["next-steps"]?.schemaVersion).toBe("0.3");
     expect(result.changed).toEqual(["next-steps"]);
     expect(result.deckChanged).toBe(true);
   });

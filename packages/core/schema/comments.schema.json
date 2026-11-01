@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "urn:depthcue:schema:0.2:comments",
+  "$id": "urn:depthcue:schema:0.3:comments",
   "title": "Depthcue comments",
   "type": "object",
   "additionalProperties": false,

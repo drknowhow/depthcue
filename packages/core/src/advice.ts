@@ -37,7 +37,7 @@ export function checkContent(scene: Scene, file: string): Diagnostic[] {
         fix: "Write what the picture shows, for someone who cannot see it.",
       });
     }
-    if (block.type === "bar-chart" && (block.sourceIds ?? []).length === 0) {
+    if ((block.type === "bar-chart" || block.type === "chart") && (block.sourceIds ?? []).length === 0) {
       out.push({
         severity: "warning",
         code: "missing-source",

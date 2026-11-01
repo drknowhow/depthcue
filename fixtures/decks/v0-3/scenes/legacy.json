@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "0.1",
+  "id": "legacy",
+  "title": "An older scene",
+  "layout": "title",
+  "blocks": [{ "id": "legacy-title", "type": "text", "role": "heading", "text": "Still *literal* at 0.1" }]
+}

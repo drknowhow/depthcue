@@ -1,4 +1,5 @@
 import { canonicalJson, sha256Hex } from "./revision.ts";
+import { checkTones, colorsKey, styleOf } from "./style.ts";
 import type { Deck, Diagnostic, Scene } from "./types.ts";
 import {
   checkDeckFiles,
@@ -65,6 +66,7 @@ export function docToFiles(doc: Doc): Record<string, string> {
 /** Full validation of a Doc. A Doc made by this package is already valid; use this on one assembled by hand. */
 export function checkDoc(doc: Doc): Diagnostic[] {
   const out = checkManifest(doc.deck);
+  const deck = out.length === 0 ? doc.deck : undefined;
   for (const id of doc.deck.scenes) {
     const scene = doc.scenes[id];
     if (scene === undefined) {
@@ -77,19 +79,27 @@ export function checkDoc(doc: Doc): Diagnostic[] {
         fix: `Add the scene, or remove "${id}" from "scenes".`,
       });
     } else {
-      out.push(...checkScenePart(scene, scenePath(id), id, doc.assets));
+      out.push(...checkScenePart(scene, scenePath(id), id, doc.assets, deck));
     }
   }
   return out;
 }
 
-/** Validates only what differs from `before`, relying on `before` being valid. */
+/**
+ * Validates only what differs from `before`, relying on `before` being valid. A change to the deck's colors is checked
+ * against the tones of every scene, since a scene that did not change may use a tone that no longer has the contrast.
+ */
 export function checkChanges(before: Doc, after: Doc): Diagnostic[] {
   const out = after.deck === before.deck ? [] : checkManifest(after.deck);
+  const deck = out.some((d) => d.severity === "error") ? undefined : after.deck;
+  const recolored =
+    deck !== undefined && after.deck !== before.deck && colorsKey(before.deck) !== colorsKey(deck);
   for (const id of after.deck.scenes) {
     const scene = after.scenes[id];
     if (scene !== undefined && scene !== before.scenes[id]) {
-      out.push(...checkScenePart(scene, scenePath(id), id, after.assets));
+      out.push(...checkScenePart(scene, scenePath(id), id, after.assets, deck));
+    } else if (scene !== undefined && deck !== undefined && recolored) {
+      out.push(...checkTones(scene, styleOf(deck), scenePath(id)));
     }
   }
   return out;

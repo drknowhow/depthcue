@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "0.2",
+  "id": "intro",
+  "title": "Draft numbers",
+  "layout": "title",
+  "blocks": [
+    { "id": "intro-title", "type": "text", "role": "heading", "text": "Q3 *draft* numbers, 5 * 3 = 15" },
+    {
+      "id": "intro-body",
+      "type": "text",
+      "role": "body",
+      "text": "Two things changed:\n- returns now count\n1. as orders, see [the note](https://example.com)",
+      "frame": { "x": 10, "y": 40, "w": 80, "h": 40 }
+    }
+  ],
+  "notes": "Every star, bracket and dash here is a character: this scene is at 0.2."
+}

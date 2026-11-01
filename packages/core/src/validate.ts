@@ -1,11 +1,14 @@
 import { checkContent } from "./advice.ts";
 import { assetRefs } from "./assets.ts";
+import { checkData } from "./data.ts";
 import { explain } from "./diagnostics.ts";
 import { checkFrames } from "./frames.ts";
 import { validateDeck, validateScene } from "./generated/validators.js";
 import { checkReferences } from "./references.ts";
 import { deckSchema, sceneSchema } from "./schema.ts";
-import type { Diagnostic, Scene } from "./types.ts";
+import { checkPalette, checkTones, styleOf } from "./style.ts";
+import type { Deck, Diagnostic, Scene } from "./types.ts";
+import { checkDeckVersion, checkSceneVersion, checkText } from "./versions.ts";
 
 export const MANIFEST_FILE = "deck.json";
 export const scenePath = (id: string): string => `scenes/${id}.json`;
@@ -16,12 +19,16 @@ export interface DeckFiles {
   assets: Iterable<string>;
 }
 
+/** Everything checkable about deck.json alone: its structure, then that it declares its version and its contrast. */
 export function checkManifest(data: unknown, file = MANIFEST_FILE): Diagnostic[] {
-  return validateDeck(data) ? [] : explain(validateDeck.errors, data, deckSchema, file);
+  if (!validateDeck(data)) return explain(validateDeck.errors, data, deckSchema, file);
+  return [...checkDeckVersion(data as Deck, file), ...checkPalette(data as Deck, file)];
 }
 
+/** A scene's structure, and the length of its text as the audience sees it, which the schema cannot count. */
 export function checkScene(data: unknown, file: string): Diagnostic[] {
-  return validateScene(data) ? [] : explain(validateScene.errors, data, sceneSchema, file);
+  const shape = validateScene(data) ? [] : explain(validateScene.errors, data, sceneSchema, file);
+  return [...shape, ...checkText(data, file)];
 }
 
 function parse(text: string, file: string): { data?: unknown; diagnostic?: Diagnostic } {
@@ -43,13 +50,15 @@ function parse(text: string, file: string): { data?: unknown; diagnostic?: Diagn
 
 /**
  * Everything checkable about one scene: structure, that its id matches the listing, then (only for a
- * structurally sound scene) its internal references and that its assets exist.
+ * structurally sound scene) its internal references, its version, its tables and charts, and that its assets exist.
+ * Given the deck, a valid one, it also checks the contrast of the tones its text uses against the deck's colors.
  */
 export function checkScenePart(
   data: unknown,
   file: string,
   expectedId: string,
   assets: ReadonlySet<string>,
+  deck?: Deck,
 ): Diagnostic[] {
   const out = checkScene(data, file);
   const sceneId = (data as { id?: unknown } | null)?.id;
@@ -67,6 +76,9 @@ export function checkScenePart(
   out.push(
     ...checkReferences(data as Scene, file),
     ...checkFrames(data as Scene, file),
+    ...checkSceneVersion(data as Scene, file),
+    ...checkData(data as Scene, file),
+    ...(deck ? checkTones(data as Scene, styleOf(deck), file) : []),
     ...checkContent(data as Scene, file),
   );
   for (const ref of assetRefs(data as Scene)) {
@@ -106,6 +118,8 @@ export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
   if (manifest.diagnostic) return [manifest.diagnostic];
   const manifestErrors = checkManifest(manifest.data);
   out.push(...manifestErrors);
+  // The tones of the scenes are checked against the deck's colors only when those are sound.
+  const deck = manifestErrors.length === 0 ? (manifest.data as Deck) : undefined;
 
   const listed = new Set<string>();
   const ids = Array.isArray((manifest.data as { scenes?: unknown })?.scenes)
@@ -131,7 +145,7 @@ export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
       out.push(scene.diagnostic);
       return;
     }
-    out.push(...checkScenePart(scene.data, file, id, assets));
+    out.push(...checkScenePart(scene.data, file, id, assets, deck));
   });
 
   for (const file of Object.keys(files.text)) {

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "0.2",
+  "id": "draft-quarter",
+  "title": "A 0.2 deck with literal stars",
+  "language": "en",
+  "theme": "ink",
+  "scenes": ["intro", "share"]
+}

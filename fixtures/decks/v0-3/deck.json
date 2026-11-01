@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "0.3",
+  "id": "content-range",
+  "title": "Every 0.3 field in one deck",
+  "language": "en",
+  "theme": "paper",
+  "palette": { "action": "#A8341A", "evidence": "#1F4FD1" },
+  "fonts": "modern",
+  "scenes": ["overview", "data", "legacy"]
+}

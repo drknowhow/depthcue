@@ -13,8 +13,8 @@ export interface Slot {
   accepts: readonly BlockType[];
 }
 
-const ANY: readonly BlockType[] = ["text", "image", "bar-chart", "clip"];
-const MEDIA: readonly BlockType[] = ["image", "bar-chart", "clip"];
+const ANY: readonly BlockType[] = ["text", "image", "bar-chart", "clip", "table", "chart"];
+const MEDIA: readonly BlockType[] = ["image", "bar-chart", "clip", "table", "chart"];
 
 /**
  * Where each block of a scene is drawn, which is decided by the layout and not stored in the deck: a title scene
@@ -98,8 +98,8 @@ function turnedAway(scene: Scene, slot: Slot, type: BlockType): string | undefin
   if (slot.name === "evidence" && !scene.summary) return "Evidence belongs to a claim. Add a claim first.";
   if (slot.accepts.includes(type)) return undefined;
   return slot.name === "text"
-    ? "Only text goes in the text area. Images, charts and clips stay in the media area."
-    : "Text goes in the text area. Only images, charts and clips go in the media area.";
+    ? "Only text goes in the text area. Images, tables, charts and clips stay in the media area."
+    : "Text goes in the text area. Only images, tables, charts and clips go in the media area.";
 }
 
 /** The claim's evidence with `id` added or taken out, as a change to the scene, or no change at all. */
