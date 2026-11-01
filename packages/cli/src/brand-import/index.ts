@@ -51,6 +51,7 @@ export type ImportErrorCode =
   | "unreadable"
   | "out-is-file"
   | "out-not-ours"
+  | "out-edited"
   | "out-in-source"
   | "write-failed";
 
@@ -428,7 +429,7 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
   for (const [id, template] of Object.entries(templates))
     output.set(`templates/${id}.json`, jsonOf(template));
   for (const [path, data] of files) output.set(path, data);
-  writeBrand(input.out, input.source, output);
+  const { removed } = writeBrand(input.out, input.source, output);
 
   // What the master and the layouts draw besides placeholders and the logo is not copied.
   const logoOnMaster = logo.logo && !logoLayout ? 1 : 0;
@@ -551,6 +552,7 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
       };
     }),
     files: [...output.keys(), IMPORT_MARKER].sort(),
+    removed,
     left,
     notes,
   };

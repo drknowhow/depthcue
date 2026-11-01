@@ -94,6 +94,11 @@ export function reportLines(report: ImportReport, diagnostics: readonly Diagnost
     if (diagnostic.fix) out(`    fix: ${diagnostic.fix}`);
   }
   out();
+  if (report.removed.length > 0) {
+    out(
+      `Removed ${plural(report.removed.length, "file")} the earlier import wrote here and this one does not: ${report.removed.join(", ")}.`,
+    );
+  }
   out(
     `Wrote ${plural(report.files.length, "file")} to ${report.out}. Use it with a deck: copy the folder to <deck>/brand and name "${report.brand.id}" as "brand" in deck.json.`,
   );

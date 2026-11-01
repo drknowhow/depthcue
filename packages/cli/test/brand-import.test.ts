@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -144,9 +145,13 @@ describe("importBrand of a template", () => {
       "logos",
       "templates",
     ]);
+    // The marker lists each file with the SHA-256 of what is in it.
+    const listed = done.report.files.filter((file) => file !== ".depthcue-brand-import");
     expect(JSON.parse(readFileSync(join(done.out, ".depthcue-brand-import"), "utf8"))).toEqual({
       format: "depthcue-brand-import/1",
-      files: done.report.files.filter((file) => file !== ".depthcue-brand-import"),
+      files: Object.fromEntries(
+        listed.map((file) => [file, createHash("sha256").update(done.bytes(file)).digest("hex")]),
+      ),
     });
   });
 
@@ -491,7 +496,7 @@ describe("where the brand goes", () => {
     expect(brand.colors.ink).toBeDefined();
     expect(brand.logos).toBeUndefined();
     const marker = JSON.parse(readFileSync(join(out, ".depthcue-brand-import"), "utf8"));
-    expect(marker.files).toEqual(["brand.json", "templates/title-slide.json"]);
+    expect(Object.keys(marker.files)).toEqual(["brand.json", "templates/title-slide.json"]);
   });
 
   it("leaves the earlier import alone when the new file cannot be imported", async () => {

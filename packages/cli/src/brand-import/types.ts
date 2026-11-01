@@ -78,6 +78,8 @@ export interface ImportReport {
   templates: TemplateReport[];
   /** Files written, relative to the brand folder. */
   files: string[];
+  /** Files an earlier import wrote into the folder that this one did not write again, which were removed. */
+  removed: string[];
   left: Left[];
   /** Facts that are neither taken nor left out: the slide was scaled, a color was worked out, and the like. */
   notes: string[];

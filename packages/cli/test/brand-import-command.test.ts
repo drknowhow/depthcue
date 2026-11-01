@@ -39,9 +39,11 @@ describe("depthcue brand import: the arguments", () => {
     expect(err).toContain(
       "brand  import turns a PowerPoint template (.potx), presentation (.pptx) or theme (.thmx) into a brand folder",
     );
+    // Exit 2 covers a folder that is refused as well as a file that cannot be read.
     expect(err).toContain(
-      "Exit codes: 0 done, 1 the file has no theme or no usable layout, 2 the file could not be read.",
+      "Exit codes: 0 done, 1 the file has no theme or no usable layout, 2 the file could not be read or the\n       folder could not be written (a refused folder is this too).",
     );
+    expect(err).toContain("unless a file in it was changed since");
   });
 
   it.each([

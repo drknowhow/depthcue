@@ -204,6 +204,11 @@ describe("a second import into the same folder", () => {
     expect(again.code, again.err).toBe(0);
     const report = JSON.parse(again.out);
     expect(readdirSync(join(out, "templates"))).toEqual(["title-slide.json"]);
+    // What it took away is in its report, not only gone.
+    expect(report.removed).toEqual(
+      expect.arrayContaining(["templates/title-and-content.json", "templates/two-content.json"]),
+    );
+    for (const path of report.removed) expect(existsSync(join(out, path)), path).toBe(false);
     expect(JSON.parse(readFileSync(join(out, "brand.json"), "utf8")).id).toBe("second");
     expect(readdirSync(out).sort()).toEqual(
       [...new Set(report.files.map((file: string) => file.split("/")[0]))].sort() as string[],
@@ -219,6 +224,54 @@ describe("a second import into the same folder", () => {
       json: (path) => JSON.parse(readFileSync(join(out, path), "utf8")),
     };
     expect((await cli("check", deckWith(imported))).code).toBe(0);
+  });
+
+  it("says in its lines which files it removed", async () => {
+    const folder = make();
+    const first = await writeFixture(folder, {}, "First");
+    const second = await writeFixture(
+      folder,
+      { layouts: [LAYOUTS[0] as (typeof LAYOUTS)[number]] },
+      "Second",
+    );
+    expect((await cli("brand", "import", first.file, "--out", first.out)).code).toBe(0);
+    const again = await cli("brand", "import", second.file, "--out", first.out);
+    expect(again.code, again.err).toBe(0);
+    expect(again.out).toMatch(
+      /Removed \d+ files the earlier import wrote here and this one does not: .*templates\/two-content\.json/,
+    );
+  });
+
+  it("stops at a brand a deck has changed since, and the deck's own styles are not lost", async () => {
+    const imported = await importFixture(make);
+    const dir = deckWith(imported);
+    const ops = join(make(), "ops.json");
+    writeFileSync(
+      ops,
+      JSON.stringify([
+        { op: "style.set", id: "figure", style: { name: "Figure", for: ["chart", "table"], pad: "s" } },
+      ]),
+    );
+    const rev = (await cli("rev", dir)).lines[0] as string;
+    expect((await cli("apply", dir, ops, "--base-rev", rev)).code).toBe(0);
+
+    // The person imports the same file again into the deck's brand folder.
+    const brand = join(dir, "brand");
+    const before = snapshot(brand);
+    expect(JSON.parse(before["brand.json"] as string).styles.figure.pad).toBe("s");
+    const again = await cli("brand", "import", imported.file, "--out", brand, "--json");
+    expect(again.code).toBe(2);
+    expect(JSON.parse(again.out)).toMatchObject({
+      ok: false,
+      code: "out-edited",
+      message: expect.stringContaining("nothing was written and nothing was removed"),
+    });
+    expect(snapshot(brand)).toEqual(before);
+    expect((await cli("check", dir)).code).toBe(0);
+
+    // The way on is in the message: the brand imported into a new folder.
+    const elsewhere = join(make(), "next");
+    expect((await cli("brand", "import", imported.file, "--out", elsewhere)).code).toBe(0);
   });
 
   it("leaves a folder that is not its own, and a folder it could not finish with, exactly as they were", async () => {
