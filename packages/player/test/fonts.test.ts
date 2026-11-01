@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { brotliDecompressSync } from "node:zlib";
 import { FONT_PAIRS } from "@depthcue/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -14,13 +15,81 @@ interface FontFile {
   family: string;
   weight: number;
   style: "normal" | "italic";
+  /** The characters a file covers, when it is one of several for the weight, as IBM splits its fonts. */
+  range?: string;
+  unicodeRange?: string;
   bytes: number;
   sha256: string;
+  source: { sourceSha256: string };
+}
+interface Family {
+  license: string;
+  licenseFile: string;
+  reservedName: string | false;
+  route: "subset" | "renamed-subset" | "vendor-unmodified";
+  modified: boolean;
+  originalName?: string;
 }
 interface Manifest {
-  families: Record<string, { license: string; licenseFile: string; reservedName: string | false }>;
+  families: Record<string, Family>;
   pairs: Record<string, { display: string; body: string; data: string }>;
   files: FontFile[];
+}
+
+/** The strings of a woff2's name table, by name id. The table is not transformed in a woff2, so it reads as it is. */
+function woff2Names(path: string): Map<number, string[]> {
+  const bytes = readFileSync(path);
+  if (bytes.toString("latin1", 0, 4) !== "wOF2") throw new Error(`${path} is not a woff2`);
+  const tables = bytes.readUInt16BE(12);
+  const compressed = bytes.readUInt32BE(20);
+  let at = 48;
+  const base128 = () => {
+    let value = 0;
+    for (let i = 0; i < 5; i++) {
+      const byte = bytes.readUInt8(at++);
+      value = value * 128 + (byte & 0x7f);
+      if ((byte & 0x80) === 0) break;
+    }
+    return value;
+  };
+  const NAME = 5;
+  const GLYF = 10;
+  const LOCA = 11;
+  let before = 0;
+  let nameAt = -1;
+  let nameLength = 0;
+  for (let i = 0; i < tables; i++) {
+    const flags = bytes.readUInt8(at++);
+    const index = flags & 0x3f;
+    if (index === 63) at += 4;
+    const version = flags >> 6;
+    const original = base128();
+    // glyf and loca are transformed unless version 3; every other table only when its version is not 0.
+    const transformed = index === GLYF || index === LOCA ? version !== 3 : version !== 0;
+    const stored = transformed ? base128() : original;
+    if (index === NAME) {
+      nameAt = before;
+      nameLength = original;
+    }
+    before += stored;
+  }
+  if (nameAt < 0) throw new Error(`${path} has no name table`);
+  const data = brotliDecompressSync(bytes.subarray(at, at + compressed));
+  const table = data.subarray(nameAt, nameAt + nameLength);
+  const count = table.readUInt16BE(2);
+  const strings = table.readUInt16BE(4);
+  const out = new Map<number, string[]>();
+  for (let i = 0; i < count; i++) {
+    const record = 6 + i * 12;
+    const platform = table.readUInt16BE(record);
+    const id = table.readUInt16BE(record + 6);
+    const length = table.readUInt16BE(record + 8);
+    const offset = table.readUInt16BE(record + 10);
+    const raw = table.subarray(strings + offset, strings + offset + length);
+    const text = platform === 1 ? raw.toString("latin1") : Buffer.from(raw).swap16().toString("utf16le");
+    out.set(id, [...(out.get(id) ?? []), text]);
+  }
+  return out;
 }
 const manifest = JSON.parse(readFileSync(join(fontsDir, "manifest.json"), "utf8")) as Manifest;
 const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -39,10 +108,10 @@ describe("brand/fonts/manifest.json", () => {
     }
   });
 
-  it("gives each family one file for each weight and style, each under 60 KB", () => {
+  it("gives each family one file for each weight, style and range of characters, each under 60 KB", () => {
     const seen = new Set<string>();
     for (const file of manifest.files) {
-      const key = `${file.family}/${file.weight}/${file.style}`;
+      const key = `${file.family}/${file.weight}/${file.style}/${file.range ?? "all"}`;
       expect(seen.has(key), `${key} twice`).toBe(false);
       seen.add(key);
       expect(file.bytes, file.file).toBeLessThan(60 * 1024);
@@ -65,6 +134,13 @@ describe("brand/fonts/manifest.json", () => {
     }
   });
 
+  it("has the mono face in a real 400 and a real 600, so bold data text and the editor's chrome are not synthesized", () => {
+    const weights = new Set(
+      manifest.files.filter((file) => file.family === "IBM Plex Mono").map((f) => f.weight),
+    );
+    expect([...weights].sort()).toEqual([400, 600]);
+  });
+
   it("makes each font pair of the four the deck format names, from families it holds, with a regular of each", () => {
     expect(Object.keys(manifest.pairs).sort()).toEqual([...FONT_PAIRS].sort());
     for (const [pair, roles] of Object.entries(manifest.pairs)) {
@@ -76,6 +152,65 @@ describe("brand/fonts/manifest.json", () => {
           `${pair} ${role} (${family}) has no regular`,
         ).toBe(true);
       }
+    }
+  });
+});
+
+describe("fonts whose license reserves their name", () => {
+  const filesOf = (family: string) => manifest.files.filter((file) => file.family === family);
+  const NAMES = [1, 3, 4, 6, 16, 17, 21, 22];
+
+  it("says for every family which route it took, and whether what ships is a Modified Version", () => {
+    for (const [family, info] of Object.entries(manifest.families)) {
+      expect(["subset", "renamed-subset", "vendor-unmodified"], family).toContain(info.route);
+      // A file copied from the vendor is the Original Version; anything this repo made from one is Modified.
+      expect(info.modified, `${family} modified`).toBe(info.route !== "vendor-unmodified");
+      if (info.route === "renamed-subset") expect(info.originalName, `${family} original name`).toBeTruthy();
+      if (info.route === "subset") expect(info.reservedName, `${family} reserves no name`).toBe(false);
+    }
+  });
+
+  it("ships each such font either as the vendor's own file or under another name", () => {
+    const reserving = Object.entries(manifest.families).filter(([, info]) => info.reservedName);
+    expect(reserving.map(([family]) => family).sort()).toEqual([
+      "Depthcue Classic Sans",
+      "Depthcue Classic Serif",
+      "IBM Plex Mono",
+      "IBM Plex Sans",
+    ]);
+    for (const [family, info] of reserving) {
+      const reserved = String(info.reservedName).toLowerCase();
+      for (const file of filesOf(family)) {
+        const names = woff2Names(join(fontsDir, file.file));
+        if (info.route === "vendor-unmodified") {
+          // The bytes are the vendor's: the hash of this file is the hash of the one in the release.
+          expect(file.sha256, `${file.file} is not IBM's file as released`).toBe(file.source.sourceSha256);
+          expect(names.get(1)?.[0], `${file.file} family`).toContain(family);
+          continue;
+        }
+        expect(info.route, family).toBe("renamed-subset");
+        expect(family.toLowerCase(), `${family} is the reserved name`).not.toContain(reserved);
+        expect(file.file.toLowerCase(), `${file.file} is named for the reserved name`).not.toContain(
+          reserved,
+        );
+        // The name the font gives itself is the name the stylesheet gives it, and none of its names is the reserved one.
+        expect(names.get(1), `${file.file} family name`).toContain(family);
+        for (const id of NAMES)
+          for (const text of names.get(id) ?? [])
+            expect(text.toLowerCase(), `${file.file} name ${id}`).not.toContain(reserved);
+        // The Copyright Holder's notices stay, as the license asks.
+        expect(names.get(0)?.[0], `${file.file} copyright`).toMatch(/Adobe/);
+        expect(names.get(13)?.[0], `${file.file} license`).toMatch(/SIL Open Font License/);
+        expect(names.get(14)?.[0], `${file.file} license url`).toBeTruthy();
+      }
+    }
+  });
+
+  it("has the OFL beside each such family, with the reserved name in its copyright line", () => {
+    for (const [family, info] of Object.entries(manifest.families)) {
+      if (!info.reservedName) continue;
+      const first = readFileSync(join(fontsDir, info.licenseFile), "utf8").split(/\r?\n/)[0];
+      expect(first, `${family}: ${info.licenseFile}`).toContain(info.reservedName);
     }
   });
 });
@@ -151,6 +286,15 @@ describe("scripts/build-fonts.mjs", () => {
         );
       }
     }
+  });
+
+  it("gives a file that covers only some characters the unicode-range IBM gives it, and no other file one", () => {
+    const all = readFileSync(join(out, "all.css"), "utf8");
+    const ranged = manifest.files.filter((file) => file.unicodeRange);
+    expect(ranged.length).toBeGreaterThan(0);
+    expect(all.match(/unicode-range:/g)?.length).toBe(ranged.length);
+    for (const file of ranged)
+      expect(all).toContain(`url("${file.file}") format("woff2");\n  unicode-range: ${file.unicodeRange};`);
   });
 
   it("names every file, once, in all.css, and each url sits beside the stylesheet", () => {

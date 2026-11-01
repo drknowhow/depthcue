@@ -269,7 +269,11 @@ describe("the Style section of the Deck popover in a real browser", () => {
     await expect.poll(() => loadedFamilies()).toContain("IBM Plex Sans");
     expect(fontResponses.length).toBeGreaterThan(0);
     expect(fontResponses.filter((response) => response.status !== 200)).toEqual([]);
-    expect(fontResponses.map((response) => response.name)).toContain("IBMPlexSans-Regular.woff2");
+    // IBM's files are split by script and each carries a `unicode-range`, so an English deck is sent the Latin file
+    // of each weight it shows and none of the files for the other ranges.
+    const asked = fontResponses.map((response) => response.name);
+    expect(asked).toContain("IBMPlexSans-Regular-Latin1.woff2");
+    expect(asked.filter((name) => /^IBMPlex.*-(Latin2|Latin3|Pi)\.woff2$/.test(name))).toEqual([]);
     // The choice is the deck's, so it is in the file and a second look at the deck reads it from there.
     expect(readFileSync(join(folder, "deck.json"), "utf8")).toContain('"fonts": "technical"');
     expect(problems).toEqual([]);
@@ -309,6 +313,8 @@ describe("the Style section of the Deck popover in a real browser", () => {
       await page.setViewportSize(size);
       await open();
       await openStyle();
+      // The toolbar wraps by the width of its text, so measure once the faces it is set in have arrived.
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
       const box = await popover().boundingBox();
       if (!box) throw new Error("the popover should be on screen");
       const where = `${size.width}x${size.height}`;
@@ -343,6 +349,73 @@ describe("the Style section of the Deck popover in a real browser", () => {
     await page.keyboard.press("Enter");
     await popover().waitFor();
     expect(await popover().locator("details[data-section='style']").getAttribute("open")).not.toBeNull();
+    expect(problems).toEqual([]);
+  });
+
+  it("draws the title dot and the quote rule in the deck's action color, and leaves the cue dot the brand's", async () => {
+    // A deck with an action color of its own and a slide that has both accents, written the way an agent writes it.
+    const opsFile = join(root, "ops.json");
+    writeFileSync(
+      opsFile,
+      JSON.stringify([
+        { op: "deck.set", set: { palette: { action: "#aa2200" } } },
+        {
+          op: "scene.add",
+          scene: {
+            id: "voices",
+            title: "What people said",
+            layout: "title",
+            blocks: [
+              { id: "voices-title", type: "text", role: "heading", text: "What people said" },
+              {
+                id: "voices-quote",
+                type: "text",
+                role: "quote",
+                text: "It was the first deck I could trust.",
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const done = capture();
+    expect(
+      await run(["apply", folder, opsFile, "--base-rev", revisionOf(disk())], done.io),
+      done.errors.join("\n"),
+    ).toBe(0);
+    expect(disk().deck.palette).toEqual({ action: "#aa2200" });
+
+    // The audience's view, and the editor's own canvas, draw the same accents.
+    const accents = (target: Page, scope: string) =>
+      target.evaluate((root) => {
+        const frame = document.querySelector(root);
+        const dot = frame?.querySelector(".dc-scene .dc-heading");
+        const quote = frame?.querySelector(".dc-scene .dc-quote");
+        const cue = frame?.querySelector(".dc-cue");
+        return {
+          dot: dot ? getComputedStyle(dot, "::before").backgroundColor : null,
+          quote: quote ? getComputedStyle(quote).borderLeftColor : null,
+          cue: cue ? getComputedStyle(cue).backgroundColor : null,
+        };
+      }, scope);
+
+    const present = await context.newPage();
+    watch(present);
+    await present.goto(`${server.url}present#/voices`);
+    await present.locator(".dc-scene .dc-quote").waitFor({ state: "attached" });
+    expect(await accents(present, ".dc-player")).toEqual({
+      dot: "rgb(170, 34, 0)",
+      quote: "rgb(170, 34, 0)",
+      // The cue marks the player itself and stays the brand's vermilion, #FF633F, whatever the deck picks.
+      cue: "rgb(255, 99, 63)",
+    });
+
+    await open();
+    await goTo(4);
+    await page.locator(".ed-frame .dc-quote").waitFor({ state: "attached" });
+    const inEditor = await accents(page, ".ed-frame");
+    expect(inEditor.dot).toBe("rgb(170, 34, 0)");
+    expect(inEditor.quote).toBe("rgb(170, 34, 0)");
     expect(problems).toEqual([]);
   });
 });
@@ -425,13 +498,15 @@ describe("an export of a deck in another font pair", () => {
     const result = exportDeck({ folder, out, notes: true });
     if (!result.ok) throw new Error(`the export failed: ${JSON.stringify(result.diagnostics)}`);
     expect(result.summary.fonts).toBe("technical");
-    expect(readdirSync(join(out, "fonts")).sort()).toEqual([
-      "IBMPlexMono-Regular.woff2",
-      "IBMPlexSans-Bold.woff2",
-      "IBMPlexSans-Italic.woff2",
-      "IBMPlexSans-Regular.woff2",
-      "technical.css",
-    ]);
+    // Every file of the two families the pair names, as the font manifest lists them, and its own stylesheet.
+    const manifest = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../../../brand/fonts/manifest.json", import.meta.url)), "utf8"),
+    ) as { files: Array<{ file: string; family: string }> };
+    const technical = manifest.files
+      .filter((entry) => entry.family === "IBM Plex Sans" || entry.family === "IBM Plex Mono")
+      .map((entry) => entry.file);
+    expect(technical.length).toBeGreaterThan(0);
+    expect(readdirSync(join(out, "fonts")).sort()).toEqual([...technical, "technical.css"].sort());
 
     // Nothing but files may load: the network is off, and anything else that asks is counted.
     if (!browser) throw new Error("the browser should be up");

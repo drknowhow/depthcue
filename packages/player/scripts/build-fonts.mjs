@@ -18,13 +18,17 @@ const out = custom ? resolve(custom) : join(here, "..", "dist", "fonts");
 
 const manifest = JSON.parse(readFileSync(join(source, "manifest.json"), "utf8"));
 
-/** The stylesheet for a set of families: one `@font-face` per file, in the order the manifest lists them. */
+/**
+ * The stylesheet for a set of families: one `@font-face` per file, in the order the manifest lists them. A file that
+ * covers only a range of characters, as IBM's split files do, says so with `unicode-range`, so a page fetches the
+ * files for the characters it shows.
+ */
 function css(families) {
   const faces = manifest.files.filter((file) => families.has(file.family));
   return faces
     .map(
       (file) =>
-        `@font-face {\n  font-family: "${file.family}";\n  font-style: ${file.style};\n  font-weight: ${file.weight};\n  font-display: swap;\n  src: url("${file.file}") format("woff2");\n}\n`,
+        `@font-face {\n  font-family: "${file.family}";\n  font-style: ${file.style};\n  font-weight: ${file.weight};\n  font-display: swap;\n  src: url("${file.file}") format("woff2");\n${file.unicodeRange ? `  unicode-range: ${file.unicodeRange};\n` : ""}}\n`,
     )
     .join("\n");
 }

@@ -759,7 +759,7 @@ const COLOR_LABEL: Record<PaletteColor, string> = {
 export const FONT_LABEL: Record<FontPair, { label: string; detail: string }> = {
   editorial: { label: "Editorial", detail: "Instrument Serif and Space Grotesk" },
   modern: { label: "Modern", detail: "Inter" },
-  classic: { label: "Classic", detail: "Source Serif 4 and Source Sans 3" },
+  classic: { label: "Classic", detail: "Depthcue Classic Serif and Depthcue Classic Sans" },
   technical: { label: "Technical", detail: "IBM Plex Sans" },
 };
 

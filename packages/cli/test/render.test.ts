@@ -232,7 +232,7 @@ describe("the deck's own palette and font pair", () => {
           weights[fonts] = shown.measure.text.find((sample) => sample.text.startsWith("How wide"))?.weight;
           heights[fonts] = shown.measure.boxes.find((box) => box.id === "wide-body")?.height ?? 0;
         }
-        // Instrument Serif and Source Serif 4 have one weight, 400; Inter and IBM Plex Sans are set in bold.
+        // Instrument Serif and Depthcue Classic Serif have one weight, 400; Inter and IBM Plex Sans are set in bold.
         expect(weights).toEqual({ editorial: 400, modern: 700, classic: 400, technical: 700 });
         expect(Object.values(heights).every((height) => height > 0)).toBe(true);
         expect(

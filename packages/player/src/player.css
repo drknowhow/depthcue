@@ -7,8 +7,9 @@
  * answers by replacing the display and ui stacks tokens.css names for `editorial`, which is the default and so has no
  * rule here. Data text stays in IBM Plex Mono in every pair. The font files are not named here: packages/player/dist/
  * fonts has a stylesheet per pair, built from brand/fonts/manifest.json, which a page links and an export copies.
- * `--dc-display-weight` is the weight headings and claims are set in: Instrument Serif and Source Serif 4 ship only a
- * regular, so a bold heading in either would be a computed one.
+ * `--dc-display-weight` is the weight headings and claims are set in: Instrument Serif and Depthcue Classic Serif ship
+ * only a regular, so a bold heading in either would be a computed one. Depthcue Classic Serif and Sans are subsets of
+ * Adobe's Source Serif 4 and Source Sans 3, renamed because that license reserves the name "Source".
  */
 [data-fonts="modern"] {
   --dc-font-display: "Inter", system-ui, sans-serif;
@@ -17,8 +18,8 @@
 }
 
 [data-fonts="classic"] {
-  --dc-font-display: "Source Serif 4", "Iowan Old Style", Georgia, serif;
-  --dc-font-ui: "Source Sans 3", system-ui, sans-serif;
+  --dc-font-display: "Depthcue Classic Serif", "Iowan Old Style", Georgia, serif;
+  --dc-font-ui: "Depthcue Classic Sans", system-ui, sans-serif;
   --dc-display-weight: 400;
 }
 
@@ -241,7 +242,7 @@
 .dc-quote {
   margin: 0;
   padding-left: 1em;
-  border-left: 0.2em solid var(--dc-color-brand-vermilion);
+  border-left: 0.2em solid var(--dc-action);
   font-family: var(--dc-font-display);
   font-size: 1.8em;
   line-height: 1.2;
@@ -311,7 +312,7 @@
   height: 0.38em;
   margin-bottom: 0.45em;
   border-radius: 50%;
-  background: var(--dc-color-brand-vermilion);
+  background: var(--dc-action);
 }
 
 .dc-scene[data-layout="title"] .dc-body {
