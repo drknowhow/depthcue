@@ -4,6 +4,7 @@
  */
 import { BUILT_IN_STYLES, BUILT_IN_TEMPLATES } from "./builtins.ts";
 import { closest } from "./diagnostics.ts";
+import { own } from "./own.ts";
 import type {
   Block,
   BlockKind,
@@ -149,7 +150,7 @@ export function checkSceneBrand(scene: Scene, kit: SceneKit, file: string): Diag
   const styleIds = Object.keys(kit.styles);
   scene.blocks.forEach((block, i) => {
     if (block.style === undefined) return;
-    const style = kit.styles[block.style];
+    const style = own(kit.styles, block.style);
     if (!style) {
       out.push(
         error(
@@ -189,7 +190,7 @@ export function checkSceneBrand(scene: Scene, kit: SceneKit, file: string): Diag
     return out;
   }
 
-  const template = kit.templates[scene.template];
+  const template = own(kit.templates, scene.template);
   if (!template) {
     out.push(
       error(

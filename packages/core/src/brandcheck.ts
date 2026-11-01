@@ -14,6 +14,7 @@ import {
   textOn,
 } from "./brand.ts";
 import { explain } from "./diagnostics.ts";
+import { own } from "./own.ts";
 import { brandSchema, templateSchema } from "./schema.ts";
 import { schemaValidator } from "./schemacheck.ts";
 import { CONTRAST, checkBrandColors, contrastRatio, luminance, styleOf } from "./style.ts";
@@ -342,7 +343,7 @@ export function checkTemplate(
       );
     });
     if (slot.style !== undefined) {
-      const style = styles[slot.style];
+      const style = own(styles, slot.style);
       if (!style) {
         out.push(
           error(

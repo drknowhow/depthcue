@@ -6,6 +6,7 @@
 import type { Op } from "./apply.ts";
 import { type BrandPart, kindOf, slotMax, templatesOf } from "./brand.ts";
 import { escapeText } from "./inline.ts";
+import { own } from "./own.ts";
 import type { LAYOUTS } from "./schema.ts";
 import { TEXT_LIMITS } from "./schema.ts";
 import type { Block, Scene } from "./types.ts";
@@ -42,7 +43,7 @@ export function retemplate(
   sceneId: string,
   to: { template: string } | { layout: Layout },
 ): Retemplated {
-  const scene = doc.scenes[sceneId];
+  const scene = own(doc.scenes, sceneId);
   if (!scene) throw new Error(`There is no scene "${sceneId}".`);
   if ("layout" in to) {
     const ops: Op[] = [{ op: "scene.set", id: sceneId, set: { layout: to.layout, template: null } }];
@@ -52,7 +53,7 @@ export function retemplate(
     }
     return { ops, unplaced: [] };
   }
-  const template = templatesOf(doc)[to.template];
+  const template = own(templatesOf(doc), to.template);
   if (!template) throw new Error(`There is no template "${to.template}".`);
 
   const claim = claimBlock(scene);

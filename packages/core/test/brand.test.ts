@@ -211,6 +211,97 @@ describe("a scene against its deck's templates and styles", () => {
   });
 });
 
+describe("ids that are names on Object.prototype", () => {
+  // "constructor" passes the id pattern and a plain object answers it with a function; the other two fail the pattern.
+  const NAMES = ["constructor", "__proto__", "toString"];
+  const fromJson = (key: string): Record<string, unknown> => JSON.parse(`{${JSON.stringify(key)}: 1}`);
+  const scene = brandDoc().scenes.context as Scene;
+  const heading = scene.blocks[1] as { id: string };
+
+  it("are an unknown template or style in a scene file, never a crash", () => {
+    for (const name of NAMES) {
+      const asTemplate = { ...json("scenes/welcome.json"), template: name };
+      const expected = name === "constructor" ? "unknown-template" : "bad-format";
+      expect(errors(checked({ "scenes/welcome.json": asTemplate }))).toEqual([expected]);
+      const context = json("scenes/context.json");
+      context.blocks[1].style = name;
+      expect(checked({ "scenes/context.json": context })).toMatchObject([
+        { code: name === "constructor" ? "unknown-style" : "bad-format", path: "/blocks/1/style" },
+      ]);
+      const cover = json("brand/templates/cover.json");
+      cover.slots[0].style = name;
+      expect(checked({ "brand/templates/cover.json": cover })).toMatchObject([
+        { code: name === "constructor" ? "unknown-style" : "bad-format", path: "/slots/0/style" },
+      ]);
+    }
+  });
+
+  it("are an unknown template, style or slot style in an operation, never a crash", () => {
+    for (const name of NAMES) {
+      const known = name === "constructor";
+      expect(
+        apply(brandDoc(), [{ op: "scene.set", id: "context", set: { template: name, layout: null } }]),
+      ).toMatchObject({
+        ok: false,
+        diagnostics: [{ code: known ? "unknown-template" : "bad-format" }],
+      });
+      expect(
+        apply(brandDoc(), [{ op: "block.set", scene: "context", id: heading.id, set: { style: name } }]),
+      ).toMatchObject({
+        ok: false,
+        diagnostics: [{ code: known ? "unknown-style" : "bad-format" }],
+      });
+      const { id: _, ...template } = json("brand/templates/cover.json");
+      template.slots[0].style = name;
+      expect(
+        apply(brandDoc(), [{ op: "template.set", id: "cover", template: template as never }]),
+      ).toMatchObject({
+        ok: false,
+        diagnostics: [{ code: known ? "unknown-style" : "bad-format" }],
+      });
+    }
+    expect(() => retemplate(brandDoc(), "context", { template: "constructor" })).toThrow(
+      /no template "constructor"/,
+    );
+    expect(() => retemplate(brandDoc(), "constructor", { layout: "title" })).toThrow(
+      /no scene "constructor"/,
+    );
+  });
+
+  it("are a forbidden property of brand.set, deck.set and scene.set, with a fix in words", () => {
+    for (const name of NAMES) {
+      for (const op of [
+        { op: "brand.set", set: fromJson(name) },
+        { op: "deck.set", set: fromJson(name) },
+        { op: "scene.set", id: "context", set: fromJson(name) },
+      ]) {
+        const result = apply(brandDoc(), [op as Op]);
+        expect(result).toMatchObject({ ok: false, code: "bad-op" });
+        if (result.ok) continue;
+        const [found] = result.diagnostics;
+        expect(found).toMatchObject({ code: "forbidden-property", path: `/0/set/${name}` });
+        expect(typeof found?.fix).toBe("string");
+      }
+      const block = apply(brandDoc(), [
+        { op: "block.set", scene: "context", id: heading.id, set: fromJson(name) },
+      ]);
+      expect(block).toMatchObject({ ok: false, diagnostics: [{ code: "unknown-property" }] });
+    }
+  });
+
+  it("are left out of a look, never a crash", () => {
+    const doc = brandDoc();
+    const odd = {
+      ...scene,
+      template: "constructor",
+      blocks: scene.blocks.map((block) => ({ ...block, style: "constructor" })),
+    } as Scene;
+    const look = lookOf({ ...doc, scenes: { ...doc.scenes, context: odd } });
+    expect(Object.keys(look.templates).sort()).toEqual(["chart-and-note", "cover"]);
+    expect(Object.keys(look.styles)).not.toContain("constructor");
+  });
+});
+
 describe("a brand's own files", () => {
   const brand = json(BRAND_FILE);
   const cover = json("brand/templates/cover.json");

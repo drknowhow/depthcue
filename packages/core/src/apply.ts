@@ -2,6 +2,7 @@ import { closest, explain } from "./diagnostics.ts";
 import { checkChanges, type Doc, revisionOf, sceneRevision } from "./doc.ts";
 import type { Frame } from "./frames.ts";
 import { escapeText } from "./inline.ts";
+import { own } from "./own.ts";
 import { canonicalJson } from "./revision.ts";
 import { ID_PATTERN, opsSchema, SCHEMA_VERSION } from "./schema.ts";
 import { schemaValidator } from "./schemacheck.ts";
@@ -187,7 +188,7 @@ function checkKeys(
       `/set/${key}`,
       "forbidden-property",
       `"${key}" cannot be changed with ${where}.`,
-      REDIRECTS[key] ?? (guess ? `Did you mean "${guess}"?` : `Allowed here: ${allowed.join(", ")}.`),
+      own(REDIRECTS, key) ?? (guess ? `Did you mean "${guess}"?` : `Allowed here: ${allowed.join(", ")}.`),
     );
   }
   return undefined;
@@ -504,7 +505,7 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
             `/set/${key}`,
             "forbidden-property",
             `"${key}" cannot be changed with block.set.`,
-            REDIRECTS[key],
+            own(REDIRECTS, key),
           );
         }
       }
@@ -607,7 +608,7 @@ export function applyOps(doc: Doc, ops: unknown, baseRev: string): ApplyResult {
 
   // A file says the version its content needs, as the tool writes the version of a new scene: 0.2 for a frame.
   for (const [id, scene] of Object.entries(work.scenes)) {
-    if (scene !== doc.scenes[id]) work.scenes[id] = raiseScene(scene);
+    if (scene !== own(doc.scenes, id)) work.scenes[id] = raiseScene(scene);
   }
   if (work.deck !== doc.deck) work.deck = raiseDeck(work.deck);
 
@@ -622,11 +623,12 @@ export function applyOps(doc: Doc, ops: unknown, baseRev: string): ApplyResult {
   if (diagnostics.some((d) => d.severity === "error")) return fail("invalid-deck", prevRev, diagnostics);
   for (const id of next.deck.scenes) {
     const scene = next.scenes[id] as Scene;
-    if (scene !== doc.scenes[id]) diagnostics.push(...literalWarnings(doc.scenes[id], scene));
+    const was = own(doc.scenes, id);
+    if (scene !== was) diagnostics.push(...literalWarnings(was, scene));
   }
 
   const changed = next.deck.scenes.filter((id) => {
-    const before = doc.scenes[id];
+    const before = own(doc.scenes, id);
     return before === undefined || sceneRevision(before) !== sceneRevision(next.scenes[id] as Scene);
   });
   return {

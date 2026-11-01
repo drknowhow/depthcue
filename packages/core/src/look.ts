@@ -5,6 +5,7 @@
  */
 import { type BrandPart, blockStylesOf, brandFilePath, templatesOf } from "./brand.ts";
 import type { DeckLook, LookFace } from "./exported.ts";
+import { own } from "./own.ts";
 import { styleOf } from "./style.ts";
 import type { BlockStyle, Brand, BrandFace, Deck, Scene, Template } from "./types.ts";
 
@@ -53,13 +54,13 @@ export function lookOf(source: LookSource): DeckLook {
   const templates: Record<string, Template> = {};
   const styles: Record<string, BlockStyle> = {};
   const useStyle = (id: string | undefined) => {
-    const found = id === undefined ? undefined : allStyles[id];
+    const found = id === undefined ? undefined : own(allStyles, id);
     if (id !== undefined && found) styles[id] = found;
   };
   for (const id of deck.scenes) {
-    const scene = source.scenes[id];
+    const scene = own(source.scenes, id);
     if (!scene) continue;
-    const template = scene.template === undefined ? undefined : allTemplates[scene.template];
+    const template = scene.template === undefined ? undefined : own(allTemplates, scene.template);
     if (scene.template !== undefined && template) {
       templates[scene.template] = template;
       for (const slot of template.slots) useStyle(slot.style);
