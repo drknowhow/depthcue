@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { memoryDraftStore } from "@depthcue/core";
+import { type Block, memoryDraftStore } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Editor, mountEditor } from "../src/app.ts";
 import { type EditorStore, openStore } from "../src/store.ts";
@@ -69,7 +69,18 @@ let store: EditorStore;
 let editor: Editor;
 // A scene with a claim, steps, sources, a chart and one block of each other kind, so every control has something to edit.
 const SCENE = "demand";
-const blocks = { text: "", image: "", clip: "" };
+const blocks = { text: "", image: "", clip: "", table: "" };
+// A table with a column of words and a column of numbers with a unit, so each kind of column has its controls.
+const TABLE: Block = {
+  id: "table-demand",
+  type: "table",
+  title: "Demand by region",
+  columns: [{ label: "Region" }, { label: "Share", kind: "number", unit: "%" }],
+  rows: [
+    ["North", 42],
+    ["South", 58],
+  ],
+};
 
 beforeEach(async () => {
   server = new FakeServer();
@@ -93,12 +104,18 @@ beforeEach(async () => {
     newBlock(scene, "text"),
     newBlock(scene, "image", image),
     newBlock(scene, "clip", "assets/walk.mp4"),
+    TABLE,
   ];
   const result = store.session.apply(
     added.map((block) => ({ op: "block.add" as const, scene: SCENE, block })),
   );
   if (!result.ok) throw new Error("the extra blocks should be accepted");
-  [blocks.text, blocks.image, blocks.clip] = added.map((block) => block.id) as [string, string, string];
+  [blocks.text, blocks.image, blocks.clip, blocks.table] = added.map((block) => block.id) as [
+    string,
+    string,
+    string,
+    string,
+  ];
   host = document.createElement("div");
   document.body.replaceChildren(host);
   editor = mountEditor(host, store);
@@ -166,6 +183,7 @@ const FRAMED: Record<string, { id: () => string; kind: "text" | "other" }> = {
   image: { id: () => blocks.image, kind: "other" },
   "bar-chart": { id: () => "chart-demand", kind: "other" },
   clip: { id: () => blocks.clip, kind: "other" },
+  table: { id: () => blocks.table, kind: "other" },
 };
 const FRAMES = Object.fromEntries(
   Object.entries(FRAMED).flatMap(([type, { id, kind }]): [string, Entry][] => [
@@ -196,6 +214,14 @@ const NEVER_COMMENT_ID =
   "Given by the file when a comment is added, and the open thread supplies it afterwards.";
 
 const within = (root: Element | null, selector: string) => (root ? find(root, selector) : null);
+/** Right-clicks a cell of the table, as a person does, and answers with the menu that opens. */
+const cellMenu = (selector: string) => {
+  const cell = find(host, `.ed-frame [data-id='${blocks.table}'] ${selector}`);
+  cell?.dispatchEvent(
+    new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 300, clientY: 200 }),
+  );
+  return find(host, ".ed-menu[data-target='cell']:not([hidden])");
+};
 /** Starts a comment on the chosen picture from the palette, as a person without a pointer does, and answers with its box. */
 const composing = () => {
   choose(blocks.image, "other");
@@ -531,6 +557,55 @@ const WAYS: Record<string, Entry> = {
     where: "Clip toolbar, Cite chip",
     reach: () => cited("other", blocks.clip),
   },
+
+  "scene.blocks<table>.id": { never: NEVER_ID },
+  "scene.blocks<table>.type": { never: NEVER_KIND },
+  "scene.blocks<table>.title": {
+    where: "Table toolbar, Table chip, Title",
+    reach: () => {
+      choose(blocks.table, "other");
+      return field(openChip("table") as HTMLElement, "table:title");
+    },
+  },
+  "scene.blocks<table>.columns": {
+    where: "Right-click a cell: Insert column left and right, Delete column",
+    reach: () => within(cellMenu("td[data-cell]"), "[data-command='cell-column-right']"),
+  },
+  "scene.blocks<table>.columns[].label": {
+    where: "The slide, a header cell typed in place",
+    reach: () => find(host, `.ed-frame [data-id='${blocks.table}'] th[data-cell]`),
+  },
+  "scene.blocks<table>.columns[].kind": {
+    where:
+      "Table toolbar, Table chip, what each column holds; right-click a cell: Make column numbers or text",
+    reach: () => {
+      choose(blocks.table, "other");
+      return field(openChip("table") as HTMLElement, "table:col0:kind");
+    },
+  },
+  "scene.blocks<table>.columns[].unit": {
+    where: "Table toolbar, Table chip, the unit of a column that holds numbers",
+    reach: () => {
+      choose(blocks.table, "other");
+      return field(openChip("table") as HTMLElement, "table:col1:unit");
+    },
+  },
+  "scene.blocks<table>.rows": {
+    where:
+      "The slide, cells typed in place or pasted over; right-click a cell: Insert row above and below, Delete row",
+    reach: () => within(cellMenu("td[data-cell]"), "[data-command='cell-row-below']"),
+  },
+  "scene.blocks<table>.header": {
+    where: "Table toolbar, Table chip, Header row; right-click a cell: Show or Hide header row",
+    reach: () => {
+      choose(blocks.table, "other");
+      return field(openChip("table") as HTMLElement, "table:header:header");
+    },
+  },
+  "scene.blocks<table>.sourceIds": {
+    where: "Table toolbar, Cite chip",
+    reach: () => cited("other", blocks.table),
+  },
 };
 
 /**
@@ -540,7 +615,6 @@ const WAYS: Record<string, Entry> = {
 const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
   ["deck.palette", "Step 3, deck style"],
   ["deck.fonts", "Step 3, deck style"],
-  ["scene.blocks<table>", "Step 4, table block"],
   ["scene.blocks<text>.tone", "Step 5, text styles"],
   ["scene.blocks<text>.size", "Step 5, text styles"],
   ["scene.blocks<text>.align", "Step 5, text styles"],

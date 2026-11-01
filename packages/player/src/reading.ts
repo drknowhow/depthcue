@@ -2,6 +2,7 @@ import type { Deck, Scene } from "@depthcue/core";
 import { h } from "./dom.ts";
 import { assetUrl } from "./safe.ts";
 import { type RenderContext, renderChartTable, renderSources } from "./scene.ts";
+import { renderTable } from "./table.ts";
 
 /** The words of a scene when its author wrote no reading text: headings and body text, in order. */
 function fallbackText(scene: Scene): string[] {
@@ -18,6 +19,8 @@ function evidence(scene: Scene, ctx: RenderContext): HTMLElement[] {
   for (const block of scene.blocks) {
     if (block.type === "bar-chart") {
       out.push(h("figure", { class: "dc-figure" }, renderChartTable(block)));
+    } else if (block.type === "table") {
+      out.push(h("figure", { class: "dc-figure" }, renderTable(block, ctx.language)));
     } else if (block.type === "image") {
       const src = assetUrl(ctx.assetBase, block.asset);
       out.push(

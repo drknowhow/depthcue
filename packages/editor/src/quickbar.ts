@@ -41,7 +41,7 @@ export interface QuickBar {
 }
 
 /** The order the bar lists the kinds in. A kind that is not here comes last, so a new one still gets a button. */
-const ORDER: readonly NewBlockKind[] = ["text", "bar-chart", "image", "clip"];
+const ORDER: readonly NewBlockKind[] = ["text", "bar-chart", "table", "image", "clip"];
 const rank = (kind: NewBlockKind) => {
   const at = ORDER.indexOf(kind);
   return at < 0 ? ORDER.length : at;

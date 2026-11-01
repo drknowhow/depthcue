@@ -29,6 +29,7 @@ import {
 } from "./panels.ts";
 import { nudged } from "./pin.ts";
 import { restingBox } from "./snap.ts";
+import { tablePanel } from "./tablepanel.ts";
 import { describeBlock, ROLE_LABEL, type TextRole } from "./templates.ts";
 
 /** How far the toolbar floats from the block it belongs to, in pixels. */
@@ -379,6 +380,8 @@ export function createToolbar(
       switch (block.type) {
         case "bar-chart":
           return [chartPanel(host, sceneId, block.id)];
+        case "table":
+          return [tablePanel(host, sceneId, block.id)];
         case "image":
           return [imagePanel(host, sceneId, block.id)];
         case "clip":

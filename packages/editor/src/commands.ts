@@ -1,7 +1,9 @@
 import { LEADS, type Session } from "@depthcue/core";
 import { afterWhenMoving } from "./cleanup.ts";
+import type { Spot } from "./grid.ts";
 import type { Command } from "./palette.ts";
 import type { Ribbon } from "./ribbon.ts";
+import { type CellAction, cellCommands } from "./tablecells.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL, type NewBlockKind } from "./templates.ts";
 
 /** What the commands call on. The mounted editor supplies each of them, so this file holds no state of its own. */
@@ -30,6 +32,10 @@ export interface CommandSources {
   canPaste?(): boolean;
   /** Moves a block one place along the slide's order, as the arrows of its toolbar do. */
   moveBlock?(id: string, direction: -1 | 1): void;
+  /** The cell of the chosen table that has the keyboard, or that the menu was opened on. Row -1 is the header. */
+  cell?(): Spot | undefined;
+  /** Does an action of the cell menu to the chosen table at a cell, as one change. */
+  editCell?(action: CellAction, at: Spot): void;
   /** What the buttons of a scene in the strip do. */
   duplicateScene?(id: string): void;
   removeScene?(id: string): void;
@@ -139,6 +145,16 @@ export function listCommands(from: CommandSources): Command[] {
     label: "Add a chart here",
     section: "add",
     run: () => from.add("bar-chart"),
+  });
+  add({
+    id: "add-table",
+    title: "Add a table",
+    group: "Add",
+    words: "grid rows columns cells spreadsheet",
+    targets: ["slide"],
+    label: "Add a table here",
+    section: "add",
+    run: () => from.add("table"),
   });
   add({
     id: "add-image",
@@ -287,6 +303,13 @@ export function listCommands(from: CommandSources): Command[] {
       section: "review",
       run: () => from.comment(chosen),
     });
+  }
+
+  // The cell of the chosen table. Its menu holds these alone; the palette lists them for the cell the keyboard is on.
+  if (block?.type === "table" && from.editCell) {
+    const at = from.cell?.();
+    const editCell = from.editCell;
+    if (at) for (const command of cellCommands(block, at, (action) => editCell(action, at))) add(command);
   }
 
   for (const choice of LAYOUT_CHOICES) {
