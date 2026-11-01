@@ -5,6 +5,7 @@ import { createCanvas } from "./canvas.ts";
 import { popoverChip } from "./chip.ts";
 import { createCueBook } from "./cues.ts";
 import { type Edits, problemOf } from "./fields.ts";
+import { createLayoutWatch, type LayoutWatch } from "./layout-watch.ts";
 import { deckPanel, panelHost } from "./panels.ts";
 import { createQuickBar } from "./quickbar.ts";
 import { createRibbon } from "./ribbon.ts";
@@ -169,9 +170,12 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     build: (on) => canvas.setBuild(on),
     keys: () => shortcuts.open(),
   });
-  // What `depthcue check` would say about the deck, one problem at a time. The rules are the core's.
+  // What `depthcue check` and `depthcue render` would say about the deck, one problem at a time. The rules are theirs:
+  // the core's for what the files say, and a render's for what the audience would see.
+  let watch: LayoutWatch | undefined;
   const ribbon = createRibbon(session, {
     scene: () => selected,
+    found: (sceneId) => watch?.of(sceneId) ?? [],
     go(problem, focus) {
       if (problem.scene !== selected) select(problem.scene);
       selectBlock(problem.block);
@@ -183,6 +187,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       showProblem(result.ok ? undefined : problemOf(result));
     },
   });
+  const layout = createLayoutWatch(store, { scene: () => selected, changed: () => ribbon.render() });
+  watch = layout;
   // Every key the editor answers is in one table, which also draws the sheet that the ? key and the bar open.
   const shortcuts = createShortcuts(host, {
     add: (kind) => void adder.quick(kind),
@@ -378,6 +384,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     select,
     destroy() {
       shortcuts.destroy();
+      layout.destroy();
       ribbon.destroy();
       unsubscribeSession();
       unsubscribeStore();

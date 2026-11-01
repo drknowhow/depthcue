@@ -13,11 +13,22 @@ import {
 } from "@depthcue/core";
 import type { Browser, BrowserContext, Locator, Page } from "playwright-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createLayoutChecker, type LayoutChecker } from "../src/edit-layout.ts";
 import { loadDeckDir } from "../src/loader.ts";
 import { launchBrowser } from "../src/render.ts";
 import { builtEditorDir, builtPlayerDir, type RunningServer, startServer } from "../src/serve.ts";
 
 const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+
+/** A server with no browser to render in. Most of these tests are not about layout, and need no second Chrome. */
+const NO_LAYOUT: LayoutChecker = {
+  async check() {
+    return { available: false, message: "Layout checks are off in this test." };
+  },
+  async close() {},
+};
+/** Set by the one suite that checks layout in a real render, so its server gets the real checker. */
+let realLayout = false;
 
 let browser: Browser | undefined;
 let skipReason: string | undefined;
@@ -52,7 +63,13 @@ beforeEach(async (test) => {
   root = mkdtempSync(join(tmpdir(), "depthcue-e2e-"));
   folder = join(root, "deck");
   cpSync(demo, folder, { recursive: true });
-  server = await startServer({ folder, playerDir: builtPlayerDir(), editorDir: builtEditorDir(), port: 0 });
+  server = await startServer({
+    folder,
+    playerDir: builtPlayerDir(),
+    editorDir: builtEditorDir(),
+    port: 0,
+    ...(realLayout ? {} : { layout: NO_LAYOUT }),
+  });
   context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   page = await context.newPage();
   problems = [];
@@ -2215,4 +2232,90 @@ describe("the problem ribbon in a real browser", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
     expect(problems).toEqual([]);
   });
+});
+
+describe("layout problems from a real render, in a real browser", () => {
+  // The first question starts a second Chrome, so these have more time than the others.
+  const SLOW = 45_000;
+  const ribbon = () => page.locator(".ed-ribbon");
+  const sentence = () => ribbon().locator("[data-ribbon='show']");
+  const AWHILE = { timeout: 30_000 };
+
+  beforeAll(() => {
+    realLayout = true;
+  });
+  afterAll(() => {
+    realLayout = false;
+  });
+
+  it(
+    "tells the person a scene is taller than the slide, from the render and not from anything the editor measures",
+    async () => {
+      const sentenceOf = (n: number) =>
+        `Slide ${n} says what it says at length, so that the audience has to read it. `;
+      const long = (n: number) => sentenceOf(n).repeat(8).slice(0, 590);
+      addScene({
+        id: "kl",
+        title: "Too much text",
+        layout: "text-media",
+        blocks: Array.from({ length: 7 }, (_, n) => note(`kl-body-${n}`, long(n))),
+      });
+      await openScene("kl", "kl-body-0");
+      await ribbon().locator("[data-ribbon='show']:not([hidden])").waitFor(AWHILE);
+      expect(await ribbon().getAttribute("data-state")).toBe("problems");
+      expect(await sentence().textContent()).toContain("taller than the 1280x720 stage");
+      // No change to make that is the same every time, so no Fix.
+      expect(await ribbon().locator("[data-ribbon='fix']").isHidden()).toBe(true);
+      expect(problems).toEqual([]);
+    },
+    SLOW,
+  );
+
+  it(
+    "finds nothing to report on any scene of the demo deck, so a deck starts out clear",
+    async () => {
+      const checker = createLayoutChecker(folder);
+      try {
+        for (const id of disk().deck.scenes) {
+          expect(await checker.check(id)).toEqual({ available: true, diagnostics: [] });
+        }
+      } finally {
+        await checker.close();
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    "finds a pinned block its frame is too small for, offers Back to layout, and is clear once the render is redone",
+    async () => {
+      addScene({
+        id: "kf",
+        title: "Small frame",
+        layout: "text-media",
+        blocks: [note("kf-words", "Pinned words that need more room than this frame gives them.")],
+      });
+      const doc = disk();
+      const frame = { x: 10, y: 30, w: 14, h: 6 };
+      const result = applyOps(
+        doc,
+        [{ op: "block.frame", scene: "kf", id: "kf-words", frame }],
+        revisionOf(doc),
+      );
+      if (!result.ok) throw new Error(result.diagnostics[0]?.message);
+      writeFileSync(join(folder, "scenes", "kf.json"), `${JSON.stringify(result.doc.scenes.kf, null, 2)}\n`);
+      await openScene("kf", "kf-words");
+      await ribbon().locator("[data-ribbon='show']:not([hidden])").waitFor(AWHILE);
+      expect(await sentence().textContent()).toContain("than its frame");
+      const fix = ribbon().locator("[data-ribbon='fix']");
+      expect(await fix.textContent()).toBe("Back to layout");
+      await fix.click();
+      await saved();
+      expect(disk().scenes.kf?.blocks.find((block) => block.id === "kf-words")?.frame).toBeUndefined();
+      // The saved file is rendered again, which is what clears it.
+      await page.locator(".ed-ribbon[data-state='clear']").waitFor(AWHILE);
+      expect(problems).toEqual([]);
+    },
+    SLOW,
+  );
 });

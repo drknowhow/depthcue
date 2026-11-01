@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { docToFiles, loadDoc, readCueMap, revisionOf } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assetName, sniffImage } from "../src/edit-api.ts";
+import type { LayoutAnswer, LayoutChecker } from "../src/edit-layout.ts";
 import { loadDeckDir } from "../src/loader.ts";
 import { type RunningServer, startServer } from "../src/serve.ts";
 
@@ -634,6 +635,89 @@ describe("clip cues", () => {
     );
     expect(huge.status).toBe(413);
     expect(existsSync(cueFile())).toBe(false);
+  });
+});
+
+describe("layout", () => {
+  const found = {
+    severity: "error" as const,
+    code: "overflow",
+    file: "scenes/method.json",
+    path: "/blocks/1",
+    message: "The scene is 40px taller than the 1280x720 stage.",
+    fix: "Shorten the text first.",
+  };
+  const asked: string[] = [];
+  let answer: LayoutAnswer = { available: true, diagnostics: [found] };
+  let closes = 0;
+  const fake: LayoutChecker = {
+    check: async (scene) => {
+      asked.push(scene);
+      return answer;
+    },
+    close: async () => {
+      closes += 1;
+    },
+  };
+
+  beforeEach(async () => {
+    asked.length = 0;
+    closes = 0;
+    answer = { available: true, diagnostics: [found] };
+    await server.close();
+    server = await startServer({
+      folder,
+      playerDir: join(root, "player"),
+      editorDir: join(root, "editor"),
+      port: 0,
+      layout: fake,
+    });
+  });
+
+  it("asks for the layout of a scene of the deck and returns what the render found, in the words of the other calls", async () => {
+    const reply = await call("/_depthcue/api/layout?scene=method");
+    expect(reply.status).toBe(200);
+    expect(reply.json).toEqual({
+      available: true,
+      diagnostics: [
+        {
+          code: "overflow",
+          at: "scenes/method.json/blocks/1",
+          severity: "error",
+          message: found.message,
+          fix: found.fix,
+        },
+      ],
+    });
+    expect(asked).toEqual(["method"]);
+  });
+
+  it("passes on that no render could be made, with the reason", async () => {
+    answer = { available: false, message: "No browser could be started." };
+    const reply = await call("/_depthcue/api/layout?scene=method");
+    expect(reply.status).toBe(200);
+    expect(reply.json).toEqual({ available: false, message: "No browser could be started." });
+  });
+
+  it("refuses a call with no token, and starts no render for a scene the deck does not have", async () => {
+    expect((await call("/_depthcue/api/layout?scene=method", { token: false })).status).toBe(403);
+    expect((await call("/_depthcue/api/layout?scene=nothing")).status).toBe(404);
+    expect((await call("/_depthcue/api/layout")).status).toBe(404);
+    expect((await call("/_depthcue/api/layout?scene=method", { method: "POST" })).status).toBe(404);
+    expect(asked).toEqual([]);
+  });
+
+  it("says no render can be made while the deck on disk has errors", async () => {
+    writeFileSync(join(folder, "scenes", "method.json"), "{ not json");
+    const reply = await call("/_depthcue/api/layout?scene=method");
+    expect(reply.status).toBe(200);
+    expect(reply.json.available).toBe(false);
+    expect(asked).toEqual([]);
+  });
+
+  it("closes the checker, and the browser with it, when the server closes", async () => {
+    await server.close();
+    expect(closes).toBe(1);
   });
 });
 

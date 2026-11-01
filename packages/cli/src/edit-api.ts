@@ -14,6 +14,7 @@ import {
   revisionOf,
 } from "@depthcue/core";
 import { openDeck } from "./deck-api.ts";
+import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
 import { loadDeckDir } from "./loader.ts";
 import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
@@ -25,6 +26,8 @@ export interface EditContext {
   token: string;
   /** The origins the editor page can have, for the same-origin check. Read per request: the port is known only after listening. */
   origins: () => readonly string[];
+  /** Renders a scene to find its layout problems. Without it the editor is told that none can be made. */
+  layout?: LayoutChecker;
 }
 
 export const MAX_SAVE_BYTES = 8 * 1024 * 1024;
@@ -334,6 +337,31 @@ async function saveCues(request: IncomingMessage, response: ServerResponse, ctx:
   return send(response, 200, { cues: checked.cues, duration });
 }
 
+/**
+ * The layout problems of one scene, from the files on disk. The editor asks after a save settles, so what it gets is
+ * what a render of the saved deck shows. A machine with no browser answers `available: false`, and the editor then
+ * lists only the problems it can find without one.
+ */
+async function layout(response: ServerResponse, url: URL, ctx: EditContext) {
+  const scene = url.searchParams.get("scene") ?? "";
+  const opened = openDeck(ctx.folder);
+  if (opened.ok && !opened.doc.scenes[scene]) {
+    return send(response, 404, { error: "not-found", message: `There is no scene "${scene}" in the deck.` });
+  }
+  if (!ctx.layout || !opened.ok) {
+    return send(response, 200, {
+      available: false,
+      message: opened.ok ? "This server does not check the layout." : "The deck on disk has errors.",
+    });
+  }
+  const answer = await ctx.layout.check(scene);
+  return send(
+    response,
+    200,
+    answer.available ? { available: true, diagnostics: answer.diagnostics.map(plain) } : answer,
+  );
+}
+
 /** Handles `/_depthcue/api/*`. Returns false when the path is not an edit API path. */
 export async function handleEditApi(
   request: IncomingMessage,
@@ -357,6 +385,7 @@ export async function handleEditApi(
     } else if (route === "/_depthcue/api/cues" && request.method === "GET") loadCues(response, url, ctx);
     else if (route === "/_depthcue/api/cues" && request.method === "POST")
       await saveCues(request, response, ctx);
+    else if (route === "/_depthcue/api/layout" && request.method === "GET") await layout(response, url, ctx);
     else {
       send(response, 404, { error: "not-found", message: "There is no such editor call." });
     }

@@ -40,6 +40,14 @@ export interface ClipSize {
   height: number;
 }
 
+/**
+ * The layout problems of one scene as a render of the saved deck finds them. `available: false` is a server with no
+ * browser to render in, or a render that failed; the editor then has nothing to add to what it can see itself.
+ */
+export type LayoutAnswer =
+  | { available: true; diagnostics: ApiDiagnostic[] }
+  | { available: false; message: string };
+
 /** What the editor needs from the server. A test can stand in for it. */
 export interface Api {
   loadDeck(): Promise<DeckPayload>;
@@ -50,6 +58,8 @@ export interface Api {
   loadCues(source: string): Promise<CueList>;
   /** Replaces a clip's cues. Rejects with a message the person can read when the server refuses the list. */
   saveCues(source: string, cues: readonly Cue[], clip?: ClipSize): Promise<{ cues: Cue[]; duration: number }>;
+  /** What a render of the saved scene shows is wrong with it. Never rejects: a failure is `available: false`. */
+  loadLayout(scene: string): Promise<LayoutAnswer>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -146,6 +156,19 @@ export function createApi(token: string, send: typeof fetch = (...args) => fetch
       const answer = await body(response);
       if (!response.ok || !Array.isArray(answer.cues)) throw new Error(messageOf(answer, response));
       return { cues: answer.cues as Cue[], duration: Number(answer.duration) };
+    },
+
+    async loadLayout(scene) {
+      try {
+        const response = await call(`layout?scene=${encodeURIComponent(scene)}`);
+        const answer = await body(response);
+        if (response.ok && answer.available === true && Array.isArray(answer.diagnostics)) {
+          return { available: true, diagnostics: answer.diagnostics as ApiDiagnostic[] };
+        }
+        return { available: false, message: messageOf(answer, response) };
+      } catch {
+        return { available: false, message: "The editor could not reach the server." };
+      }
     },
   };
 }

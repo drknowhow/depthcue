@@ -52,6 +52,8 @@ export interface EditorStore {
   readonly session: Session;
   /** The cue files beside the videos. They are not part of the deck, so the session never sees them. */
   readonly cueApi: Pick<Api, "loadCues" | "saveCues">;
+  /** What a render of the saved deck finds wrong, for the problem ribbon. */
+  readonly layoutApi: Pick<Api, "loadLayout">;
   readonly status: EditorStatus;
   subscribe(listener: () => void): () => void;
   /** Saves now, without waiting out the autosave delay. Ctrl+S and the retry button call it. */
@@ -231,6 +233,7 @@ export async function openStore(
       loadCues: (source) => api.loadCues(source),
       saveCues: (source, cues, clip) => api.saveCues(source, cues, clip),
     },
+    layoutApi: { loadLayout: (scene) => api.loadLayout(scene) },
     get status() {
       // "dirty" means edits that nothing is about to save; with autosave a countdown or a save is under way.
       const pending = timer !== undefined || resave;

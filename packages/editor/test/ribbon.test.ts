@@ -1,17 +1,19 @@
 // @vitest-environment happy-dom
 import { type Block, checkDoc, memoryDraftStore, type Op, placeholderAlt } from "@depthcue/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Editor, mountEditor } from "../src/app.ts";
 import { problemsOf } from "../src/ribbon.ts";
 import { type EditorStore, openStore } from "../src/store.ts";
 import { FakeServer } from "./helpers.ts";
 
 let host: HTMLElement;
+let server: FakeServer;
 let store: EditorStore;
 let editor: Editor;
 
 beforeEach(async () => {
-  store = await openStore(new FakeServer(), () => memoryDraftStore());
+  server = new FakeServer();
+  store = await openStore(server, () => memoryDraftStore());
   host = document.createElement("div");
   document.body.replaceChildren(host);
   editor = mountEditor(host, store);
@@ -220,5 +222,81 @@ describe("the problem ribbon", () => {
     expect(said().querySelector("button")).toBeNull();
     expect(part("previous").getAttribute("aria-label")).toBe("Previous problem");
     expect(part("next").getAttribute("aria-label")).toBe("Next problem");
+  });
+});
+
+describe("the problem ribbon with what a render found", () => {
+  const found = (code: string, block: string | undefined, message = `${code} on ${block}`) => ({
+    code,
+    block,
+    message,
+  });
+
+  it("lists what a render found after what the core finds on the same scene, and in the order of the scenes", () => {
+    apply(unDescribe());
+    const listed = problemsOf(store.session, (sceneId) =>
+      sceneId === "method" ? [found("overflow", undefined, "The scene is 40px taller.")] : [],
+    );
+    expect(listed.map((problem) => problem.text)).toEqual([
+      expect.stringContaining("alt text"),
+      "The scene is 40px taller.",
+    ]);
+    expect(listed.map((problem) => problem.scene)).toEqual(["method", "method"]);
+  });
+
+  it("offers Back to layout for a frame its content runs out of, and not for the other layout problems", () => {
+    apply(pinned);
+    const listed = problemsOf(store.session, (sceneId) =>
+      sceneId === "method"
+        ? [
+            found("frame-overflow", "method-body"),
+            found("overlap", "method-body"),
+            found("text-too-small", "method-heading"),
+          ]
+        : [],
+    );
+    const byCode = (code: string) => listed.find((problem) => problem.key.includes(code));
+    expect(byCode("frame-overflow")?.fix?.label).toBe("Back to layout");
+    expect(byCode("frame-overflow")?.fix?.ops).toEqual([
+      { op: "block.unframe", scene: "method", id: "method-body" },
+    ]);
+    expect(byCode("overlap")?.fix).toBeUndefined();
+    expect(byCode("text-too-small")?.fix).toBeUndefined();
+  });
+
+  it("names two problems of one kind on one block apart, so Next can tell them from each other", () => {
+    const listed = problemsOf(store.session, (sceneId) =>
+      sceneId === "method"
+        ? [found("overlap", "method-body", "one"), found("overlap", "method-body", "two")]
+        : [],
+    );
+    const keys = listed.map((problem) => problem.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toHaveLength(2);
+  });
+
+  it("leaves out a problem on a block the scene no longer has", () => {
+    const listed = problemsOf(store.session, () => [found("overlap", "a-block-that-is-gone")]);
+    expect(listed).toEqual([]);
+  });
+
+  it("shows a problem the server's render found, with the scene on show named when it is another", async () => {
+    server.layouts.method = [
+      {
+        code: "frame-overflow",
+        at: "scenes/method.json/blocks/1",
+        severity: "error",
+        message: 'The content of "method-body" is 12px taller than its frame.',
+      },
+    ];
+    editor.select("opening");
+    await vi.waitFor(() => expect(count()).toBe("1 thing to check"), { timeout: 4000 });
+    expect(part("show").textContent).toContain('The content of "method-body" is 12px taller');
+    expect(part("show").textContent?.startsWith(`${store.session.doc.scenes.method?.title}: `)).toBe(true);
+    expect(part("fix").hidden).toBe(false);
+    part("fix").click();
+    expect(
+      store.session.doc.scenes.method?.blocks.find((block) => block.id === "method-body")?.frame,
+    ).toBeUndefined();
   });
 });

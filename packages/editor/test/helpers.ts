@@ -10,7 +10,15 @@ import {
   type Op,
   revisionOf,
 } from "@depthcue/core";
-import type { Api, ClipSize, CueList, DeckPayload, SaveResult } from "../src/api.ts";
+import type {
+  Api,
+  ApiDiagnostic,
+  ClipSize,
+  CueList,
+  DeckPayload,
+  LayoutAnswer,
+  SaveResult,
+} from "../src/api.ts";
 
 // happy-dom replaces the global URL, so the path is built from dirname rather than from import.meta.url.
 export const demoDir = resolve(import.meta.dirname, "../../../fixtures/decks/demo");
@@ -50,6 +58,14 @@ export class FakeServer implements Api {
   nextCueSaveFails: string | undefined;
   /** Holds loadCues' answers, which are read when the call is made, until this settles. */
   cueGate: Promise<void> | undefined;
+  /** The scenes a render was asked about, in order. */
+  layoutCalls: string[] = [];
+  /** What a render finds wrong with a scene. Nothing, unless a test says so. */
+  layouts: Record<string, ApiDiagnostic[]> = {};
+  /** Makes loadLayout answer that no render can be made, like a machine with no browser. */
+  noRender = false;
+  /** Holds loadLayout's answers until this settles. */
+  layoutGate: Promise<void> | undefined;
 
   constructor() {
     const demo = readDemo();
@@ -138,6 +154,15 @@ export class FakeServer implements Api {
     // The real server lists every file under assets/, so the cue map shows up in the next read of the deck.
     if (!this.assets.includes(cueMapPath(source))) this.assets.push(cueMapPath(source));
     return { cues: structuredClone(checked.cues), duration };
+  }
+
+  async loadLayout(scene: string): Promise<LayoutAnswer> {
+    this.layoutCalls.push(scene);
+    const answer: LayoutAnswer = this.noRender
+      ? { available: false, message: "No browser to render in." }
+      : { available: true, diagnostics: structuredClone(this.layouts[scene] ?? []) };
+    await this.layoutGate;
+    return answer;
   }
 }
 
