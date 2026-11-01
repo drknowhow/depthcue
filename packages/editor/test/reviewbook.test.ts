@@ -1,5 +1,6 @@
 import { memoryDraftStore, type Review } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createReviewBook } from "../src/reviewbook.ts";
 import { type EditorStore, openStore } from "../src/store.ts";
 import { FakeServer, openingTitle, retitle } from "./helpers.ts";
 
@@ -320,6 +321,30 @@ describe("revert", () => {
     expect(methodText()).toBe(was);
     expect(openingTitle(store.session.doc)).not.toBe("Agent title");
     expect(textIn(store.session.doc, "opening", "opening-sub")).toBe("My own");
+  });
+
+  it("says what the deck refused when it will not take the old values back, and leaves nothing to undo", async () => {
+    await agentEdits([method("Agent body")]);
+    const refusal = {
+      ok: false,
+      diagnostics: [
+        {
+          code: "x",
+          severity: "error",
+          at: "scenes/method.json",
+          message: "Not allowed.",
+          fix: "Use another.",
+        },
+      ],
+    };
+    const refusing = new Proxy(store.session, {
+      get: (target, key) => (key === "apply" ? () => refusal : Reflect.get(target, key)),
+    });
+    const book = createReviewBook(server, refusing, store.history, () => store.session.doc);
+    await book.sync();
+    expect(book.revert([BODY])).toEqual({ ok: false, message: "Not allowed. Use another." });
+    expect(store.history.canUndo).toBe(false);
+    book.dispose();
   });
 
   it("refuses a change that is not on the list and leaves the deck as it is", async () => {

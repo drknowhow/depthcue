@@ -12,7 +12,6 @@ import {
   type Session,
 } from "@depthcue/core";
 import type { Api } from "./api.ts";
-import { problemOf } from "./fields.ts";
 import type { History } from "./history.ts";
 
 export interface ReviewState {
@@ -57,6 +56,8 @@ export interface ReviewBook {
   dispose(): void;
 }
 
+// Not `problemOf` from fields.ts: that file draws with the player, and the store, which holds this book, is also
+// imported by tests in packages that cannot resolve the player before it is built.
 const messageOf = (diagnostics: readonly Diagnostic[], fallback: string): string => {
   const first = diagnostics[0];
   if (!first) return fallback;
@@ -239,7 +240,7 @@ export function createReviewBook(
       if (plan.ops.length === 0) return { ok: true };
       const before = session.rev;
       const result = session.apply(plan.ops);
-      if (!result.ok) return failure(problemOf(result));
+      if (!result.ok) return failure(messageOf(result.diagnostics, "That change was refused."));
       const { reverted } = plan;
       history.push({
         before,
