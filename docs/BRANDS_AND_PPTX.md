@@ -152,7 +152,8 @@ library, and per-block raw hex colors.
 ## Step 1 record: what the contracts fixed
 
 - **Files.** `brand/brand.json`, `brand/templates/<id>.json` (the file name is the template's id; a file whose `id`
-  differs is `template-id-mismatch`), and the brand's own files under `brand/fonts/`, `brand/logos/` and
+  differs is `template-id-mismatch`; the loader reads every JSON file of that folder, and one not named for an id,
+  such as `__proto__.json`, is `bad-template-name`), and the brand's own files under `brand/fonts/`, `brand/logos/` and
   `brand/images/`. Both kinds of JSON file say `"schemaVersion": "0.4"`, the only version they have. Their schemas are
   published as `packages/core/schema/brand.schema.json` and `template.schema.json`. A brand file names its files
   relative to `brand/`.
@@ -178,7 +179,9 @@ library, and per-block raw hex colors.
   `slot-over-max`, `missing-slot` (every block of a template scene names a slot), `slot-without-template`,
   `claim-in-template`, and the warning `slot-empty` for a required slot. A pinned block still names a slot that takes
   its kind, but floats at its frame: it neither fills the slot nor counts toward `max`.
-- **Brand checks.** Errors: `unused-brand` (brand.json or templates while deck.json names no brand), `missing-brand`
+- **Brand checks.** `unused-brand` (brand.json or templates while deck.json names no brand) is a warning in a deck
+  folder, which then leaves those files unread, so a save that makes or takes off a brand can stop between deck.json
+  and the brand's files and still load; in a Doc, whose brand would be used, it stays an error. Errors: `missing-brand`
   (deck.json names a brand the folder lacks), `missing-brand-file` (a font, logo or background image not on disk),
   `missing-logo` (logos that name no file, or chrome that places a logo the brand lacks), `palette-low-contrast` at
   `/colors/<preset>/<color>` with "On ink slides, " in front, `chart-low-contrast` (3:1 on the deck's background),
@@ -194,7 +197,9 @@ library, and per-block raw hex colors.
   paths, in order), so every diagnostic is unchanged; `schemacheck.test.ts` holds that by running both on every
   fixture and on about 65,000 one-change and seeded several-change copies of each kind of file, and checks that the
   copies reach every keyword. It knows only the keywords the schemas use (`oneOf` only with a `discriminator`,
-  `uniqueItems` only on scalar items) and throws on any other. Ajv is a dev dependency of core now; `pnpm schema`
+  `uniqueItems` only on scalar items) and throws on any other, and on a form of a known one it does not read: a list
+  of `items`, a boolean where a schema goes (but `additionalProperties: false`), and `dependencies` that name a
+  schema. Ajv is a dev dependency of core now; `pnpm schema`
   writes only the published `.schema.json` files, which did not change, and `check:generated` still fails when one
   is stale. Checking a scene takes about 20 microseconds instead of 0.5.
 - **Operations.** `brand.set` makes a brand (it needs `id` and `name`), edits brand.json keys (null deletes one) and,
@@ -202,12 +207,23 @@ library, and per-block raw hex colors.
   fonts, logos and images stay on disk. The id never changes. `deck.set` refuses `brand`, `brand.set` refuses `styles`.
   `style.set` and `template.set` write or remove one by id and need a brand (`no-brand`); `template.set` fills `id`
   and `schemaVersion`. Slot and style changes go through `block.set`. Removing a style or template still in use fails
-  on the result as `invalid-deck`, with the scene's own error.
+  on the result as `invalid-deck`, with the scene's own error. `scene.set` that gives a scene below 0.3 a template
+  upgrades it first, as `block.set` does for a slot, so text written in the same operations reads the same in either
+  order. Every lookup by an id or a key from a file or an operation reads own properties only, so `constructor` as a
+  template, style or `set` key gets the normal diagnostic.
 - **Changing a template.** `retemplate(doc, scene, { template } | { layout })` returns the operations and the ids of
   blocks no slot takes, which are never dropped. A block keeps its slot when the new template has it; others go to the
   first slot that takes their kind and has room, in order. A claim becomes a heading block with the claim's id and
   escaped text (body text when it is longer than a heading allows), since a template has no claim; its evidence links
-  are dropped. Moving to a layout clears every slot.
+  are dropped. A scene already at 12 blocks has no room for it: the claim stays a claim and its id is in the unplaced
+  list, so the operations apply once it is decided. Moving to a layout clears every slot.
+- **Saving.** `saveDeckDir` writes the brand's new and changed files first (brand.json still holding any style it
+  loses, and hiding or locking nothing new), then the scenes, deck.json, brand.json as it ends, and the removals, so
+  a save stopped after any file leaves a deck that loads. `save-crash.test.ts` stops nine kinds of batch after every
+  file. Not covered: a template or style whose content changes under a scene, colors checked across the two files, and
+  a brand made with scenes that use it. A save that would write under brand/ refuses, with `linked-brand-folder` and
+  no file touched, when brand/ or brand/templates/ is a link or resolves outside the deck; reading through it is
+  allowed. Making a brand over brand files left in the folder is refused as `leftover-brand-file`.
 - **Revision.** It covers brand.json and the templates, independent of formatting. A deck without a brand hashes as
   before: the v0-1 fixture stays `ec4e0cd5c59ef06a` and the demo `eb9d45889adffe19`, pinned in `brand.test.ts`. Brand
   binaries count no more than assets do. Drafts keep the brand; a review keeps the reviewed brand but lists no brand
@@ -222,3 +238,20 @@ library, and per-block raw hex colors.
   places slots at their frames. The fixture's chart-and-note scene overflows that stack in `depthcue render`.
 - **Sizes.** Core runtime 45.2 to 38.2 KB gzip (limit 60). Editor script 89.3 to 88.6 KB brotli (limit 90). Player
   script 10.1 to 10.3 KB (the placeholder), core code in the player 5.1 to 4.9 KB, exported page 13.3 to 13.2 KB.
+
+Found, not fixed (older than the brand work):
+
+- **File names that differ only in case, on Windows.** `brand/Brand.json` or `brand/Templates/x.json` is skipped when
+  the folder is read (the loader matches exact case), but a later `brand.set` or `template.set` writes
+  `brand/brand.json` or `brand/templates/x.json`, which NTFS resolves to the same file and overwrites unseen. `scenes/`
+  has the same gap. Location: `walk` and `loadDeckDir` in `packages/cli/src/loader.ts`. Fix: compare each path's lower
+  case with the known names (`deck.json`, `scenes/`, `brand/brand.json`, `brand/templates/`) and report a near miss
+  as an error, `wrong-case-file`, so the deck does not load until the file is renamed.
+- **`depthcue check` crashes on an object with a `toString` key where a scalar goes.** `{"theme": {"toString": 1}}`
+  in deck.json exits 2 with "Cannot convert object to primitive value". Location: `display()` in
+  `packages/core/src/diagnostics.ts` (line 101, `String(value)`), called from `explainOne`: the `enum` case here, and
+  `const` and a discriminator's tag the same way. Fix: show objects and arrays with `JSON.stringify`, cut to a short
+  length, and other values with `String`.
+- **A scene named `constructor` crashes the review.** It passes the id pattern; `diffDocs` and `acceptChanges` read
+  `base.scenes[id]` and get Object's constructor, then throw. Location: `packages/core/src/review.ts`, the scene
+  lookups at lines 222, 237, 349, 394 and 397. Fix: the `own()` lookup this step added for kits.
