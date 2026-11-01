@@ -22,6 +22,7 @@ export {
   blockStylesOf,
   brandFilePath,
   checkSceneBrand,
+  isTemplateFile,
   kindOf,
   kitOf,
   slotMax,

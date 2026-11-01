@@ -17,6 +17,7 @@ import {
   type Diagnostic,
   type Doc,
   docToFiles,
+  isTemplateFile,
   kitOf,
   loadDoc,
   lookOf,
@@ -34,6 +35,7 @@ import {
   startReview,
   styleOf,
   type Template,
+  templateIdOf,
   templatesOf,
 } from "../src/index.ts";
 import { brandDir, brandDoc, demoDoc, loadDir } from "./helpers.ts";
@@ -325,6 +327,37 @@ describe("a brand's own files", () => {
     expect(checked({ "brand/templates/cover.json": { ...cover, id: "front" } })).toMatchObject([
       { code: "template-id-mismatch", file: "brand/templates/cover.json", path: "/id" },
     ]);
+  });
+
+  it("refuses a template file not named for a template id, and lets no file name reach a prototype", () => {
+    for (const name of ["__proto__", "constructor_", "Cover", "x", "has space"]) {
+      const file = `brand/templates/${name}.json`;
+      expect(isTemplateFile(file)).toBe(true);
+      expect(templateIdOf(file)).toBeUndefined();
+      const loaded = loadDoc(brandFiles({ [file]: { evil: 1 } }));
+      expect(loaded.doc).toBeNull();
+      expect(loaded.diagnostics).toMatchObject([
+        {
+          severity: "error",
+          code: "bad-template-name",
+          file,
+          path: "",
+          message: `"${name}" is not a template id, so this file holds no template.`,
+          fix: expect.stringContaining("Rename it to the template's id"),
+        },
+      ]);
+    }
+    expect(({} as Record<string, unknown>).evil).toBeUndefined();
+    // A template whose id is "constructor" is a template like any other, and a scene may use it.
+    const odd = { ...cover, id: "constructor" };
+    const welcome = { ...json("scenes/welcome.json"), template: "constructor" };
+    const loaded = loadDoc(
+      brandFiles({ "brand/templates/constructor.json": odd, "scenes/welcome.json": welcome }),
+    );
+    expect(errors(loaded.diagnostics)).toEqual([]);
+    expect(Object.hasOwn(loaded.doc?.templates ?? {}, "constructor")).toBe(true);
+    expect(isTemplateFile("brand/templates/nested/cover.json")).toBe(false);
+    expect(isTemplateFile("brand/brand.json")).toBe(false);
   });
 
   it("explains a broken brand.json in its own file, and checks the scenes against nothing", () => {

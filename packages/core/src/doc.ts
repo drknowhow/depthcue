@@ -83,11 +83,13 @@ export function loadDoc(files: DeckFiles): LoadResult {
   const binaries = brandFiles.size > 0 ? { brandFiles } : {};
   if (deck.brand === undefined) return { doc: { deck, scenes, assets, ...binaries }, diagnostics };
   const brand = JSON.parse(files.text[BRAND_FILE] as string) as Brand;
-  const templates: Record<string, Template> = {};
-  for (const [path, text] of Object.entries(files.text)) {
-    const id = templateIdOf(path);
-    if (id !== undefined) templates[id] = JSON.parse(text) as Template;
-  }
+  // Entries, not assignment, so that no id can reach a prototype.
+  const templates: Record<string, Template> = Object.fromEntries(
+    Object.entries(files.text).flatMap(([path, text]) => {
+      const id = templateIdOf(path);
+      return id === undefined ? [] : [[id, JSON.parse(text) as Template]];
+    }),
+  );
   return { doc: { deck, scenes, assets, brand, templates, ...binaries }, diagnostics };
 }
 

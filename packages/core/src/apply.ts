@@ -339,11 +339,13 @@ function setBrand(work: Work, op: Extract<Op, { op: "brand.set" }>, index: numbe
 
 function setStyle(work: Work, op: Extract<Op, { op: "style.set" }>, index: number): Diagnostic | undefined {
   if (work.brand === undefined) return noBrand(index, "style.set");
-  const styles: Record<string, BlockStyle> = { ...work.brand.styles };
+  // A computed key in a literal defines the property, so no id can reach a prototype.
+  const styles: Record<string, BlockStyle> =
+    op.style === null ? { ...work.brand.styles } : { ...work.brand.styles, [op.id]: op.style };
   if (op.style === null) {
     if (!has(styles, op.id)) return unknownId(index, "/id", op.id, "style", Object.keys(styles));
     delete styles[op.id];
-  } else styles[op.id] = op.style;
+  }
   work.brand = patch(work.brand, { styles: Object.keys(styles).length > 0 ? styles : null });
   return undefined;
 }
@@ -354,7 +356,7 @@ function setTemplate(
   index: number,
 ): Diagnostic | undefined {
   if (work.brand === undefined) return noBrand(index, "template.set");
-  const templates: Record<string, Template> = { ...work.templates };
+  let templates: Record<string, Template> = { ...work.templates };
   if (op.template === null) {
     if (!has(templates, op.id)) return unknownId(index, "/id", op.id, "template", Object.keys(templates));
     delete templates[op.id];
@@ -369,7 +371,8 @@ function setTemplate(
         `Leave "id" out of the template, or make it "${op.id}".`,
       );
     }
-    templates[op.id] = { schemaVersion: "0.4", id: op.id, ...op.template } as Template;
+    // A computed key in a literal defines the property, so no id can reach a prototype.
+    templates = { ...templates, [op.id]: { schemaVersion: "0.4", id: op.id, ...op.template } as Template };
   }
   work.templates = templates;
   return undefined;

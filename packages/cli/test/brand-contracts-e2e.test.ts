@@ -192,6 +192,18 @@ describe("a branded deck through the CLI", () => {
     expect((await cli("check", dir)).code).toBe(0);
   });
 
+  it("reads every JSON file of the templates folder, and refuses one not named for a template id", async () => {
+    const dir = copy();
+    writeFileSync(join(dir, "brand", "templates", "__proto__.json"), JSON.stringify({ evil: 1 }));
+    expect(loadDeckDir(dir).text["brand/templates/__proto__.json"]).toBe('{"evil":1}');
+    const check = await cli("check", dir);
+    expect(check.code).toBe(1);
+    expect(check.text).toContain(
+      'brand/templates/__proto__.json  error  "__proto__" is not a template id, so this file holds no template.',
+    );
+    expect(({} as Record<string, unknown>).evil).toBeUndefined();
+  });
+
   it("refuses an operation that leaves a scene on a removed template, and writes nothing", async () => {
     const dir = copy();
     const before = snapshot(dir);

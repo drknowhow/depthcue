@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { BRAND_DIR, BRAND_FILE, type DeckFiles, templateIdOf } from "@depthcue/core";
+import { BRAND_DIR, BRAND_FILE, type DeckFiles, isTemplateFile } from "@depthcue/core";
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -33,7 +33,8 @@ export function loadDeckDir(dir: string): DeckFiles {
       text[path] = readFileSync(full, "utf8");
     } else if (path.startsWith("assets/")) {
       assets.push(path);
-    } else if (path === BRAND_FILE || templateIdOf(path) !== undefined) {
+    } else if (path === BRAND_FILE || isTemplateFile(path)) {
+      // Every JSON file of the templates folder is read, so the check can refuse one not named for a template id.
       text[path] = readFileSync(full, "utf8");
     } else if (path.startsWith(`${BRAND_DIR}/`) && !path.endsWith(".json")) {
       brandFiles.push(path);

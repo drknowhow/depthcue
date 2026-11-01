@@ -6,7 +6,9 @@ import {
   checkBrandLock,
   checkSceneBrand,
   checkSceneForm,
+  isTemplateFile,
   kitOf,
+  TEMPLATES_DIR,
   templateIdOf,
 } from "./brand.ts";
 import { type BrandData, readBrand } from "./brandcheck.ts";
@@ -129,20 +131,38 @@ export function checkScenePart(
   return out;
 }
 
-/** The brand's JSON files of a deck folder, parsed, with what kept any of them from parsing. */
+/** A file in the templates folder whose name is not a template id. */
+const badTemplateName = (file: string): Diagnostic => ({
+  severity: "error",
+  code: "bad-template-name",
+  file,
+  path: "",
+  message: `"${file.slice(TEMPLATES_DIR.length + 1, -".json".length)}" is not a template id, so this file holds no template.`,
+  fix: "Rename it to the template's id: lowercase letters, digits and hyphens, a letter first, 2 to 64 characters, then .json.",
+});
+
+/**
+ * The brand's JSON files of a deck folder, parsed, with what kept any of them from parsing. Templates are collected
+ * as entries, so no id can reach a prototype however the file is named.
+ */
 function brandData(files: DeckFiles): { data: BrandData; problems: Diagnostic[] } {
-  const templates: Record<string, unknown> = {};
+  const templates: Array<[string, unknown]> = [];
   const problems: Diagnostic[] = [];
   let brand: unknown;
   for (const [file, text] of Object.entries(files.text)) {
+    if (file !== BRAND_FILE && !isTemplateFile(file)) continue;
     const id = templateIdOf(file);
-    if (file !== BRAND_FILE && id === undefined) continue;
+    if (file !== BRAND_FILE && id === undefined) {
+      problems.push(badTemplateName(file));
+      continue;
+    }
     const read = parse(text, file);
     if (read.diagnostic) problems.push(read.diagnostic);
     else if (id === undefined) brand = read.data;
-    else templates[id] = read.data;
+    else templates.push([id, read.data]);
   }
-  return { data: brand === undefined ? { templates } : { brand, templates }, problems };
+  const data = { templates: Object.fromEntries(templates) };
+  return { data: brand === undefined ? data : { brand, ...data }, problems };
 }
 
 /**

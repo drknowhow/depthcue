@@ -5,6 +5,7 @@
 import { BUILT_IN_STYLES, BUILT_IN_TEMPLATES } from "./builtins.ts";
 import { closest } from "./diagnostics.ts";
 import { own } from "./own.ts";
+import { ID_PATTERN } from "./schema.ts";
 import type {
   Block,
   BlockKind,
@@ -25,9 +26,16 @@ export const TEMPLATES_DIR = "brand/templates";
 export const templatePath = (id: string): string => `${TEMPLATES_DIR}/${id}.json`;
 /** The deck-relative path of a file the brand names, such as `fonts/Acme-Regular.woff2`. */
 export const brandFilePath = (file: string): string => `${BRAND_DIR}/${file}`;
-/** The template id a deck-relative path names, when it is a template file. */
-export const templateIdOf = (path: string): string | undefined =>
-  /^brand\/templates\/([^/]+)\.json$/.exec(path)?.[1];
+/** True for a JSON file directly in the templates folder, whatever its name. */
+export const isTemplateFile = (path: string): boolean => /^brand\/templates\/[^/]+\.json$/.test(path);
+/**
+ * The template id a deck-relative path names: a JSON file in the templates folder named for a valid id. Any other name,
+ * such as `__proto__.json`, names no template, and the checks refuse the file.
+ */
+export function templateIdOf(path: string): string | undefined {
+  const name = /^brand\/templates\/([^/]+)\.json$/.exec(path)?.[1];
+  return name !== undefined && new RegExp(ID_PATTERN).test(name) ? name : undefined;
+}
 
 /** What a document carries of its brand: `brand.json`, and its templates by id. Both are there, or neither. */
 export interface BrandPart {
