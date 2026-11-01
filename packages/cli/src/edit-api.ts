@@ -19,6 +19,7 @@ import { openDeck } from "./deck-api.ts";
 import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
 import { loadDeckDir } from "./loader.ts";
+import { recordPersonWrite } from "./review-file.ts";
 import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
 
 export interface EditContext {
@@ -118,6 +119,8 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
   }
   try {
     const written = saveDeckDir(ctx.folder, current.doc, next.doc);
+    // What the person changed is theirs: it goes into the reviewed deck, so it is never listed as the agent's.
+    recordPersonWrite(ctx.folder, current.doc, next.doc);
     return send(response, 200, { rev: revisionOf(next.doc), written });
   } catch (error) {
     if (error instanceof ChangedOnDiskError) {

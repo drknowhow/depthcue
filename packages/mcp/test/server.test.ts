@@ -2,7 +2,14 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { COMMENTS_FILE, commentOpsSchema, deckSchema, OP_NAMES, sceneSchema } from "@depthcue/core";
+import {
+  COMMENTS_FILE,
+  commentOpsSchema,
+  deckSchema,
+  OP_NAMES,
+  REVIEW_FILE,
+  sceneSchema,
+} from "@depthcue/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -231,6 +238,40 @@ describe("deck_apply", () => {
     expect(reply.json.ok).toBe(true);
     expect(reply.json.changed).toEqual([]);
     expect(reply.json.next).toBeUndefined();
+  });
+
+  it("records what it changed as the agent's, for the person to review", async () => {
+    const reply = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [{ op: "scene.set", id: "method", set: { notes: "Added for review" } }],
+    });
+    expect(reply.json.ok).toBe(true);
+    expect(reply.json.warnings).toBeUndefined();
+    const review = JSON.parse(readFileSync(join(folder, REVIEW_FILE), "utf8"));
+    expect(review.agent).toContain("scene:method/notes");
+    // The reviewed deck is the one from before the agent's first edit, so it is not the deck the agent just read.
+    expect(review.rev).not.toBe(await revision());
+  });
+
+  it("still edits when the review cannot be updated, and warns the agent", async () => {
+    const path = join(folder, REVIEW_FILE);
+    const kept = readFileSync(path, "utf8");
+    writeFileSync(path, "{ not json");
+    try {
+      const reply = await call("deck_apply", {
+        base_rev: await revision(),
+        ops: [{ op: "scene.set", id: "method", set: { notes: "Edited anyway" } }],
+      });
+      expect(reply.isError).toBe(false);
+      expect(reply.json.ok).toBe(true);
+      expect(reply.json.warnings[0]).toMatchObject({ code: "review-not-recorded", at: REVIEW_FILE });
+      expect(readFileSync(path, "utf8")).toBe("{ not json");
+      expect(JSON.stringify((await call("deck_get", { view: "scene", scene: "method" })).json)).toContain(
+        "Edited anyway",
+      );
+    } finally {
+      writeFileSync(path, kept);
+    }
   });
 
   it("rejects a stale revision, writes nothing and tells the agent what to do", async () => {

@@ -9,6 +9,7 @@ import {
   sceneRevision,
 } from "@depthcue/core";
 import { loadDeckDir } from "./loader.ts";
+import { recordAgentWrite } from "./review-file.ts";
 import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
 
 /** How much a read returns. Concise is for deciding what to do next; detailed is for doing it. */
@@ -154,6 +155,8 @@ export function applyToFolder(folder: string, ops: unknown, baseRev: string): Ap
   }
   try {
     const written = saveDeckDir(folder, opened.doc, result.doc);
+    // This is the agent's way in, so what it changed is recorded for the person to review.
+    const recorded = recordAgentWrite(folder, opened.doc, result.doc);
     return {
       ok: true,
       prevRev: result.prevRev,
@@ -161,7 +164,7 @@ export function applyToFolder(folder: string, ops: unknown, baseRev: string): Ap
       changed: result.changed,
       removed: result.removed,
       written,
-      diagnostics: result.diagnostics,
+      diagnostics: [...result.diagnostics, ...recorded],
     };
   } catch (error) {
     if (error instanceof ChangedOnDiskError) {

@@ -153,6 +153,43 @@ where and why. A `comments.json` that is not valid is never overwritten; `deck_g
 --base-rev <rev> [--json]` do the same from a terminal, with the exit codes of `apply` (3 for a stale revision). An
 operations file there names its author, because the command does not know who is typing.
 
+### Review
+
+`review.json` sits beside `deck.json` and holds a copy of the deck as it was when somebody last reviewed it: `format`
+(`depthcue-review/1`), `rev` (the revision of that copy), the `deck` manifest, the `scenes`, and `agent`, a sorted list
+of the change ids an agent made. It stores no list of changes. A change is the difference between the copy and the deck
+as it is now, worked out each time by `diffDocs`, so the list cannot go stale.
+
+A change id is a path: `deck/title`, `deck/scenes` (the order of the scenes), `scene:<id>`, `scene:<id>/<field>`,
+`scene:<id>/blocks` (the order of the blocks), `scene:<id>/block:<id>` and `scene:<id>/block:<id>/<field>`. A scene or
+block that was added or removed is one change, and so is a block whose type changed. A change has a scope (`deck`,
+`scene` or `block`), a kind (`added`, `removed`, `changed` or `moved`), the scene, block and field it applies to, the
+value before and after, and `by`, which is `agent` or `outside`. The ids and fields are the format the drawer and the
+storyboard read, so they stay as they are.
+
+`acceptChanges` copies the chosen changes into the reviewed copy and leaves the deck alone; accepting all makes the copy
+equal to the deck. `revertChanges` builds one batch of operations that puts the chosen changes back and applies it to
+the current deck with `applyOps`, so a revert is a new revision and no revision is rewritten. An unknown id is refused,
+and so is a revert that would leave an invalid deck, with the reason and nothing written. Each of the two leaves every
+other change as it was.
+
+Attribution has two sides. Agent writes (`deck_apply` and `depthcue apply`) go through `recordAgentWrite`, which starts
+the review from the deck as it was before the first agent write and marks the changes that write touched. The editor's
+save calls `recordPersonWrite`, which folds the person's change into the reviewed copy, so a person's own edit is never
+something to review. A change nobody recorded, such as a hand edit to a file, shows as `outside`. A revert is written
+directly and is not marked as agent work. If recording fails, the deck is still written and the result carries a
+`review-not-recorded` warning.
+
+`depthcue diff <deck-folder> [--json]` lists the changes. `depthcue diff <deck-folder> accept <ids…>` and `revert
+<ids…>` act on the ids given, and `--all` acts on every change. A refusal exits with 1, and a deck that changed on disk
+while the command ran exits with 3.
+
+Like comments, the file stays out of the deck: `loadDeckDir` does not list it, the edit server's file watcher ignores
+it, `export` does not copy it, and the player and presenter do not contain its code. The MCP tool definitions did not
+change, so an agent finds the review through the editor and the terminal, not through a tool of its own. One limit: a
+revert that would bring back a block naming an image file that has since been deleted from `assets/` is refused,
+because the deck would not be valid.
+
 ## Rules for every change
 
 - Core commands stay the only way to change a deck, from the editor, the CLI and MCP.
