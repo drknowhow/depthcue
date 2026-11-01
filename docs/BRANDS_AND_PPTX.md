@@ -236,8 +236,9 @@ library, and per-block raw hex colors.
   and 8.
 - **Player.** A template scene draws each slot as a dashed box with its id, its blocks stacked inside, until step 3
   places slots at their frames. The fixture's chart-and-note scene overflows that stack in `depthcue render`.
-- **Sizes.** Core runtime 45.2 to 38.2 KB gzip (limit 60). Editor script 89.3 to 88.6 KB brotli (limit 90). Player
-  script 10.1 to 10.3 KB (the placeholder), core code in the player 5.1 to 4.9 KB, exported page 13.3 to 13.2 KB.
+- **Sizes.** Core runtime 45.2 to 38.8 KB gzip (limit 60). Editor script 89.3 to 89.1 KB brotli (91,195 bytes of
+  92,160; the fix round added 0.4 KB of it). Player script 10.1 to 10.3 KB (the placeholder), core code in the player
+  5.1 to 4.9 KB, exported page 13.3 to 13.2 KB.
 
 Found, not fixed (older than the brand work):
 
