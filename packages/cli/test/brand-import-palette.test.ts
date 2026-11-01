@@ -58,6 +58,8 @@ const KEYS: ThemeKey[] = [
   "hlink",
   "folHlink",
 ];
+/** The share of the way the theme's own colors may be moved toward the text color. */
+const MAX_MOVE_FOR_TEST = 0.5;
 const light = () => buildPalette({ theme: themeOf(LIGHT), map: DEFAULT_COLOR_MAP });
 const darkMap = readColorMap(parseXml('<m bg1="dk1" tx1="lt1" bg2="dk2" tx2="lt2"/>'));
 
@@ -201,11 +203,11 @@ describe("a color that fails a contrast rule", () => {
   });
 
   it("takes a color back from the preset when the partner that failed it went back too", () => {
-    // Retrospect-like: the panel color fails with the preset's evidence, which fails because the theme's did not (and a
-    // link that pale cannot be moved to read without ceasing to be the theme's), and the muted color had only failed
+    // The text only just reads on this gray panel (5.3:1). The theme's link and the preset's fail on it, and no link
+    // moved toward the text reads before it is mostly the text, so the panel goes back. The muted color had only failed
     // against that panel.
     const result = buildPalette({
-      theme: themeOf({ ...LIGHT, dk2: "637052", lt2: "CCDDEA", hlink: "9FD3FF", accent1: "BD582C" }),
+      theme: themeOf({ ...LIGHT, dk2: "637052", lt2: "8E8E8E", hlink: "9FD3FF", accent1: "BD582C" }),
       map: DEFAULT_COLOR_MAP,
     });
     expect(result.colors.muted).toBe("#637052");
@@ -358,6 +360,45 @@ describe("a background the theme chose", () => {
     expect(sourceOf("muted")).toBe("preset");
     expect(sourceOf("evidence")).toBe("derived");
     expect(result.kept.map((kept) => kept.name)).toEqual(["muted"]);
+  });
+  it("moves the preset's color when the theme's is too dark to be moved far enough to read", () => {
+    // Slice: a blue background, a link and an accent that are darker than it, and a muted color that only just misses.
+    const slice = {
+      ...DARK,
+      dk1: "000000",
+      lt1: "FFFFFF",
+      dk2: "146194",
+      lt2: "76DBF4",
+      accent1: "052F61",
+      accent2: "052F61",
+      accent3: "052F61",
+      accent4: "052F61",
+      accent5: "052F61",
+      accent6: "052F61",
+      hlink: "0D2E46",
+    };
+    const blue = { hex: "#146194", key: "dk2", plain: true, kind: "schemeClr" } as const;
+    const result = buildPalette({ theme: themeOf(slice), map: darkMap, background: blue });
+    expect(result.preset).toBe("ink");
+    expect(result.colors.bg).toBe("#146194");
+    expect(result.kept.map((kept) => kept.name)).not.toContain("bg");
+    expect(contrastFailures(result.colors)).toEqual([]);
+    const { evidence, bg, surface, text } = result.colors;
+    // No amount of moving the theme's own link reads: it is darker than the background, and farther from it on the way.
+    expect(contrastRatio(mix("#0D2E46", text, MAX_MOVE_FOR_TEST), bg)).toBeLessThan(CONTRAST.text);
+    const line = result.taken.find(({ name }) => name === "evidence");
+    expect(line).toMatchObject({
+      value: evidence,
+      source: "derived",
+      from: expect.stringMatching(
+        /^Depthcue's ink preset color for it \(#7C9BFF\), moved \d+% of the way toward the text color \(#FFFFFF\).*Hyperlink \(hlink\) \(#0D2E46\) could not be moved far enough to read$/,
+      ),
+    });
+    const share = Number(/moved (\d+)%/.exec(line?.from ?? "")?.[1]);
+    expect(share).toBeLessThanOrEqual(75);
+    expect(mix(PRESETS.ink.evidence, text, share / 100)).toBe(evidence);
+    expect(contrastRatio(mix(PRESETS.ink.evidence, text, (share - 5) / 100), bg)).toBeLessThan(CONTRAST.text);
+    expect(contrastRatio(evidence, surface)).toBeGreaterThanOrEqual(CONTRAST.text);
   });
   it("goes back to the preset, as it did, when a color would have to move more than half way", () => {
     // A mid gray: the link and the muted color would have to become the text color, and be no color of their own.

@@ -157,29 +157,62 @@ const readsOn = (hex: string, need: number, colors: Palette): boolean =>
   contrastRatio(hex, colors.bg) >= need && contrastRatio(hex, colors.surface) >= need;
 
 /**
- * A color is moved no further than this share of the way toward the text color. Past it the color is more the text's than
- * the theme's (a link that is as dark as the text is no link), and the background is given up instead.
+ * The theme's color is moved no further than this share of the way toward the text color. Past it the color is more the
+ * text's than the theme's (a link that is as dark as the text is no link).
  */
 const MAX_MOVE = 0.5;
 
 /**
- * The theme's color moved toward the text color, by the least 5% steps that make it read at `need`:1 on the slide and on
- * a panel, or nothing when that takes more than `MAX_MOVE` of the way. The text color is the one in `colors`, which the
+ * The preset's color, when the theme's cannot be made to read, may go further: it has no theme hue to keep, only its
+ * place in the palette, and a background the theme chose is worth more than a link that is a little paler than the
+ * preset's.
+ */
+const MAX_PRESET_MOVE = 0.75;
+
+/**
+ * The color moved toward the text color, by the least 5% steps that make it read at `need`:1 on the slide and on a
+ * panel, or nothing when that takes more than `limit` of the way. The text color is the one in `colors`, which the
  * checks list first, so it reads on both whenever another color is being looked at.
  */
-function adjustedTowards(wanted: Candidate, need: number, colors: Palette): AdjustedColor | undefined {
-  for (let step = 1; step <= MAX_MOVE * 20; step++) {
-    const hex = mix(wanted.hex, colors.text, step / 20);
-    if (readsOn(hex, need, colors)) {
-      return {
-        hex,
-        from: `${wanted.from} (${wanted.hex}), moved ${step * 5}% of the way toward the text color (${colors.text}) until it reads at ${need}:1 on the background and the panel`,
-      };
-    }
+function movedTowardText(
+  hex: string,
+  need: number,
+  colors: Palette,
+  limit: number,
+): { hex: string; share: number } | undefined {
+  for (let step = 1; step <= limit * 20; step++) {
+    const moved = mix(hex, colors.text, step / 20);
+    if (readsOn(moved, need, colors)) return { hex: moved, share: step * 5 };
   }
   return undefined;
 }
 
+/**
+ * What a text-side color becomes when neither the theme's nor the preset's reads on the background the theme chose: the
+ * theme's, moved toward the text color, or else the preset's, moved further.
+ */
+function adjustedTowards(
+  wanted: Candidate,
+  presetColor: string,
+  preset: ThemeName,
+  need: number,
+  colors: Palette,
+): AdjustedColor | undefined {
+  const goal = `toward the text color (${colors.text}) until it reads at ${need}:1 on the background and the panel`;
+  const theirs = movedTowardText(wanted.hex, need, colors, MAX_MOVE);
+  if (theirs) {
+    return {
+      hex: theirs.hex,
+      from: `${wanted.from} (${wanted.hex}), moved ${theirs.share}% of the way ${goal}`,
+    };
+  }
+  const ours = movedTowardText(presetColor, need, colors, MAX_PRESET_MOVE);
+  if (!ours) return undefined;
+  return {
+    hex: ours.hex,
+    from: `Depthcue's ${preset} preset color for it (${presetColor}), moved ${ours.share}% of the way ${goal}; ${wanted.from} (${wanted.hex}) could not be moved far enough to read`,
+  };
+}
 export function buildPalette(input: PaletteInput): PaletteResult {
   const { theme, map } = input;
   const notes: string[] = [];
@@ -255,7 +288,7 @@ export function buildPalette(input: PaletteInput): PaletteResult {
       const wanted = candidates[side] as Candidate;
       handled.add(side);
       if (adjust && side === failure.name && side !== "text" && !readsOn(base[side], failure.need, colors)) {
-        const moved = adjustedTowards(wanted, failure.need, colors);
+        const moved = adjustedTowards(wanted, base[side], preset, failure.need, colors);
         if (moved) {
           colors[side] = moved.hex;
           adjusted.set(side, moved);
