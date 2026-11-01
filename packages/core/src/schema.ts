@@ -280,3 +280,99 @@ export const opsSchema = {
     ],
   },
 } as const;
+
+/** The format name written into `comments.json`, so a reader can tell what it has. */
+export const COMMENTS_FORMAT = "depthcue-comments/1";
+/** Who wrote a message: the person at the editor, or an agent working on the deck. */
+export const COMMENT_AUTHORS = ["you", "agent"] as const;
+/** Limits that keep a comments file a conversation and not a store of documents. */
+export const COMMENT_LIMITS = { text: 2000, thread: 50, comments: 500 } as const;
+export const COMMENT_OP_NAMES = [
+  "comment.add",
+  "comment.reply",
+  "comment.resolve",
+  "comment.reopen",
+  "comment.delete",
+] as const;
+
+/** UTC, to the second or the millisecond, as `Date.prototype.toISOString` writes it. */
+const TIMESTAMP_PATTERN = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$";
+const fraction = { type: "number", minimum: 0, maximum: 1 } as const;
+const author = { enum: COMMENT_AUTHORS } as const;
+const commentText = { type: "string", minLength: 1, maxLength: COMMENT_LIMITS.text } as const;
+/** Where on the block a comment points, as fractions of the block's width and height from its top left. */
+const anchor = {
+  type: "object",
+  additionalProperties: false,
+  required: ["x", "y"],
+  properties: { x: fraction, y: fraction },
+} as const;
+const message = {
+  type: "object",
+  additionalProperties: false,
+  required: ["author", "text", "at"],
+  properties: {
+    author,
+    text: commentText,
+    at: { type: "string", pattern: TIMESTAMP_PATTERN, maxLength: 30 },
+  },
+} as const;
+const comment = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "scene", "block", "anchor", "thread", "resolved"],
+  properties: {
+    id,
+    scene: id,
+    block: id,
+    anchor,
+    thread: { type: "array", minItems: 1, maxItems: COMMENT_LIMITS.thread, items: message },
+    resolved: { type: "boolean" },
+    ask: { type: "boolean" },
+  },
+} as const;
+
+/**
+ * The comments file, which sits beside the deck and is never part of it: a comment does not change the deck's
+ * revision, an export does not carry it, and the player never reads it. A comment whose scene or block has gone is
+ * still valid here, and is shown as orphaned; that it exists in the deck is checked against the deck, not the file.
+ */
+export const commentsSchema = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "urn:depthcue:schema:0.2:comments",
+  title: "Depthcue comments",
+  type: "object",
+  additionalProperties: false,
+  required: ["format", "comments"],
+  properties: {
+    $schema: schemaRef,
+    format: { const: COMMENTS_FORMAT },
+    comments: { type: "array", maxItems: COMMENT_LIMITS.comments, items: comment },
+  },
+} as const;
+
+/** The commands for comments. They run on the comments file, with the deck read for the block a comment points at. */
+export const commentOpsSchema = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "urn:depthcue:schema:0.2:comment-ops",
+  title: "Depthcue comment operations",
+  type: "array",
+  minItems: 1,
+  maxItems: 100,
+  items: {
+    type: "object",
+    discriminator: { propertyName: "op" },
+    oneOf: [
+      // Marked pure so that a build which never reads these schemas, the player's, drops them with the rest.
+      /* @__PURE__ */ op(
+        "comment.add",
+        { id, scene: id, block: id, anchor, author, text: commentText, ask: { type: "boolean" } },
+        ["scene", "block", "anchor", "author", "text"],
+      ),
+      /* @__PURE__ */ op("comment.reply", { id, author, text: commentText }, ["id", "author", "text"]),
+      /* @__PURE__ */ op("comment.resolve", { id }, ["id"]),
+      /* @__PURE__ */ op("comment.reopen", { id }, ["id"]),
+      /* @__PURE__ */ op("comment.delete", { id }, ["id"]),
+    ],
+  },
+} as const;

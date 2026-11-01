@@ -254,6 +254,41 @@ describe("the presenter view in a real browser", () => {
     expect(requested.some((path) => path.endsWith("/presenter.js"))).toBe(false);
   });
 
+  it("never asks for the comments on the deck, and shows none of their text in either window", async () => {
+    const { writeFileSync } = await import("node:fs");
+    const MARKER = "zebra-marker-7f3a";
+    writeFileSync(
+      join(root, "deck", "comments.json"),
+      JSON.stringify({
+        format: "depthcue-comments/1",
+        comments: [
+          {
+            id: "c1",
+            scene: "opening",
+            block: "opening-title",
+            anchor: { x: 0.5, y: 0.5 },
+            thread: [{ author: "you", text: MARKER, at: "2026-11-01T10:00:00.000Z" }],
+            resolved: false,
+          },
+        ],
+      }),
+    );
+    const requested: string[] = [];
+    audience.on("request", (request) => requested.push(new URL(request.url()).pathname));
+    await openAudience();
+    presenter = await context.newPage();
+    watch(presenter, "presenter");
+    presenter.on("request", (request) => requested.push(new URL(request.url()).pathname));
+    await presenter.goto(`${server.url}?presenter`);
+    await pv(".dc-pv-scene:not(:empty)").waitFor();
+    await audience.locator('[data-action="next"]').click();
+    await expect.poll(() => pv(".dc-pv-scene").textContent()).toBe("Demand is shifting");
+    // Both windows are fully drawn and have moved, so any request or word that would leak has happened by now.
+    expect(requested.filter((path) => /comment/i.test(path))).toEqual([]);
+    expect(await audience.content()).not.toContain(MARKER);
+    expect(await presenter.content()).not.toContain(MARKER);
+  });
+
   it("keeps up when the deck's files change", async () => {
     await openAudience();
     await openPresenter();

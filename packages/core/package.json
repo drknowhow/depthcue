@@ -11,7 +11,9 @@
     },
     "./schema/deck.schema.json": "./schema/deck.schema.json",
     "./schema/scene.schema.json": "./schema/scene.schema.json",
-    "./schema/ops.schema.json": "./schema/ops.schema.json"
+    "./schema/ops.schema.json": "./schema/ops.schema.json",
+    "./schema/comments.schema.json": "./schema/comments.schema.json",
+    "./schema/comment-ops.schema.json": "./schema/comment-ops.schema.json"
   },
   "files": [
     "dist",

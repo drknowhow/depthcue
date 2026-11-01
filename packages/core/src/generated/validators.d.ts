@@ -13,3 +13,5 @@ interface Validator {
 export const validateDeck: Validator;
 export const validateScene: Validator;
 export const validateOps: Validator;
+export const validateComments: Validator;
+export const validateCommentOps: Validator;

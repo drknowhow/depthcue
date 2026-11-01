@@ -68,10 +68,26 @@ pinned overlap is done.
 
 ### Comments
 
-`comments.json` sits beside the deck and has its own revision, so a comment never changes the deck revision.
-A comment has an id, an author (`you` or `agent`), a block id, an anchor as a fraction of the block, a thread of
-messages, a resolved flag and an optional `ask` flag (an instruction to the agent). A comment whose block is gone
-is kept and shown as orphaned.
+`comments.json` sits beside `deck.json` and has its own revision (16 hex characters of its content, as for the
+deck), so a comment never changes the deck revision. A comment has an id (`c1`, `c2`, or a name), the scene and block
+it points at (a scene's claim counts as a block), an anchor as a fraction of the block (x and y from 0 to 1, kept to
+thousandths), a thread of 1 to 50 messages, a resolved flag and an optional `ask` flag that marks an instruction to
+the agent. A message has an author (`you` or `agent`), up to 2000 characters of text and the time it was written. A
+file holds at most 500 comments.
+
+Five operations change the file, all or none, against the revision it was read at: `comment.add`, `comment.reply`,
+`comment.resolve`, `comment.reopen` and `comment.delete`. They are `applyCommentOps` in the core, with the schemas
+`comments.schema.json` and `comment-ops.schema.json`. A stale revision is refused. An added comment must name a scene
+and block the deck has now, and the refusal names the nearest id. A reply does not reopen a resolved comment, and
+resolving a resolved comment changes nothing. A comment whose block or scene is later removed stays in the file,
+gets an `orphaned-comment` warning from `commentWarnings`, and can still be answered, resolved or deleted.
+
+The deck never sees the file. `loadDeckDir` lists only `deck.json`, `scenes/` and `assets/`; the server serves only
+those and its file watcher ignores comment changes; `export` copies referenced assets and the runtime and puts only
+the deck in the page; and the player and presenter do not import the comments code. Tests cover each of these: an
+export with comments is the same files and page as one without, `/comments.json` is a 404, the deck and presenter
+windows in Chrome never request it, and the built player and standalone scripts contain none of its code. In the CLI,
+`applyCommentsDir` writes the file atomically and refuses to overwrite one that is not valid JSON.
 
 ### Checks
 
