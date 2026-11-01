@@ -103,8 +103,27 @@ renders that scene from the files on disk with the same browser and rules as `de
 
 ### Agents
 
-`deck_get` returns frames and unresolved comments. Agents can set or clear a frame, add a comment, reply and
-resolve, through the same core commands the editor uses. A stale revision is refused, never merged.
+An agent sets or clears a frame with `deck_apply` (`block.frame`, `block.unframe`). Comments have a tool of their
+own, `deck_comment`, because they have their own revision: sending both through `deck_apply` would put two revisions
+in one call. The cost to the agent's context is about the same either way, and `deck_get` says where each
+revision is.
+
+`deck_get` carries `comments` in the outline: `rev`, the revision to pass as `deck_comment`'s `base_rev`, `open`, the
+count of open comments, and `tasks`. A task is an open comment with `ask` set whose last message is the person's. Once
+the agent replies it stops being a task, and it becomes one again when the person writes next. A task shows its scene,
+block and the first 160 characters of the last message; `deck_get` with `view: "comments"` has the whole thread
+(`resolved: true` adds the closed comments, `scene` narrows to one scene), and a scene view lists that scene's open
+comments. A comment whose block is gone is flagged `orphaned`, and the outline warns.
+
+`deck_comment` takes `ops` and `base_rev` and can add, reply, resolve and reopen. The agent never says who is writing:
+the schema has no `author` or `ask`, the server writes `agent`, and an operation that carries either, or deletes a
+comment, is refused with the reason and nothing is written. Only a person asks the agent to act, and only the person
+who wrote a comment removes it. A stale revision, an unknown comment or a block the deck does not have is refused with
+where and why. A `comments.json` that is not valid is never overwritten; `deck_get` still reads the deck and warns.
+
+`depthcue comments list <deck-folder> [--all] [--json]` and `depthcue comments apply <deck-folder> <ops.json>
+--base-rev <rev> [--json]` do the same from a terminal, with the exit codes of `apply` (3 for a stale revision). An
+operations file there names its author, because the command does not know who is typing.
 
 ## Rules for every change
 

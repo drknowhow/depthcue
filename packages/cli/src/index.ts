@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkDeckFiles, type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
 import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./clip.ts";
+import { applyCommentsToFolder, listComments, readFolderComments } from "./comments-api.ts";
 import { applyToFolder, openDeck } from "./deck-api.ts";
 import { ExportError, exportDeck } from "./export.ts";
 import { writeLink } from "./link.ts";
@@ -24,6 +25,8 @@ const USAGE = `Usage:
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
   depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
                       [--scale <0.1-1>] [--kine <path>] [--json]
+  depthcue comments list <deck-folder> [--all] [--json]
+  depthcue comments apply <deck-folder> <ops.json> --base-rev <rev> [--json]
 
 check  Checks deck.json, every scene file, every reference and every asset.
 rev    Prints the deck's revision, a hash of its content. Pass it back as --base-rev.
@@ -52,6 +55,11 @@ clip   Builds a clip from a Kinescript scene with the kine program you have inst
        kinescript; --kine or DEPTHCUE_KINE points elsewhere). It writes assets/<name>.mp4, a poster
        and a cue map, and skips the render when nothing changed. Add the result to a scene as a
        clip block. --scale 0.5 with --quality draft is the fast way to try a scene.
+
+comments Lists the comments kept beside the deck in comments.json (the open ones; --all adds the resolved ones),
+       with the ones people asked the agent to act on marked "ask". apply changes them the way apply changes
+       the deck: operations all or none, against the comments' own revision, which list prints. The comments
+       are never part of the deck: they do not change its revision and an export leaves them out.
 
 Exit codes: 0 done, 1 errors found, edit rejected or a clip did not build, 2 could not run, 3 stale revision.`;
 
@@ -89,16 +97,21 @@ interface Parsed {
   positional: string[];
   json: boolean;
   noNotes: boolean;
+  all: boolean;
   values: Partial<Record<ValueFlag, string>>;
   unknown: string[];
 }
 
 function parse(args: readonly string[]): Parsed {
-  const parsed: Parsed = { positional: [], json: false, noNotes: false, values: {}, unknown: [] };
+  const parsed: Parsed = { positional: [], json: false, noNotes: false, all: false, values: {}, unknown: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
     if (arg === "--json") {
       parsed.json = true;
+      continue;
+    }
+    if (arg === "--all") {
+      parsed.all = true;
       continue;
     }
     if (arg === "--no-notes") {
@@ -396,6 +409,103 @@ function exportCommand(
   }
 }
 
+/** Lists the comments, so a person or a program can see what is open and what the agent has been asked to do. */
+function commentsListCommand(folder: string, all: boolean, json: boolean, io: Io): number {
+  const read = readFolderComments(folder);
+  if (!read.ok) {
+    report(io, read.diagnostics, json, { code: read.code });
+    if (!json) io.out(summary(read.diagnostics));
+    return 1;
+  }
+  const list = listComments(read.file, read.doc, all);
+  if (json) {
+    report(io, read.warnings, true, list);
+    return 0;
+  }
+  const asked = new Set(list.tasks.map((task) => task.id));
+  io.out(
+    `Comments revision ${list.rev}: ${plural(list.open, "open comment")}, ${list.resolved} resolved. ${plural(list.tasks.length, "task")} for the agent.`,
+  );
+  for (const item of list.comments) {
+    const flags = [
+      item.resolved ? "resolved" : "open",
+      ...(item.ask === true ? [asked.has(item.id) ? "ask, waiting for the agent" : "ask"] : []),
+      ...(item.orphaned === true ? ["its block is gone"] : []),
+    ];
+    io.out(`${item.id}  ${item.scene}/${item.block}  ${flags.join(", ")}`);
+    for (const message of item.thread) io.out(`  ${message.author}  ${message.text}`);
+  }
+  for (const diagnostic of read.warnings) for (const line of format(diagnostic)) io.out(line);
+  return 0;
+}
+
+/** Applies comment operations from a file, all or none, and says what changed. */
+function commentsApplyCommand(
+  folder: string,
+  opsFile: string,
+  baseRev: string,
+  json: boolean,
+  io: Io,
+): number {
+  let ops: unknown;
+  try {
+    ops = JSON.parse(readFileSync(opsFile, "utf8"));
+  } catch (error) {
+    io.err(`Could not read ${opsFile} as JSON: ${(error as Error).message}`);
+    return 2;
+  }
+  const outcome = applyCommentsToFolder(folder, ops, baseRev);
+  if (!outcome.ok) {
+    if (json) {
+      io.out(
+        JSON.stringify(
+          {
+            ok: false,
+            applied: false,
+            code: outcome.code,
+            ...(outcome.rev === undefined ? {} : { rev: outcome.rev }),
+            hint: outcome.hint,
+            diagnostics: outcome.diagnostics,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      for (const diagnostic of outcome.diagnostics) for (const line of format(diagnostic)) io.out(line);
+      io.err(`Rejected (${outcome.code}); nothing was written. ${outcome.hint}`);
+    }
+    return outcome.code === "stale-revision" || outcome.code === "changed-on-disk" ? 3 : 1;
+  }
+  if (json) {
+    io.out(
+      JSON.stringify(
+        {
+          ok: true,
+          applied: true,
+          prevRev: outcome.prevRev,
+          rev: outcome.rev,
+          changed: outcome.changed,
+          removed: outcome.removed,
+          warnings: outcome.warnings,
+        },
+        null,
+        2,
+      ),
+    );
+    return 0;
+  }
+  io.out(
+    outcome.prevRev === outcome.rev
+      ? `Applied. Nothing changed; the comments stay at revision ${outcome.rev}.`
+      : `Applied. Comments revision ${outcome.prevRev} -> ${outcome.rev}`,
+  );
+  if (outcome.changed.length > 0) io.out(`  changed ${outcome.changed.join(", ")}`);
+  if (outcome.removed.length > 0) io.out(`  removed ${outcome.removed.join(", ")}`);
+  for (const diagnostic of outcome.warnings) for (const line of format(diagnostic)) io.out(line);
+  return 0;
+}
+
 /** Test seams: the command that runs Kinescript, so a stand-in can be used where it is not installed. */
 export interface RunOptions {
   kine?: readonly string[];
@@ -403,7 +513,7 @@ export interface RunOptions {
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, noNotes, values, unknown } = parse(rest);
+  const { positional, json, noNotes, all, values, unknown } = parse(rest);
   const baseRev = values["base-rev"];
   const portText = values.port;
   const port = portText === undefined ? undefined : Number(portText);
@@ -416,6 +526,7 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   };
   if (unknown.length > 0) return usage(`Unknown option ${unknown[0]}.`);
   if (noNotes && command !== "export") return usage("--no-notes belongs to export.");
+  if (all && command !== "comments") return usage("--all belongs to comments list.");
 
   if (command === "clip") {
     const [sub, clipFolder, scene, ...more] = positional;
@@ -450,6 +561,30 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
     });
   }
   if (clipFlags !== undefined) return usage("--name, --quality, --scale and --kine belong to clip build.");
+  if (command === "comments") {
+    const [sub, commentsFolder, commentsOps, ...more] = positional;
+    if (sub !== "list" && sub !== "apply") {
+      return usage("comments needs a subcommand: comments list or comments apply.");
+    }
+    if (!commentsFolder) return usage(`comments ${sub} needs a deck folder.`);
+    if (portText !== undefined || renderFlags !== undefined) {
+      return usage(`comments ${sub} does not take that option.`);
+    }
+    if (sub === "list") {
+      if (commentsOps !== undefined || baseRev !== undefined)
+        return usage("comments list takes a deck folder, --all and --json.");
+      return commentsListCommand(commentsFolder, all, json, io);
+    }
+    if (all) return usage("--all belongs to comments list.");
+    if (more.length > 0) return usage(`Unexpected argument ${more[0]}.`);
+    if (!commentsOps) return usage("comments apply needs a deck folder and an operations file.");
+    if (baseRev === undefined) {
+      return usage(
+        "comments apply needs --base-rev, the comments revision you read. Get it with: depthcue comments list <deck-folder>",
+      );
+    }
+    return commentsApplyCommand(commentsFolder, commentsOps, baseRev, json, io);
+  }
   if (extra.length > 0) return usage(`Unexpected argument ${extra[0]}.`);
 
   try {
