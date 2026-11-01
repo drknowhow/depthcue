@@ -22,13 +22,29 @@ export interface Io {
   err(line: string): void;
 }
 
+/** The two forms of export, which `depthcue export --help` prints on their own. */
+const EXPORT_USAGE = `  depthcue export <deck-folder> [--out <dir>] [--no-notes] [--json]
+  depthcue export <deck-folder> --format pptx [--out <file.pptx>] [--no-notes] [--json]`;
+
+const EXPORT_TEXT = `export Writes a folder that opens by double-click: index.html with the deck inside it, the player beside it
+       and only the assets a scene names. It needs no server and no network, so it works from a USB stick.
+       The default folder is <deck-folder name>-export here; an earlier export is replaced, any other
+       folder with files in it is refused. Speaker notes go with the deck; --no-notes leaves them out.
+       A deck with errors writes nothing. Exports have no presenter view yet.
+       --format pptx writes one PowerPoint file instead, <deck-folder name>.pptx here or the --out file. Each
+       scene is a slide with all its steps showing. Text, tables and charts are PowerPoint's own and can be edited
+       there; panels are shapes and pictures are pictures. It needs Chrome or Edge, as render does. It reports,
+       per slide, what has no PowerPoint form (the chart explorer, a clip's playback, build steps, transitions)
+       and the font families a viewer needs installed. A file Depthcue did not write, or one that has been
+       changed since, is never replaced. Exit codes: 0 done, 1 the deck has errors, 2 the export could not run.`;
+
 const USAGE = `Usage:
   depthcue check <deck-folder> [--json]
   depthcue rev <deck-folder>
   depthcue apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue serve <deck-folder> [--port <n>]
   depthcue edit <deck-folder> [--port <n>]
-  depthcue export <deck-folder> [--out <dir>] [--no-notes] [--json]
+${EXPORT_USAGE}
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
   depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
                       [--scale <0.1-1>] [--kine <path>] [--json]
@@ -50,11 +66,7 @@ edit   Opens the editor at a loopback address. Changes go through the same opera
        to the folder by themselves, and a draft survives a closed tab. The deck must pass check.
        The player is at /present. Same default port as serve; keep one port to keep your drafts.
 
-export Writes a folder that opens by double-click: index.html with the deck inside it, the player beside it
-       and only the assets a scene names. It needs no server and no network, so it works from a USB stick.
-       The default folder is <deck-folder name>-export here; an earlier export is replaced, any other
-       folder with files in it is refused. Speaker notes go with the deck; --no-notes leaves them out.
-       A deck with errors writes nothing. Exports have no presenter view yet.
+${EXPORT_TEXT}
 
 render Renders scenes in a headless browser at the stage size (default 1280x720, controls hidden), measures
        the result, and reports overflow, clipping, overlap, text that is too small and low contrast. With
@@ -107,6 +119,7 @@ const VALUE_FLAGS = [
   "quality",
   "scale",
   "kine",
+  "format",
 ] as const;
 type ValueFlag = (typeof VALUE_FLAGS)[number];
 
@@ -115,16 +128,29 @@ interface Parsed {
   json: boolean;
   noNotes: boolean;
   all: boolean;
+  help: boolean;
   values: Partial<Record<ValueFlag, string>>;
   unknown: string[];
 }
 
 function parse(args: readonly string[]): Parsed {
-  const parsed: Parsed = { positional: [], json: false, noNotes: false, all: false, values: {}, unknown: [] };
+  const parsed: Parsed = {
+    positional: [],
+    json: false,
+    noNotes: false,
+    all: false,
+    help: false,
+    values: {},
+    unknown: [],
+  };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
     if (arg === "--json") {
       parsed.json = true;
+      continue;
+    }
+    if (arg === "--help") {
+      parsed.help = true;
       continue;
     }
     if (arg === "--all") {
@@ -426,6 +452,59 @@ function exportCommand(
   }
 }
 
+/** Writes the PowerPoint file, and says per slide what had no PowerPoint form. */
+async function pptxCommand(
+  folder: string,
+  out: string | undefined,
+  notes: boolean,
+  json: boolean,
+  io: Io,
+): Promise<number> {
+  try {
+    const { exportPptx } = await import("./pptx/index.ts");
+    const result = await exportPptx({ folder, notes, ...(out === undefined ? {} : { out }) });
+    if (!result.ok) {
+      report(io, result.diagnostics, json, { code: "deck-invalid" });
+      if (!json) {
+        io.out(summary(result.diagnostics));
+        io.out("Nothing was exported. Fix the errors and run it again.");
+      }
+      return 1;
+    }
+    const done = result.summary;
+    if (json) {
+      const { warnings, ...rest } = done;
+      report(io, warnings, true, rest);
+      return 0;
+    }
+    for (const diagnostic of done.warnings) for (const line of format(diagnostic)) io.out(line);
+    io.out(`Exported ${plural(done.scenes, "slide")} to ${done.out}`);
+    io.out(`  ${kilobytes(done.bytes)}, notes ${done.notes ? "kept" : "left out"}`);
+    done.slides.forEach((slide, at) => {
+      if (slide.left.length === 0) {
+        io.out(`  ${at + 1} ${slide.scene}: everything has a PowerPoint form`);
+        return;
+      }
+      io.out(`  ${at + 1} ${slide.scene}: no PowerPoint form for`);
+      for (const line of slide.left) io.out(`      ${line}`);
+    });
+    for (const line of done.deck) io.out(`  every slide: ${line}`);
+    if (done.fonts.length > 0) {
+      io.out("  fonts a viewer needs installed to see it as drawn:");
+      for (const font of done.fonts) {
+        io.out(`      ${font.family}${font.roles.length > 0 ? ` (${font.roles.join(", ")})` : ""}`);
+      }
+    }
+    return 0;
+  } catch (error) {
+    const { PptxError } = await import("./pptx/index.ts");
+    if (!(error instanceof PptxError)) throw error;
+    if (json) io.out(JSON.stringify({ ok: false, code: error.code, message: error.message }, null, 2));
+    else io.err(error.message);
+    return 2;
+  }
+}
+
 /** Lists the comments, so a person or a program can see what is open and what the agent has been asked to do. */
 function commentsListCommand(folder: string, all: boolean, json: boolean, io: Io): number {
   const read = readFolderComments(folder);
@@ -630,7 +709,7 @@ export interface RunOptions {
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, noNotes, all, values, unknown } = parse(rest);
+  const { positional, json, noNotes, all, help, values, unknown } = parse(rest);
   const baseRev = values["base-rev"];
   const portText = values.port;
   const port = portText === undefined ? undefined : Number(portText);
@@ -642,7 +721,16 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
     return 2;
   };
   if (unknown.length > 0) return usage(`Unknown option ${unknown[0]}.`);
+  if (help) {
+    if (command !== "export") return usage("Unknown option --help.");
+    io.out(`Usage:\n${EXPORT_USAGE}\n\n${EXPORT_TEXT}`);
+    return 0;
+  }
   if (noNotes && command !== "export") return usage("--no-notes belongs to export.");
+  if (values.format !== undefined && command !== "export") return usage("--format belongs to export.");
+  if (values.format !== undefined && values.format !== "pptx") {
+    return usage(`--format needs pptx, the one format there is. Without it, export writes a folder.`);
+  }
   if (all && command !== "comments" && command !== "diff") {
     return usage("--all belongs to comments list, diff accept and diff revert.");
   }
@@ -765,6 +853,12 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
       values.width === undefined &&
       values.height === undefined
     ) {
+      if (values.format === "pptx") {
+        return pptxCommand(folder, values.out, !noNotes, json, io).catch((error: Error) => {
+          io.err(error.message);
+          return 2;
+        });
+      }
       return exportCommand(folder, values.out, !noNotes, json, io);
     }
     if (command === "render" && folder && baseRev === undefined && port === undefined) {
