@@ -39,7 +39,8 @@ const refusal = (file: string, code: string, message: string, fix: string): Diag
  * either one resolving outside the deck, would carry writes and removals to another folder, which may be another deck's
  * brand. Reading through such a link stays allowed: a deck may present a brand it shares. And when the deck gains its
  * brand in this save, brand files already in the folder, left unread while deck.json named no brand, would be
- * overwritten or become part of the new brand unseen.
+ * overwritten or become part of the new brand unseen. Files the save writes with the same text are not refused, so a
+ * save that made the brand and stopped before deck.json can be run again.
  */
 function brandFolderProblems(dir: string, files: DeckFiles, before: Doc, after: Doc): Diagnostic[] {
   const out: Diagnostic[] = [];
@@ -63,8 +64,11 @@ function brandFolderProblems(dir: string, files: DeckFiles, before: Doc, after: 
     break;
   }
   if (before.deck.brand === undefined && after.deck.brand !== undefined) {
+    // A file this save writes with the same text is what a save of the same brand left when it stopped: nothing to lose.
+    const now = docToFiles(after);
     for (const file of Object.keys(files.text)) {
       if (file !== BRAND_FILE && !isTemplateFile(file)) continue;
+      if (now[file] === files.text[file]) continue;
       out.push(
         refusal(
           file,
@@ -163,8 +167,7 @@ export function savePlan(before: Doc, after: Doc): Step[] {
   const inBrand = (path: string) => path.startsWith(`${BRAND_DIR}/`);
   // brand.json that loses something is written first as `keeping` has it, unless that is the file already on disk,
   // and as it ends only after deck.json.
-  const middle =
-    Object.hasOwn(was, BRAND_FILE) && changed(BRAND_FILE) ? keeping(before, after) : undefined;
+  const middle = Object.hasOwn(was, BRAND_FILE) && changed(BRAND_FILE) ? keeping(before, after) : undefined;
   const late = middle !== undefined && middle !== now[BRAND_FILE];
   const steps: Step[] = [];
   const write = (path: string) => steps.push({ path, text: now[path] as string });

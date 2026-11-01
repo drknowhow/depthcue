@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { applyOps, type Doc, loadDoc, type Op, retemplate, revisionOf } from "@depthcue/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadDeckDir } from "../src/loader.ts";
-import { type SaveIo, saveDeckDir, writeAtomic } from "../src/save.ts";
+import { RefusedSaveError, type SaveIo, saveDeckDir, writeAtomic } from "../src/save.ts";
 
 const branded = fileURLToPath(new URL("../../../fixtures/decks/v0-4-brand", import.meta.url));
 const plain = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
@@ -247,5 +247,46 @@ describe("a save stopped after any file operation", () => {
       [{ op: "deck.set", set: { fonts: "classic" } }],
     );
     expect(done).toEqual(["write deck.json", "write brand/brand.json"]);
+  });
+});
+
+describe("a brand made, stopped before deck.json, and saved again", () => {
+  const ACME: Op = { op: "brand.set", set: { id: "acme", name: "Acme" } };
+
+  /** A copy of the plain deck where a save of `ops` stopped after `limit` operations. */
+  function stopped(ops: Op[], limit: number): string {
+    const dir = copy(plain);
+    const before = open(dir);
+    expect(() => saveDeckDir(dir, before, applied(before, ops), stoppingAfter(limit))).toThrow(Stop);
+    return dir;
+  }
+
+  const refusedFiles = (dir: string, ops: Op[]): string[] => {
+    const before = open(dir);
+    try {
+      saveDeckDir(dir, before, applied(before, ops));
+    } catch (error) {
+      if (!(error instanceof RefusedSaveError)) throw error;
+      return error.diagnostics.map((d) => `${d.code} ${d.file}`);
+    }
+    return [];
+  };
+
+  it("goes ahead when the files left are the ones the save writes, with the same text", () => {
+    for (const limit of [1, 2]) {
+      const dir = stopped([ACME, SOLO], limit);
+      expect(refusedFiles(dir, [ACME, SOLO])).toEqual([]);
+      const doc = open(dir);
+      expect(doc.brand?.name).toBe("Acme");
+      expect(Object.keys(doc.templates ?? {})).toEqual(["solo"]);
+    }
+  });
+
+  it("still refuses a file left with other text, or one the save does not write", () => {
+    const renamed: Op = { op: "brand.set", set: { id: "acme", name: "Acme Co" } };
+    expect(refusedFiles(stopped([ACME], 1), [renamed])).toEqual(["leftover-brand-file brand/brand.json"]);
+    expect(refusedFiles(stopped([ACME, SOLO], 2), [ACME])).toEqual([
+      "leftover-brand-file brand/templates/solo.json",
+    ]);
   });
 });
