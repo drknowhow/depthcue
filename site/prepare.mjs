@@ -39,6 +39,8 @@ const PAGES = {
 
 /** Docs that are left off, and why. A link to one of these goes to the file on GitHub. */
 const LEFT_OFF = {
+  "docs/CONTENT_RANGE.md":
+    "It is the build record of the content-range work, with decisions the user guides do not need.",
   "docs/EDITOR_REMAKE.md":
     "It is the build record of the editor remake, with internals and decisions that the user guides do not need.",
   "docs/RESEARCH.md": "It quotes forum posts by handle. Remove those before it is public.",
