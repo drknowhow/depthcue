@@ -200,7 +200,9 @@ describe("who may call the write API", () => {
     expect(
       (await call("/_depthcue/api/deck", { headers: { "X-Depthcue-Token": "nope" }, token: false })).status,
     ).toBe(403);
-    const almost = `${(server.token as string).slice(0, -1)}A`;
+    // One character off. Swapping in a fixed letter would hand back the real token whenever it ends in that letter.
+    const real = server.token as string;
+    const almost = `${real.slice(0, -1)}${real.endsWith("A") ? "B" : "A"}`;
     const wrong = await call("/_depthcue/api/save", {
       ...body(),
       headers: { ...body().headers, "X-Depthcue-Token": almost },
