@@ -1,3 +1,4 @@
+import { checkContent } from "./advice.ts";
 import { assetRefs } from "./assets.ts";
 import { explain } from "./diagnostics.ts";
 import { checkFrames } from "./frames.ts";
@@ -63,7 +64,11 @@ export function checkScenePart(
     });
   }
   if (out.some((d) => d.code !== "scene-id-mismatch")) return out;
-  out.push(...checkReferences(data as Scene, file), ...checkFrames(data as Scene, file));
+  out.push(
+    ...checkReferences(data as Scene, file),
+    ...checkFrames(data as Scene, file),
+    ...checkContent(data as Scene, file),
+  );
   for (const ref of assetRefs(data as Scene)) {
     if (!assets.has(ref.asset)) {
       out.push({

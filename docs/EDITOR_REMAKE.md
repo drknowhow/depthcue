@@ -75,9 +75,13 @@ is kept and shown as orphaned.
 
 ### Checks
 
-One rule set serves the editor, `depthcue check` and `deck_render`: text that does not fit, missing alt text,
-missing source, and for pinned blocks overlap and outside the safe area (4% on each side). The problem ribbon
-shows these; it has no rules of its own. A Fix button exists only where the fix is deterministic.
+One rule set serves the editor, `depthcue check` and `deck_render`. `depthcue check` reads the deck's files and
+gives the rules that need no layout: alt text that is still the name of its file (`alt-is-filename`), a chart that
+cites no source (`missing-source`), and a pinned block that reaches into the 4% margin (`frame-outside-safe-area`).
+All three are warnings, so a deck with them still loads and presents, and they come from `checkContent` and
+`checkFrames` in the core. The rules that need a laid-out page (text that does not fit, overlap, a pinned block
+larger than its frame) are judged from a render, so `depthcue render` and `deck_render` give them. The problem
+ribbon shows both kinds; it has no rules of its own. A Fix button exists only where the fix is deterministic.
 
 ### Agents
 
@@ -190,6 +194,17 @@ keyboard is inside it, and also when the keyboard is nowhere in particular and t
 has not been seen). A page that holds the editor beside other things keeps its own keys. The keys that act where they
 are pressed (Enter, Delete, the arrows and `Escape` on a block, the arrows on a chart bar) are in the table only so the
 sheet is the whole list, and each one has a test that presses it.
+
+The problem ribbon is a strip between the top bar and the slide, and it is always there, so a problem that appears
+or goes moves nothing. It says "All clear", or how many things there are to check, and shows one at a time with
+Previous and Next. Both walk the problems of every scene, in the order of the scenes and blocks, choose the scene and
+the block, and leave the keyboard on the button so Next can be pressed again. A problem on another scene starts with
+that scene's title. Pressing the sentence chooses the block and gives it the keyboard. The ribbon asks the core for
+each scene's warnings (`adviceOf`), keeps the answer per scene object, and changes text and visibility without
+rebuilding a control, so nothing under a drag or a caret is redrawn. A screen reader hears the count, the place and
+the sentence through a status that is not repeated when nothing changed. Fix appears only for a problem that one
+change settles the same way every time: a pinned block in the margin gets Back to layout. Alt text and sources need a
+person, so those problems have no Fix.
 
 An area that holds nothing gets a dashed place on the slide, drawn by the editor only, never by the player or the
 export: Evidence while the claim cites nothing, Support when every block is cited, Media on a slide of text, Text on

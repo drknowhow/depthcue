@@ -1,4 +1,12 @@
-import { type Block, type Doc, LAYOUTS, type NewScene, type Scene } from "@depthcue/core";
+import {
+  type Block,
+  type Doc,
+  hasPlaceholderAlt,
+  LAYOUTS,
+  type NewScene,
+  placeholderAlt,
+  type Scene,
+} from "@depthcue/core";
 
 export type Layout = Scene["layout"];
 export type Lead = NonNullable<Scene["lead"]>;
@@ -77,24 +85,9 @@ export const BLOCK_KINDS: ReadonlyArray<{ kind: NewBlockKind; label: string }> =
   { kind: "clip", label: "Clip" },
 ];
 
-const stem = (path: string) => path.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
-
-/**
- * The alt text a new image or clip starts with: the words of its file's name, which describe nothing. The server adds
- * a hash of eight hex digits to the name of an upload, and that is not a word.
- */
-export const placeholderAlt = (path: string) =>
-  stem(path)
-    .replace(/-[0-9a-f]{8}$/, "")
-    .replace(/[-_]+/g, " ")
-    .trim() || "untitled";
-
-/** True for an image or clip whose alt text is still the name of its file, so nobody has described it yet. */
-export function needsAlt(block: Block): boolean {
-  if (block.type === "image") return block.alt === placeholderAlt(block.asset);
-  if (block.type === "clip") return block.alt === placeholderAlt(block.source);
-  return false;
-}
+// The core owns this rule, so the editor's flag and `depthcue check` cannot disagree about which alt text is missing.
+export { placeholderAlt };
+export const needsAlt = hasPlaceholderAlt;
 
 /** A new block of a kind. Images and clips need a file in the deck, so they take its path. */
 export function newBlock(scene: Scene, kind: NewBlockKind, asset?: string): Block {

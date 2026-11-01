@@ -4,9 +4,10 @@ import { createAdder } from "./adder.ts";
 import { createCanvas } from "./canvas.ts";
 import { popoverChip } from "./chip.ts";
 import { createCueBook } from "./cues.ts";
-import type { Edits } from "./fields.ts";
+import { type Edits, problemOf } from "./fields.ts";
 import { deckPanel, panelHost } from "./panels.ts";
 import { createQuickBar } from "./quickbar.ts";
+import { createRibbon } from "./ribbon.ts";
 import { createSceneBar } from "./scenebar.ts";
 import { createShortcuts } from "./shortcuts.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
@@ -168,6 +169,20 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     build: (on) => canvas.setBuild(on),
     keys: () => shortcuts.open(),
   });
+  // What `depthcue check` would say about the deck, one problem at a time. The rules are the core's.
+  const ribbon = createRibbon(session, {
+    scene: () => selected,
+    go(problem, focus) {
+      if (problem.scene !== selected) select(problem.scene);
+      selectBlock(problem.block);
+      if (focus && problem.block !== undefined) canvas.focusBlock(problem.block);
+    },
+    fix(problem) {
+      if (!problem.fix) return;
+      const result = session.apply(problem.fix.ops);
+      showProblem(result.ok ? undefined : problemOf(result));
+    },
+  });
   // Every key the editor answers is in one table, which also draws the sheet that the ? key and the bar open.
   const shortcuts = createShortcuts(host, {
     add: (kind) => void adder.quick(kind),
@@ -186,7 +201,16 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
   const floor = h("div", { class: "ed-stage" }, stage, quick.element);
-  const root = h("div", { class: "ed-app" }, bar, notices, strip.element, floor, shortcuts.sheet);
+  const root = h(
+    "div",
+    { class: "ed-app" },
+    bar,
+    notices,
+    ribbon.element,
+    strip.element,
+    floor,
+    shortcuts.sheet,
+  );
   host.replaceChildren(root);
   // A file dropped anywhere but on an image would open in this tab and take the editor away.
   const refuseFiles = (event: DragEvent) => {
@@ -296,6 +320,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     selected = sceneId;
     renderScenes();
     renderBar();
+    ribbon.render();
     canvas.render(selected, selectedBlock);
     toolbar.render(selected, selectedBlock);
   }
@@ -314,6 +339,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     ensureSelection();
     renderScenes();
     renderBar();
+    ribbon.render();
     if (!canvas.typing) canvas.render(selected, selectedBlock);
     toolbar.render(selected, selectedBlock, typingIn === "toolbar");
   });
@@ -352,6 +378,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     select,
     destroy() {
       shortcuts.destroy();
+      ribbon.destroy();
       unsubscribeSession();
       unsubscribeStore();
       strip.destroy();

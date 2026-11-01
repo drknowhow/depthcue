@@ -1,3 +1,4 @@
+export { adviceOf, checkContent, hasPlaceholderAlt, placeholderAlt } from "./advice.ts";
 export type {
   ApplyFailure,
   ApplyFailureCode,
