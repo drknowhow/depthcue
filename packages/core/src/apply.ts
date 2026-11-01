@@ -69,8 +69,18 @@ interface Work {
 }
 
 const ID_RE = new RegExp(ID_PATTERN);
-const DECK_KEYS = ["title", "language", "theme", "modules"] as const;
-const SCENE_KEYS = ["title", "layout", "lead", "summary", "sources", "reading", "steps", "notes"] as const;
+/** The properties `deck.set` and `scene.set` may write. Review compares exactly these, so the two cannot drift. */
+export const DECK_KEYS = ["title", "language", "theme", "modules"] as const;
+export const SCENE_KEYS = [
+  "title",
+  "layout",
+  "lead",
+  "summary",
+  "sources",
+  "reading",
+  "steps",
+  "notes",
+] as const;
 
 const REDIRECTS: Record<string, string> = {
   id: "Ids never change. Add a new item and remove the old one in the same operations.",

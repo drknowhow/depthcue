@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { checkDeckFiles, type Diagnostic, loadDoc, revisionOf } from "@depthcue/core";
+import { checkDeckFiles, type Diagnostic, describeChange, loadDoc, revisionOf } from "@depthcue/core";
 import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./clip.ts";
 import { applyCommentsToFolder, listComments, readFolderComments } from "./comments-api.ts";
 import { applyToFolder, openDeck } from "./deck-api.ts";
@@ -8,6 +8,13 @@ import { ExportError, exportDeck } from "./export.ts";
 import { writeLink } from "./link.ts";
 import { loadDeckDir } from "./loader.ts";
 import { openRenderer, type RenderOptions } from "./render.ts";
+import {
+  acceptInFolder,
+  listChanges,
+  type ReviewRefusal,
+  readFolderReview,
+  revertInFolder,
+} from "./review-api.ts";
 import { builtEditorDir, builtPlayerDir, startServer } from "./serve.ts";
 
 export interface Io {
@@ -27,6 +34,9 @@ const USAGE = `Usage:
                       [--scale <0.1-1>] [--kine <path>] [--json]
   depthcue comments list <deck-folder> [--all] [--json]
   depthcue comments apply <deck-folder> <ops.json> --base-rev <rev> [--json]
+  depthcue diff <deck-folder> [--json]
+  depthcue diff <deck-folder> accept <change-id...> | --all [--json]
+  depthcue diff <deck-folder> revert <change-id...> | --all [--json]
 
 check  Checks deck.json, every scene file, every reference and every asset.
 rev    Prints the deck's revision, a hash of its content. Pass it back as --base-rev.
@@ -60,6 +70,13 @@ comments Lists the comments kept beside the deck in comments.json (the open ones
        with the ones people asked the agent to act on marked "ask". apply changes them the way apply changes
        the deck: operations all or none, against the comments' own revision, which list prints. The comments
        are never part of the deck: they do not change its revision and an export leaves them out.
+
+diff   Lists what changed since the deck was last reviewed, one entry per property of the deck, a scene or a
+       block, each marked with who made it: "agent" for an edit through the tools, "outside" for one made
+       by hand. The review starts with the agent's first edit and is kept in review.json beside the deck;
+       it is never part of the deck. accept marks changes as reviewed and leaves the deck as it is. revert
+       puts them back as they were, written as a new revision, so nothing in the history is rewritten.
+       --all means every change; accept --all also starts a review from the deck as it is.
 
 Exit codes: 0 done, 1 errors found, edit rejected or a clip did not build, 2 could not run, 3 stale revision.`;
 
@@ -506,6 +523,106 @@ function commentsApplyCommand(
   return 0;
 }
 
+const SHOWN = 100;
+const shown = (value: unknown): string => {
+  const text = JSON.stringify(value) ?? "";
+  return text.length > SHOWN ? `${text.slice(0, SHOWN - 1)}…` : text;
+};
+
+/** Lists what changed since the review, so a person or a program can see what the agent did. */
+function diffListCommand(folder: string, json: boolean, io: Io): number {
+  const read = readFolderReview(folder);
+  if (!read.ok) return reviewRefused(read, json, io);
+  const list = listChanges(read.doc, read.review);
+  if (json) {
+    report(io, [], true, list);
+    return 0;
+  }
+  if (list.reviewed === null) {
+    io.out(
+      "Nobody has started a review of this deck, so there is nothing to compare with. The agent's first edit starts one; `depthcue diff <deck-folder> accept --all` starts one now.",
+    );
+    return 0;
+  }
+  const at = `Reviewed at revision ${list.reviewed}; the deck is at ${list.rev}.`;
+  if (list.changes.length === 0) {
+    io.out(`${at} Nothing has changed since.`);
+    return 0;
+  }
+  io.out(
+    `${at} ${plural(list.changes.length, "change")}: ${list.agent} by the agent, ${list.outside} outside.`,
+  );
+  for (const change of list.changes) {
+    io.out(`${change.id}  ${change.by}`);
+    io.out(`  ${describeChange(change)}`);
+    if ("before" in change) io.out(`  - ${shown(change.before)}`);
+    if ("after" in change) io.out(`  + ${shown(change.after)}`);
+  }
+  return 0;
+}
+
+/** Says why a review command did nothing. Exit 3 when the folder moved on, so a caller reads it again and retries. */
+function reviewRefused(refusal: ReviewRefusal, json: boolean, io: Io): number {
+  if (json) {
+    io.out(
+      JSON.stringify(
+        {
+          ok: false,
+          code: refusal.code,
+          hint: refusal.hint,
+          ...(refusal.unknown === undefined ? {} : { unknown: refusal.unknown }),
+          diagnostics: refusal.diagnostics,
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    for (const diagnostic of refusal.diagnostics) for (const line of format(diagnostic)) io.out(line);
+    io.err(`Nothing was changed (${refusal.code}). ${refusal.hint}`);
+  }
+  return refusal.code === "changed-on-disk" ? 3 : 1;
+}
+
+/** Accepts or reverts changes by id, or all of them. */
+function diffActCommand(
+  action: "accept" | "revert",
+  folder: string,
+  ids: readonly string[] | "all",
+  json: boolean,
+  io: Io,
+): number {
+  if (action === "accept") {
+    const outcome = acceptInFolder(folder, ids);
+    if (!outcome.ok) return reviewRefused(outcome, json, io);
+    if (json) {
+      io.out(JSON.stringify(outcome, null, 2));
+      return 0;
+    }
+    io.out(
+      outcome.accepted.length === 0 && ids === "all"
+        ? `Nothing to accept. The review is at revision ${outcome.reviewed}, the deck as it is now.`
+        : `Accepted ${plural(outcome.accepted.length, "change")}. The review is at revision ${outcome.reviewed}; ${outcome.remaining} left to review.`,
+    );
+    for (const id of outcome.accepted) io.out(`  accepted ${id}`);
+    return 0;
+  }
+  const outcome = revertInFolder(folder, ids);
+  if (!outcome.ok) return reviewRefused(outcome, json, io);
+  if (json) {
+    io.out(JSON.stringify(outcome, null, 2));
+    return 0;
+  }
+  io.out(
+    outcome.reverted.length === 0
+      ? "Nothing to revert."
+      : `Reverted ${plural(outcome.reverted.length, "change")}. Revision ${outcome.prevRev} -> ${outcome.rev}; ${outcome.remaining} left to review.`,
+  );
+  for (const id of outcome.reverted) io.out(`  reverted ${id}`);
+  for (const path of outcome.written) io.out(`  wrote ${path}`);
+  return 0;
+}
+
 /** Test seams: the command that runs Kinescript, so a stand-in can be used where it is not installed. */
 export interface RunOptions {
   kine?: readonly string[];
@@ -526,7 +643,9 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   };
   if (unknown.length > 0) return usage(`Unknown option ${unknown[0]}.`);
   if (noNotes && command !== "export") return usage("--no-notes belongs to export.");
-  if (all && command !== "comments") return usage("--all belongs to comments list.");
+  if (all && command !== "comments" && command !== "diff") {
+    return usage("--all belongs to comments list, diff accept and diff revert.");
+  }
 
   if (command === "clip") {
     const [sub, clipFolder, scene, ...more] = positional;
@@ -584,6 +703,25 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
       );
     }
     return commentsApplyCommand(commentsFolder, commentsOps, baseRev, json, io);
+  }
+  if (command === "diff") {
+    const [diffFolder, action, ...changeIds] = positional;
+    if (!diffFolder) return usage("diff needs a deck folder.");
+    if (baseRev !== undefined || portText !== undefined || renderFlags !== undefined) {
+      return usage("diff takes a deck folder, accept or revert with change ids or --all, and --json.");
+    }
+    if (action === undefined) {
+      if (all) return usage("--all belongs to diff accept and diff revert.");
+      return diffListCommand(diffFolder, json, io);
+    }
+    if (action !== "accept" && action !== "revert") {
+      return usage(`diff takes accept or revert after the folder, not "${action}".`);
+    }
+    if (all && changeIds.length > 0) return usage(`diff ${action} takes change ids or --all, not both.`);
+    if (!all && changeIds.length === 0) {
+      return usage(`diff ${action} needs change ids or --all. List them with: depthcue diff <deck-folder>`);
+    }
+    return diffActCommand(action, diffFolder, all ? "all" : changeIds, json, io);
   }
   if (extra.length > 0) return usage(`Unexpected argument ${extra[0]}.`);
 

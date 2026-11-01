@@ -1,0 +1,655 @@
+/**
+ * Review: what the agent changed since a person last looked. `review.json`, beside `deck.json`, holds the deck as
+ * it was when it was last reviewed, and the ids of the changes the agent made since. The changes themselves are
+ * never stored: they are the difference between that copy and the deck as it is now, worked out each time, one
+ * change per property of the deck, a scene or a block. Accepting a change copies it into the reviewed deck.
+ * Reverting one runs ordinary operations on the current deck, so the result is a new revision and nothing is
+ * rewritten. Like the comments, none of this is part of the deck: it changes no revision, and an export, the
+ * player and the presenter never see it.
+ */
+import {
+  type ApplyFailure,
+  type ApplySuccess,
+  applyOps,
+  DECK_KEYS,
+  type DeckChanges,
+  type Op,
+  SCENE_KEYS,
+  type SceneChanges,
+} from "./apply.ts";
+import { assetsOf } from "./assets.ts";
+import { closest } from "./diagnostics.ts";
+import { type Doc, revisionOf } from "./doc.ts";
+import { canonicalJson, sha256Hex } from "./revision.ts";
+import type { Block, Deck, Diagnostic, Scene } from "./types.ts";
+import { checkManifest, checkScenePart, scenePath } from "./validate.ts";
+
+/** Where the review of a deck is kept: next to `deck.json`, and not under `scenes/` or `assets/`. */
+export const REVIEW_FILE = "review.json";
+export const REVIEW_FORMAT = "depthcue-review/1";
+
+/** The contents of `review.json`. */
+export interface Review {
+  format: typeof REVIEW_FORMAT;
+  /** The revision of the reviewed deck below, so a file edited by hand is noticed. */
+  rev: string;
+  /** The deck as it was when it was last reviewed. */
+  deck: Deck;
+  scenes: Record<string, Scene>;
+  /** Ids of the changes the agent made and nobody has accepted or reverted, sorted. */
+  agent: string[];
+}
+
+export type ChangeScope = "deck" | "scene" | "block";
+
+/**
+ * What happened to the thing the change names. For a field, `added` and `removed` mean it was set or cleared. For a
+ * scene or a block they mean it came or went. `moved` is a change of order, and names the list as its field.
+ */
+export type ChangeKind = "added" | "removed" | "changed" | "moved";
+
+/**
+ * One difference between two decks, as the drawer and `depthcue diff` show it. The `id` is the path to the thing and
+ * is the same whichever deck is compared with which, so it can be named later to accept or revert it:
+ * `deck/title`, `deck/scenes`, `scene:<id>`, `scene:<id>/title`, `scene:<id>/blocks`, `scene:<id>/block:<id>` and
+ * `scene:<id>/block:<id>/<field>`. A field is a top-level property, and its value is the whole of it. A scene that was
+ * added or removed is one change, not one per block, and so is a block whose type changed (field `type`).
+ */
+export interface Difference {
+  id: string;
+  scope: ChangeScope;
+  kind: ChangeKind;
+  scene?: string;
+  block?: string;
+  field?: string;
+  /** In the reviewed deck. Left out when it was not there. */
+  before?: unknown;
+  /** In the current deck. Left out when it is not there. */
+  after?: unknown;
+}
+
+/** `agent` when the change was made through the agent's tools, `outside` when someone edited the files by hand. */
+export type Author = "agent" | "outside";
+
+export interface Change extends Difference {
+  by: Author;
+}
+
+const record = (value: object): Record<string, unknown> => value as Record<string, unknown>;
+const present = (value: Record<string, unknown>, key: string): boolean =>
+  Object.hasOwn(value, key) && value[key] !== undefined;
+const same = (a: unknown, b: unknown): boolean => canonicalJson(a) === canonicalJson(b);
+
+function make(
+  id: string,
+  scope: ChangeScope,
+  kind: ChangeKind,
+  where: { scene?: string; block?: string; field?: string },
+  values: { before?: unknown; after?: unknown } = {},
+): Difference {
+  return { id, scope, kind, ...where, ...values };
+}
+
+interface Where {
+  scope: ChangeScope;
+  scene?: string;
+  block?: string;
+}
+
+function fieldDiffs(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  fields: Iterable<string>,
+  where: Where,
+  prefix: string,
+): Difference[] {
+  const out: Difference[] = [];
+  for (const field of fields) {
+    const was = present(before, field);
+    const is = present(after, field);
+    if (!was && !is) continue;
+    if (was && is && same(before[field], after[field])) continue;
+    out.push(
+      make(
+        `${prefix}/${field}`,
+        where.scope,
+        !was ? "added" : !is ? "removed" : "changed",
+        {
+          ...(where.scene === undefined ? {} : { scene: where.scene }),
+          ...(where.block === undefined ? {} : { block: where.block }),
+          field,
+        },
+        { ...(was ? { before: before[field] } : {}), ...(is ? { after: after[field] } : {}) },
+      ),
+    );
+  }
+  return out;
+}
+
+/** The order the ids that are in both lists have in each, when the two differ. Coming and going is not reordering. */
+function reordered(
+  before: readonly string[],
+  after: readonly string[],
+): { before: string[]; after: string[] } | undefined {
+  const inAfter = new Set(after);
+  const inBefore = new Set(before);
+  const was = before.filter((id) => inAfter.has(id));
+  const is = after.filter((id) => inBefore.has(id));
+  return was.some((id, i) => id !== is[i]) ? { before: was, after: is } : undefined;
+}
+
+function blockDiffs(sceneId: string, was: Block, now: Block): Difference[] {
+  const prefix = `scene:${sceneId}/block:${now.id}`;
+  if (was.type !== now.type) {
+    return [
+      make(
+        `${prefix}/type`,
+        "block",
+        "changed",
+        { scene: sceneId, block: now.id, field: "type" },
+        { before: was.type, after: now.type },
+      ),
+    ];
+  }
+  const before = record(was);
+  const after = record(now);
+  const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter((field) => field !== "id" && field !== "type")
+    .sort();
+  return fieldDiffs(before, after, fields, { scope: "block", scene: sceneId, block: now.id }, prefix);
+}
+
+function sceneDiffs(was: Scene, now: Scene): Difference[] {
+  const prefix = `scene:${now.id}`;
+  const out = fieldDiffs(record(was), record(now), SCENE_KEYS, { scope: "scene", scene: now.id }, prefix);
+  const order = reordered(
+    was.blocks.map((block) => block.id),
+    now.blocks.map((block) => block.id),
+  );
+  if (order) out.push(make(`${prefix}/blocks`, "scene", "moved", { scene: now.id, field: "blocks" }, order));
+  const earlier = new Map(was.blocks.map((block) => [block.id, block]));
+  for (const block of now.blocks) {
+    const old = earlier.get(block.id);
+    if (old) out.push(...blockDiffs(now.id, old, block));
+    else
+      out.push(
+        make(
+          `${prefix}/block:${block.id}`,
+          "block",
+          "added",
+          { scene: now.id, block: block.id },
+          { after: block },
+        ),
+      );
+  }
+  const kept = new Set(now.blocks.map((block) => block.id));
+  for (const block of was.blocks) {
+    if (kept.has(block.id)) continue;
+    out.push(
+      make(
+        `${prefix}/block:${block.id}`,
+        "block",
+        "removed",
+        { scene: now.id, block: block.id },
+        { before: block },
+      ),
+    );
+  }
+  return out;
+}
+
+/**
+ * What differs between two decks, in a fixed order: the deck's own properties, the scene order, then each scene of
+ * `current` in its order, with its properties, its block order and its blocks, and last the scenes that are gone.
+ */
+export function diffDocs(base: Doc, current: Doc): Difference[] {
+  const out = fieldDiffs(record(base.deck), record(current.deck), DECK_KEYS, { scope: "deck" }, "deck");
+  const order = reordered(base.deck.scenes, current.deck.scenes);
+  if (order) out.push(make("deck/scenes", "deck", "moved", { field: "scenes" }, order));
+  for (const id of current.deck.scenes) {
+    const now = current.scenes[id] as Scene;
+    const was = base.scenes[id];
+    if (was) out.push(...sceneDiffs(was, now));
+    else out.push(make(`scene:${id}`, "scene", "added", { scene: id }, { after: now }));
+  }
+  for (const id of base.deck.scenes) {
+    if (current.scenes[id] === undefined) {
+      out.push(make(`scene:${id}`, "scene", "removed", { scene: id }, { before: base.scenes[id] }));
+    }
+  }
+  return out;
+}
+
+/** A sentence for a change, the same wherever it is shown: `Title of scene "method" changed`. */
+export function describeChange(change: Difference): string {
+  const scene = `scene "${change.scene}"`;
+  const block = `block "${change.block}"`;
+  let what: string;
+  if (change.scope === "deck") what = change.field === "scenes" ? "scene order" : `deck ${change.field}`;
+  else if (change.scope === "scene") {
+    if (change.field === undefined) what = scene;
+    else what = change.field === "blocks" ? `block order in ${scene}` : `${change.field} of ${scene}`;
+  } else if (change.field === undefined) what = `${block} in ${scene}`;
+  else what = `${change.field} of ${block} in ${scene}`;
+  const verb = change.kind === "moved" ? "changed" : change.kind;
+  return `${what.charAt(0).toUpperCase()}${what.slice(1)} ${verb}`;
+}
+
+function precedingIn(list: readonly string[], index: number, kept: readonly string[]): string | null {
+  for (let i = index - 1; i >= 0; i--) {
+    const id = list[i] as string;
+    if (kept.includes(id)) return id;
+  }
+  return null;
+}
+
+/** The values of the longest increasing run in `sequence`: the part that can stay where it is. */
+function longestRun(sequence: readonly number[]): Set<number> {
+  const length = sequence.map(() => 1);
+  const previous = sequence.map(() => -1);
+  let best = -1;
+  for (let i = 0; i < sequence.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (
+        (sequence[j] as number) < (sequence[i] as number) &&
+        (length[j] as number) + 1 > (length[i] as number)
+      ) {
+        length[i] = (length[j] as number) + 1;
+        previous[i] = j;
+      }
+    }
+    if (best < 0 || (length[i] as number) > (length[best] as number)) best = i;
+  }
+  const run = new Set<number>();
+  for (let at = best; at >= 0; at = previous[at] as number) run.add(sequence[at] as number);
+  return run;
+}
+
+/**
+ * The fewest moves that put the ids `current` and `target` share in the order `target` has: whatever is outside the
+ * longest run already in order is placed after its predecessor, going through `target` from the start.
+ */
+export function moves(
+  current: readonly string[],
+  target: readonly string[],
+): Array<{ id: string; after: string | null }> {
+  const inTarget = new Set(target);
+  const inCurrent = new Set(current);
+  const have = current.filter((id) => inTarget.has(id));
+  const want = target.filter((id) => inCurrent.has(id));
+  const rank = new Map(want.map((id, i) => [id, i]));
+  const stay = longestRun(have.map((id) => rank.get(id) as number));
+  const out: Array<{ id: string; after: string | null }> = [];
+  for (const [i, id] of want.entries()) {
+    if (!stay.has(i)) out.push({ id, after: i === 0 ? null : (want[i - 1] as string) });
+  }
+  return out;
+}
+
+const into = <T>(map: Map<string, T>, key: string, start: () => T): T => {
+  let value = map.get(key);
+  if (value === undefined) {
+    value = start();
+    map.set(key, value);
+  }
+  return value;
+};
+
+/**
+ * Operations that turn `from` into `to` for the chosen differences, which were found by comparing the two. Properties
+ * are set first, then things removed, things added where they stand in `to` and the order last. They are meant to run
+ * as one transaction, which is checked as a whole, so a step in between may be one that would not be valid alone.
+ */
+function buildOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
+  const deckSet: Record<string, unknown> = {};
+  const sceneSet = new Map<string, Record<string, unknown>>();
+  const blockSet = new Map<string, Map<string, Record<string, unknown>>>();
+  const sceneAdd = new Set<string>();
+  const sceneRemove = new Set<string>();
+  const blockAdd = new Map<string, Set<string>>();
+  const blockRemove = new Map<string, Set<string>>();
+  const blockOrder = new Set<string>();
+  let sceneOrder = false;
+
+  for (const change of picked) {
+    const value = change.kind === "removed" ? null : change.after;
+    const field = change.field as string;
+    const scene = change.scene as string;
+    const block = change.block as string;
+    if (change.scope === "deck") {
+      if (field === "scenes") sceneOrder = true;
+      else deckSet[field] = value;
+    } else if (change.scope === "scene") {
+      if (change.field === undefined) (change.kind === "added" ? sceneAdd : sceneRemove).add(scene);
+      else if (field === "blocks") blockOrder.add(scene);
+      else into<Record<string, unknown>>(sceneSet, scene, () => ({}))[field] = value;
+    } else if (change.field === undefined) {
+      into(change.kind === "added" ? blockAdd : blockRemove, scene, () => new Set()).add(block);
+    } else if (field === "type") {
+      // A block cannot change its type, so the block goes and comes back as it is in `to`.
+      into(blockAdd, scene, () => new Set()).add(block);
+      into(blockRemove, scene, () => new Set()).add(block);
+    } else {
+      into<Record<string, unknown>>(
+        into(blockSet, scene, () => new Map<string, Record<string, unknown>>()),
+        block,
+        () => ({}),
+      )[field] = value;
+    }
+  }
+
+  const ops: Op[] = [];
+  if (Object.keys(deckSet).length > 0) ops.push({ op: "deck.set", set: deckSet as DeckChanges });
+  for (const [id, set] of sceneSet) ops.push({ op: "scene.set", id, set: set as SceneChanges });
+  for (const [scene, blocks] of blockSet) {
+    for (const [id, set] of blocks) ops.push({ op: "block.set", scene, id, set });
+  }
+  for (const [scene, ids] of blockRemove) {
+    for (const id of ids) ops.push({ op: "block.remove", scene, id });
+  }
+  for (const id of sceneRemove) ops.push({ op: "scene.remove", id });
+
+  const scenes = from.deck.scenes.filter((id) => !sceneRemove.has(id));
+  for (const [index, id] of to.deck.scenes.entries()) {
+    if (!sceneAdd.has(id)) continue;
+    const after = precedingIn(to.deck.scenes, index, scenes);
+    scenes.splice(after === null ? 0 : scenes.indexOf(after) + 1, 0, id);
+    ops.push({ op: "scene.add", scene: to.scenes[id] as Scene, after });
+  }
+
+  for (const scene of new Set([...blockAdd.keys(), ...blockRemove.keys(), ...blockOrder])) {
+    const gone = blockRemove.get(scene);
+    const blocks = (from.scenes[scene] as Scene).blocks
+      .map((block) => block.id)
+      .filter((id) => !gone?.has(id));
+    const target = (to.scenes[scene] as Scene).blocks;
+    const ids = target.map((block) => block.id);
+    for (const [index, block] of target.entries()) {
+      if (!blockAdd.get(scene)?.has(block.id)) continue;
+      const after = precedingIn(ids, index, blocks);
+      blocks.splice(after === null ? 0 : blocks.indexOf(after) + 1, 0, block.id);
+      ops.push({ op: "block.add", scene, block, after });
+    }
+    if (blockOrder.has(scene)) {
+      for (const move of moves(blocks, ids)) ops.push({ op: "block.move", scene, ...move });
+    }
+  }
+  if (sceneOrder) {
+    for (const move of moves(scenes, to.deck.scenes)) ops.push({ op: "scene.move", ...move });
+  }
+  return ops;
+}
+
+/** The reviewed deck as a `Doc`. Its assets are the deck folder's, and the ones it names that were since deleted. */
+export function baselineOf(review: Review, assets: ReadonlySet<string>): Doc {
+  const named = Object.values(review.scenes).flatMap(assetsOf);
+  return { deck: review.deck, scenes: review.scenes, assets: new Set([...assets, ...named]) };
+}
+
+/** A review whose reviewed deck is `doc`, with nothing for the agent to answer for yet. */
+export function startReview(doc: Doc, agent: readonly string[] = []): Review {
+  return {
+    format: REVIEW_FORMAT,
+    rev: revisionOf(doc),
+    deck: doc.deck,
+    scenes: Object.fromEntries(doc.deck.scenes.map((id) => [id, doc.scenes[id] as Scene])),
+    agent: [...agent],
+  };
+}
+
+/** The changes since the review, each marked with who made it. */
+export function reviewChanges(review: Review, current: Doc): Change[] {
+  const agent = new Set(review.agent);
+  return diffDocs(baselineOf(review, current.assets), current).map(
+    (change): Change => ({ ...change, by: agent.has(change.id) ? "agent" : "outside" }),
+  );
+}
+
+/** Only the ids that are still changes: a change that was accepted, reverted or undone by hand is forgotten. */
+function prune(review: Review, current: Doc): Review {
+  const live = new Set(diffDocs(baselineOf(review, current.assets), current).map((change) => change.id));
+  return { ...review, agent: [...new Set(review.agent.filter((id) => live.has(id)))].sort() };
+}
+
+export interface ReviewFailure {
+  ok: false;
+  /** `unknown-change`: an id is not a change now. `bad-op` and `invalid-deck` are the codes of `applyOps`. */
+  code: "unknown-change" | "bad-op" | "invalid-deck";
+  diagnostics: Diagnostic[];
+  /** The ids named that are not changes, for `unknown-change`. */
+  unknown: string[];
+}
+
+const failed = (result: ApplyFailure): ReviewFailure => ({
+  ok: false,
+  code: result.code === "invalid-deck" ? "invalid-deck" : "bad-op",
+  diagnostics: result.diagnostics,
+  unknown: [],
+});
+
+function choose(have: readonly Difference[], ids: readonly string[]): string[] | ReviewFailure {
+  const known = have.map((change) => change.id);
+  const unknown = [...new Set(ids)].filter((id) => !known.includes(id));
+  if (unknown.length === 0) return known.filter((id) => ids.includes(id));
+  return {
+    ok: false,
+    code: "unknown-change",
+    unknown,
+    diagnostics: unknown.map((id) => {
+      const guess = closest(id, known);
+      return {
+        severity: "error",
+        code: "unknown-change",
+        file: "changes",
+        path: `/${id}`,
+        message: `There is no change "${id}".`,
+        fix: `${guess ? `Did you mean "${guess}"? ` : ""}Read the changes again: one that was accepted, reverted or edited back is no longer listed.`,
+      };
+    }),
+  };
+}
+
+export interface Accepted {
+  ok: true;
+  review: Review;
+  accepted: string[];
+}
+
+/**
+ * Marks changes as reviewed: copies them from the current deck into the reviewed one, and nothing else. `"all"`
+ * makes the reviewed deck the current one. The reviewed deck stays a valid deck, so a change that cannot be copied
+ * on its own, such as a block that points at one that is new, is refused with the reason, and nothing is accepted.
+ */
+export function acceptChanges(
+  review: Review,
+  current: Doc,
+  ids: readonly string[] | "all",
+): Accepted | ReviewFailure {
+  const base = baselineOf(review, current.assets);
+  const have = diffDocs(base, current);
+  if (ids === "all") return { ok: true, review: startReview(current), accepted: have.map((c) => c.id) };
+  const chosen = choose(have, ids);
+  if (!Array.isArray(chosen)) return chosen;
+  if (chosen.length === 0) return { ok: true, review, accepted: [] };
+  const wanted = new Set(chosen);
+  const result = applyOps(
+    base,
+    buildOps(
+      base,
+      current,
+      have.filter((change) => wanted.has(change.id)),
+    ),
+    revisionOf(base),
+  );
+  if (!result.ok) return failed(result);
+  return {
+    ok: true,
+    review: prune({ ...startReview(result.doc), agent: review.agent }, current),
+    accepted: chosen,
+  };
+}
+
+export interface Reverted extends ApplySuccess {
+  reverted: string[];
+  /** The review, without the changes that are gone. The reviewed deck is the same. */
+  review: Review;
+}
+
+const unchanged = (doc: Doc): ApplySuccess => ({
+  ok: true,
+  doc,
+  rev: revisionOf(doc),
+  prevRev: revisionOf(doc),
+  changed: [],
+  removed: [],
+  deckChanged: false,
+  diagnostics: [],
+});
+
+/**
+ * Puts changes back as they were when the deck was reviewed, by running operations on the current deck. The result
+ * is a new revision on top of the current one; no revision is rewritten. All of it or none: a change that would
+ * leave an invalid deck, such as one that brings back a block whose image file is gone, is refused with the reason.
+ */
+export function revertChanges(
+  review: Review,
+  current: Doc,
+  ids: readonly string[] | "all",
+): Reverted | ReviewFailure {
+  const base = baselineOf(review, current.assets);
+  const have = diffDocs(base, current);
+  const chosen = ids === "all" ? have.map((change) => change.id) : choose(have, ids);
+  if (!Array.isArray(chosen)) return chosen;
+  const wanted = new Set(chosen);
+  const ops = buildOps(
+    current,
+    base,
+    diffDocs(current, base).filter((change) => wanted.has(change.id)),
+  );
+  if (ops.length === 0) return { ...unchanged(current), reverted: [], review: prune(review, current) };
+  const result = applyOps(current, ops, revisionOf(current));
+  if (!result.ok) return failed(result);
+  return { ...result, reverted: chosen, review: prune(review, result.doc) };
+}
+
+/**
+ * A person's edit, which is theirs to have made and not the agent's to answer for: whatever they changed is copied
+ * into the reviewed deck too. A change inside something the agent added has no place there to go, and stays with the
+ * thing it is in.
+ */
+export function foldEdit(review: Review, before: Doc, after: Doc): Review {
+  let base = baselineOf(review, after.assets);
+  for (const { id } of diffDocs(before, after)) {
+    const have = diffDocs(base, after);
+    const picked = have.filter((change) => change.id === id);
+    if (picked.length === 0) continue;
+    const result = applyOps(base, buildOps(base, after, picked), revisionOf(base));
+    if (result.ok) base = result.doc;
+  }
+  return prune({ ...startReview(base), agent: review.agent }, after);
+}
+
+/**
+ * The agent's edit, `before` to `after`: every change it made or touched is marked as the agent's, and the changes
+ * it did not touch keep whoever's they were.
+ */
+export function recordAgentEdit(review: Review, before: Doc, after: Doc): Review {
+  const base = baselineOf(review, after.assets);
+  const earlier = new Map(diffDocs(base, before).map((change) => [change.id, canonicalJson(change)]));
+  const agent = new Set(review.agent);
+  for (const change of diffDocs(base, after)) {
+    if (earlier.get(change.id) !== canonicalJson(change)) agent.add(change.id);
+  }
+  return prune({ ...review, agent: [...agent] }, after);
+}
+
+/** 16 hex characters of the file's content, to tell whether it changed between a read and a write. */
+export const reviewRevision = (review: Review): string => sha256Hex(canonicalJson(review)).slice(0, 16);
+
+/** The file as written to disk: two-space indent and a trailing newline. */
+export const reviewToText = (review: Review): string => `${JSON.stringify(review, null, 2)}\n`;
+
+export type ReadReview = { ok: true; review: Review | undefined } | { ok: false; diagnostics: Diagnostic[] };
+
+const error = (path: string, code: string, message: string, fix: string): Diagnostic => ({
+  severity: "error",
+  code,
+  file: REVIEW_FILE,
+  path,
+  message,
+  fix,
+});
+
+const refuse = (path: string, code: string, message: string, fix: string): ReadReview => ({
+  ok: false,
+  diagnostics: [error(path, code, message, fix)],
+});
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const START_OVER = "Delete review.json to start a new review from the deck as it is.";
+
+/**
+ * Reads `review.json` as text. A missing file is a deck nobody has started to review. A file that is not valid, that
+ * holds a deck that is not valid, or whose revision is not the one of the deck it holds, is refused whole: it would
+ * be the baseline of every change, and nothing is guessed from a baseline that cannot be trusted.
+ */
+export function readReview(text: string | undefined): ReadReview {
+  if (text === undefined) return { ok: true, review: undefined };
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    return refuse("", "json-parse", `Not valid JSON: ${(error as Error).message}`, START_OVER);
+  }
+  if (!isRecord(data) || data.format !== REVIEW_FORMAT) {
+    return refuse("/format", "bad-format", `This is not a "${REVIEW_FORMAT}" file.`, START_OVER);
+  }
+  if (typeof data.rev !== "string" || !isRecord(data.deck) || !isRecord(data.scenes)) {
+    return refuse("", "bad-shape", 'It needs a "rev", a "deck" and "scenes".', START_OVER);
+  }
+  if (!Array.isArray(data.agent) || data.agent.some((id) => typeof id !== "string")) {
+    return refuse("/agent", "bad-shape", '"agent" must be a list of change ids.', START_OVER);
+  }
+  const at = (prefix: string, found: Diagnostic[]): Diagnostic[] =>
+    found.map((d) => ({ ...d, file: REVIEW_FILE, path: `${prefix}${d.path}` }));
+  const problems = at("/deck", checkManifest(data.deck));
+  if (problems.length > 0) return { ok: false, diagnostics: problems };
+
+  const deck = data.deck as unknown as Deck;
+  const scenes = data.scenes as Record<string, Scene>;
+  const assets = new Set(Object.values(scenes).flatMap((scene) => (isRecord(scene) ? assetsOf(scene) : [])));
+  for (const id of Object.keys(scenes)) {
+    if (!deck.scenes.includes(id)) {
+      problems.push(
+        error(
+          `/scenes/${id}`,
+          "unlisted-scene",
+          `Scene "${id}" is in the review but not in the deck's scene list.`,
+          START_OVER,
+        ),
+      );
+    }
+  }
+  for (const id of deck.scenes) {
+    const scene = scenes[id];
+    if (scene === undefined) {
+      problems.push(
+        error(`/scenes/${id}`, "missing-scene", `Scene "${id}" is listed but has no content.`, START_OVER),
+      );
+    } else problems.push(...at(`/scenes/${id}`, checkScenePart(scene, scenePath(id), id, assets)));
+  }
+  if (problems.some((d) => d.severity === "error")) return { ok: false, diagnostics: problems };
+
+  const review = data as unknown as Review;
+  if (revisionOf({ deck, scenes, assets }) !== review.rev) {
+    return refuse(
+      "/rev",
+      "rev-mismatch",
+      "The deck in the review does not have the revision the file says, so it was changed by hand.",
+      START_OVER,
+    );
+  }
+  return { ok: true, review };
+}

@@ -18,13 +18,17 @@ import {
   docToFiles,
   emptyComments,
   loadDoc,
+  REVIEW_FILE,
   readCueMap,
+  reviewChanges,
   revisionOf,
 } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { applyToFolder } from "../src/deck-api.ts";
 import { assetName, sniffImage } from "../src/edit-api.ts";
 import type { LayoutAnswer, LayoutChecker } from "../src/edit-layout.ts";
 import { loadDeckDir } from "../src/loader.ts";
+import { loadReviewDir } from "../src/review-file.ts";
 import { type RunningServer, startServer } from "../src/serve.ts";
 
 const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
@@ -305,6 +309,47 @@ describe("saving", () => {
     const block = after.scenes.opening?.blocks.find((candidate) => candidate.id === "opening-title");
     expect(block && "text" in block && block.text).toBe("Channel B leads, again");
     expect(readFileSync(join(folder, "scenes", "method.json"), "utf8")).toBe(handFormatted);
+  });
+
+  it("keeps the person's own edit out of the agent's changes: it goes into the reviewed deck", async () => {
+    const original = readDeck();
+    const agent = applyToFolder(
+      folder,
+      [{ op: "deck.set", set: { title: "The agent's title" } }],
+      revisionOf(original),
+    );
+    expect(agent.ok).toBe(true);
+    const answer = await call(
+      "/_depthcue/api/save",
+      json({ baseRev: revisionOf(readDeck()), files: editedFiles("Person's headline") }),
+    );
+    expect(answer.status).toBe(200);
+    const read = loadReviewDir(folder);
+    if (!read.ok || read.review === undefined)
+      throw new Error("the agent's edit should have started a review");
+    const changes = reviewChanges(read.review, readDeck());
+    expect(changes.map((change) => [change.id, change.by])).toEqual([["deck/title", "agent"]]);
+    const kept = read.review.scenes.opening?.blocks.find((block) => block.id === "opening-title");
+    expect(kept && "text" in kept && kept.text).toBe("Person's headline");
+  });
+
+  it("starts no review when a person saves and the agent has not edited", async () => {
+    const answer = await call(
+      "/_depthcue/api/save",
+      json({ baseRev: revisionOf(readDeck()), files: editedFiles("Person only") }),
+    );
+    expect(answer.status).toBe(200);
+    expect(existsSync(join(folder, REVIEW_FILE))).toBe(false);
+  });
+
+  it("saves when the review file is not valid, and leaves it as it was", async () => {
+    writeFileSync(join(folder, REVIEW_FILE), "{ not json");
+    const answer = await call(
+      "/_depthcue/api/save",
+      json({ baseRev: revisionOf(readDeck()), files: editedFiles("Saved anyway") }),
+    );
+    expect(answer.status).toBe(200);
+    expect(readFileSync(join(folder, REVIEW_FILE), "utf8")).toBe("{ not json");
   });
 
   it("matches the revision the browser computes for the same document", async () => {

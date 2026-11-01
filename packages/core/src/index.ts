@@ -94,6 +94,34 @@ export {
   REVOKE_TEXT,
 } from "./lease.ts";
 export { checkReferences } from "./references.ts";
+export type {
+  Accepted,
+  Author,
+  Change,
+  ChangeKind,
+  ChangeScope,
+  Difference,
+  ReadReview,
+  Reverted,
+  Review,
+  ReviewFailure,
+} from "./review.ts";
+export {
+  acceptChanges,
+  baselineOf,
+  describeChange,
+  diffDocs,
+  foldEdit,
+  REVIEW_FILE,
+  REVIEW_FORMAT,
+  readReview,
+  recordAgentEdit,
+  revertChanges,
+  reviewChanges,
+  reviewRevision,
+  reviewToText,
+  startReview,
+} from "./review.ts";
 export {
   ASSET_PATTERN,
   COMMENT_AUTHORS,
