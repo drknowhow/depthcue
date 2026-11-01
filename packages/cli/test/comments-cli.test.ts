@@ -6,7 +6,7 @@ import { COMMENTS_FILE } from "@depthcue/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { run } from "../src/index.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 const temps: string[] = [];
 
 afterEach(() => {

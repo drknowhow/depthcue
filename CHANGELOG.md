@@ -4,6 +4,67 @@ Notable changes to Depthcue, newest first. Nothing has been released yet, so eve
 
 ## Unreleased
 
+### Tables, charts, text styles and a deck style
+
+A deck can now hold a table, six kinds of chart and formatted text, and it can have its own colors and fonts. The
+guides are [tables and charts](docs/tables-and-charts.md), [style](docs/style.md) and [the editor](docs/editor.md). The
+build record is [docs/CONTENT_RANGE.md](docs/CONTENT_RANGE.md).
+
+A person can:
+
+- Add a table from the quick bar, type into its cells, paste cells from Excel, Google Sheets or a CSV file, and
+  right-click a cell to insert or delete rows and columns, hide the header row, or make a column hold numbers with a unit.
+- Add a chart, edit its rows and series in a grid, and change it between bar, stacked bar, line, area, scatter and
+  donut from the right-click menu. An old bar chart becomes a chart of any kind under the same id.
+- Make words bold, italic, linked or colored, and make bulleted or numbered lists, from a format bar under the text's
+  toolbar and with `Ctrl+B`, `Ctrl+I` and `Ctrl+K`. A text's size, alignment and color are in a Style chip and in its
+  right-click menu.
+- Choose Paper or Ink, change any of seven palette colors and pick one of four font pairs in the Deck popover. A color
+  that would leave text hard to read is refused, with the reason.
+- Right-click more things: a text, a chart, a table cell, the empty slide (Deck style) and a scene saved before 0.3
+  (Use text styles).
+
+An agent can:
+
+- Write `table` and `chart` blocks, markup in text (`**bold**`, `*italic*`, links, `[words]{tone}`, and `- ` and `1. `
+  lists), and `tone`, `size` and `align` on a text block.
+- Set `palette` and `fonts` with `deck.set`, and bring an older scene forward with the new `scene.upgrade` operation.
+  `deck_get` and `deck_apply` describe all of it.
+- Rely on new checks: `row-length`, `cell-kind`, `donut-shape` and `donut-value` for data, `palette-low-contrast` and
+  `tone-low-contrast` for color, and `<part>-needs-version` for a 0.3 part in an older file.
+
+The schema is 0.3. Decks and scenes written for 0.1 or 0.2 load and draw as they did. A scene moves to 0.3 when a block
+gets a part that needs it, or with `scene.upgrade`, and its text is escaped so it reads the same. Markup is read only in
+the text blocks of a 0.3 scene. A Depthcue that does not know a file's version refuses the file and writes nothing.
+`bar-chart` is still valid.
+
+Changed:
+
+- Add chart adds a `chart` block, and not a `bar-chart`. Add bar and Sort stay on old bar charts only.
+- In a 0.3 scene, a text's length limit counts the characters the audience sees, so `**bold**` counts four.
+- The bar beside a quote and the dot on a title slide use the deck's accent color. With no palette that is a slightly
+  different red from before.
+- An export has a `fonts/` folder with the deck's font pair (192 to 293 KB), and its script is larger.
+- `apply` refuses a change that holds an error, so a palette or tone that is too faint never reaches a file. The editor
+  shows the reason in a hint, not in the problem ribbon.
+- The demo deck has a fourth slide with a table and a line chart, and a list, a link and a colored phrase on the last
+  one. The demo video was recorded again from it.
+- Sizes. The core runtime is 45.2 KB gzip (was 34.6, budget 60). The player script is 10.1 KB brotli (was 5.7) and its
+  styles 4.7 KB (was 3.8). The exported page script is 13.3 KB (was 8.4), so its limit went from 10 to 14 KB, and the
+  core code inside the player is 5.1 KB, so that limit went from 5 to 6 KB. The editor script is 89.3 KB (was 61.0, budget
+  90) and its styles 11.4 KB (was 9.4). The new table module is 0.6 KB of 3.0 KB.
+- Tests. 3,479 passed and 7 skipped in 137 files (was 2,884 passed and 1 skipped in 116). The tests read a copy of the
+  old sample deck, `fixtures/decks/v0-1`, so the sample deck can change without moving them.
+
+Not done:
+
+- A color for one block that is not in the palette, your own fonts, and per-block animation.
+- Cell-level sources, and data from a CSV file or a URL. Both belong to 0.4 in [the plan](docs/PLAN.md).
+- A chart's per-column unit can only be set by an agent.
+- `depthcue apply` does not print warnings, so an agent that writes markup into a scene older than 0.3 sees no sign
+  that it shows as typed. `deck_apply` returns it as `text-is-literal`.
+- The fonts cover Latin letters. Text in another script is drawn in the viewer's own font.
+
 ### The editor was rebuilt around the slide
 
 `depthcue edit` used to show a small slide beside a tall form panel. The slide now fills the window, and each block is
@@ -46,11 +107,12 @@ Changed:
 
 Not done:
 
-- The demo video and its scene text still show the v0.1 editor and say changes save only when you ask.
 - Scene change time with default motion is probably still over its 50 ms budget on a 60 Hz display. See
   [Results](docs/EDITOR_REMAKE.md#results).
 
 ### Fixed
 
+- The demo video and its scene text still showed the v0.1 editor and said that changes save only when you ask. The video
+  was recorded again and now shows the editor as it is.
 - A test of the edit API's token check failed about one run in 64, when the made-up wrong token happened to equal
   the real one.

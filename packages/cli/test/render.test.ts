@@ -8,7 +8,7 @@ import { applyToFolder, openDeck } from "../src/deck-api.ts";
 import { layoutDiagnostics, measureLayout } from "../src/layout.ts";
 import { launchBrowser, openRenderer, RenderError, type Renderer } from "../src/render.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
 let folder: string;
 let renderer: Renderer | undefined;

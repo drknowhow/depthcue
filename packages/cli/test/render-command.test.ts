@@ -8,7 +8,7 @@ import { applyToFolder, openDeck } from "../src/deck-api.ts";
 import { run } from "../src/index.ts";
 import { launchBrowser } from "../src/render.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 const temps: string[] = [];
 let hasBrowser = false;
 

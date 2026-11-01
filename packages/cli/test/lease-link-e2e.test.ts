@@ -8,7 +8,7 @@ import { readLink } from "../src/link.ts";
 import { launchBrowser } from "../src/render.ts";
 import { builtPlayerDir, type RunningServer, startServer } from "../src/serve.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
 /** What an agent gets back from the link: the page's answer, and where the deck is. */
 type Answer = Record<string, unknown> & {

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "0.1",
+  "id": "demand",
+  "title": "Demand is shifting",
+  "layout": "claim-evidence",
+  "lead": "agent",
+  "summary": {
+    "id": "claim-shift",
+    "text": "Channel B now leads, 60 to 40.",
+    "evidenceIds": ["chart-demand"]
+  },
+  "blocks": [
+    {
+      "id": "chart-demand",
+      "type": "bar-chart",
+      "title": "Share of orders, latest quarter",
+      "unit": "%",
+      "data": [{ "label": "Channel A", "value": 40 }, { "label": "Channel B", "value": 60 }],
+      "sourceIds": ["source-report"]
+    }
+  ],
+  "sources": [{ "id": "source-report", "title": "Quarterly order snapshot", "asset": "assets/report.csv" }],
+  "reading": {
+    "text": "In the latest quarter channel B accounted for 60% of orders and channel A for 40%. The figures come from the supplied quarterly order snapshot."
+  },
+  "steps": [
+    { "id": "show-claim", "reveal": ["claim-shift"] },
+    { "id": "show-evidence", "reveal": ["chart-demand"] }
+  ],
+  "notes": "Pause on the chart. Ask whether anyone expected the gap to be this wide."
+}

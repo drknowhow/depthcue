@@ -16,7 +16,7 @@ import { type Api, createApi } from "../../editor/src/api.ts";
 import { type EditorStore, openStore } from "../../editor/src/store.ts";
 import { createDepthcueServer, type DepthcueServer } from "../src/server.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
 const RETITLE: Op[] = [{ op: "scene.set", id: "demand", set: { title: "Demand is shifting fast" } }];
 const RENAME_DECK: Op[] = [{ op: "deck.set", set: { title: "Retitled by someone else" } }];

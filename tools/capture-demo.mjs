@@ -103,10 +103,12 @@ try {
   await shot("player-handoff");
   await controls("controls-agent");
 
-  // The editor on its first scene.
+  // The editor on the demand scene, which the agent leads, so the lead buttons in the top bar show it.
   const editor = await start("edit", copy);
   await page.goto(editor);
-  await page.getByText("Speaker notes", { exact: false }).first().waitFor();
+  await page.locator(".ed-canvas-host .dc-view").first().waitFor();
+  await page.locator(".ed-scene").nth(1).click();
+  await page.locator(".ed-frame .dc-bar").first().waitFor();
   await shot("editor");
 
   // An exported folder, opened from the file system as a double-click would.

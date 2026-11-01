@@ -9,7 +9,7 @@ import { exportDeck } from "../src/export.ts";
 import { launchBrowser } from "../src/render.ts";
 import { builtStandaloneDir } from "../src/serve.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 const stub = fileURLToPath(new URL("./fixtures/kine-stub.mjs", import.meta.url));
 
 const probe = {

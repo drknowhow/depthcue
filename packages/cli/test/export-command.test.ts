@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/index.ts";
 import { builtStandaloneDir } from "../src/serve.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
 /**
  * The font files an export of a deck in the default pair carries: every file of the three families that pair names,

@@ -82,6 +82,19 @@ Who does what:
 - Editor script stays under 90 KB (61 KB before this work). Core runtime stays under 60 KB (34.6 KB before).
 - Fonts are files beside the deck, not script, and an export copies only the pair the deck uses.
 
+## Not in this plan
+
+Raw hex colors on a single block, uploading your own fonts, per-block animation, bring-to-front and send-to-back
+(block order is reading order), donut charts beyond 6 parts, editable PPTX export (0.7 in `docs/PLAN.md`).
+
+Declined in review:
+
+- Stable ids for table rows and columns: data cells are edited as whole rows with `block.set`, and optional ids can
+  be added later without breaking decks.
+- A list block instead of `- ` lines: agents write markdown lists well, and a list block can be added later without
+  breaking anything.
+- Row-level and cell-level provenance: it belongs to the 0.4 data module in `docs/PLAN.md`.
+
 ## Step 1 record: what the contracts fixed
 
 - **Versions.** Text below 0.3 is shown as written; from 0.3 it is markup. The operation that adds a 0.3 field
@@ -154,19 +167,6 @@ Who does what:
   palette that sets `action` reaches them. With no palette the preset's action color shows, which is a slightly
   different red from the brand vermilion they had before. The cue dot in the player's bar is the one use of the brand
   vermilion `#FF633F` left in the player, because it marks the player and not the slide.
-
-## Not in this plan
-
-Raw hex colors on a single block, uploading your own fonts, per-block animation, bring-to-front and send-to-back
-(block order is reading order), donut charts beyond 6 parts, editable PPTX export (0.7 in `docs/PLAN.md`).
-
-Declined in review:
-
-- Stable ids for table rows and columns: data cells are edited as whole rows with `block.set`, and optional ids can
-  be added later without breaking decks.
-- A list block instead of `- ` lines: agents write markdown lists well, and a list block can be added later without
-  breaking anything.
-- Row-level and cell-level provenance: it belongs to the 0.4 data module in `docs/PLAN.md`.
 
 ## Step 4 record: the table block
 
@@ -278,3 +278,134 @@ Declined in review:
   left off a part too thin to hold one. Direct labels at line ends were dropped for the legend.
 - **Size.** Editor script 84.7 to 89.3 KB brotli of 90, so step 6 took 4.6 KB and 0.7 KB is left. Player script
   10.1 KB and styles 4.7 KB; core code in the player 5.1 KB of 6.0.
+
+## Step 7 record: close-out
+
+- **Demo deck.** One new scene, `trend`, holds a line chart, a table with number columns and a unit, and a source, so
+  the deck shows both new blocks. `opening` has bold in its subtitle at size Large. `method` has a list, a colored phrase
+  (`[Returns are excluded]{action}`) and a link. `demand` keeps its old `bar-chart`, because the video's "Sort by value"
+  beat needs it, so the deck holds an old bar chart and a new line chart. The deck sets no palette and no font pair: the
+  editorial pair read best, and the `trend` claim was shortened to "Channel B keeps gaining share." so that it fits under
+  all four pairs (`depthcue render` was run once per pair). The deck is still 0.1 in `deck.json`, with `demand` at 0.1
+  and `opening`, `trend` and `method` at 0.3, which is the mix an older deck is in after a few edits.
+- **Tests read a frozen copy.** The sample deck was also the fixture of the test suite. With a fourth scene and three
+  scenes at 0.3, 186 tests in 42 files failed, on scene counts ("Scene 2 of 3"), scene order and schema versions.
+  Rewriting those assertions would have buried this step's change, so `fixtures/decks/v0-1` holds the sample deck
+  exactly as it was (three scenes, all 0.1, byte for byte from commit 3d69830). The 3 `helpers.ts` files and the 31
+  test files that named `fixtures/decks/demo` now name it, and so does `tools/trial/edit-tasks.mjs`, so the trial's edit
+  tasks keep measuring the deck [TRIAL.md](TRIAL.md) measured. The new sample deck is covered by `pnpm smoke` (`check`
+  and `render`) and by `tools/demo.test.mjs`, and no other vitest file reads it.
+- **Demo video.** Any change to the deck changes what the capture shows, and `tools/demo.test.mjs` ties the transcript,
+  `demo.json` and `demo.sha256` to the mp4, so the video was recorded again (`pnpm demo:capture`, `demo:scene`,
+  `demo:render`). `tools/capture-demo.mjs` now opens the editor on the `demand` scene, which the agent leads, after
+  waiting for the new editor's canvas. `tools/demo-scene.mjs` says "Changes save by themselves.", and its two rings
+  were moved to the Human, Agent and Shared buttons of the top bar and to the new position of the presenting chip. The
+  old video also showed the v0.1 editor and said changes save only when you ask, so the "Not done" line about that in the
+  changelog's editor-remake entry is gone and a "Fixed" line replaces it.
+- **Guides.** `docs/tables-and-charts.md` and `docs/style.md` are new and are in `PAGES` in `site/prepare.mjs`, so the
+  site has them under `guides/`, with links from `site/content/start.md`. `docs/editor.md`, `docs/export.md`,
+  `README.md`, `docs/PLAN.md` and `CHANGELOG.md` were brought up to date. Each new guide, and the editor guide, has an
+  agent example that was run on a copy of the demo deck, and the output it quotes comes from that run. This file stays
+  out of the site, in `LEFT_OFF`, as before.
+
+## Results
+
+Sizes were taken with `pnpm build` and then `pnpm budgets`, on commit 0434d44 (the previous close-out, in a throwaway
+worktree) and on this branch. Tests are `pnpm exec vitest run --maxWorkers=3 --hookTimeout=60000` on the same two trees.
+The speed bench in `tools/trial` was not run in this step, so cold open and scene change times are not measured here.
+
+### What each PR delivered
+
+| PR      | Step | What a person or an agent got                                                                                 |
+| ------- | ---- | ------------------------------------------------------------------------------------------------------------- |
+| #62     | 2    | A right-click menu on a block, an empty part of the slide and a scene; block cut, copy, paste and duplicate.  |
+| #63     | 1    | Schema 0.3: palette, fonts, tone, size, align, text markup, `table` and `chart`; `scene.upgrade`; new checks. |
+| #64     | 4    | The table block: a real `<table>`, a cell grid, spreadsheet paste, number columns, a cell menu.               |
+| #65     | 3    | Paper and Ink presets, seven palette colors with a contrast check, four font pairs that an export carries.    |
+| #66     | 5    | Bold, italic, links, colored words, lists, four sizes and three alignments in the editor and the player.      |
+| #67     | 6    | The chart block: six kinds, a data grid, a Chart type menu, and conversion of an old bar chart.               |
+| this PR | 7    | Demo deck and video, two guides, changelog, README and plan, this record, and the walkthrough.                |
+
+### Sizes
+
+KB, brotli unless noted. A row in bold touched `budgets.json`.
+
+| Measure                           | Before (0434d44)   | Now      | Limit now          | Change in `budgets.json`   |
+| --------------------------------- | ------------------ | -------- | ------------------ | -------------------------- |
+| Core runtime, gzip                | 34.6               | 45.2     | 60.0               | none                       |
+| Player script                     | 5.7                | 10.1     | 120.0              | none                       |
+| Player styles                     | 3.8                | 4.7      | 30.0               | none                       |
+| Chart module                      | 1.4                | 1.4      | 3.0                | none                       |
+| **Table module**                  | none               | 0.6      | 3.0                | new row, 3072 bytes        |
+| Clip, lease, broadcast, presenter | 1.0, 2.1, 0.8, 1.8 | the same | 3.0, 3.0, 1.0, 2.3 | none                       |
+| **Exported page script**          | 8.4                | 13.3     | 14.0               | limit 10240 to 14336 bytes |
+| **Core code in the player**       | 3.7                | 5.1      | 6.0                | limit 5120 to 6144 bytes   |
+| Editor script                     | 61.0               | 89.3     | 90.0               | none                       |
+| Editor styles                     | 9.4                | 11.4     | 30.0               | none                       |
+
+Tests: 116 files and 2,885 tests before (2,884 passed, 1 skipped). 137 files and 3,486 tests now (3,479 passed, 7
+skipped), so the content range added 21 files and 601 tests. The 7 skips are the screenshot suites of the table, chart
+and text e2e files (two tests each, run only with `SHOTS` set) and the one test that needs Kinescript.
+
+### Where the result differs from the plan
+
+- **The chart is drawn by the core player, not by the `chart` module.** The module still draws the old `bar-chart`
+  and stays at 1.4 of 3.0 KB, so the 8 KB raise the plan approved was not used. The cost went into the exported page
+  script, which holds the player (limit 10 to 14 KB, inside the 16 KB the plan allowed) and into the core runtime.
+  Reason: a chart has to show in reading view, thumbnails, the editor, an export and `depthcue render` with no lazy
+  load. The step 6 record has the detail.
+- **The table is a static `<table>`, and its module only marks a row.** The plan had the module replace a placeholder.
+  Reason: a table has to survive print, reading view, a script that fails, and `module table off`.
+- **A palette, tone or length that fails is refused, not saved.** The plan had a bad palette saved and shown in the
+  problem ribbon. `apply` refuses any change that holds an error, so these never reach a file, and the editor shows the
+  reason in a hint at the field. Showing them in the ribbon needs core to make them non-blocking in `apply`.
+- **Slide accents follow the deck's `action` color.** The quote rule and the title dot were the brand vermilion. With
+  no palette they now use the Paper or Ink `action` color, which is a slightly different red. The plan did not say.
+- **Alignment is Start, Center and End, not left, center and right.** The schema names them `start`, `center` and
+  `end`, and the player sets `text-align: start` or `end`, so they follow the direction of the language.
+- **Charts have no per-column unit control in the editor, and no kind select in the Data popover.** An agent sets
+  `columns[].unit`, and the menu and the palette change the kind. Direct labels at the ends of lines were dropped for a
+  legend.
+- **The core runtime grew by 10.6 KB, to 45.2 of 60.** The plan said under 60, so this is inside it, but it used about
+  40% of the headroom. The editor script has 0.7 KB left of 90, so the next editor feature needs a raise or a split.
+- **Step 2 has no record in this file.** Its behavior is in the right-click section of [the editor guide](editor.md),
+  and its PR is #62.
+- **The demo deck uses an old `bar-chart` beside the new chart.** Reason: the video's Sort beat. See the step 7 record.
+- **The sample deck is no longer the tests' fixture.** The plan did not say the sample deck was one. With the new
+  sample deck 186 tests failed, so they read `fixtures/decks/v0-1`, a copy of the old deck. The step 7 record has the
+  numbers.
+- **Left for later.** The speed bench, license text files in an export (see findings), and a way for `depthcue apply`
+  to print the `text-is-literal` warning that `deck_apply` returns.
+
+### Walkthrough
+
+Driven by a script on a copy of the demo deck, in Chrome at 1440 by 900 and 1024 by 768 (the files end in `-1440` and
+`-1024`), with no console error and no page error. Every screenshot was looked at.
+
+- `01-menu-block`: the right-click menu on a text block, with Size, Align and Color submenus and the block commands.
+- `02-table-cell-menu`: a table with a number typed in a cell and the cell menu open.
+- `03-chart-data`: the Data popover of a line chart, with Title, Unit and the grid. At 1024 its four buttons are below
+  the fold until the popover scrolls (see findings).
+- `04-chart-type-menu`: the Chart type submenu, Line ticked, Scatter and Donut greyed with the reasons.
+- `05-text-format-bar`: a body with one word bold and the format bar under the toolbar.
+- `06-text-link-box`: the link box, refusing an address that starts with `ftp://`.
+- `07-text-style-chip`: the Style chip with Size, Align and Color.
+- `08-deck-style`: the Deck popover with the Style section open: preset, seven colors.
+- `09-player-opening`, `10-player-trend`, `11-player-method`: the three changed slides in the player.
+- `12-chart-data-scrolled`: the Data popover scrolled to Add row, Add series, Delete row and Delete series.
+- `13-deck-style-fonts`: the four font pairs and the Table row marker setting.
+- `14-deck-ink-modern`, `15-trend-ink-modern`: the deck switched to Ink and the Modern pair, and the trend slide in it.
+
+### Findings outside this step's files
+
+- `depthcue apply` (`packages/cli/src/index.ts`, `apply()`) does not print the warnings `deck_apply` returns, so an agent
+  that writes markup into a scene older than 0.3 sees no sign that it shows as typed.
+- `PRODUCT.md` line 27 still says the editor saves to the deck folder only on request. It saves by itself.
+- An export has no license text for the fonts. The texts are in `brand/fonts/`. Whether the name-table records inside the
+  subset files are enough for the OFL was not checked. Owners: `packages/cli` export and the player's font build.
+- At 1024 by 768 the chart Data popover's four buttons are below the fold and need a scroll. Owner: the chart panel and
+  popover CSS in `packages/editor`.
+- The swatch is called Accent and the matching tone is called Action. Both are `action` in the file.
+- `depthcue rev` fails on a deck that has errors, so an agent cannot fetch a revision to repair it.
+- The editor's own chrome stays light under the Ink preset, and only the slide goes dark. That may be intended.
+- Fonts change line widths: the demo's `trend` claim had to be shortened to fit under Modern, Classic and Technical.

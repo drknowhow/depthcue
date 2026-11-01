@@ -32,7 +32,7 @@ import { loadReviewDir, recordAgentWrite, recordPersonWrite, saveReviewDir } fro
 import { ChangedOnDiskError, saveDeckDir } from "../src/save.ts";
 import { builtPlayerDir, builtStandaloneDir, type RunningServer, startServer } from "../src/serve.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
 /** A phrase no part of the deck or the page contains, so finding it anywhere means the review leaked there. */
 const MARKER = "zebra-marker-7f3a";

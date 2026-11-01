@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const CLI = join(root, "packages/cli/dist/main.js");
-const DEMO = join(root, "fixtures/decks/demo");
+const DEMO = join(root, "fixtures/decks/v0-1");
 
 const read = (dir, path) => JSON.parse(readFileSync(join(dir, path), "utf8"));
 const block = (dir, scene, id) =>

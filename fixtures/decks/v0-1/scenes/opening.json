@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "0.1",
+  "id": "opening",
+  "title": "Why channel B now leads",
+  "layout": "title",
+  "lead": "human",
+  "blocks": [
+    { "id": "opening-title", "type": "text", "role": "heading", "text": "Channel B now leads demand" },
+    {
+      "id": "opening-sub",
+      "type": "text",
+      "role": "body",
+      "text": "A five-minute walk through the numbers, the method, and what to check next."
+    }
+  ],
+  "reading": {
+    "text": "This deck explains why channel B overtook channel A in the latest quarter, how the comparison was made, and which numbers to check before acting on it."
+  },
+  "notes": "Open with the answer, then show the evidence."
+}

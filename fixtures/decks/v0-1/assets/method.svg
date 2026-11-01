@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Orders from channel A and channel B flow into one deduplicated count.">
+  <rect width="640" height="360" fill="#FBF9F4"/>
+  <g font-family="system-ui, sans-serif" font-size="22" fill="#14161B">
+    <rect x="40" y="60" width="180" height="80" rx="10" fill="none" stroke="#14161B" stroke-width="3"/>
+    <text x="130" y="108" text-anchor="middle">Channel A</text>
+    <rect x="40" y="220" width="180" height="80" rx="10" fill="none" stroke="#14161B" stroke-width="3"/>
+    <text x="130" y="268" text-anchor="middle">Channel B</text>
+    <rect x="420" y="140" width="180" height="80" rx="10" fill="#2B55E6"/>
+    <text x="510" y="188" text-anchor="middle" fill="#FBF9F4">One count</text>
+  </g>
+  <g fill="none" stroke="#C73A18" stroke-width="4" stroke-linecap="round">
+    <path d="M220 100 C 320 100, 320 170, 410 175"/>
+    <path d="M220 260 C 320 260, 320 190, 410 185"/>
+  </g>
+  <circle cx="410" cy="180" r="7" fill="#C73A18"/>
+</svg>

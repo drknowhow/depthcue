@@ -16,7 +16,7 @@ import { builtEditorDir, builtPlayerDir, type RunningServer, startServer } from 
  * menu, and a block copied in one deck's editor and pasted into another's through the system clipboard.
  */
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
 /** A server with no browser to render in. None of these tests is about layout, and none needs a second Chrome. */
 const NO_LAYOUT: LayoutChecker = {

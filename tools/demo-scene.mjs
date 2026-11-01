@@ -538,16 +538,17 @@ export function buildScene({ tokens, transcript, demand }) {
     words("human", {
       kicker: "04 · A person repairs it",
       headline: "The editor makes the same edits.",
-      support: [{ text: "Each scene says who leads, a person or an agent. Changes save only when you ask." }],
+      support: [{ text: "Each scene says who leads, a person or an agent. Changes save by themselves." }],
     }),
     picture("human-editor", "assets/editor.png", { y: 170, at: PARTS.human[0] + 0.3, until: PARTS.human[1] }),
-    // The scene list, with its HUMAN and AGENT tags, is at x 12 to 259 and y 73 to 215 in the capture.
+    // The Human, Agent and Shared buttons of the top bar are at x 843 to 1055 and y 9 to 45 in the capture.
     ring("lead", {
-      x: RIGHT + 12 * SHOT - 4,
-      y: 170 + 73 * SHOT - 4,
-      w: 247 * SHOT + 8,
-      h: 142 * SHOT + 8,
+      x: RIGHT + 843 * SHOT - 4,
+      y: 170 + 9 * SHOT - 4,
+      w: 212 * SHOT + 8,
+      h: 36 * SHOT + 8,
       label: "who leads",
+      labelAt: "below",
       at: PARTS.human[0] + 2.4,
       until: PARTS.human[1],
     }),
@@ -587,10 +588,10 @@ export function buildScene({ tokens, transcript, demand }) {
     sequence(person, agent),
     // The chip that names who is presenting, and the button that takes control back, in the cropped control bar.
     ring("chip", {
-      x: RIGHT + (1335 - CONTROLS.x) * barScale - 8,
-      y: barY + (1034 - CONTROLS.y) * barScale - 6,
+      x: RIGHT + (1314 - CONTROLS.x) * barScale - 8,
+      y: barY + (1038 - CONTROLS.y) * barScale - 6,
       w: 160 * barScale + 16,
-      h: 32 * barScale + 12,
+      h: 24 * barScale + 12,
       label: "agent presenting",
       labelAt: "below",
       at: PARTS.handoff[0] + 3.6,

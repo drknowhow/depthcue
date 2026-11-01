@@ -3,7 +3,9 @@ import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type DeckFiles, type Doc, loadDoc } from "../src/index.ts";
 
-export const demoDir = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+// The old sample deck: three scenes, all schema 0.1. Tests read this copy, so the sample deck in
+// fixtures/decks/demo can show new features without moving them.
+export const demoDir = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

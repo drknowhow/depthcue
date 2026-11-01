@@ -21,7 +21,7 @@ import {
 } from "../src/comments-api.ts";
 import { openDeck } from "../src/deck-api.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 const NOW = "2026-11-01T10:00:00.000Z";
 
 let root: string;

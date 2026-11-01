@@ -10,7 +10,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDepthcueServer, type DepthcueServer } from "../src/server.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 const cli = fileURLToPath(new URL("../../cli/dist/main.js", import.meta.url));
 
 type Browser = Awaited<ReturnType<typeof launchBrowser>>;

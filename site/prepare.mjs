@@ -33,6 +33,8 @@ const PAGES = {
   "docs/lease.md": "guides/lease",
   "docs/placement.md": "guides/placement",
   "docs/presenter.md": "guides/presenter",
+  "docs/style.md": "guides/style",
+  "docs/tables-and-charts.md": "guides/tables-and-charts",
   "docs/PLAN.md": "project/plan",
   "brand/README.md": "project/brand",
 };
