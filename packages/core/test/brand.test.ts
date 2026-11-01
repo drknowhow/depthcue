@@ -871,6 +871,77 @@ describe("retemplate", () => {
     expect(unplaced).toEqual(expect.arrayContaining(["context-heading"]));
   });
 
+  it("lists a claim the scene has no room for as a block, and its operations apply once it is decided", () => {
+    const roomy: Op = {
+      op: "template.set",
+      id: "roomy",
+      template: {
+        name: "Roomy",
+        description: "A title and room for everything else.",
+        slots: [
+          { id: "title", frame: { x: 5, y: 5, w: 90, h: 15 }, accepts: ["heading"], hint: "The point." },
+          ...["left", "right"].map((id, i) => ({
+            id,
+            frame: { x: 5 + i * 46, y: 25, w: 44, h: 70 },
+            accepts: ["heading", "body", "caption", "quote"] as Array<
+              "heading" | "body" | "caption" | "quote"
+            >,
+            max: 8,
+            hint: "Everything else.",
+          })),
+        ],
+      },
+    };
+    const withClaim = (count: number): Doc => {
+      const doc = applied(brandDoc(), [
+        roomy,
+        { op: "block.set", scene: "context", id: "context-quote", set: { style: null } },
+        ...Array.from(
+          { length: count - 4 },
+          (_, i): Op => ({
+            op: "block.add",
+            scene: "context",
+            block: { id: `more-${i}`, type: "text", role: "body", text: `Point ${i}.` } as never,
+          }),
+        ),
+        {
+          op: "scene.set",
+          id: "context",
+          set: {
+            summary: { id: "context-claim", text: "Two berths were shut.", evidenceIds: ["context-body"] },
+          },
+        },
+      ]);
+      expect(doc.scenes.context?.blocks).toHaveLength(count);
+      return doc;
+    };
+
+    const full = withClaim(12);
+    const moved = retemplate(full, "context", { template: "roomy" });
+    expect(moved.unplaced).toEqual(["context-claim"]);
+    expect(moved.ops[0]).toEqual({
+      op: "scene.set",
+      id: "context",
+      set: { template: "roomy", layout: null },
+    });
+    expect(moved.ops.some((op) => op.op === "block.add")).toBe(false);
+    expect(apply(full, moved.ops)).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: "claim-in-template" })],
+    });
+    // Decided: the claim goes, and the move applies as it is.
+    const decided = apply(full, [{ op: "scene.set", id: "context", set: { summary: null } }, ...moved.ops]);
+    expect(decided).toMatchObject({ ok: true });
+
+    // With room for one more block, the claim becomes one and nothing is left over.
+    const roomFor = withClaim(11);
+    const fits = retemplate(roomFor, "context", { template: "roomy" });
+    expect(fits.unplaced).toEqual([]);
+    const result = apply(roomFor, fits.ops);
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) expect(result.doc.scenes.context?.blocks).toHaveLength(12);
+  });
+
   it("keeps a block in a slot of the same id, and moves a scene back to a layout by clearing slots", () => {
     const doc = brandDoc();
     const { ops } = retemplate(doc, "growth", { template: "two-column" });

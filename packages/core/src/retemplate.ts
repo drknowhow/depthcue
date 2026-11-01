@@ -8,7 +8,7 @@ import { type BrandPart, kindOf, slotMax, templatesOf } from "./brand.ts";
 import { escapeText } from "./inline.ts";
 import { own } from "./own.ts";
 import type { LAYOUTS } from "./schema.ts";
-import { TEXT_LIMITS } from "./schema.ts";
+import { sceneSchema, TEXT_LIMITS } from "./schema.ts";
 import type { Block, Scene } from "./types.ts";
 
 export type Layout = (typeof LAYOUTS)[number];
@@ -17,8 +17,9 @@ export interface Retemplated {
   /** The operations that make the move, to apply as one transaction. */
   ops: Op[];
   /**
-   * Ids of the blocks no slot of the template takes, in scene order. While any are left the operations do not apply:
-   * remove them, move them to another scene, or pick a template that takes them.
+   * Ids of what does not fit, in scene order: the blocks no slot of the template takes, and a claim that cannot become a
+   * block because the scene has as many blocks as a scene may. While any are left the operations do not apply: remove
+   * them, move them to another scene, or pick a template that takes them. A claim that does not fit stays a claim.
    */
   unplaced: string[];
 }
@@ -34,7 +35,8 @@ function claimBlock(scene: Scene): Block | undefined {
 
 /**
  * The operations that move a scene to the template `to.template`, or to the layout `to.layout`. To a layout, every
- * block leaves its slot. To a template, a claim becomes a text block, since a template has no place for one, and each
+ * block leaves its slot. To a template, a claim becomes a text block when the scene has room for one more, since a
+ * template has no place for a claim, and each
  * block goes to the first slot that takes its kind and has room, keeping the slot it has when that one is in the new
  * template too. Throws for a scene or template the deck does not have.
  */
@@ -56,7 +58,9 @@ export function retemplate(
   const template = own(templatesOf(doc), to.template);
   if (!template) throw new Error(`There is no template "${to.template}".`);
 
-  const claim = claimBlock(scene);
+  const found = claimBlock(scene);
+  // The claim is one block more, which a scene already at the most blocks it may have has no room for.
+  const claim = found && scene.blocks.length < sceneSchema.properties.blocks.maxItems ? found : undefined;
   const blocks = claim ? [claim, ...scene.blocks] : scene.blocks;
   const room = new Map(template.slots.map((slot) => [slot.id, slotMax(slot)]));
   // A pinned block floats at its frame: it needs a slot that takes its kind, but no room in it.
@@ -76,7 +80,7 @@ export function retemplate(
   // Blocks that already sit in a slot the new template has, and that it takes, stay in it.
   for (const block of blocks)
     if (block.slot !== undefined && takes(block.slot, block)) put(block, block.slot);
-  const unplaced: string[] = [];
+  const unplaced: string[] = found && !claim ? [found.id] : [];
   for (const block of blocks) {
     if (placed.has(block)) continue;
     const slot = template.slots.find((candidate) => takes(candidate.id, block));
