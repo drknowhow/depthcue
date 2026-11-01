@@ -273,14 +273,16 @@ library, and per-block raw hex colors.
   and each block's `slot` and `style` as `PENDING` for steps 7 and 8.
 - **The editor's brand checks load on demand.** The changes above took the editor's script to 92,224 bytes, 64 over
   its limit. What moved: core's `brandcheck.ts`, the checks of brand.json and the template files (`readBrand`,
-  `checkBrand`, `checkTemplate`, `checkBrandFile`, `checkTemplateFile`, `unusedBrand`, `looksOf`), is now
+  `checkBrand`, `checkTemplate`, `checkBrandFile`, `checkTemplateFile`, `looksOf`), is now
   `dist/brandcheck.js`, 3.1 KB brotli with its own budget row of 6 KB. The editor's build puts
   `packages/editor/src/brandchecks.ts` where core imports it; that stand-in fetches the chunk the first time a check
   is wanted and, until it is in, answers with the error `brand-checks-loading`, so nothing passes unchecked. The store
   then waits for the chunk and reads the deck again; it does the same for a draft, which is not thrown away for it.
-  A check that meets the error mid-edit starts the fetch and asks for another try. The chunk loads for a deck with a
-  brand, or a folder with brand files; a template scene of a deck without a brand uses only the built-in templates,
-  which tests check, so it needs nothing from the chunk. `checkSceneBrand` (a scene against its template) stays in
+  A check that meets the error mid-edit starts the fetch and asks for another try. When the chunk does not arrive,
+  the deck or draft does not open, or a reload or a read of the files after a change on disk stops with "Could not
+  load the brand checks; reload the page." The chunk loads only for a deck with a brand: `unusedBrand`, the warning
+  for brand files a deck without a brand leaves unread, is in brand.ts, and a template scene of a deck without a
+  brand uses only the built-in templates, which tests check, so neither needs the chunk. `checkSceneBrand` (a scene against its template) stays in
   editor.js: it runs on every edit of a template scene. About 1.3 KB of what the checks use stays in editor.js too,
   because it sits in modules the editor needs anyway, above all the brand and template schemas in schema.ts; moving
   those out is the next lever. CLI, MCP and tests use core's module as before.

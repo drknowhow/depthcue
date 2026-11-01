@@ -13,6 +13,7 @@ import {
   type SceneKit,
   templatePath,
   textOn,
+  unusedBrand,
 } from "./brand.ts";
 import { explain } from "./diagnostics.ts";
 import { own } from "./own.ts";
@@ -72,25 +73,7 @@ export function checkTemplateFile(data: unknown, id: string, file = templatePath
   ];
 }
 
-/**
- * brand.json or templates while deck.json names no brand. A deck folder leaves such files unread, and says so in a
- * warning: a save that makes or takes off a brand writes deck.json and the brand's files one after the other, and a
- * stop between them must leave a deck that loads. In a Doc, whose brand would be used, it is an error.
- */
-export function unusedBrand(file: string, brand: unknown, severity: Diagnostic["severity"]): Diagnostic {
-  const named = (brand as { id?: unknown } | null | undefined)?.id;
-  const id = typeof named === "string" ? named : "<id>";
-  return {
-    ...error(
-      file,
-      "",
-      "unused-brand",
-      "The deck folder has brand files, but deck.json names no brand, so none of it is used.",
-      `Add "brand": "${id}" to deck.json to use it, or delete brand.json and the templates from the brand folder.`,
-    ),
-    severity,
-  };
-}
+export { unusedBrand };
 
 /**
  * Reads a deck's brand against its deck.json: a deck that names a brand must have its files, and one that names none
