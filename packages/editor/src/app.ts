@@ -23,6 +23,7 @@ import type { DraftNotice, EditorStore } from "./store.ts";
 import { createStoryboard } from "./storyboard.ts";
 import { checksByScene } from "./storyboardview.ts";
 import { createStrip } from "./strip.ts";
+import { createTableEditing } from "./tablecells.ts";
 import { IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
 import { createToolbar } from "./toolbar.ts";
 
@@ -350,6 +351,16 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const isBlock = (id: string) =>
     session.doc.scenes[selected]?.blocks.some((block) => block.id === id) === true;
 
+  /** What the cell menu does to a table: each action is one change to it, so one step of Undo. */
+  const tables = createTableEditing({
+    scene: () => selected,
+    apply: (ops) => session.apply(ops),
+    block: (id) => session.doc.scenes[selected]?.blocks.find((block) => block.id === id),
+    language: () => session.doc.deck.language,
+    spot: (id) => canvas.cellOf(id),
+    problem: showProblem,
+  });
+
   /**
    * What the commands call on. The palette and the right-click menu list the same commands from the same sources, so
    * each does the same thing in the same one undo step, and is listed only while it can be done. `here` is set when the
@@ -405,6 +416,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         if (after === undefined) return;
         const result = session.apply([{ op: "block.move", scene: current.id, id, after }]);
         showProblem(result.ok ? undefined : problemOf(result));
+      },
+      cell: () => tables.cell(selectedBlock),
+      editCell(action, at) {
+        if (selectedBlock !== undefined) tables.run(selectedBlock, action, at);
       },
       duplicateScene: (id) => strip.duplicate(id),
       removeScene: (id) => strip.remove(id),
@@ -475,10 +490,19 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         return listCommands(sources({ slot: pointed.slot, at: pointed.at }));
       }
       selectBlock(pointed.id);
+      // The cell pointed at has the keyboard, so the menu and a command that runs both know which cell it is.
+      if (pointed.target === "cell" && pointed.id !== undefined && pointed.cell) {
+        canvas.focusCell(pointed.id, pointed.cell);
+      }
       return listCommands(sources());
     },
     giveBack(pointed, ran) {
       if (pointed.target === "slide" || pointed.id === undefined) return;
+      if (pointed.target === "cell") {
+        // A change to the table drew it again, so the keyboard goes back by the place of the cell and not by the cell.
+        canvas.focusCell(pointed.id, pointed.cell ?? canvas.cellOf(pointed.id) ?? { row: 0, column: 0 });
+        return;
+      }
       const node =
         pointed.target === "scene"
           ? [...strip.element.querySelectorAll<HTMLElement>("button[data-scene]")].find(

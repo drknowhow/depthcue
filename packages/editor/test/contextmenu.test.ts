@@ -527,6 +527,7 @@ describe("right-clicking the empty slide", () => {
       "Paste here",
       "Add a text here",
       "Add a chart here",
+      "Add a table here",
       "Add an image here",
       "Add a claim",
       "-",

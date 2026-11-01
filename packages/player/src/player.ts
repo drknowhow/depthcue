@@ -135,7 +135,7 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     },
     ...(options.onModule ? { onEvent: options.onModule } : {}),
   });
-  const context = () => ({ assetBase: source.assetBase });
+  const context = () => ({ assetBase: source.assetBase, language: source.deck.language });
   const current = (): Scene => source.scenes[position.scene] as Scene;
 
   function applySteps() {

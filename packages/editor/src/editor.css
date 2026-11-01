@@ -709,6 +709,86 @@ body {
   background: color-mix(in srgb, var(--dc-action) 10%, transparent);
 }
 
+/*
+ * A table is a grid of cells that are typed into where they stand. The cell that has the keyboard is outlined, and the
+ * one being typed in shows its field flat on the cell, so the table does not change size under the caret. An empty cell
+ * keeps the height of one with words in it, because there is nothing else to click.
+ */
+.ed-frame .ed-grid :is(th, td) {
+  height: 2.3em;
+  cursor: cell;
+}
+
+.ed-frame .ed-grid :is(th, td):hover {
+  background: color-mix(in srgb, var(--dc-evidence) 10%, transparent);
+}
+
+.ed-frame .ed-grid :is(th, td):focus,
+.ed-frame .ed-grid :is(th, td):focus-within {
+  outline: 2px solid var(--dc-evidence);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--dc-evidence) 10%, transparent);
+}
+
+.ed-frame .ed-grid :is(th, td):has([aria-invalid]) {
+  outline-color: var(--dc-action);
+}
+
+/*
+ * The field of a cell being typed in lies over the cell's own words, which stay in it unseen, and takes its padding and
+ * type, so the words are where they were and the cell has the size they give it. The editor's own style for a field is
+ * more specific than a class, so each thing it sets is set again here.
+ */
+.ed-frame .ed-grid [data-editing] {
+  position: relative;
+}
+
+.ed-frame .ed-grid .ed-grid-ghost {
+  visibility: hidden;
+  white-space: pre-wrap;
+}
+
+.ed-frame .ed-grid .ed-grid-input,
+.ed-frame .ed-grid .ed-grid-input:focus,
+.ed-frame .ed-grid .ed-grid-input:focus-visible {
+  position: absolute;
+  inset: 0;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: inherit;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: inherit;
+}
+
+/* The columns of a table in its toolbar: what each is called, whether it holds words or numbers, and its unit. */
+.ed-table-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.5rem 4.5rem;
+  align-items: start;
+  gap: var(--dc-space-1);
+}
+
+.ed-table-name {
+  overflow: hidden;
+  padding-top: 0.45rem;
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* A chart's bars are sliders. Each is dragged by its end, which has a grip wider than the bar is when it is empty. */
 .ed-frame .dc-bar[data-slider] {
   position: relative;
@@ -1330,10 +1410,22 @@ body {
  */
 @media (min-width: 761px) and (max-width: 1279px) {
   .ed-app .ed-actions button,
-  .ed-app .ed-actions .ed-link,
+  .ed-app .ed-actions .ed-link {
+    padding-inline: var(--dc-space-2);
+  }
+
+  /*
+   * The quick bar has a button for each kind of block, and a window that has no Space Grotesk draws them in a wider
+   * face. The test for one row runs at 1024 wide in such a face, so the buttons are padded a little closer than the top
+   * bar's, and the bar may come within half the usual gutter of the stage's edge, which leaves it room to spare.
+   */
   .ed-app .ed-quick button,
   .ed-app .ed-quick .ed-button {
-    padding-inline: var(--dc-space-2);
+    padding-inline: calc(var(--dc-space-2) * 0.75);
+  }
+
+  .ed-app .ed-quick {
+    max-width: calc(100% - 2 * var(--dc-space-2));
   }
 
   .ed-quick .ed-kbd {

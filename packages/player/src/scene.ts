@@ -2,10 +2,13 @@ import type { Block, Scene } from "@depthcue/core";
 import { h } from "./dom.ts";
 import { gatedIds } from "./model.ts";
 import { assetUrl, safeUrl } from "./safe.ts";
+import { renderTable } from "./table.ts";
 
 export interface RenderContext {
   /** Where `assets/...` paths resolve from, for example "." or "/decks/q3". */
   assetBase: string;
+  /** The deck's language, so a table writes its numbers with the decimal sign the deck's readers use. */
+  language?: string;
 }
 
 type Source = NonNullable<Scene["sources"]>[number];
@@ -130,12 +133,14 @@ function renderBlock(
       node = h("figure", { class: "dc-figure dc-chart-figure" }, renderChartTable(block));
       break;
     case "table":
+      node = h("figure", { class: "dc-figure dc-table-figure" }, renderTable(block, ctx.language));
+      break;
     case "chart":
       // Until the player draws these, it holds their place with what they are and their title.
       node = h(
         "figure",
-        { class: "dc-figure dc-placeholder", "data-kind": block.type === "chart" ? block.kind : "table" },
-        h("p", { class: "dc-label" }, block.type === "table" ? "Table" : "Chart"),
+        { class: "dc-figure dc-placeholder", "data-kind": block.kind },
+        h("p", { class: "dc-label" }, "Chart"),
         block.title && h("figcaption", {}, block.title),
       );
       break;

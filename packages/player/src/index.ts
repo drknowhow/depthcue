@@ -37,3 +37,4 @@ export type { RenderContext } from "./scene.ts";
 export { renderChartTable, renderScene, renderSources, unitText } from "./scene.ts";
 export type { Look } from "./style.ts";
 export { applyLook, lookKey } from "./style.ts";
+export { numberText, renderTable } from "./table.ts";

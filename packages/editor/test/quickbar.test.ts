@@ -57,6 +57,7 @@ describe("adding to the slide", () => {
     expect(labels).toEqual([
       "Text",
       "Chart",
+      "Table",
       "Image",
       "Clip",
       "Claim",

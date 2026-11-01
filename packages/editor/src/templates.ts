@@ -76,16 +76,17 @@ export function newScene(doc: Doc, layout: Layout): NewScene {
   return { id, title: "New scene", layout, blocks: [heading, body] };
 }
 
-export type NewBlockKind = "text" | "image" | "bar-chart" | "clip";
+export type NewBlockKind = "text" | "image" | "bar-chart" | "clip" | "table";
 
 export const BLOCK_KINDS: ReadonlyArray<{ kind: NewBlockKind; label: string }> = [
   { kind: "text", label: "Text" },
   { kind: "image", label: "Image" },
   { kind: "bar-chart", label: "Bar chart" },
+  { kind: "table", label: "Table" },
   { kind: "clip", label: "Clip" },
 ];
 
-/** True for a kind of block the editor can add. A layout may accept more, such as tables, that it cannot add yet. */
+/** True for a kind of block the editor can add. A layout may accept more, such as the drawn charts, that it cannot add yet. */
 export const isNewBlockKind = (kind: string): kind is NewBlockKind =>
   BLOCK_KINDS.some((entry) => entry.kind === kind);
 
@@ -106,6 +107,18 @@ export function newBlock(scene: Scene, kind: NewBlockKind, asset?: string): Bloc
         data: [
           { label: "First", value: 1 },
           { label: "Second", value: 2 },
+        ],
+      };
+    case "table":
+      // Three columns and three rows to type into, under a header row that names the columns.
+      return {
+        id,
+        type: "table",
+        columns: [{ label: "Column 1" }, { label: "Column 2" }, { label: "Column 3" }],
+        rows: [
+          [null, null, null],
+          [null, null, null],
+          [null, null, null],
         ],
       };
     case "image":
