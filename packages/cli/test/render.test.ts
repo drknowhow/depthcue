@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -154,6 +154,113 @@ describe("finding real problems", () => {
         }
       } finally {
         applyToFolder(folder, [{ op: "deck.set", set: { theme: "paper" } }], rev());
+      }
+    }),
+    60_000,
+  );
+});
+
+describe("the deck's own palette and font pair", () => {
+  const same = (a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }) =>
+    a.r === b.r && a.g === b.g && a.b === b.b;
+  const RESTORE = () => cpSync(join(demo, "deck.json"), join(folder, "deck.json"));
+
+  it(
+    "draws the text and the background in the palette's colors, and in the preset's again once it is taken off",
+    withRenderer(async (r) => {
+      const plain = await r.render("demand", { screenshot: false });
+      const text = { r: 58, g: 16, b: 16 };
+      const bg = { r: 255, g: 255, b: 255 };
+      expect(plain.measure.text.some((sample) => same(sample.fg, text))).toBe(false);
+      const set = applyToFolder(
+        folder,
+        [{ op: "deck.set", set: { palette: { text: "#3a1010", bg: "#ffffff" } } }],
+        rev(),
+      );
+      expect(set, JSON.stringify(set)).toMatchObject({ ok: true });
+      try {
+        const styled = await r.render("demand", { screenshot: false });
+        expect(styled.diagnostics.filter((d) => d.code === "low-contrast")).toEqual([]);
+        const heading = styled.measure.text.find((sample) => same(sample.fg, text));
+        expect(heading, "no text is in the palette's text color").toBeDefined();
+        expect(same((heading as { bg: typeof bg }).bg, bg)).toBe(true);
+      } finally {
+        expect(applyToFolder(folder, [{ op: "deck.set", set: { palette: null } }], rev()).ok).toBe(true);
+      }
+      try {
+        const back = await r.render("demand", { screenshot: false });
+        expect(back.measure.text.some((sample) => same(sample.fg, text))).toBe(false);
+        expect(back.measure.text.some((sample) => same(sample.bg, bg))).toBe(false);
+      } finally {
+        RESTORE();
+      }
+    }),
+    60_000,
+  );
+
+  it(
+    "sets a heading in its pair's weight and lays the same text out in the width of each pair's fonts",
+    withRenderer(async (r) => {
+      // The text is long, so the lines it breaks into depend on how wide each pair's body font runs.
+      const pool = ["the", "measure", "of", "every", "pair", "varies", "with", "its", "letters"];
+      const words = Array.from({ length: 85 }, (_, i) => pool[i % pool.length]).join(" ");
+      const added = applyToFolder(
+        folder,
+        [
+          {
+            op: "scene.add",
+            scene: {
+              id: "wide",
+              title: "Wide",
+              layout: "text-media",
+              blocks: [
+                { id: "wide-heading", type: "text", role: "heading", text: "How wide the words run" },
+                { id: "wide-body", type: "text", role: "body", text: words },
+              ],
+            },
+          },
+        ],
+        rev(),
+      );
+      expect(added, JSON.stringify(added)).toMatchObject({ ok: true });
+      try {
+        const weights: Record<string, number | undefined> = {};
+        const heights: Record<string, number> = {};
+        for (const fonts of ["editorial", "modern", "classic", "technical"] as const) {
+          expect(applyToFolder(folder, [{ op: "deck.set", set: { fonts } }], rev()).ok).toBe(true);
+          const shown = await r.render("wide", { screenshot: false });
+          weights[fonts] = shown.measure.text.find((sample) => sample.text.startsWith("How wide"))?.weight;
+          heights[fonts] = shown.measure.boxes.find((box) => box.id === "wide-body")?.height ?? 0;
+        }
+        // Instrument Serif and Depthcue Classic Serif have one weight, 400; Inter and IBM Plex Sans are set in bold.
+        expect(weights).toEqual({ editorial: 400, modern: 700, classic: 400, technical: 700 });
+        expect(Object.values(heights).every((height) => height > 0)).toBe(true);
+        expect(
+          new Set(Object.values(heights)).size,
+          `four font pairs set the same text to one height: ${JSON.stringify(heights)}`,
+        ).toBeGreaterThan(1);
+      } finally {
+        applyToFolder(folder, [{ op: "scene.remove", id: "wide" }], rev());
+        RESTORE();
+      }
+    }),
+    60_000,
+  );
+
+  it(
+    "refuses to render a deck whose palette leaves text unreadable, and says which colors",
+    withRenderer(async (r) => {
+      // `apply` would refuse this palette, so it is written by hand, as a person editing the file might.
+      const manifest = JSON.parse(readFileSync(join(demo, "deck.json"), "utf8"));
+      writeFileSync(
+        join(folder, "deck.json"),
+        JSON.stringify({ ...manifest, schemaVersion: "0.3", palette: { text: "#f5f2ea" } }),
+      );
+      try {
+        await expect(r.render("opening")).rejects.toThrow(RenderError);
+        await expect(r.render("opening")).rejects.toThrow(/palette/);
+      } finally {
+        RESTORE();
       }
     }),
     60_000,

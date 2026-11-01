@@ -48,6 +48,10 @@ export interface LayoutMeasure {
  * Measures the stage at full reveal after fonts and images are ready.
  */
 export async function measureLayout(): Promise<LayoutMeasure> {
+  // A font file is not requested until a layout uses it, and `fonts.ready` only waits for requests that are under way.
+  // Laying the page out first starts the downloads for the deck's font pair, so the widths measured below are the
+  // widths of the real fonts and not of the fallbacks.
+  void document.body.offsetWidth;
   await document.fonts.ready;
   const images = [...document.querySelectorAll<HTMLImageElement>(".dc-scene img:not(.dc-ghost img)")];
   await Promise.all(images.map((image) => image.decode().catch(() => undefined)));
@@ -382,7 +386,7 @@ export function layoutDiagnostics(
       "low-contrast",
       id,
       `Text in ${id ? `"${id}"` : "the scene"} has a contrast ratio of ${ratio.toFixed(2)}:1; WCAG AA needs ${requiredContrast(sample.fontPx, sample.weight)}:1: "${sample.text}".`,
-      'Colors come from the theme. Try the other theme with deck.set { theme: "ink" } or { theme: "paper" }.',
+      'Colors come from the theme and the deck palette. Try the other theme with deck.set { theme: "ink" } or { theme: "paper" }, or change the palette\'s colors with deck.set { palette: { ... } }.',
     );
   }
 

@@ -2,6 +2,33 @@
 
 /* Depthcue player. DOM and CSS only: layout is container queries, motion is CSS transitions and View Transitions. */
 
+/*
+ * Font pairs. A deck's `fonts` is set as `data-fonts` (see style.ts) on the element that is drawn in it, and the pair
+ * answers by replacing the display and ui stacks tokens.css names for `editorial`, which is the default and so has no
+ * rule here. Data text stays in IBM Plex Mono in every pair. The font files are not named here: packages/player/dist/
+ * fonts has a stylesheet per pair, built from brand/fonts/manifest.json, which a page links and an export copies.
+ * `--dc-display-weight` is the weight headings and claims are set in: Instrument Serif and Depthcue Classic Serif ship
+ * only a regular, so a bold heading in either would be a computed one. Depthcue Classic Serif and Sans are subsets of
+ * Adobe's Source Serif 4 and Source Sans 3, renamed because that license reserves the name "Source".
+ */
+[data-fonts="modern"] {
+  --dc-font-display: "Inter", system-ui, sans-serif;
+  --dc-font-ui: "Inter", system-ui, sans-serif;
+  --dc-display-weight: 700;
+}
+
+[data-fonts="classic"] {
+  --dc-font-display: "Depthcue Classic Serif", "Iowan Old Style", Georgia, serif;
+  --dc-font-ui: "Depthcue Classic Sans", system-ui, sans-serif;
+  --dc-display-weight: 400;
+}
+
+[data-fonts="technical"] {
+  --dc-font-display: "IBM Plex Sans", system-ui, sans-serif;
+  --dc-font-ui: "IBM Plex Sans", system-ui, sans-serif;
+  --dc-display-weight: 700;
+}
+
 .dc-player {
   --dc-focus: var(--dc-evidence);
   position: fixed;
@@ -193,7 +220,7 @@
 .dc-claim {
   margin: 0;
   font-family: var(--dc-font-display);
-  font-weight: 400;
+  font-weight: var(--dc-display-weight, 400);
   line-height: 1.04;
   letter-spacing: -0.012em;
   text-wrap: balance;
@@ -215,7 +242,7 @@
 .dc-quote {
   margin: 0;
   padding-left: 1em;
-  border-left: 0.2em solid var(--dc-color-brand-vermilion);
+  border-left: 0.2em solid var(--dc-action);
   font-family: var(--dc-font-display);
   font-size: 1.8em;
   line-height: 1.2;
@@ -285,7 +312,7 @@
   height: 0.38em;
   margin-bottom: 0.45em;
   border-radius: 50%;
-  background: var(--dc-color-brand-vermilion);
+  background: var(--dc-action);
 }
 
 .dc-scene[data-layout="title"] .dc-body {
@@ -640,7 +667,7 @@
 
 .dc-reading-title {
   margin: 0 0 0.5em;
-  font: 400 clamp(2.2rem, 6vw, 3.4rem) / 1.04 var(--dc-font-display);
+  font: var(--dc-display-weight, 400) clamp(2.2rem, 6vw, 3.4rem) / 1.04 var(--dc-font-display);
   text-wrap: balance;
 }
 
@@ -652,7 +679,7 @@
 
 .dc-reading-scene h2 {
   margin: 0 0 0.6em;
-  font: 400 1.9rem / 1.15 var(--dc-font-display);
+  font: var(--dc-display-weight, 400) 1.9rem / 1.15 var(--dc-font-display);
 }
 
 .dc-reading-scene p {
@@ -975,7 +1002,7 @@
 .dc-pv-next-title {
   margin: 0;
   font-family: var(--dc-font-display);
-  font-weight: 400;
+  font-weight: var(--dc-display-weight, 400);
   line-height: 1.1;
   text-wrap: balance;
 }

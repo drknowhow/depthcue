@@ -17,10 +17,12 @@ import {
   type Diagnostic,
   EXPORT_FORMAT,
   type ExportData,
+  type FontPair,
   type Scene,
+  styleOf,
 } from "@depthcue/core";
 import { openDeck } from "./deck-api.ts";
-import { builtStandaloneDir } from "./serve.ts";
+import { builtFontsDir, builtStandaloneDir } from "./serve.ts";
 
 /** Names the file in the exported folder that lists what the export wrote, so a later export can replace it. */
 export const EXPORT_MARKER = ".depthcue-export";
@@ -45,6 +47,8 @@ export interface ExportRequest {
   notes?: boolean;
   /** Replaces the folder the page's script and styles are copied from. For tests. */
   runtimeDir?: string;
+  /** Replaces the folder the deck's fonts are copied from: a stylesheet per font pair and the files they name. For tests. */
+  fontsDir?: string;
 }
 
 export interface ExportSummary {
@@ -57,6 +61,8 @@ export interface ExportSummary {
   skipped: string[];
   /** Cue maps embedded in the page, by deck-relative path. */
   cueMaps: string[];
+  /** The font pair the page carries. Only this pair's files are copied, so the page weighs what its deck uses. */
+  fonts: FontPair;
   notes: boolean;
   files: number;
   bytes: number;
@@ -72,8 +78,11 @@ const escapeHtml = (text: string) =>
 /** JSON for inside a script element: no `<` can start a closing tag or a comment. */
 const embeddable = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c");
 
+/** Where the fonts sit in an export, and so what a page's stylesheet link for them says. */
+const FONTS_DIR = "fonts";
+
 /** The page. The deck is in it, and the script that shows it sits beside it. */
-function page(data: ExportData): string {
+function page(data: ExportData, fonts: FontPair): string {
   return `<!doctype html>
 <html lang="${escapeHtml(data.deck.language)}">
 <head>
@@ -81,6 +90,7 @@ function page(data: ExportData): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>${escapeHtml(data.deck.title)}</title>
+<link rel="stylesheet" href="${FONTS_DIR}/${fonts}.css">
 <link rel="stylesheet" href="depthcue.css">
 </head>
 <body>
@@ -94,6 +104,31 @@ function page(data: ExportData): string {
 
 const withoutNotes = (scene: Scene): Scene =>
   Object.fromEntries(Object.entries(scene).filter(([key]) => key !== "notes")) as Scene;
+
+/**
+ * The font files a pair's stylesheet names, which sit beside it. The build writes the stylesheet from the font manifest,
+ * so a file it names that is not there, or a `url()` this does not read, would leave a page with a font it cannot load.
+ * Both stop the export instead.
+ */
+function fontStylesheet(fontsDir: string, pair: FontPair): { files: string[] } {
+  const sheet = join(fontsDir, `${pair}.css`);
+  const missing = (what: string) =>
+    new ExportError(
+      "player-not-built",
+      `The font ${what} is missing (${sheet}). Build the player first: pnpm build.`,
+    );
+  if (!existsSync(sheet)) throw missing(`stylesheet for "${pair}"`);
+  const css = readFileSync(sheet, "utf8");
+  const files = [...css.matchAll(/url\("([A-Za-z0-9._-]+\.woff2)"\)/g)].map((match) => match[1] as string);
+  if (files.length === 0 || files.length !== (css.match(/url\(/g) ?? []).length) {
+    throw new ExportError(
+      "player-not-built",
+      `${sheet} names a font file in a form the export does not read. Build the player again: pnpm build.`,
+    );
+  }
+  for (const name of files) if (!existsSync(join(fontsDir, name))) throw missing(`file ${name}`);
+  return { files: [...new Set(files)].sort() };
+}
 
 /** The path as the file system sees it, even when its last parts do not exist yet. */
 function realish(path: string): string {
@@ -176,7 +211,7 @@ function sweep(out: string, stale: readonly string[]) {
 
 /**
  * Exports a deck folder as a folder that opens by double-click: `index.html` with the deck inside it, the
- * script and styles beside it, and only the assets a scene names. Nothing is fetched, so it works from
+ * script and styles beside it, the one font pair the deck uses, and only the assets a scene names. Nothing is fetched, so it works from
  * `file://`, from a USB stick, and with no network. A deck with errors writes nothing.
  */
 export function exportDeck(request: ExportRequest): ExportResult {
@@ -195,6 +230,11 @@ export function exportDeck(request: ExportRequest): ExportResult {
       );
     }
   }
+
+  // The deck's font pair decides which stylesheet goes, and that stylesheet names the files that go with it.
+  const fonts = styleOf(doc.deck).fonts;
+  const fontsDir = request.fontsDir ?? builtFontsDir();
+  const fontSheet = fontStylesheet(fontsDir, fonts);
 
   const out = resolve(request.out ?? `${basename(resolve(request.folder))}-export`);
   const deckDir = realish(request.folder);
@@ -235,8 +275,9 @@ export function exportDeck(request: ExportRequest): ExportResult {
   const skipped = [...doc.assets].filter((path) => !used.has(path) && !Object.hasOwn(files, path)).sort();
 
   const data: ExportData = { format: EXPORT_FORMAT, deck: doc.deck, scenes, files };
-  const html = page(data);
-  const writing = new Set(["index.html", ...runtimeFiles, ...assets]);
+  const html = page(data, fonts);
+  const fontPaths = [`${fonts}.css`, ...fontSheet.files].map((name) => `${FONTS_DIR}/${name}`);
+  const writing = new Set(["index.html", ...runtimeFiles, ...fontPaths, ...assets]);
 
   const stale = claim(outDir, writing);
   mkdirSync(outDir, { recursive: true });
@@ -258,6 +299,11 @@ export function exportDeck(request: ExportRequest): ExportResult {
     copyFileSync(join(runtime, name), join(outDir, name));
     bytes += statSync(join(outDir, name)).size;
   }
+  mkdirSync(join(outDir, FONTS_DIR), { recursive: true });
+  for (const name of [`${fonts}.css`, ...fontSheet.files]) {
+    copyFileSync(join(fontsDir, name), join(outDir, FONTS_DIR, name));
+    bytes += statSync(join(outDir, FONTS_DIR, name)).size;
+  }
   writeFileSync(join(outDir, "index.html"), html);
   bytes += Buffer.byteLength(html);
 
@@ -270,6 +316,7 @@ export function exportDeck(request: ExportRequest): ExportResult {
       assets,
       skipped,
       cueMaps,
+      fonts,
       notes: keepNotes,
       files: writing.size,
       bytes,

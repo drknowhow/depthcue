@@ -18,6 +18,7 @@ import { createModuleHost, type ModuleEvent, type ModuleRegistry, type ModuleSta
 import { renderReading } from "./reading.ts";
 import { assetUrl } from "./safe.ts";
 import { renderScene } from "./scene.ts";
+import { applyLook } from "./style.ts";
 
 export type Mode = "present" | "read";
 
@@ -170,7 +171,7 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     const scene = current();
     const total = source.scenes.length;
     const steps = stepCount(scene);
-    root.dataset.theme = source.deck.theme;
+    applyLook(root, source.deck);
     root.dataset.mode = mode;
     root.dataset.notes = notes && mode === "present" ? "open" : "closed";
     deckTitle.textContent = source.deck.title;

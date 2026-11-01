@@ -43,6 +43,8 @@ export interface CommandSources {
   /** Whether the comments are on the slide, and putting them there or away. */
   commentsShown(): boolean;
   showComments(on: boolean): void;
+  /** Opens the Style section of the Deck popover: the theme preset, the palette and the font pair. */
+  deckStyle?(): void;
   /** What the buttons of the scene bar do. */
   setLead(lead: (typeof LEADS)[number]): void;
   setLayout(layout: Layout): void;
@@ -362,6 +364,19 @@ export function listCommands(from: CommandSources): Command[] {
     section: "view",
     run: () => from.showComments(!from.commentsShown()),
   });
+  const deckStyle = from.deckStyle;
+  if (deckStyle) {
+    add({
+      id: "deck-style",
+      title: "Open the deck style: preset, colors and fonts",
+      group: "Deck",
+      words: "theme palette color swatch font typeface paper ink appearance look",
+      targets: ["slide"],
+      label: "Deck style",
+      section: "view",
+      run: deckStyle,
+    });
+  }
   // The scene in the strip. Right-clicking a scene chooses it, so these act on the scene on show, like the rest.
   const order = session.doc.deck.scenes;
   const at = order.indexOf(sceneId);

@@ -1,34 +1,39 @@
 import type { Scene } from "@depthcue/core";
-import { h, renderScene } from "@depthcue/player";
+import { applyLook, h, type Look, renderScene } from "@depthcue/player";
 
 /** A thumbnail draws the real slide at this width and scales it down, so it shows the true layout. editor.css sets the same size. */
 const STAGE_WIDTH = 1280;
 /** How many thumbnails are drawn before the browser gets to paint, so a long deck never blocks a frame. */
 const DRAWN_PER_FRAME = 2;
 
-/** What a thumbnail was last drawn from. A different scene object, or theme, means it is out of date. */
+/**
+ * What a thumbnail was last drawn from. A different scene object, or look, means it is out of date. The look is the
+ * deck's theme, palette and fonts as one `lookKey`, so a change to any of the three draws every thumbnail again.
+ */
 export interface Drawn {
   scene: Scene;
-  theme: string;
+  look: string;
 }
 
-export const isStale = (drawn: Drawn | undefined, scene: Scene, theme: string) =>
-  drawn === undefined || drawn.scene !== scene || drawn.theme !== theme;
+export const isStale = (drawn: Drawn | undefined, scene: Scene, look: string) =>
+  drawn === undefined || drawn.scene !== scene || drawn.look !== look;
 
 /**
  * The slide as a picture: the real scene at full size, inert so nothing in it takes focus or a click, to be scaled by
  * the `--thumb-k` of whatever holds it. The strip and the storyboard both draw it, so they show the same thing.
  */
-export function thumbnailFrame(scene: Scene, theme: string): HTMLElement {
+export function thumbnailFrame(scene: Scene, look: Look): HTMLElement {
   const view = h("div", { class: "dc-view" }, renderScene(scene, { assetBase: "" }));
   for (const node of view.querySelectorAll<HTMLElement>("[data-gated]")) node.dataset.revealed = "true";
   for (const video of view.querySelectorAll("video")) video.controls = false;
   for (const image of view.querySelectorAll("img")) image.loading = "lazy";
-  return h(
+  const frame = h(
     "div",
-    { class: "dc-player ed-thumb-frame", "data-theme": theme, inert: true },
+    { class: "dc-player ed-thumb-frame", inert: true },
     h("div", { class: "dc-stage" }, view),
   );
+  applyLook(frame, look);
+  return frame;
 }
 
 /** The slide is drawn at a fixed size, so the scale that fits the thumbnails' width is set on the element that holds them. */

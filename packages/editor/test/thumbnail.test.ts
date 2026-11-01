@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import type { Scene } from "@depthcue/core";
 import { memoryDraftStore } from "@depthcue/core";
+import { lookKey } from "@depthcue/player";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { openStore } from "../src/store.ts";
 import { createDrawQueue, fitThumbnails, isStale, thumbnailFrame } from "../src/thumbnail.ts";
@@ -17,10 +18,27 @@ describe("isStale", () => {
   it("is true until a scene is drawn, and for another scene or another theme", async () => {
     const scene = await sceneOf("opening");
     const other = await sceneOf("method");
-    expect(isStale(undefined, scene, "paper")).toBe(true);
-    expect(isStale({ scene, theme: "paper" }, scene, "paper")).toBe(false);
-    expect(isStale({ scene, theme: "paper" }, other, "paper")).toBe(true);
-    expect(isStale({ scene, theme: "paper" }, scene, "ink")).toBe(true);
+    const paper = lookKey({ theme: "paper" });
+    expect(isStale(undefined, scene, paper)).toBe(true);
+    expect(isStale({ scene, look: paper }, scene, paper)).toBe(false);
+    expect(isStale({ scene, look: paper }, other, paper)).toBe(true);
+    expect(isStale({ scene, look: paper }, scene, lookKey({ theme: "ink" }))).toBe(true);
+  });
+
+  it("is true for a changed palette color and for another font pair, and not for the same look written again", async () => {
+    const scene = await sceneOf("opening");
+    const drawn = { scene, look: lookKey({ theme: "paper", palette: { bg: "#ffffff" }, fonts: "modern" }) };
+    expect(
+      isStale(drawn, scene, lookKey({ theme: "paper", palette: { bg: "#ffffff" }, fonts: "modern" })),
+    ).toBe(false);
+    expect(
+      isStale(drawn, scene, lookKey({ theme: "paper", palette: { bg: "#fafafa" }, fonts: "modern" })),
+    ).toBe(true);
+    expect(
+      isStale(drawn, scene, lookKey({ theme: "paper", palette: { bg: "#ffffff" }, fonts: "classic" })),
+    ).toBe(true);
+    expect(isStale(drawn, scene, lookKey({ theme: "paper", palette: { bg: "#ffffff" } }))).toBe(true);
+    expect(isStale(drawn, scene, lookKey({ theme: "paper", fonts: "modern" }))).toBe(true);
   });
 });
 
@@ -34,7 +52,7 @@ describe("thumbnailFrame", () => {
         { id: "talk", type: "clip", source: "assets/talk.mp4", alt: "Someone talking" },
       ],
     };
-    const frame = thumbnailFrame(withClip, "ink");
+    const frame = thumbnailFrame(withClip, { theme: "ink" });
     expect(frame.classList.contains("ed-thumb-frame")).toBe(true);
     expect(frame.getAttribute("data-theme")).toBe("ink");
     expect(frame.hasAttribute("inert")).toBe(true);
@@ -44,8 +62,20 @@ describe("thumbnailFrame", () => {
     for (const image of frame.querySelectorAll("img")) expect(image.loading).toBe("lazy");
   });
 
+  it("draws the deck's palette colors and font pair on the frame, so the picture is in the deck's own look", async () => {
+    const frame = thumbnailFrame(await sceneOf("opening"), {
+      theme: "paper",
+      palette: { bg: "#123456", action: "#aa3300" },
+      fonts: "technical",
+    });
+    expect(frame.dataset.fonts).toBe("technical");
+    expect(frame.style.getPropertyValue("--dc-bg")).toBe("#123456");
+    expect(frame.style.getPropertyValue("--dc-action")).toBe("#aa3300");
+    expect(frame.style.getPropertyValue("--dc-text")).toBe("");
+  });
+
   it("shows a step that is still to come as if it had come", async () => {
-    const frame = thumbnailFrame(await sceneOf("demand"), "paper");
+    const frame = thumbnailFrame(await sceneOf("demand"), { theme: "paper" });
     for (const node of frame.querySelectorAll<HTMLElement>("[data-gated]")) {
       expect(node.dataset.revealed).toBe("true");
     }

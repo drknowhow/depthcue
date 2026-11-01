@@ -123,6 +123,38 @@ Who does what:
 - **MCP.** deck_get and deck_apply now describe the markup, the text fields, tables, charts, the palette and
   `scene.upgrade`. The size test allows 1100 characters per description and 12000 for the tool list.
 
+## Step 3 record: the deck's look
+
+- **Fonts.** `brand/fonts/` holds 32 woff2 files of seven OFL families, listed with source, size and sha256 in
+  `manifest.json`. Editorial is Instrument Serif and Space Grotesk, modern is Inter, classic is Depthcue Classic Serif
+  and Depthcue Classic Sans, technical is IBM Plex Sans; all four set data in IBM Plex Mono, which ships its real
+  SemiBold (600) beside Regular. The player build writes `fonts/<pair>.css` and `all.css` from the manifest, with a
+  `unicode-range` on each file that has one. The serve and editor shells link `all.css`; an export copies the one
+  pair's sheet and the files it names, and opens from `file://`. Files a pair carries: editorial 192 KB, modern
+  252 KB, classic 293 KB, technical 262 KB. A page is sent only the files for the weights and characters it shows,
+  so an English deck gets the Latin 1 file of each weight and none of the others.
+- **Reserved font names.** Adobe's license for Source Serif 4 and Source Sans 3 reserves "Source", so those two ship as
+  Modified Versions under new names, Depthcue Classic Serif and Depthcue Classic Sans: Latin subsets with the name
+  table (IDs 1, 3, 4, 6, 16, 17, 21, 22) renamed, and Adobe's copyright, license and trademark records kept. IBM's
+  license reserves "Plex", so Plex Sans and Plex Mono ship as IBM's own split woff2 files, byte for byte (a file per
+  `unicode-range`, as IBM splits them), which are not Modified Versions and keep their name. Instrument Serif, Space
+  Grotesk and Inter reserve no name; their subsets keep it. Each family's route is in the manifest, and
+  `fonts.test.ts` fails when a renamed file still carries a reserved word, a vendor file differs from its recorded
+  sha256, or a family that reserves a name is not one of these four.
+- **Look.** `applyLook` puts `data-theme`, `data-fonts` and an inline `--dc-<color>` for each color the palette names
+  on the player, presenter, editor canvas and thumbnails. A heading's weight is `--dc-display-weight` (400 for the
+  serifs, 700 for Inter and Plex Sans), so no face is made up by the browser.
+- **A refused palette is not saved.** `apply` refuses any change whose diagnostics hold an error, and `checkManifest`
+  holds `palette-low-contrast`, so a palette that fails contrast never reaches the file. The Style section says so at
+  the swatch and in the editor's hint, and the deck keeps its last good palette. The plan had such a palette saved and
+  shown in the problem ribbon; that needs core to make the code non-blocking in `apply` and `problemsOf` to read
+  `checkPalette`. From Paper a dark `bg` is refused until Ink is chosen, and a preset switch is refused when a
+  palette color would be unreadable on it.
+- **Slide accents follow the deck.** The quote rule and the title dot are drawn in the deck's `action` color, so a
+  palette that sets `action` reaches them. With no palette the preset's action color shows, which is a slightly
+  different red from the brand vermilion they had before. The cue dot in the player's bar is the one use of the brand
+  vermilion `#FF633F` left in the player, because it marks the player and not the slide.
+
 ## Not in this plan
 
 Raw hex colors on a single block, uploading your own fonts, per-block animation, bring-to-front and send-to-back
@@ -135,7 +167,6 @@ Declined in review:
 - A list block instead of `- ` lines: agents write markdown lists well, and a list block can be added later without
   breaking anything.
 - Row-level and cell-level provenance: it belongs to the 0.4 data module in `docs/PLAN.md`.
-
 
 ## Step 4 record: the table block
 

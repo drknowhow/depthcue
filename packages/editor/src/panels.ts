@@ -1,11 +1,16 @@
 import {
   type Block,
   type BlockChanges,
+  FONT_PAIRS,
+  type FontPair,
   type Op,
+  PALETTE_COLORS,
+  type PaletteColor,
   type Scene,
   type SceneChanges,
   type Session,
   STEPS_MAX,
+  styleOf,
   THEMES,
 } from "@depthcue/core";
 import { firstPartyManifests, h } from "@depthcue/player";
@@ -14,6 +19,8 @@ import { removeSource, swapped } from "./cleanup.ts";
 import {
   actionButton,
   checkField,
+  choiceField,
+  colorField,
   type Edits,
   fileButton,
   numberField,
@@ -737,8 +744,34 @@ export function notesPanel(host: PanelHost, current: () => string): Panel {
 
 const THEME_LABEL = { paper: "Paper (light)", ink: "Ink (dark)" } as const;
 
-/** The deck's title, language, theme and what it asks of each module. */
-export function deckPanel(host: PanelHost): Panel {
+/** What each palette color is for, in a person's words. A color the schema adds is a type error here until it is named. */
+const COLOR_LABEL: Record<PaletteColor, string> = {
+  bg: "Background",
+  surface: "Panels and cards",
+  line: "Lines and borders",
+  text: "Text",
+  muted: "Muted text",
+  action: "Accent",
+  evidence: "Evidence and links",
+};
+
+/** The four font pairs, by name and by the fonts they are made of. A pair the schema adds is a type error until it is named. */
+export const FONT_LABEL: Record<FontPair, { label: string; detail: string }> = {
+  editorial: { label: "Editorial", detail: "Instrument Serif and Space Grotesk" },
+  modern: { label: "Modern", detail: "Inter" },
+  classic: { label: "Classic", detail: "Depthcue Classic Serif and Depthcue Classic Sans" },
+  technical: { label: "Technical", detail: "IBM Plex Sans" },
+};
+
+type Palette = Partial<Record<PaletteColor, string>>;
+
+export interface DeckPanel extends Panel {
+  /** Opens the Style section and puts the keyboard in it. */
+  reveal(section: "style"): void;
+}
+
+/** The deck's title, language, style (the theme preset, the palette and the font pair) and what it asks of each module. */
+export function deckPanel(host: PanelHost): DeckPanel {
   const deck = () => host.deck();
   const setModules = (modules: Record<string, string>): Op => ({
     op: "deck.set",
@@ -748,7 +781,16 @@ export function deckPanel(host: PanelHost): Panel {
   const without = (id: string) => Object.fromEntries(Object.entries(modules()).filter(([key]) => key !== id));
   const installed = new Set(firstPartyManifests.map((manifest) => manifest.id));
 
-  const fields = form(
+  // The palette is replaced whole, and an empty one is taken out, so a deck without a palette stays without one.
+  const palette = (): Palette => deck().palette ?? {};
+  const setPalette = (next: Palette): Op => ({
+    op: "deck.set",
+    set: { palette: Object.keys(next).length > 0 ? next : null },
+  });
+  const unpainted = (color: PaletteColor): Palette =>
+    Object.fromEntries(Object.entries(palette()).filter(([key]) => key !== color));
+
+  const top = form(
     () => true,
     () => [
       textField(host.edits, {
@@ -764,13 +806,65 @@ export function deckPanel(host: PanelHost): Panel {
         read: () => deck().language,
         commit: (value) => ({ op: "deck.set", set: { language: value } }),
       }),
+    ],
+  );
+
+  const style = form(
+    () => true,
+    () => [
       selectField(host.edits, {
         key: "panel:deck:theme",
-        label: "Theme",
+        label: "Preset",
         options: THEMES.map((value) => ({ value, label: THEME_LABEL[value] })),
         read: () => deck().theme,
         commit: (value) => ({ op: "deck.set", set: { theme: value as (typeof THEMES)[number] } }),
       }),
+      h(
+        "fieldset",
+        { class: "ed-colors" },
+        h("legend", { class: "ed-label" }, "Colors"),
+        h(
+          "p",
+          { class: "ed-hint-text" },
+          "A swatch changes one color of the preset. A color that would leave text hard to read is refused: to go dark, choose the Ink preset first.",
+        ),
+        ...PALETTE_COLORS.map((color) =>
+          colorField(host.edits, {
+            key: `panel:deck:palette:${color}`,
+            label: COLOR_LABEL[color],
+            read: () => styleOf(deck()).colors[color],
+            commit: (value) => setPalette({ ...palette(), [color]: value }),
+            changed: () => Object.hasOwn(palette(), color),
+            reset: () => setPalette(unpainted(color)),
+            problem: host.problem,
+          }),
+        ),
+        actionButton(
+          "Reset all colors",
+          () => {
+            if (Object.keys(palette()).length > 0) host.run([setPalette({})]);
+          },
+          { "data-field": "panel:deck:palette:reset" },
+        ),
+      ),
+      choiceField(host.edits, {
+        key: "panel:deck:fonts",
+        label: "Fonts",
+        choices: FONT_PAIRS.map((pair) => ({
+          value: pair,
+          label: FONT_LABEL[pair].label,
+          detail: FONT_LABEL[pair].detail,
+          attributes: { "data-fonts": pair },
+        })),
+        read: () => styleOf(deck()).fonts,
+        commit: (value) => ({ op: "deck.set", set: { fonts: value as FontPair } }),
+      }),
+    ],
+  );
+
+  const moduleSettings = form(
+    () => true,
+    () => [
       ...firstPartyManifests.map((manifest) =>
         selectField(host.edits, {
           key: `panel:deck:module:${manifest.id}`,
@@ -805,11 +899,28 @@ export function deckPanel(host: PanelHost): Panel {
         ),
     ],
   );
+
+  // The section stays in place while its contents are drawn again, so a person who opened it keeps it open.
+  const styleSection = h(
+    "details",
+    { class: "ed-tb-section", "data-section": "style" },
+    h("summary", {}, "Style"),
+    style.body,
+  );
+  const body = h("div", { class: "ed-tb-form" }, top.body, styleSection, moduleSettings.body);
   return {
     name: "deck",
     label: "Deck",
-    title: "Deck title, language, theme and modules",
-    body: fields.body,
-    fill: fields.fill,
+    title: "Deck title, language, style and modules",
+    body,
+    fill(live, typing) {
+      top.fill(live, typing);
+      style.fill(live, typing);
+      moduleSettings.fill(live, typing);
+    },
+    reveal() {
+      styleSection.open = true;
+      styleSection.querySelector<HTMLElement>("[data-field]")?.focus();
+    },
   };
 }

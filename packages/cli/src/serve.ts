@@ -48,6 +48,14 @@ export function builtStandaloneDir(): string {
   return join(builtPlayerDir(), "standalone");
 }
 
+/**
+ * The directory holding the deck fonts: a stylesheet for each font pair, `all.css` with every pair, and the files they
+ * name. The pages the server shows link `all.css`; an export copies one pair's stylesheet and its files.
+ */
+export function builtFontsDir(): string {
+  return join(builtPlayerDir(), "fonts");
+}
+
 /** The directory holding the built editor, found through the editor package. */
 export function builtEditorDir(): string {
   const require = createRequire(import.meta.url);
@@ -85,6 +93,7 @@ const SHELL = `<!doctype html>
 <meta name="color-scheme" content="light dark">
 <title>Depthcue</title>
 <link rel="icon" href="${FAVICON}">
+<link rel="stylesheet" href="/_depthcue/fonts/all.css">
 <link rel="stylesheet" href="/_depthcue/player.css">
 </head>
 <body>
@@ -103,6 +112,7 @@ const editorShell = (token: string) => `<!doctype html>
 <meta name="depthcue-token" content="${token}">
 <title>Depthcue editor</title>
 <link rel="icon" href="${FAVICON}">
+<link rel="stylesheet" href="/_depthcue/fonts/all.css">
 <link rel="stylesheet" href="/_depthcue/editor/editor.css">
 </head>
 <body>

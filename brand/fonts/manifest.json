@@ -1,0 +1,653 @@
+{
+  "note": "Where each font file came from and what was done to it. A test checks that every file listed here is present with the size and sha256 given, that no other woff2 sits beside them, that each family's license is here, and that no font that reserves its name goes out under it.",
+  "format": 2,
+  "subset": {
+    "script": "subset.py",
+    "tools": ["fonttools 4.65.0", "brotli 1.2.0"],
+    "howTo": "For a file with route subset or renamed-subset: download the file named under source.download, check its sha256 against sourceSha256 (or archiveSha256 for an archive), and run subset.py with python -I on it; a renamed-subset job carries the rename. For route vendor-unmodified there is nothing to run: the file is the one at source.path in the archive, and its sha256 is source.sourceSha256."
+  },
+  "families": {
+    "Instrument Serif": {
+      "project": "https://github.com/Instrument/instrument-serif",
+      "license": "OFL-1.1",
+      "licenseFile": "InstrumentSerif-OFL.txt",
+      "reservedName": false,
+      "route": "subset",
+      "modified": true,
+      "note": "A Latin subset made with subset.py, so a Modified Version. The license reserves no name, so it keeps its name."
+    },
+    "Space Grotesk": {
+      "project": "https://github.com/floriankarsten/space-grotesk",
+      "license": "OFL-1.1",
+      "licenseFile": "SpaceGrotesk-OFL.txt",
+      "reservedName": false,
+      "route": "subset",
+      "modified": true,
+      "note": "A Latin subset made with subset.py, so a Modified Version. The license reserves no name, so it keeps its name."
+    },
+    "Inter": {
+      "project": "https://github.com/rsms/inter",
+      "license": "OFL-1.1",
+      "licenseFile": "Inter-OFL.txt",
+      "reservedName": false,
+      "route": "subset",
+      "modified": true,
+      "note": "A Latin subset made with subset.py, so a Modified Version. The license reserves no name, so it keeps its name."
+    },
+    "Depthcue Classic Serif": {
+      "originalName": "Source Serif 4",
+      "project": "https://github.com/adobe-fonts/source-serif",
+      "license": "OFL-1.1",
+      "licenseFile": "SourceSerif4-OFL.txt",
+      "reservedName": "Source",
+      "route": "renamed-subset",
+      "modified": true,
+      "note": "A Modified Version of Source Serif 4 4.005R (Adobe): a Latin subset, renamed because the license reserves \"Source\". The family, full, PostScript and unique-id names say Depthcue Classic Serif. The copyright, license and trademark records are Adobe's, as they came."
+    },
+    "Depthcue Classic Sans": {
+      "originalName": "Source Sans 3",
+      "project": "https://github.com/adobe-fonts/source-sans",
+      "license": "OFL-1.1",
+      "licenseFile": "SourceSans3-OFL.txt",
+      "reservedName": "Source",
+      "route": "renamed-subset",
+      "modified": true,
+      "note": "A Modified Version of Source Sans 3 3.052R (Adobe): a Latin subset, renamed because the license reserves \"Source\". The family, full, PostScript and unique-id names say Depthcue Classic Sans. The copyright, license and trademark records are Adobe's, as they came."
+    },
+    "IBM Plex Sans": {
+      "project": "https://github.com/IBM/plex",
+      "license": "OFL-1.1",
+      "licenseFile": "IBMPlexSans-OFL.txt",
+      "reservedName": "Plex",
+      "route": "vendor-unmodified",
+      "modified": false,
+      "note": "IBM's own split woff2, copied byte for byte (each sha256 is the one of the file in IBM's release). Not a Modified Version, so it keeps its name. A file for each unicode-range, as IBM splits them."
+    },
+    "IBM Plex Mono": {
+      "project": "https://github.com/IBM/plex",
+      "license": "OFL-1.1",
+      "licenseFile": "IBMPlexMono-OFL.txt",
+      "reservedName": "Plex",
+      "route": "vendor-unmodified",
+      "modified": false,
+      "note": "IBM's own split woff2, copied byte for byte (each sha256 is the one of the file in IBM's release). Not a Modified Version, so it keeps its name. A file for each unicode-range, as IBM splits them."
+    }
+  },
+  "pairs": {
+    "editorial": {
+      "display": "Instrument Serif",
+      "body": "Space Grotesk",
+      "data": "IBM Plex Mono"
+    },
+    "modern": {
+      "display": "Inter",
+      "body": "Inter",
+      "data": "IBM Plex Mono"
+    },
+    "classic": {
+      "display": "Depthcue Classic Serif",
+      "body": "Depthcue Classic Sans",
+      "data": "IBM Plex Mono"
+    },
+    "technical": {
+      "display": "IBM Plex Sans",
+      "body": "IBM Plex Sans",
+      "data": "IBM Plex Mono"
+    }
+  },
+  "files": [
+    {
+      "file": "InstrumentSerif-Regular.woff2",
+      "family": "Instrument Serif",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 18000,
+      "sha256": "79c151206218f4d14b5ba1b92bdfc4d87720b36dada7cc0931fe2f7811cd3bc8",
+      "source": {
+        "project": "https://github.com/Instrument/instrument-serif",
+        "release": "commit 65c0ef225f386a3c7e87570a4aa9cc0262c2fd81 (2023-04-26)",
+        "download": "https://raw.githubusercontent.com/Instrument/instrument-serif/65c0ef225f386a3c7e87570a4aa9cc0262c2fd81/fonts/ttf/InstrumentSerif-Regular.ttf",
+        "sourceSha256": "498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88"
+      }
+    },
+    {
+      "file": "InstrumentSerif-Italic.woff2",
+      "family": "Instrument Serif",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 18780,
+      "sha256": "0295d139584b49123899553d378302b423784385c94bb07a2161343da223cff1",
+      "source": {
+        "project": "https://github.com/Instrument/instrument-serif",
+        "release": "commit 65c0ef225f386a3c7e87570a4aa9cc0262c2fd81 (2023-04-26)",
+        "download": "https://raw.githubusercontent.com/Instrument/instrument-serif/65c0ef225f386a3c7e87570a4aa9cc0262c2fd81/fonts/ttf/InstrumentSerif-Italic.ttf",
+        "sourceSha256": "08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385"
+      }
+    },
+    {
+      "file": "SpaceGrotesk-Regular.woff2",
+      "family": "Space Grotesk",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 25620,
+      "sha256": "b785025fa32fec72738234ffd989fd3fc71fa04e96e3378e1d205c1cd6abfc83",
+      "source": {
+        "project": "https://github.com/floriankarsten/space-grotesk/releases/tag/2.0.0",
+        "release": "2.0.0 (2020-10-29)",
+        "download": "https://github.com/floriankarsten/space-grotesk/releases/download/2.0.0/SpaceGrotesk-2.0.0.zip",
+        "archiveSha256": "53b415577d4139248555300710bea0d268c7a5be67b93de53b716a9736cabffd",
+        "path": "SpaceGrotesk-2.0.0/ttf/static/SpaceGrotesk-Regular.ttf",
+        "sourceSha256": "5ede28c4425f3fe4830c8f4754b39e9a87a93d0c3baa5e0a9924532aaa8a98bd"
+      }
+    },
+    {
+      "file": "SpaceGrotesk-Bold.woff2",
+      "family": "Space Grotesk",
+      "weight": 700,
+      "style": "normal",
+      "bytes": 24272,
+      "sha256": "1fd02e84ab39707b9d8af12f77d223203d68d8bedf7b8524006c0db2ea127df1",
+      "source": {
+        "project": "https://github.com/floriankarsten/space-grotesk/releases/tag/2.0.0",
+        "release": "2.0.0 (2020-10-29)",
+        "download": "https://github.com/floriankarsten/space-grotesk/releases/download/2.0.0/SpaceGrotesk-2.0.0.zip",
+        "archiveSha256": "53b415577d4139248555300710bea0d268c7a5be67b93de53b716a9736cabffd",
+        "path": "SpaceGrotesk-2.0.0/ttf/static/SpaceGrotesk-Bold.ttf",
+        "sourceSha256": "7209bbb75fc0f5c546a5f5773b0db74ffc6abf04c2148c1105cace5765a96bdb"
+      }
+    },
+    {
+      "file": "Inter-Regular.woff2",
+      "family": "Inter",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 47364,
+      "sha256": "2610d44462988ce9dde250229783b6766e57f918812f1819517f330f5277b34a",
+      "source": {
+        "project": "https://github.com/rsms/inter/releases/tag/v4.1",
+        "release": "4.1 (2024-11-16)",
+        "download": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+        "archiveSha256": "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e",
+        "path": "extras/ttf/Inter-Regular.ttf",
+        "sourceSha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82"
+      }
+    },
+    {
+      "file": "Inter-Italic.woff2",
+      "family": "Inter",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 50748,
+      "sha256": "d12a671256d82fabce7ce3b4e6d9eefe0d17b6f0acba689ffc8a5bb02a21df37",
+      "source": {
+        "project": "https://github.com/rsms/inter/releases/tag/v4.1",
+        "release": "4.1 (2024-11-16)",
+        "download": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+        "archiveSha256": "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e",
+        "path": "extras/ttf/Inter-Italic.ttf",
+        "sourceSha256": "bbc051dd204b5019a1aa0bc0ae2aa8a05ab13e7a3f979fa357631dc7feb6833a"
+      }
+    },
+    {
+      "file": "Inter-Bold.woff2",
+      "family": "Inter",
+      "weight": 700,
+      "style": "normal",
+      "bytes": 48384,
+      "sha256": "92c7876d2acc01b1bd552acf585c791504fce484a5d7a2c0bd15c672809de378",
+      "source": {
+        "project": "https://github.com/rsms/inter/releases/tag/v4.1",
+        "release": "4.1 (2024-11-16)",
+        "download": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+        "archiveSha256": "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e",
+        "path": "extras/ttf/Inter-Bold.ttf",
+        "sourceSha256": "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+      }
+    },
+    {
+      "file": "DepthcueClassicSerif-Regular.woff2",
+      "family": "Depthcue Classic Serif",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 35152,
+      "sha256": "2d5be85da29cc3d89b83f5745b9a7df30d6b1f10723c9ad8d6eb4efd42385465",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-serif/releases/tag/4.005R",
+        "release": "4.005R (2023-01-20)",
+        "download": "https://github.com/adobe-fonts/source-serif/releases/download/4.005R/source-serif-4.005_Desktop.zip",
+        "archiveSha256": "549fdb8f9a682bd06944298621404969f6de77c2e422ff3b8244a1dcd6a0c425",
+        "path": "source-serif-4.005_Desktop/TTF/SourceSerif4-Regular.ttf",
+        "sourceSha256": "e5a4ee6a3d87bb9024796be390c6771e2a0eb1883dae25effaf57ca01668e24b",
+        "renamedFrom": "Source Serif 4 Regular"
+      }
+    },
+    {
+      "file": "DepthcueClassicSerif-Italic.woff2",
+      "family": "Depthcue Classic Serif",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 33984,
+      "sha256": "b7f7bc9223465453b13e004a7ad69968c323e469363eec31f23ecae6b0eb0e36",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-serif/releases/tag/4.005R",
+        "release": "4.005R (2023-01-20)",
+        "download": "https://github.com/adobe-fonts/source-serif/releases/download/4.005R/source-serif-4.005_Desktop.zip",
+        "archiveSha256": "549fdb8f9a682bd06944298621404969f6de77c2e422ff3b8244a1dcd6a0c425",
+        "path": "source-serif-4.005_Desktop/TTF/SourceSerif4-It.ttf",
+        "sourceSha256": "9d2950a8f1da66e21502c35d646a1d2148e79f9ea43fd2158cf02f5232e7f430",
+        "renamedFrom": "Source Serif 4 Italic"
+      }
+    },
+    {
+      "file": "DepthcueClassicSans-Regular.woff2",
+      "family": "Depthcue Classic Sans",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 39756,
+      "sha256": "58986b05a2596644ca8959ac48c5719894401e2fc7c0b8e971a43660d551acb0",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-sans/releases/tag/3.052R",
+        "release": "3.052R (2023-04-04)",
+        "download": "https://github.com/adobe-fonts/source-sans/releases/download/3.052R/TTF-source-sans-3.052R.zip",
+        "archiveSha256": "1b0dd1ec44b39f1dd98bbd153a1a3815f083639874ddee02c842bd601bad3d21",
+        "path": "TTF/SourceSans3-Regular.ttf",
+        "sourceSha256": "4644c81b86ec9caaa76b634889968ed3c4f4f52f054855933acc7c2b21e53b0f",
+        "renamedFrom": "Source Sans 3 Regular"
+      }
+    },
+    {
+      "file": "DepthcueClassicSans-Italic.woff2",
+      "family": "Depthcue Classic Sans",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 39056,
+      "sha256": "f8f4eb3f6255c2c16d2b4c77e1cbc63ab78f4174199ddcd1e59dd70450f4d0dd",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-sans/releases/tag/3.052R",
+        "release": "3.052R (2023-04-04)",
+        "download": "https://github.com/adobe-fonts/source-sans/releases/download/3.052R/TTF-source-sans-3.052R.zip",
+        "archiveSha256": "1b0dd1ec44b39f1dd98bbd153a1a3815f083639874ddee02c842bd601bad3d21",
+        "path": "TTF/SourceSans3-It.ttf",
+        "sourceSha256": "192afd78f0f54a3c69eaf02d43f4d9a821e9d6110e41d3d25d61a7385cd580e4",
+        "renamedFrom": "Source Sans 3 Italic"
+      }
+    },
+    {
+      "file": "DepthcueClassicSans-Bold.woff2",
+      "family": "Depthcue Classic Sans",
+      "weight": 700,
+      "style": "normal",
+      "bytes": 39464,
+      "sha256": "2dcc916a76df41dd6244e3e5ca67beff4d020a879cdc766bd1f69588c5949bcf",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-sans/releases/tag/3.052R",
+        "release": "3.052R (2023-04-04)",
+        "download": "https://github.com/adobe-fonts/source-sans/releases/download/3.052R/TTF-source-sans-3.052R.zip",
+        "archiveSha256": "1b0dd1ec44b39f1dd98bbd153a1a3815f083639874ddee02c842bd601bad3d21",
+        "path": "TTF/SourceSans3-Bold.ttf",
+        "sourceSha256": "9214b9d95e4231c609802815c2646c98174e2102d0d37f88978a7f8e71006e6a",
+        "renamedFrom": "Source Sans 3 Bold"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Regular-Latin1.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "normal",
+      "range": "latin1",
+      "unicodeRange": "U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02",
+      "bytes": 20984,
+      "sha256": "b5ad7bd39f996144915f0ad9849a90183b27d8c28ad97ed98af5b1bebc51f6b1",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Regular-Latin1.woff2",
+        "sourceSha256": "b5ad7bd39f996144915f0ad9849a90183b27d8c28ad97ed98af5b1bebc51f6b1"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Regular-Latin2.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "normal",
+      "range": "latin2",
+      "unicodeRange": "U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF",
+      "bytes": 15212,
+      "sha256": "fcfa82e0d46ed01a8df38610b451860ca7e7518770c52fdd2a1d136247c40f28",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Regular-Latin2.woff2",
+        "sourceSha256": "fcfa82e0d46ed01a8df38610b451860ca7e7518770c52fdd2a1d136247c40f28"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Regular-Latin3.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "normal",
+      "range": "latin3",
+      "unicodeRange": "U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB",
+      "bytes": 7088,
+      "sha256": "17593bcbd539b6557d297e14d6571cd9a88a10d0b7847d59b2464b7eaac99a60",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Regular-Latin3.woff2",
+        "sourceSha256": "17593bcbd539b6557d297e14d6571cd9a88a10d0b7847d59b2464b7eaac99a60"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Regular-Pi.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "normal",
+      "range": "pi",
+      "unicodeRange": "U+0E3F, U+2000-200D, U+2015, U+2028-2029, U+202F, U+2032-2033, U+2070, U+2074-2079, U+2080-2089, U+2113, U+2116, U+2126, U+212E, U+2150-2151, U+2153-215E, U+2190-2199, U+21A9-21AA, U+21B0-21B3, U+21B6-21B7, U+21BA-21BB, U+21C4, U+21C6, U+2202, U+2206, U+220F, U+2211, U+2215, U+221A, U+221E, U+222B, U+2248, U+2260, U+2264-2265, U+25CA, U+2713, U+274C, U+2B0E-2B11, U+ECE0, U+EFCC, U+FEFF, U+FFFD",
+      "bytes": 7500,
+      "sha256": "1487059829a180f975627e473acc81ff22c2c0faf1da09b314c27eeb41b7f2e4",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Regular-Pi.woff2",
+        "sourceSha256": "1487059829a180f975627e473acc81ff22c2c0faf1da09b314c27eeb41b7f2e4"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Italic-Latin1.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "italic",
+      "range": "latin1",
+      "unicodeRange": "U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02",
+      "bytes": 22924,
+      "sha256": "0a06b98143f3453b81f3c396241a01c6c4cff84c1a77bf0c75b18bd603018506",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Italic-Latin1.woff2",
+        "sourceSha256": "0a06b98143f3453b81f3c396241a01c6c4cff84c1a77bf0c75b18bd603018506"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Italic-Latin2.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "italic",
+      "range": "latin2",
+      "unicodeRange": "U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF",
+      "bytes": 15976,
+      "sha256": "767025302ff3b84169b49d3cacd25b8e980065691b401534ef164c509a2798fe",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Italic-Latin2.woff2",
+        "sourceSha256": "767025302ff3b84169b49d3cacd25b8e980065691b401534ef164c509a2798fe"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Italic-Latin3.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "italic",
+      "range": "latin3",
+      "unicodeRange": "U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB",
+      "bytes": 7580,
+      "sha256": "846a9d18d14329addc26b1cf3a0bc1cb1b5e47c8f349a0ee6423d436efb043a2",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Italic-Latin3.woff2",
+        "sourceSha256": "846a9d18d14329addc26b1cf3a0bc1cb1b5e47c8f349a0ee6423d436efb043a2"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Italic-Pi.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "italic",
+      "range": "pi",
+      "unicodeRange": "U+0E3F, U+2000-200D, U+2015, U+2028-2029, U+202F, U+2032-2033, U+2070, U+2074-2079, U+2080-2089, U+2113, U+2116, U+2126, U+212E, U+2150-2151, U+2153-215E, U+2190-2199, U+21A9-21AA, U+21B0-21B3, U+21B6-21B7, U+21BA-21BB, U+21C4, U+21C6, U+2202, U+2206, U+220F, U+2211, U+2215, U+221A, U+221E, U+222B, U+2248, U+2260, U+2264-2265, U+25CA, U+2713, U+274C, U+2B0E-2B11, U+ECE0, U+EFCC, U+FEFF, U+FFFD",
+      "bytes": 7720,
+      "sha256": "d2311fd41c15475f8af5d1f67449ae4244d8274478b4abb7a4afae776fa0748d",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Italic-Pi.woff2",
+        "sourceSha256": "d2311fd41c15475f8af5d1f67449ae4244d8274478b4abb7a4afae776fa0748d"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Bold-Latin1.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 700,
+      "style": "normal",
+      "range": "latin1",
+      "unicodeRange": "U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02",
+      "bytes": 21256,
+      "sha256": "914f1400f363e636b6f9cc7965aa807ff01e93586e1437617525cba0a62aa78d",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Bold-Latin1.woff2",
+        "sourceSha256": "914f1400f363e636b6f9cc7965aa807ff01e93586e1437617525cba0a62aa78d"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Bold-Latin2.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 700,
+      "style": "normal",
+      "range": "latin2",
+      "unicodeRange": "U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF",
+      "bytes": 15376,
+      "sha256": "56e3282a5068bfabb5c71cb19400695a707e710e03393a67d3bd059156b60933",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Bold-Latin2.woff2",
+        "sourceSha256": "56e3282a5068bfabb5c71cb19400695a707e710e03393a67d3bd059156b60933"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Bold-Latin3.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 700,
+      "style": "normal",
+      "range": "latin3",
+      "unicodeRange": "U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB",
+      "bytes": 7192,
+      "sha256": "39d166f161b025033944af7a9346eb96b9ac821f81310be9e5a9754f42ce648c",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Bold-Latin3.woff2",
+        "sourceSha256": "39d166f161b025033944af7a9346eb96b9ac821f81310be9e5a9754f42ce648c"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Bold-Pi.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 700,
+      "style": "normal",
+      "range": "pi",
+      "unicodeRange": "U+0E3F, U+2000-200D, U+2015, U+2028-2029, U+202F, U+2032-2033, U+2070, U+2074-2079, U+2080-2089, U+2113, U+2116, U+2126, U+212E, U+2150-2151, U+2153-215E, U+2190-2199, U+21A9-21AA, U+21B0-21B3, U+21B6-21B7, U+21BA-21BB, U+21C4, U+21C6, U+2202, U+2206, U+220F, U+2211, U+2215, U+221A, U+221E, U+222B, U+2248, U+2260, U+2264-2265, U+25CA, U+2713, U+274C, U+2B0E-2B11, U+ECE0, U+EFCC, U+FEFF, U+FFFD",
+      "bytes": 7656,
+      "sha256": "be77a1e1773f42f0abf473795b0890da2d098e36f49fe15ef95480acf4be91d8",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/split/woff2/IBMPlexSans-Bold-Pi.woff2",
+        "sourceSha256": "be77a1e1773f42f0abf473795b0890da2d098e36f49fe15ef95480acf4be91d8"
+      }
+    },
+    {
+      "file": "IBMPlexMono-Regular-Latin1.woff2",
+      "family": "IBM Plex Mono",
+      "weight": 400,
+      "style": "normal",
+      "range": "latin1",
+      "unicodeRange": "U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02",
+      "bytes": 17544,
+      "sha256": "e8993d946649b9d01abb1ed06d574b19d8ea3e66b5c3948602db335c44c18e56",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-mono%402.5.0",
+        "release": "@ibm/plex-mono@2.5.0 (2026-06-11)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-mono%402.5.0/ibm-plex-mono.zip",
+        "archiveSha256": "6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c",
+        "path": "ibm-plex-mono/fonts/split/woff2/IBMPlexMono-Regular-Latin1.woff2",
+        "sourceSha256": "e8993d946649b9d01abb1ed06d574b19d8ea3e66b5c3948602db335c44c18e56"
+      }
+    },
+    {
+      "file": "IBMPlexMono-Regular-Latin2.woff2",
+      "family": "IBM Plex Mono",
+      "weight": 400,
+      "style": "normal",
+      "range": "latin2",
+      "unicodeRange": "U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF",
+      "bytes": 13260,
+      "sha256": "8c5e48e4c6ee60346744db62fd8bbf530c21e531e1a1498c3a410ed8f7d3986e",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-mono%402.5.0",
+        "release": "@ibm/plex-mono@2.5.0 (2026-06-11)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-mono%402.5.0/ibm-plex-mono.zip",
+        "archiveSha256": "6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c",
+        "path": "ibm-plex-mono/fonts/split/woff2/IBMPlexMono-Regular-Latin2.woff2",
+        "sourceSha256": "8c5e48e4c6ee60346744db62fd8bbf530c21e531e1a1498c3a410ed8f7d3986e"
+      }
+    },
+    {
+      "file": "IBMPlexMono-Regular-Latin3.woff2",
+      "family": "IBM Plex Mono",
+      "weight": 400,
+      "style": "normal",
+      "range": "latin3",
+      "unicodeRange": "U+0102-0103, U+01CD-01DC, U+1E0C-1E0D, U+1E12-1E13, U+1E24-1E25, U+1E36-1E37, U+1E3C-1E3D, U+1E40-1E47, U+1E4A-1E4B, U+1E62-1E63, U+1E6C-1E6D, U+1E70-1E71, U+1E92-1E93, U+1EA0-1EF9, U+20AB",
+      "bytes": 7732,
+      "sha256": "1ff2d301f841079fa2ad3908cfb34a60edd80966e8c9dd3b82d8a8ec8e4df947",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-mono%402.5.0",
+        "release": "@ibm/plex-mono@2.5.0 (2026-06-11)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-mono%402.5.0/ibm-plex-mono.zip",
+        "archiveSha256": "6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c",
+        "path": "ibm-plex-mono/fonts/split/woff2/IBMPlexMono-Regular-Latin3.woff2",
+        "sourceSha256": "1ff2d301f841079fa2ad3908cfb34a60edd80966e8c9dd3b82d8a8ec8e4df947"
+      }
+    },
+    {
+      "file": "IBMPlexMono-Regular-Pi.woff2",
+      "family": "IBM Plex Mono",
+      "weight": 400,
+      "style": "normal",
+      "range": "pi",
+      "unicodeRange": "U+03C0, U+0E3F, U+2000-200D, U+2010-2012, U+2015, U+2028-2029, U+202F, U+2032-2033, U+203E, U+205F, U+2070, U+2074-2079, U+2080-2089, U+2113, U+2116, U+2126, U+212E, U+2150-2151, U+2153-215E, U+2190-2199, U+21A9-21AA, U+21B0-21B3, U+21B6-21B7, U+21BA-21BB, U+21C4, U+21C6, U+2202, U+2206, U+220F, U+2211, U+2215, U+2219-221A, U+221E, U+222B, U+2236, U+2248, U+2260, U+2264-2265, U+2400-2421, U+2500-259F, U+25CA, U+2713, U+274C, U+2B0E-2B11, U+3000, U+FEFF, U+FFFD",
+      "bytes": 13780,
+      "sha256": "b8002770aa636f544ba43e124da6a227301769754f295eae26e16475b469c767",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-mono%402.5.0",
+        "release": "@ibm/plex-mono@2.5.0 (2026-06-11)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-mono%402.5.0/ibm-plex-mono.zip",
+        "archiveSha256": "6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c",
+        "path": "ibm-plex-mono/fonts/split/woff2/IBMPlexMono-Regular-Pi.woff2",
+        "sourceSha256": "b8002770aa636f544ba43e124da6a227301769754f295eae26e16475b469c767"
+      }
+    },
+    {
+      "file": "IBMPlexMono-SemiBold-Latin1.woff2",
+      "family": "IBM Plex Mono",
+      "weight": 600,
+      "style": "normal",
+      "range": "latin1",
+      "unicodeRange": "U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02",
+      "bytes": 17872,
+      "sha256": "b7acd05041ab65f3b7039e218ddd893065e11a07e85ea85019473152a51b6b7d",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-mono%402.5.0",
+        "release": "@ibm/plex-mono@2.5.0 (2026-06-11)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-mono%402.5.0/ibm-plex-mono.zip",
+        "archiveSha256": "6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c",
+        "path": "ibm-plex-mono/fonts/split/woff2/IBMPlexMono-SemiBold-Latin1.woff2",
+        "sourceSha256": "b7acd05041ab65f3b7039e218ddd893065e11a07e85ea85019473152a51b6b7d"
+      }
+    },
+    {
+      "file": "IBMPlexMono-SemiBold-Latin2.woff2",
+      "family": "IBM Plex Mono",
+      "weight": 600,
+      "style": "normal",
+      "range": "latin2",
+      "unicodeRange": "U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF",
+      "bytes": 13556,
+      "sha256": "68730f933dc5bbd8b011abaf59fdc151bd1eeb8461979aafa84c14c33f5869d2",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-mono%402.5.0",
+        "release": "@ibm/plex-mono@2.5.0 (2026-06-11)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-mono%402.5.0/ibm-plex-mono.zip",
+        "archiveSha256": "6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c",
+        "path": "ibm-plex-mono/fonts/split/woff2/IBMPlexMono-SemiBold-Latin2.woff2",
+        "sourceSha256": "68730f933dc5bbd8b011abaf59fdc151bd1eeb8461979aafa84c14c33f5869d2"
+      }
+    },
+    {
+      "file": "IBMPlexMono-SemiBold-Latin3.woff2",
+      "family": "IBM Plex Mono",
+      "weight": 600,
+      "style": "normal",
+      "range": "latin3",
+      "unicodeRange": "U+0102-0103, U+01CD-01DC, U+1E0C-1E0D, U+1E12-1E13, U+1E24-1E25, U+1E36-1E37, U+1E3C-1E3D, U+1E40-1E47, U+1E4A-1E4B, U+1E62-1E63, U+1E6C-1E6D, U+1E70-1E71, U+1E92-1E93, U+1EA0-1EF9, U+20AB",
+      "bytes": 8016,
+      "sha256": "96389e2f2e73a872859cd9b62e4fd1a86883af5a45a7ee44a81690f66ff7a1f5",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-mono%402.5.0",
+        "release": "@ibm/plex-mono@2.5.0 (2026-06-11)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-mono%402.5.0/ibm-plex-mono.zip",
+        "archiveSha256": "6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c",
+        "path": "ibm-plex-mono/fonts/split/woff2/IBMPlexMono-SemiBold-Latin3.woff2",
+        "sourceSha256": "96389e2f2e73a872859cd9b62e4fd1a86883af5a45a7ee44a81690f66ff7a1f5"
+      }
+    },
+    {
+      "file": "IBMPlexMono-SemiBold-Pi.woff2",
+      "family": "IBM Plex Mono",
+      "weight": 600,
+      "style": "normal",
+      "range": "pi",
+      "unicodeRange": "U+03C0, U+0E3F, U+2000-200D, U+2010-2012, U+2015, U+2028-2029, U+202F, U+2032-2033, U+203E, U+205F, U+2070, U+2074-2079, U+2080-2089, U+2113, U+2116, U+2126, U+212E, U+2150-2151, U+2153-215E, U+2190-2199, U+21A9-21AA, U+21B0-21B3, U+21B6-21B7, U+21BA-21BB, U+21C4, U+21C6, U+2202, U+2206, U+220F, U+2211, U+2215, U+2219-221A, U+221E, U+222B, U+2236, U+2248, U+2260, U+2264-2265, U+2400-2421, U+2500-259F, U+25CA, U+2713, U+274C, U+2B0E-2B11, U+3000, U+FEFF, U+FFFD",
+      "bytes": 13872,
+      "sha256": "1637166246d386507b1351d59ddda93b732f781d06c0a6574e486104a00897b1",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-mono%402.5.0",
+        "release": "@ibm/plex-mono@2.5.0 (2026-06-11)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-mono%402.5.0/ibm-plex-mono.zip",
+        "archiveSha256": "6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c",
+        "path": "ibm-plex-mono/fonts/split/woff2/IBMPlexMono-SemiBold-Pi.woff2",
+        "sourceSha256": "1637166246d386507b1351d59ddda93b732f781d06c0a6574e486104a00897b1"
+      }
+    }
+  ]
+}

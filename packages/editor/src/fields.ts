@@ -172,6 +172,147 @@ export function selectField(edits: Edits, options: SelectFieldOptions): HTMLElem
     : labelled(options.label, undefined, control, line);
 }
 
+export interface ColorFieldOptions {
+  key: string;
+  label: string;
+  /** The color the deck is drawn with now, as `#rrggbb`. */
+  read(): string;
+  commit(value: string): Op;
+  /** Whether the deck names this color itself. Only then is there a reset to show. */
+  changed(): boolean;
+  /** The operation that puts the color back to what the preset has. */
+  reset(): Op;
+  /** Says a refusal where the person is looking beyond this field, or clears it. */
+  problem?(text: string | undefined): void;
+}
+
+/**
+ * A color swatch: the native color input, the name of the color, its hex, and a reset while the deck names the color
+ * itself. Dragging in the picker is one undo step, however many colors it passes through. A color the deck refuses, as
+ * one that leaves text unreadable, is said in a line under the swatch and never reaches the deck, and the swatch goes
+ * back to what the deck has when the picker closes.
+ */
+export function colorField(edits: Edits, options: ColorFieldOptions): HTMLElement {
+  const control = h("input", { type: "color", class: "ed-swatch" });
+  const hex = h("code", { class: "ed-color-hex" });
+  const show = (value: string) => {
+    control.value = value;
+    hex.textContent = value;
+  };
+  show(options.read().toLowerCase());
+  dataField(control, options.key);
+  control.setAttribute("aria-label", options.label);
+  const line = problemLine();
+  const reset = h("button", { type: "button", class: "ed-tb-mini ed-color-reset" }, "Reset");
+  reset.setAttribute("aria-label", `Reset ${options.label} to the preset`);
+  reset.setAttribute("data-field", `${options.key}:reset`);
+  reset.hidden = !options.changed();
+  // Each pass of the picker, from opening it to closing it, is a step of its own to undo.
+  let pass = ++visits;
+
+  const say = (text: string | undefined) => {
+    mark(control, line, text);
+    options.problem?.(text);
+  };
+  control.addEventListener("input", () => {
+    hex.textContent = control.value;
+    const result = edits.type([options.commit(control.value)], { coalesce: `field:${options.key}:${pass}` });
+    say(result.ok ? undefined : problemOf(result));
+    if (result.ok) reset.hidden = false;
+  });
+  // A refused color never reached the deck, so show what the deck still says.
+  const settle = () => {
+    if (line.hidden) return;
+    show(options.read().toLowerCase());
+    say(undefined);
+  };
+  control.addEventListener("change", () => {
+    pass = ++visits;
+    settle();
+  });
+  control.addEventListener("blur", settle);
+  reset.addEventListener("click", () => {
+    const result = edits.act([options.reset()]);
+    say(result.ok ? undefined : problemOf(result));
+  });
+  return h(
+    "div",
+    { class: "ed-field ed-color", "data-color": options.key.slice(options.key.lastIndexOf(":") + 1) },
+    h(
+      "div",
+      { class: "ed-color-row" },
+      h("label", { class: "ed-color-pick" }, control, h("span", { class: "ed-color-name" }, options.label)),
+      hex,
+      reset,
+    ),
+    line,
+  );
+}
+
+export interface ChoiceFieldOptions {
+  key: string;
+  label: string;
+  hint?: string;
+  choices: ReadonlyArray<{
+    value: string;
+    label: string;
+    /** A second line that says more about the choice. */
+    detail?: string;
+    /** Set on the choice's own element, so the page's styles can show the choice as it will look. */
+    attributes?: Record<string, string>;
+  }>;
+  read(): string;
+  commit(value: string): Op;
+}
+
+let groups = 0;
+
+/** A few choices of which one holds, as radio buttons. Each choice is a control of its own, found by `key:value`. */
+export function choiceField(edits: Edits, options: ChoiceFieldOptions): HTMLElement {
+  const name = `ed-choice-${++groups}`;
+  const line = problemLine();
+  const current = options.read();
+  const radios = options.choices.map((choice) => {
+    const radio = h("input", { type: "radio", name, value: choice.value });
+    radio.checked = choice.value === current;
+    dataField(radio, `${options.key}:${choice.value}`);
+    const row = h(
+      "label",
+      { class: "ed-choice", ...choice.attributes },
+      radio,
+      h("span", { class: "ed-choice-sample", "aria-hidden": "true" }, "Aa"),
+      h(
+        "span",
+        { class: "ed-choice-text" },
+        h("span", { class: "ed-choice-name" }, choice.label),
+        choice.detail && h("span", { class: "ed-hint-text" }, choice.detail),
+      ),
+    );
+    return { radio, row };
+  });
+  const group = h(
+    "fieldset",
+    { class: "ed-choices" },
+    h("legend", { class: "ed-label" }, options.label),
+    options.hint && h("p", { class: "ed-hint-text" }, options.hint),
+    ...radios.map(({ row }) => row),
+    line,
+  );
+  group.addEventListener("change", (event) => {
+    const picked = radios.find(({ radio }) => radio === event.target);
+    if (!picked) return;
+    const result = edits.act([options.commit(picked.radio.value)]);
+    if (result.ok) {
+      line.hidden = true;
+      return;
+    }
+    for (const { radio } of radios) radio.checked = radio.value === options.read();
+    line.hidden = false;
+    line.textContent = problemOf(result);
+  });
+  return group;
+}
+
 export interface CheckFieldOptions {
   key: string;
   label: string;

@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EXPORT_FORMAT, type ExportData } from "@depthcue/core";
+import { EXPORT_FORMAT, type ExportData, type FontPair } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXPORT_MARKER, ExportError, type ExportRequest, exportDeck } from "../src/export.ts";
 
@@ -22,6 +22,22 @@ const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.u
 let root: string;
 let deck: string;
 let runtime: string;
+let fonts: string;
+
+/**
+ * The font files each pair's stylesheet names, as stand-ins. The pairs share the mono file, as the real ones do, so a
+ * test can tell a pair's own files from the ones every pair has.
+ */
+const FAKE_FONTS: Record<FontPair, string[]> = {
+  editorial: ["EditorialSerif.woff2", "EditorialSans.woff2", "Mono.woff2"],
+  modern: ["ModernSans.woff2", "ModernSansBold.woff2", "Mono.woff2"],
+  classic: ["ClassicSerif.woff2", "ClassicSans.woff2", "Mono.woff2"],
+  technical: ["TechnicalSans.woff2", "Mono.woff2"],
+};
+const sheetOf = (files: readonly string[]) =>
+  files
+    .map((name) => `@font-face {\n  font-family: "${name}";\n  src: url("${name}") format("woff2");\n}\n`)
+    .join("\n");
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "depthcue-export-"));
@@ -32,13 +48,20 @@ beforeEach(() => {
   mkdirSync(runtime);
   writeFileSync(join(runtime, "depthcue.js"), "/* the script */");
   writeFileSync(join(runtime, "depthcue.css"), "/* the styles */");
+  // The font stylesheets and files the build writes, as stand-ins.
+  fonts = join(root, "fonts-src");
+  mkdirSync(fonts);
+  for (const [pair, files] of Object.entries(FAKE_FONTS)) {
+    writeFileSync(join(fonts, `${pair}.css`), sheetOf(files));
+    for (const name of files) writeFileSync(join(fonts, name), `font:${name}`);
+  }
 });
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 const out = () => join(root, "out");
 const run = (extra: Partial<ExportRequest> = {}) =>
-  exportDeck({ folder: deck, out: out(), runtimeDir: runtime, ...extra });
+  exportDeck({ folder: deck, out: out(), runtimeDir: runtime, fontsDir: fonts, ...extra });
 const done = (extra: Partial<ExportRequest> = {}) => {
   const result = run(extra);
   if (!result.ok) throw new Error(`the export failed: ${JSON.stringify(result.diagnostics)}`);
@@ -108,17 +131,32 @@ function addClip(cues: string | null = JSON.stringify({ format: "depthcue-cues/1
   if (cues !== null) write(join(deck, "assets", "intro.cues.json"), cues);
 }
 
+/** The files an export wrote besides its marker, which its summary counts and weighs. */
+const written = () => listing(out()).filter((path) => path !== EXPORT_MARKER);
+const weighed = () => written().reduce((sum, path) => sum + statSync(join(out(), path)).size, 0);
+
+/** What a deck on the default pair, editorial, takes along: its stylesheet and the three files it names. */
+const EDITORIAL = [
+  "fonts/EditorialSans.woff2",
+  "fonts/EditorialSerif.woff2",
+  "fonts/Mono.woff2",
+  "fonts/editorial.css",
+];
+
 describe("what an export holds", () => {
-  it("is a page, its script and styles, and the assets the scenes name", () => {
+  it("is a page, its script and styles, the deck's font pair, and the assets the scenes name", () => {
     const summary = done();
-    expect(listing(out())).toEqual([
-      EXPORT_MARKER,
-      "assets/method.svg",
-      "assets/report.csv",
-      "depthcue.css",
-      "depthcue.js",
-      "index.html",
-    ]);
+    expect(listing(out())).toEqual(
+      [
+        EXPORT_MARKER,
+        "assets/method.svg",
+        "assets/report.csv",
+        "depthcue.css",
+        "depthcue.js",
+        ...EDITORIAL,
+        "index.html",
+      ].sort(),
+    );
     expect(summary).toMatchObject({
       out: out(),
       index: join(out(), "index.html"),
@@ -126,14 +164,11 @@ describe("what an export holds", () => {
       assets: ["assets/method.svg", "assets/report.csv"],
       skipped: [],
       cueMaps: [],
+      fonts: "editorial",
       notes: true,
-      files: 5,
+      files: 9,
     });
-    expect(summary.bytes).toBe(
-      ["assets/method.svg", "assets/report.csv", "depthcue.css", "depthcue.js", "index.html"]
-        .map((path) => statSync(join(out(), path)).size)
-        .reduce((a, b) => a + b),
-    );
+    expect(summary.bytes).toBe(weighed());
   });
 
   it("copies the script, the styles and the assets byte for byte", () => {
@@ -159,6 +194,9 @@ describe("what an export holds", () => {
     done();
     const html = readFileSync(join(out(), "index.html"), "utf8");
     expect(html).toContain('<link rel="stylesheet" href="depthcue.css">');
+    // The fonts come first, so the page's own styles can name them.
+    expect(html.indexOf('<link rel="stylesheet" href="fonts/editorial.css">')).toBeGreaterThan(0);
+    expect(html.indexOf('href="fonts/editorial.css"')).toBeLessThan(html.indexOf('href="depthcue.css"'));
     expect(html).toContain('<script src="depthcue.js"></script>');
     expect(html).not.toContain('type="module"');
     expect(html).toContain('<div id="depthcue"></div>');
@@ -188,12 +226,7 @@ describe("what an export holds", () => {
     const manifest = JSON.parse(readFileSync(join(deck, "deck.json"), "utf8"));
     write(join(deck, "deck.json"), JSON.stringify({ ...manifest, title: "Café, résumé: 日本語 ✓" }));
     const summary = done();
-    const sizes = (path: string) => statSync(join(out(), path)).size;
-    expect(summary.bytes).toBe(
-      ["assets/method.svg", "assets/report.csv", "depthcue.css", "depthcue.js", "index.html"]
-        .map(sizes)
-        .reduce((a, b) => a + b),
-    );
+    expect(summary.bytes).toBe(weighed());
     expect(readFileSync(join(out(), "index.html"), "utf8")).toContain(
       "<title>Café, résumé: 日本語 ✓</title>",
     );
@@ -373,6 +406,96 @@ describe("a deck that has problems", () => {
   });
 });
 
+describe("the fonts of an export", () => {
+  const setFonts = (pair: FontPair | null) => {
+    const manifest = JSON.parse(readFileSync(join(deck, "deck.json"), "utf8"));
+    const { fonts: _drop, ...rest } = manifest;
+    // `fonts` came with schema 0.3, so a deck that names a pair says so.
+    write(
+      join(deck, "deck.json"),
+      JSON.stringify(pair === null ? rest : { ...rest, schemaVersion: "0.3", fonts: pair }),
+    );
+  };
+
+  it("carries the deck's pair and no other: its stylesheet and the files that stylesheet names", () => {
+    setFonts("technical");
+    const summary = done();
+    expect(summary.fonts).toBe("technical");
+    expect(written().filter((path) => path.startsWith("fonts/"))).toEqual([
+      "fonts/Mono.woff2",
+      "fonts/TechnicalSans.woff2",
+      "fonts/technical.css",
+    ]);
+    expect(readFileSync(join(out(), "index.html"), "utf8")).toContain('href="fonts/technical.css"');
+    expect(readFileSync(join(out(), "index.html"), "utf8")).not.toContain("editorial");
+  });
+
+  it("takes the default pair, editorial, when the deck names none", () => {
+    setFonts(null);
+    expect(done().fonts).toBe("editorial");
+    expect(written().filter((path) => path.startsWith("fonts/"))).toEqual(EDITORIAL);
+  });
+
+  it("copies the stylesheet and the font files byte for byte", () => {
+    setFonts("modern");
+    done();
+    expect(readFileSync(join(out(), "fonts", "modern.css"), "utf8")).toBe(sheetOf(FAKE_FONTS.modern));
+    expect(readFileSync(join(out(), "fonts", "ModernSansBold.woff2"), "utf8")).toBe(
+      "font:ModernSansBold.woff2",
+    );
+  });
+
+  it("swaps the old pair's files for the new one's when the deck changes pair, and keeps the shared one", () => {
+    setFonts("classic");
+    done();
+    expect(existsSync(join(out(), "fonts", "ClassicSerif.woff2"))).toBe(true);
+    setFonts("technical");
+    done();
+    expect(written().filter((path) => path.startsWith("fonts/"))).toEqual([
+      "fonts/Mono.woff2",
+      "fonts/TechnicalSans.woff2",
+      "fonts/technical.css",
+    ]);
+  });
+
+  it("says the player is not built, and writes nothing, when the deck's stylesheet is missing", () => {
+    setFonts("modern");
+    rmSync(join(fonts, "modern.css"));
+    const error = failure();
+    expect(error.code).toBe("player-not-built");
+    expect(error.message).toContain("modern");
+    expect(error.message).toContain("pnpm build");
+    expect(existsSync(out())).toBe(false);
+  });
+
+  it("says so, and writes nothing, when a file the stylesheet names is missing", () => {
+    setFonts("modern");
+    rmSync(join(fonts, "ModernSansBold.woff2"));
+    const error = failure();
+    expect(error.code).toBe("player-not-built");
+    expect(error.message).toContain("ModernSansBold.woff2");
+    expect(existsSync(out())).toBe(false);
+  });
+
+  it("refuses a stylesheet that names a file in a way the export does not read, instead of leaving it out", () => {
+    setFonts("modern");
+    writeFileSync(
+      join(fonts, "modern.css"),
+      `${sheetOf(["ModernSans.woff2"])}\n@font-face { src: url(Other.woff2); }`,
+    );
+    const error = failure();
+    expect(error.code).toBe("player-not-built");
+    expect(error.message).toContain("does not read");
+    expect(existsSync(out())).toBe(false);
+  });
+
+  it("does not follow a stylesheet out of the fonts folder", () => {
+    setFonts("modern");
+    writeFileSync(join(fonts, "modern.css"), sheetOf(["../runtime/depthcue.js"]));
+    expect(failure().message).toContain("does not read");
+  });
+});
+
 describe("where it may write", () => {
   it("refuses a folder inside the deck, and the deck folder itself", () => {
     for (const inside of [join(deck, "export"), deck, join(deck, "assets")]) {
@@ -415,7 +538,7 @@ describe("where it may write", () => {
 
   it("allows a sibling whose name starts like the deck's", () => {
     const sibling = join(root, "deck-export");
-    exportDeck({ folder: deck, out: sibling, runtimeDir: runtime });
+    exportDeck({ folder: deck, out: sibling, runtimeDir: runtime, fontsDir: fonts });
     expect(existsSync(join(sibling, "index.html"))).toBe(true);
   });
 
@@ -484,7 +607,9 @@ describe("exporting again", () => {
     dropReport();
     const again = done();
     expect(again.assets).toEqual([]);
-    expect(listing(out())).toEqual([EXPORT_MARKER, "depthcue.css", "depthcue.js", "index.html"]);
+    expect(listing(out())).toEqual(
+      [EXPORT_MARKER, "depthcue.css", "depthcue.js", ...EDITORIAL, "index.html"].sort(),
+    );
     expect(existsSync(join(out(), "assets"))).toBe(false);
   });
 
@@ -527,7 +652,7 @@ describe("exporting again", () => {
     done();
     rmSync(join(out(), "index.html"));
     rmSync(join(out(), "assets", "method.svg"));
-    expect(done().files).toBe(5);
+    expect(done().files).toBe(9);
   });
 
   it("can be replaced after an export that failed part-way, because the marker is written first", () => {
@@ -539,7 +664,7 @@ describe("exporting again", () => {
     expect(existsSync(join(out(), "index.html"))).toBe(false);
     rmSync(join(runtime, "depthcue.js"), { recursive: true });
     writeFileSync(join(runtime, "depthcue.js"), "/* the script */");
-    expect(done().files).toBe(5);
+    expect(done().files).toBe(9);
     expect(existsSync(join(out(), "index.html"))).toBe(true);
   });
 

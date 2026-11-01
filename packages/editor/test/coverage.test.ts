@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { type Block, memoryDraftStore } from "@depthcue/core";
+import { type Block, FONT_PAIRS, memoryDraftStore, PALETTE_COLORS } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Editor, mountEditor } from "../src/app.ts";
 import { type EditorStore, openStore } from "../src/store.ts";
@@ -352,8 +352,32 @@ const WAYS: Record<string, Entry> = {
     reach: () => field(deckPop() as HTMLElement, "panel:deck:language"),
   },
   "deck.theme": {
-    where: "Deck popover, Theme",
+    where: "Deck popover, Style section, Preset",
     reach: () => field(deckPop() as HTMLElement, "panel:deck:theme"),
+  },
+  "deck.palette": {
+    where: "Deck popover, Style section, one color swatch for each palette color and Reset all colors",
+    reach: () =>
+      field(deckPop() as HTMLElement, "panel:deck:palette:reset") &&
+      find(deckPop() as HTMLElement, "input[type='color'][data-field^='panel:deck:palette:']"),
+  },
+  ...Object.fromEntries(
+    PALETTE_COLORS.map((color): [string, Entry] => [
+      `deck.palette.${color}`,
+      {
+        where: `Deck popover, Style section, the ${color} swatch and its Reset`,
+        reach: () =>
+          field(deckPop() as HTMLElement, `panel:deck:palette:${color}`) &&
+          field(deckPop() as HTMLElement, `panel:deck:palette:${color}:reset`),
+      },
+    ]),
+  ),
+  "deck.fonts": {
+    where: "Deck popover, Style section, Fonts: one choice for each font pair",
+    reach: () =>
+      FONT_PAIRS.every((pair) => field(deckPop() as HTMLElement, `panel:deck:fonts:${pair}`))
+        ? find(deckPop() as HTMLElement, "[data-fonts]")
+        : null,
   },
   "deck.scenes": {
     where: "Scene strip: add, move earlier and later, duplicate, delete and drag",
@@ -613,8 +637,6 @@ const WAYS: Record<string, Entry> = {
  * controls. The step that adds a control takes its prefix out of this list and gives each property a way in WAYS.
  */
 const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
-  ["deck.palette", "Step 3, deck style"],
-  ["deck.fonts", "Step 3, deck style"],
   ["scene.blocks<text>.tone", "Step 5, text styles"],
   ["scene.blocks<text>.size", "Step 5, text styles"],
   ["scene.blocks<text>.align", "Step 5, text styles"],
