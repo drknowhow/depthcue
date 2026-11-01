@@ -1,5 +1,5 @@
 import { type Frame, isMarker, type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
-import { h, renderScene } from "@depthcue/player";
+import { applyLook, h, renderScene } from "@depthcue/player";
 import { createBuildBadges } from "./buildbadges.ts";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
 import { type CommentPins, type CommentSurface, createCommentPins } from "./commentpins.ts";
@@ -582,11 +582,8 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
 
       const view = h("div", { class: "dc-view" }, renderScene(scene, { assetBase: "" }));
       for (const node of view.querySelectorAll<HTMLElement>("[data-gated]")) node.dataset.revealed = "true";
-      const frame = h(
-        "div",
-        { class: "dc-player ed-frame", "data-theme": session.doc.deck.theme },
-        h("div", { class: "dc-stage" }, view),
-      );
+      const frame = h("div", { class: "dc-player ed-frame" }, h("div", { class: "dc-stage" }, view));
+      applyLook(frame, session.doc.deck);
       editors.clear();
       for (const field of fieldsOf(scene, view)) wire(field, sceneId);
       wirePicker(scene, view);

@@ -1929,6 +1929,16 @@ body {
   z-index: 5;
 }
 
+/*
+ * The deck popover is as tall as its Style section: it scrolls inside the window and stops above the pill at the foot of
+ * the stage, which would otherwise cover its last rows.
+ */
+.ed-actions .ed-tb-pop {
+  max-height: calc(100dvh - 8rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* Steps and sources fold away under the title so a short popover stays short. */
 .ed-tb-section {
   display: grid;
@@ -1947,6 +1957,110 @@ body {
 
 .ed-tb-section[open] > summary {
   margin-bottom: var(--dc-space-2);
+}
+
+/*
+ * The Style section of the Deck popover: a swatch for each palette color, and the font pairs, each choice set in its
+ * own fonts (player.css gives an element with `data-fonts` that pair's stacks).
+ */
+.ed-colors,
+.ed-choices {
+  display: grid;
+  gap: var(--dc-space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ed-color-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--dc-space-2);
+}
+
+/* `.ed-field label` is a grid, so this has to be as specific to stay a row. */
+.ed-field .ed-color-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--dc-space-2);
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.ed-swatch {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 2px;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-bg);
+  cursor: pointer;
+}
+
+.ed-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.ed-swatch::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--dc-radius-md) - 3px);
+}
+
+.ed-swatch::-moz-color-swatch {
+  border: 0;
+  border-radius: calc(var(--dc-radius-md) - 3px);
+}
+
+.ed-color-hex {
+  color: var(--dc-muted);
+  font: 0.75rem var(--dc-font-mono);
+}
+
+.ed-app .ed-color-reset {
+  min-height: 1.75rem;
+  padding: 0 var(--dc-space-2);
+  font-size: 0.75rem;
+}
+
+.ed-choice {
+  display: grid;
+  grid-template-columns: auto 2.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dc-space-2);
+  padding: var(--dc-space-2) var(--dc-space-3);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  font-family: var(--dc-font-ui);
+  cursor: pointer;
+}
+
+.ed-choice:has(input:checked) {
+  border-color: var(--dc-text);
+  box-shadow: inset 3px 0 var(--dc-action);
+}
+
+.ed-choice:has(input:focus-visible) {
+  outline: 3px solid var(--dc-evidence);
+  outline-offset: 2px;
+}
+
+.ed-choice-sample {
+  font-family: var(--dc-font-display);
+  font-size: 1.5rem;
+  font-weight: var(--dc-display-weight, 400);
+  line-height: 1;
+}
+
+.ed-choice-text {
+  display: grid;
+  min-width: 0;
+}
+
+.ed-choice-name {
+  font-size: 0.9375rem;
 }
 
 /*

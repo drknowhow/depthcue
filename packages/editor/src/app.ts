@@ -147,17 +147,16 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const redo = button("redo", "Redo", redoNow);
   const retry = button("retry", "Try again", () => void store.save());
   retry.hidden = true;
-  const deckChip = popoverChip(
-    deckPanel(
-      panelHost(session, {
-        edits: editsFor("deck"),
-        upload: (file) => store.upload(file),
-        problem: showProblem,
-        close: () => deckChip.close(),
-        openSources: () => sceneBar.open("sources"),
-      }),
-    ),
+  const deckForm = deckPanel(
+    panelHost(session, {
+      edits: editsFor("deck"),
+      upload: (file) => store.upload(file),
+      problem: showProblem,
+      close: () => deckChip.close(),
+      openSources: () => sceneBar.open("sources"),
+    }),
   );
+  const deckChip = popoverChip(deckForm);
   const present = h(
     "a",
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
@@ -412,6 +411,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       moveScene: (id, direction) => strip.move(id, direction),
       commentsShown: () => canvas.comments?.shown ?? false,
       showComments: (on) => canvas.comments?.setShown(on),
+      deckStyle() {
+        if (!deckChip.isOpen) deckChip.open();
+        deckForm.reveal("style");
+      },
       setLead: (lead) => sceneBar.setLead(lead),
       setLayout: (layout) => sceneBar.setLayout(layout),
       autoLayout: () => sceneBar.autoLayout(),

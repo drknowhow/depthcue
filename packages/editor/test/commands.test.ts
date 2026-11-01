@@ -235,6 +235,20 @@ describe("the comments", () => {
   });
 });
 
+describe("the deck style", () => {
+  it("is listed, for the menu on the empty slide, only when the editor can open it, and opens it", () => {
+    expect(ids()).not.toContain("deck-style");
+    const deckStyle = vi.fn();
+    supplied = { ...sources(), deckStyle };
+    const command = get("deck-style");
+    expect(command.targets).toEqual(["slide"]);
+    expect(command.label).toBe("Deck style");
+    expect(command.group).toBe("Deck");
+    command.run();
+    expect(deckStyle).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("this scene", () => {
   it("offers to put every pinned block back only when one is pinned", () => {
     expect(ids()).not.toContain("auto-layout");

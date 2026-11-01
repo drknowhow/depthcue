@@ -10,6 +10,7 @@ import {
 import { h } from "./dom.ts";
 import type { PlayerSource } from "./load.ts";
 import { LEAD_LABEL, nextPosition, stepCount } from "./model.ts";
+import { applyLook } from "./style.ts";
 
 export interface PresenterOptions {
   host: HTMLElement;
@@ -113,7 +114,7 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
   function paint() {
     deckTitle.textContent = source.deck.title;
     document.title = `${source.deck.title} (presenter)`;
-    root.dataset.theme = source.deck.theme;
+    applyLook(root, source.deck);
     const here = scene();
     const holder: Holder | "waiting" = here && shown ? shown.holder : "waiting";
     root.dataset.holder = holder;

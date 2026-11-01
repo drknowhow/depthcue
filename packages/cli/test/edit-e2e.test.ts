@@ -626,6 +626,8 @@ describe("the editor in a real browser", () => {
     await page.locator(".ed-actions [data-tb='deck']").click();
     const pop = page.locator(".ed-actions .ed-tb-pop:not([hidden])");
     await pop.locator("[data-field='panel:deck:title']").fill("Spring review");
+    // The theme is the preset of the Style section, which opens from its heading.
+    await pop.locator("details[data-section='style'] > summary").click();
     await pop.locator("[data-field='panel:deck:theme']").selectOption("ink");
     await saved();
     expect(disk().deck).toMatchObject({ title: "Spring review", theme: "ink" });

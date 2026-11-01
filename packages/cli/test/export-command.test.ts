@@ -59,10 +59,21 @@ describe("depthcue export", () => {
     expect(code).toBe(0);
     expect(lines[0]).toBe(`Exported 3 scenes to ${out()}`);
     expect(lines[1]).toBe(`  open ${join(out(), "index.html")}`);
-    const written = ["assets/method.svg", "assets/report.csv", "depthcue.css", "depthcue.js", "index.html"]
+    // The demo deck is on the default font pair, so it takes that pair's stylesheet and its five font files too.
+    const fonts = readdirSync(join(out(), "fonts"));
+    expect(fonts.filter((name) => name.endsWith(".css"))).toEqual(["editorial.css"]);
+    expect(fonts.filter((name) => name.endsWith(".woff2"))).toHaveLength(5);
+    const written = [
+      "assets/method.svg",
+      "assets/report.csv",
+      "depthcue.css",
+      "depthcue.js",
+      "index.html",
+      ...fonts.map((name) => `fonts/${name}`),
+    ]
       .map((path) => statSync(join(out(), path)).size)
       .reduce((a, b) => a + b);
-    expect(lines[2]).toBe(`  5 files, ${(written / 1024).toFixed(1)} KB: 2 assets, 0 cue maps, notes kept`);
+    expect(lines[2]).toBe(`  11 files, ${(written / 1024).toFixed(1)} KB: 2 assets, 0 cue maps, notes kept`);
     expect(lines).toHaveLength(3);
     expect(existsSync(join(out(), "index.html"))).toBe(true);
     expect(readFileSync(join(out(), "depthcue.js"), "utf8")).toBe(
@@ -208,8 +219,9 @@ describe("depthcue export --json", () => {
       assets: ["assets/method.svg", "assets/report.csv"],
       skipped: [],
       cueMaps: [],
+      fonts: "editorial",
       notes: true,
-      files: 5,
+      files: 11,
       diagnostics: [],
     });
     expect(result.bytes).toBeGreaterThan(0);

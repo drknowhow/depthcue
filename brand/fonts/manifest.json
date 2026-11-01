@@ -1,0 +1,329 @@
+{
+  "note": "Where each font file came from. A test checks that every file listed here is present with the size and sha256 given, that no other woff2 sits beside them, and that each family's license is here.",
+  "format": 1,
+  "subset": {
+    "script": "subset.py",
+    "tools": ["fonttools 4.65.0", "brotli 1.2.0"],
+    "howTo": "Download the file named under source.download, check its sha256 against sourceSha256 (or archiveSha256 for an archive), and run subset.py with python -I on it. The woff2 is the result."
+  },
+  "families": {
+    "Instrument Serif": {
+      "project": "https://github.com/Instrument/instrument-serif",
+      "license": "OFL-1.1",
+      "licenseFile": "InstrumentSerif-OFL.txt",
+      "reservedName": false
+    },
+    "Space Grotesk": {
+      "project": "https://github.com/floriankarsten/space-grotesk",
+      "license": "OFL-1.1",
+      "licenseFile": "SpaceGrotesk-OFL.txt",
+      "reservedName": false
+    },
+    "Inter": {
+      "project": "https://github.com/rsms/inter",
+      "license": "OFL-1.1",
+      "licenseFile": "Inter-OFL.txt",
+      "reservedName": false
+    },
+    "Source Serif 4": {
+      "project": "https://github.com/adobe-fonts/source-serif",
+      "license": "OFL-1.1",
+      "licenseFile": "SourceSerif4-OFL.txt",
+      "reservedName": "Source"
+    },
+    "Source Sans 3": {
+      "project": "https://github.com/adobe-fonts/source-sans",
+      "license": "OFL-1.1",
+      "licenseFile": "SourceSans3-OFL.txt",
+      "reservedName": "Source"
+    },
+    "IBM Plex Sans": {
+      "project": "https://github.com/IBM/plex",
+      "license": "OFL-1.1",
+      "licenseFile": "IBMPlexSans-OFL.txt",
+      "reservedName": "Plex"
+    },
+    "IBM Plex Mono": {
+      "project": "https://github.com/IBM/plex",
+      "license": "OFL-1.1",
+      "licenseFile": "IBMPlexMono-OFL.txt",
+      "reservedName": "Plex"
+    }
+  },
+  "pairs": {
+    "editorial": {
+      "display": "Instrument Serif",
+      "body": "Space Grotesk",
+      "data": "IBM Plex Mono"
+    },
+    "modern": {
+      "display": "Inter",
+      "body": "Inter",
+      "data": "IBM Plex Mono"
+    },
+    "classic": {
+      "display": "Source Serif 4",
+      "body": "Source Sans 3",
+      "data": "IBM Plex Mono"
+    },
+    "technical": {
+      "display": "IBM Plex Sans",
+      "body": "IBM Plex Sans",
+      "data": "IBM Plex Mono"
+    }
+  },
+  "files": [
+    {
+      "file": "InstrumentSerif-Regular.woff2",
+      "family": "Instrument Serif",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 18000,
+      "sha256": "79c151206218f4d14b5ba1b92bdfc4d87720b36dada7cc0931fe2f7811cd3bc8",
+      "source": {
+        "project": "https://github.com/Instrument/instrument-serif",
+        "release": "commit 65c0ef225f386a3c7e87570a4aa9cc0262c2fd81 (2023-04-26)",
+        "download": "https://raw.githubusercontent.com/Instrument/instrument-serif/65c0ef225f386a3c7e87570a4aa9cc0262c2fd81/fonts/ttf/InstrumentSerif-Regular.ttf",
+        "sourceSha256": "498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88"
+      }
+    },
+    {
+      "file": "InstrumentSerif-Italic.woff2",
+      "family": "Instrument Serif",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 18780,
+      "sha256": "0295d139584b49123899553d378302b423784385c94bb07a2161343da223cff1",
+      "source": {
+        "project": "https://github.com/Instrument/instrument-serif",
+        "release": "commit 65c0ef225f386a3c7e87570a4aa9cc0262c2fd81 (2023-04-26)",
+        "download": "https://raw.githubusercontent.com/Instrument/instrument-serif/65c0ef225f386a3c7e87570a4aa9cc0262c2fd81/fonts/ttf/InstrumentSerif-Italic.ttf",
+        "sourceSha256": "08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385"
+      }
+    },
+    {
+      "file": "SpaceGrotesk-Regular.woff2",
+      "family": "Space Grotesk",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 25620,
+      "sha256": "b785025fa32fec72738234ffd989fd3fc71fa04e96e3378e1d205c1cd6abfc83",
+      "source": {
+        "project": "https://github.com/floriankarsten/space-grotesk/releases/tag/2.0.0",
+        "release": "2.0.0 (2020-10-29)",
+        "download": "https://github.com/floriankarsten/space-grotesk/releases/download/2.0.0/SpaceGrotesk-2.0.0.zip",
+        "archiveSha256": "53b415577d4139248555300710bea0d268c7a5be67b93de53b716a9736cabffd",
+        "path": "SpaceGrotesk-2.0.0/ttf/static/SpaceGrotesk-Regular.ttf",
+        "sourceSha256": "5ede28c4425f3fe4830c8f4754b39e9a87a93d0c3baa5e0a9924532aaa8a98bd"
+      }
+    },
+    {
+      "file": "SpaceGrotesk-Bold.woff2",
+      "family": "Space Grotesk",
+      "weight": 700,
+      "style": "normal",
+      "bytes": 24272,
+      "sha256": "1fd02e84ab39707b9d8af12f77d223203d68d8bedf7b8524006c0db2ea127df1",
+      "source": {
+        "project": "https://github.com/floriankarsten/space-grotesk/releases/tag/2.0.0",
+        "release": "2.0.0 (2020-10-29)",
+        "download": "https://github.com/floriankarsten/space-grotesk/releases/download/2.0.0/SpaceGrotesk-2.0.0.zip",
+        "archiveSha256": "53b415577d4139248555300710bea0d268c7a5be67b93de53b716a9736cabffd",
+        "path": "SpaceGrotesk-2.0.0/ttf/static/SpaceGrotesk-Bold.ttf",
+        "sourceSha256": "7209bbb75fc0f5c546a5f5773b0db74ffc6abf04c2148c1105cace5765a96bdb"
+      }
+    },
+    {
+      "file": "Inter-Regular.woff2",
+      "family": "Inter",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 47364,
+      "sha256": "2610d44462988ce9dde250229783b6766e57f918812f1819517f330f5277b34a",
+      "source": {
+        "project": "https://github.com/rsms/inter/releases/tag/v4.1",
+        "release": "4.1 (2024-11-16)",
+        "download": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+        "archiveSha256": "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e",
+        "path": "extras/ttf/Inter-Regular.ttf",
+        "sourceSha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82"
+      }
+    },
+    {
+      "file": "Inter-Italic.woff2",
+      "family": "Inter",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 50748,
+      "sha256": "d12a671256d82fabce7ce3b4e6d9eefe0d17b6f0acba689ffc8a5bb02a21df37",
+      "source": {
+        "project": "https://github.com/rsms/inter/releases/tag/v4.1",
+        "release": "4.1 (2024-11-16)",
+        "download": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+        "archiveSha256": "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e",
+        "path": "extras/ttf/Inter-Italic.ttf",
+        "sourceSha256": "bbc051dd204b5019a1aa0bc0ae2aa8a05ab13e7a3f979fa357631dc7feb6833a"
+      }
+    },
+    {
+      "file": "Inter-Bold.woff2",
+      "family": "Inter",
+      "weight": 700,
+      "style": "normal",
+      "bytes": 48384,
+      "sha256": "92c7876d2acc01b1bd552acf585c791504fce484a5d7a2c0bd15c672809de378",
+      "source": {
+        "project": "https://github.com/rsms/inter/releases/tag/v4.1",
+        "release": "4.1 (2024-11-16)",
+        "download": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+        "archiveSha256": "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e",
+        "path": "extras/ttf/Inter-Bold.ttf",
+        "sourceSha256": "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+      }
+    },
+    {
+      "file": "SourceSerif4-Regular.woff2",
+      "family": "Source Serif 4",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 35136,
+      "sha256": "6ffc0c0c717ea15b25cade1545fa201657bb7ed25be3487fccd350840e87bdb6",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-serif/releases/tag/4.005R",
+        "release": "4.005R (2023-01-20)",
+        "download": "https://github.com/adobe-fonts/source-serif/releases/download/4.005R/source-serif-4.005_Desktop.zip",
+        "archiveSha256": "549fdb8f9a682bd06944298621404969f6de77c2e422ff3b8244a1dcd6a0c425",
+        "path": "source-serif-4.005_Desktop/TTF/SourceSerif4-Regular.ttf",
+        "sourceSha256": "e5a4ee6a3d87bb9024796be390c6771e2a0eb1883dae25effaf57ca01668e24b"
+      }
+    },
+    {
+      "file": "SourceSerif4-Italic.woff2",
+      "family": "Source Serif 4",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 33976,
+      "sha256": "4eb80b0e777360969eb3da538759eee29d19e1a9286cde526a2e972732b977cb",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-serif/releases/tag/4.005R",
+        "release": "4.005R (2023-01-20)",
+        "download": "https://github.com/adobe-fonts/source-serif/releases/download/4.005R/source-serif-4.005_Desktop.zip",
+        "archiveSha256": "549fdb8f9a682bd06944298621404969f6de77c2e422ff3b8244a1dcd6a0c425",
+        "path": "source-serif-4.005_Desktop/TTF/SourceSerif4-It.ttf",
+        "sourceSha256": "9d2950a8f1da66e21502c35d646a1d2148e79f9ea43fd2158cf02f5232e7f430"
+      }
+    },
+    {
+      "file": "SourceSans3-Regular.woff2",
+      "family": "Source Sans 3",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 39756,
+      "sha256": "01543f5d39bf1a6e5aae18cbe873253f5a18cfa1d7bb64c0dd72ce16ebc17a16",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-sans/releases/tag/3.052R",
+        "release": "3.052R (2023-04-04)",
+        "download": "https://github.com/adobe-fonts/source-sans/releases/download/3.052R/TTF-source-sans-3.052R.zip",
+        "archiveSha256": "1b0dd1ec44b39f1dd98bbd153a1a3815f083639874ddee02c842bd601bad3d21",
+        "path": "TTF/SourceSans3-Regular.ttf",
+        "sourceSha256": "4644c81b86ec9caaa76b634889968ed3c4f4f52f054855933acc7c2b21e53b0f"
+      }
+    },
+    {
+      "file": "SourceSans3-Italic.woff2",
+      "family": "Source Sans 3",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 39084,
+      "sha256": "b28f4e723979db00cde25ea6c5c21f1e84161adf7464e436c214e6783e7a0ab7",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-sans/releases/tag/3.052R",
+        "release": "3.052R (2023-04-04)",
+        "download": "https://github.com/adobe-fonts/source-sans/releases/download/3.052R/TTF-source-sans-3.052R.zip",
+        "archiveSha256": "1b0dd1ec44b39f1dd98bbd153a1a3815f083639874ddee02c842bd601bad3d21",
+        "path": "TTF/SourceSans3-It.ttf",
+        "sourceSha256": "192afd78f0f54a3c69eaf02d43f4d9a821e9d6110e41d3d25d61a7385cd580e4"
+      }
+    },
+    {
+      "file": "SourceSans3-Bold.woff2",
+      "family": "Source Sans 3",
+      "weight": 700,
+      "style": "normal",
+      "bytes": 39496,
+      "sha256": "d01fb6e70e1dd35d1d3129613d0f2c2c4683b4e6f517263a4bf4b9d2843dd4ae",
+      "source": {
+        "project": "https://github.com/adobe-fonts/source-sans/releases/tag/3.052R",
+        "release": "3.052R (2023-04-04)",
+        "download": "https://github.com/adobe-fonts/source-sans/releases/download/3.052R/TTF-source-sans-3.052R.zip",
+        "archiveSha256": "1b0dd1ec44b39f1dd98bbd153a1a3815f083639874ddee02c842bd601bad3d21",
+        "path": "TTF/SourceSans3-Bold.ttf",
+        "sourceSha256": "9214b9d95e4231c609802815c2646c98174e2102d0d37f88978a7f8e71006e6a"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Regular.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 22260,
+      "sha256": "2417921f400eb1cdf800a0b85e90534876e348a619aa742760b0a2256f45430d",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/complete/ttf/IBMPlexSans-Regular.ttf",
+        "sourceSha256": "975dcda37d80f038dcd143c22e33ca2d97a0cc5a929aace1c749153b0fe1afa5"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Italic.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 24132,
+      "sha256": "fd37bc579504ab96a6261d7aa69803a62a565c0c47468423ccf8003a950b5de1",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/complete/ttf/IBMPlexSans-Italic.ttf",
+        "sourceSha256": "a9c6ef9942c49e49d11e11a6dacc0b3a087978757e9b22a06b8ac22a6400fb15"
+      }
+    },
+    {
+      "file": "IBMPlexSans-Bold.woff2",
+      "family": "IBM Plex Sans",
+      "weight": 700,
+      "style": "normal",
+      "bytes": 22588,
+      "sha256": "3e74e575682ee2af584738823d0807cdbc4f15ad1624bfb828306a2a30affd45",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans%401.1.0",
+        "release": "@ibm/plex-sans@1.1.0 (2024-11-13)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-sans%401.1.0/ibm-plex-sans.zip",
+        "archiveSha256": "fb365d910566e6d199cc2c15579a7dd9a267128e18431a394ed81f1970c69200",
+        "path": "ibm-plex-sans/fonts/complete/ttf/IBMPlexSans-Bold.ttf",
+        "sourceSha256": "9e6c74a889a700d707613d24548fe4ffa6bc59559a0689d2cf9e133bdcdafb2f"
+      }
+    },
+    {
+      "file": "IBMPlexMono-Regular.woff2",
+      "family": "IBM Plex Mono",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 17688,
+      "sha256": "eb30a300daf6c7f1f3da0218da04442d5c433a8a25270127416b1e28f188e59d",
+      "source": {
+        "project": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-mono%402.5.0",
+        "release": "@ibm/plex-mono@2.5.0 (2026-06-11)",
+        "download": "https://github.com/IBM/plex/releases/download/%40ibm%2Fplex-mono%402.5.0/ibm-plex-mono.zip",
+        "archiveSha256": "6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c",
+        "path": "ibm-plex-mono/fonts/complete/ttf/IBMPlexMono-Regular.ttf",
+        "sourceSha256": "7c6fbddca4b700be918f5f6183d9bd4464fa427fe435f0b480d77fe2bb8c5a43"
+      }
+    }
+  ]
+}

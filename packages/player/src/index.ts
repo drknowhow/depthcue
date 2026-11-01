@@ -35,3 +35,5 @@ export { renderReading } from "./reading.ts";
 export { assetUrl, safeUrl } from "./safe.ts";
 export type { RenderContext } from "./scene.ts";
 export { renderChartTable, renderScene, renderSources, unitText } from "./scene.ts";
+export type { Look } from "./style.ts";
+export { applyLook, lookKey } from "./style.ts";

@@ -1,5 +1,5 @@
 import type { ApplyOptions, Op, Scene, Session } from "@depthcue/core";
-import { h } from "@depthcue/player";
+import { h, lookKey } from "@depthcue/player";
 import { afterWhenMoving } from "./cleanup.ts";
 import type { Count } from "./commentview.ts";
 import { problemOf } from "./fields.ts";
@@ -204,11 +204,12 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     const item = items.get(id);
     const scene = session.doc.scenes[id];
     if (!item || !scene) return;
-    const theme = session.doc.deck.theme;
-    if (!isStale(item.drawn, scene, theme)) return;
+    const { deck } = session.doc;
+    const look = lookKey(deck);
+    if (!isStale(item.drawn, scene, look)) return;
     // The picture itself is inert, so nothing in it can take focus or a click; the thumbnail around it takes them.
-    item.thumb.replaceChildren(thumbnailFrame(scene, theme), item.changes, item.notes);
-    item.drawn = { scene, theme };
+    item.thumb.replaceChildren(thumbnailFrame(scene, deck), item.changes, item.notes);
+    item.drawn = { scene, look };
     measure();
   }
 
@@ -277,7 +278,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       item.remove.title = "Delete scene";
       item.remove.toggleAttribute("disabled", total < 2);
 
-      if (isStale(item.drawn, scene, deck.theme)) {
+      if (isStale(item.drawn, scene, lookKey(deck))) {
         queue.add(id);
         if (item.drawn === undefined) fresh = true;
         else edited = true;

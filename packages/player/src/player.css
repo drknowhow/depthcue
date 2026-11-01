@@ -2,6 +2,32 @@
 
 /* Depthcue player. DOM and CSS only: layout is container queries, motion is CSS transitions and View Transitions. */
 
+/*
+ * Font pairs. A deck's `fonts` is set as `data-fonts` (see style.ts) on the element that is drawn in it, and the pair
+ * answers by replacing the display and ui stacks tokens.css names for `editorial`, which is the default and so has no
+ * rule here. Data text stays in IBM Plex Mono in every pair. The font files are not named here: packages/player/dist/
+ * fonts has a stylesheet per pair, built from brand/fonts/manifest.json, which a page links and an export copies.
+ * `--dc-display-weight` is the weight headings and claims are set in: Instrument Serif and Source Serif 4 ship only a
+ * regular, so a bold heading in either would be a computed one.
+ */
+[data-fonts="modern"] {
+  --dc-font-display: "Inter", system-ui, sans-serif;
+  --dc-font-ui: "Inter", system-ui, sans-serif;
+  --dc-display-weight: 700;
+}
+
+[data-fonts="classic"] {
+  --dc-font-display: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --dc-font-ui: "Source Sans 3", system-ui, sans-serif;
+  --dc-display-weight: 400;
+}
+
+[data-fonts="technical"] {
+  --dc-font-display: "IBM Plex Sans", system-ui, sans-serif;
+  --dc-font-ui: "IBM Plex Sans", system-ui, sans-serif;
+  --dc-display-weight: 700;
+}
+
 .dc-player {
   --dc-focus: var(--dc-evidence);
   position: fixed;
@@ -193,7 +219,7 @@
 .dc-claim {
   margin: 0;
   font-family: var(--dc-font-display);
-  font-weight: 400;
+  font-weight: var(--dc-display-weight, 400);
   line-height: 1.04;
   letter-spacing: -0.012em;
   text-wrap: balance;
@@ -572,7 +598,7 @@
 
 .dc-reading-title {
   margin: 0 0 0.5em;
-  font: 400 clamp(2.2rem, 6vw, 3.4rem) / 1.04 var(--dc-font-display);
+  font: var(--dc-display-weight, 400) clamp(2.2rem, 6vw, 3.4rem) / 1.04 var(--dc-font-display);
   text-wrap: balance;
 }
 
@@ -584,7 +610,7 @@
 
 .dc-reading-scene h2 {
   margin: 0 0 0.6em;
-  font: 400 1.9rem / 1.15 var(--dc-font-display);
+  font: var(--dc-display-weight, 400) 1.9rem / 1.15 var(--dc-font-display);
 }
 
 .dc-reading-scene p {
@@ -907,7 +933,7 @@
 .dc-pv-next-title {
   margin: 0;
   font-family: var(--dc-font-display);
-  font-weight: 400;
+  font-weight: var(--dc-display-weight, 400);
   line-height: 1.1;
   text-wrap: balance;
 }

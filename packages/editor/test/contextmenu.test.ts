@@ -1,4 +1,4 @@
-﻿// @vitest-environment happy-dom
+// @vitest-environment happy-dom
 import { type Block, loadDoc, memoryDraftStore, type Scene, slotOf } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Editor, mountEditor } from "../src/app.ts";
@@ -523,7 +523,7 @@ describe("right-clicking the empty slide", () => {
     expect(context(view()).defaultPrevented).toBe(true);
     expect(editor.blockId).toBeUndefined();
     expect(menu().getAttribute("aria-label")).toBe("Slide menu");
-    expect(labels().slice(0, -1)).toEqual([
+    expect(labels().slice(0, -2)).toEqual([
       "Paste here",
       "Add a text here",
       "Add a chart here",
@@ -534,7 +534,8 @@ describe("right-clicking the empty slide", () => {
       "Lead>",
       "-",
     ]);
-    expect(labels().at(-1)).toMatch(/^(Show|Hide) the comments$/);
+    expect(labels().at(-2)).toMatch(/^(Show|Hide) the comments$/);
+    expect(labels().at(-1)).toBe("Deck style");
   });
 
   it("holds the layouts and the leads in submenus that leave out the one the slide has", () => {

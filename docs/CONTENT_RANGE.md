@@ -123,6 +123,25 @@ Who does what:
 - **MCP.** deck_get and deck_apply now describe the markup, the text fields, tables, charts, the palette and
   `scene.upgrade`. The size test allows 1100 characters per description and 12000 for the tool list.
 
+## Step 3 record: the deck's look
+
+- **Fonts.** `brand/fonts/` holds 16 Latin and Latin Extended woff2 subsets of seven OFL families, listed with source,
+  size and sha256 in `manifest.json` and rebuilt by `subset.py`. Editorial is Instrument Serif and Space Grotesk,
+  modern is Inter, classic is Source Serif 4 and Source Sans 3, technical is IBM Plex Sans; all four set data in IBM
+  Plex Mono. The player build writes `fonts/<pair>.css` and `all.css` from the manifest. The serve and editor shells
+  link `all.css`; an export copies the one pair's sheet and the files it names, and opens from `file://`.
+- **Look.** `applyLook` puts `data-theme`, `data-fonts` and an inline `--dc-<color>` for each color the palette names
+  on the player, presenter, editor canvas and thumbnails. A heading's weight is `--dc-display-weight` (400 for the
+  serifs, 700 for Inter and Plex Sans), so no face is made up by the browser.
+- **A refused palette is not saved.** `apply` refuses any change whose diagnostics hold an error, and `checkManifest`
+  holds `palette-low-contrast`, so a palette that fails contrast never reaches the file. The Style section says so at
+  the swatch and in the editor's hint, and the deck keeps its last good palette. The plan had such a palette saved and
+  shown in the problem ribbon; that needs core to make the code non-blocking in `apply` and `problemsOf` to read
+  `checkPalette`. From Paper a dark `bg` is refused until Ink is chosen, and a preset switch is refused when a
+  palette color would be unreadable on it.
+- **Left as brand constants.** The vermilion accents of the quote rule, title dot and cue dot, and the mono weight
+  600 of editor chrome (only Plex Mono Regular ships, so it is synthesized there).
+
 ## Not in this plan
 
 Raw hex colors on a single block, uploading your own fonts, per-block animation, bring-to-front and send-to-back
