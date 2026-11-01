@@ -2726,6 +2726,190 @@ describe("comments in a real browser", () => {
   });
 });
 
+describe("the storyboard in a real browser", () => {
+  const board = () => page.locator(".ed-board");
+  const opener = () => page.locator("[data-action='storyboard']");
+  /** More scenes than a window holds, so the grid has to scroll. */
+  function addFillers(count: number) {
+    for (let at = 0; at < count; at++) {
+      addScene({
+        id: `sb${at}`,
+        title: `Filler ${at + 1}`,
+        layout: "text-media",
+        blocks: [note(`sb${at}-words`, "Words.")],
+      });
+    }
+  }
+  /** Where the keyboard is among the cards, from 0, or -1 when it is on none. */
+  const focusedAt = () =>
+    page.evaluate(() => {
+      const card = document.activeElement?.closest(".ed-card");
+      return card?.parentElement ? [...card.parentElement.children].indexOf(card) : -1;
+    });
+  const columns = () =>
+    page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector(".ed-board-grid") as Element).gridTemplateColumns.split(" ")
+          .length,
+    );
+  const current = () =>
+    page.locator(".ed-scene-list > li[data-current] .ed-scene").getAttribute("data-scene");
+  /** Loads the editor and presses G once the scenes are drawn, so the key has a listener to reach. */
+  async function openWithG() {
+    await page.goto(url());
+    await page.locator(".ed-scene").first().waitFor({ timeout: 5000 });
+    await page.keyboard.press("g");
+    await board().waitFor({ timeout: 5000 });
+  }
+
+  it("opens from the strip's button, names each scene, and Escape gives the keyboard back to the button", async () => {
+    await page.goto(url());
+    await board().waitFor({ state: "hidden" });
+    await opener().click();
+    await board().waitFor();
+    const deck = disk().deck.scenes;
+    expect(await page.locator(".ed-card").count()).toBe(deck.length);
+    expect(await page.locator(".ed-board-count").textContent()).toBe(`${deck.length} scenes`);
+    // Each card has its picture drawn, and its number, title and lead.
+    await page.waitForFunction(
+      (count) => document.querySelectorAll(".ed-board .ed-thumb-frame").length === count,
+      deck.length,
+    );
+    const titles = await page.locator(".ed-card-name").allTextContents();
+    expect(titles).toEqual(deck.map((id) => disk().scenes[id]?.title));
+    expect(await page.locator(".ed-card-number").allTextContents()).toEqual(
+      deck.map((_, at) => String(at + 1)),
+    );
+    const leads = await page.locator(".ed-pill[data-kind='lead']").allTextContents();
+    expect(leads).toEqual(
+      deck.map(
+        (id) => ({ human: "Human", agent: "Agent", shared: "Shared" })[disk().scenes[id]?.lead ?? "human"],
+      ),
+    );
+    // The scene on show has the keyboard.
+    expect(await focusedAt()).toBe(deck.indexOf((await current()) as string));
+    await page.keyboard.press("Escape");
+    await board().waitFor({ state: "hidden" });
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-action"))).toBe("storyboard");
+    expect(problems).toEqual([]);
+  });
+
+  it("moves over the cards by the rows they are really in, and Enter opens the scene", async () => {
+    addFillers(8);
+    await openWithG();
+    const across = await columns();
+    expect(across).toBeGreaterThan(1);
+    expect(await focusedAt()).toBe(0);
+    await page.keyboard.press("ArrowRight");
+    expect(await focusedAt()).toBe(1);
+    await page.keyboard.press("ArrowDown");
+    expect(await focusedAt()).toBe(1 + across);
+    await page.keyboard.press("ArrowUp");
+    expect(await focusedAt()).toBe(1);
+    await page.keyboard.press("End");
+    const total = await page.locator(".ed-card").count();
+    expect(await focusedAt()).toBe(total - 1);
+    // The last card is brought into view.
+    const inView = await page.evaluate(() => {
+      const grid = (document.querySelector(".ed-board-grid") as HTMLElement).getBoundingClientRect();
+      const last = (document.activeElement as HTMLElement).closest(".ed-card")?.getBoundingClientRect();
+      return last !== undefined && last.top >= grid.top - 1 && last.bottom <= grid.bottom + 1;
+    });
+    expect(inView).toBe(true);
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Enter");
+    await board().waitFor({ state: "hidden" });
+    expect(await current()).toBe(disk().deck.scenes[2]);
+    expect(problems).toEqual([]);
+  });
+
+  it("opens a scene from a click on its picture", async () => {
+    await page.goto(url());
+    await opener().click();
+    await page.locator(".ed-card[data-id='method'] .ed-thumb").click();
+    await board().waitFor({ state: "hidden" });
+    expect(await current()).toBe("method");
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps every picture at the slide's proportions when the deck is longer than the window", async () => {
+    addFillers(14);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await openWithG();
+    const shapes = await page.evaluate(() =>
+      [...document.querySelectorAll(".ed-board .ed-thumb")].map((node) => {
+        const box = node.getBoundingClientRect();
+        return box.height / box.width;
+      }),
+    );
+    expect(shapes.length).toBe(disk().deck.scenes.length);
+    for (const shape of shapes) expect(Math.abs(shape - 9 / 16)).toBeLessThan(0.01);
+    const scrolls = await page.evaluate(() => {
+      const grid = document.querySelector(".ed-board-grid") as HTMLElement;
+      return grid.scrollHeight > grid.clientHeight;
+    });
+    expect(scrolls).toBe(true);
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps the marks of a scene inside its card, at a laptop width and on a phone", async () => {
+    external([
+      { op: "scene.set", id: "method", set: { lead: "agent" } },
+      { op: "block.frame", scene: "method", id: "method-body", frame: { x: 1, y: 30, w: 40, h: 20 } },
+    ]);
+    for (const width of [1024, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      await openWithG();
+      const outside = await page.evaluate(() => {
+        const stray: string[] = [];
+        for (const card of document.querySelectorAll(".ed-card")) {
+          const frame = card.getBoundingClientRect();
+          for (const pill of card.querySelectorAll(".ed-pill")) {
+            const box = pill.getBoundingClientRect();
+            if (box.left < frame.left || box.right > frame.right + 0.5) stray.push(pill.textContent ?? "");
+          }
+        }
+        return stray;
+      });
+      expect(outside).toEqual([]);
+      // The lead comes first and the pinned block last; what sits between depends on the render.
+      const pills = await page.locator(".ed-card[data-id='method'] .ed-pill").allTextContents();
+      expect(pills[0]).toBe("Agent");
+      expect(pills.at(-1)).toBe("1 pinned");
+      const sideways = await page.evaluate(() => {
+        const grid = document.querySelector(".ed-board-grid") as HTMLElement;
+        return grid.scrollWidth > grid.clientWidth;
+      });
+      expect(sideways).toBe(false);
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it("gives nothing to the slide behind it: a T adds no text and Ctrl Z undoes nothing while it is open", async () => {
+    addScene({ id: "ks", title: "Keys", layout: "text-media", blocks: [note("ks-words", "Words.")] });
+    await openScene("ks", "ks-words");
+    await page.keyboard.press("c");
+    await saved();
+    expect(idsOnDisk("ks")).toEqual(["ks-words", "ks-chart"]);
+    await page.keyboard.press("g");
+    await board().waitFor();
+    await page.keyboard.press("t");
+    await page.keyboard.press("Control+z");
+    await page.keyboard.press("Escape");
+    await board().waitFor({ state: "hidden" });
+    // Neither key reached the slide: the chart is still there and no text was added.
+    await saved();
+    expect(idsOnDisk("ks")).toEqual(["ks-words", "ks-chart"]);
+    // With the board shut again the same key is the editor's.
+    await page.keyboard.press("t");
+    await saved();
+    expect(idsOnDisk("ks")).toEqual(["ks-words", "ks-text", "ks-chart"]);
+    expect(problems).toEqual([]);
+  });
+});
+
 describe("layout problems from a real render, in a real browser", () => {
   // The first question starts a second Chrome, so these have more time than the others.
   const SLOW = 45_000;
@@ -2758,6 +2942,31 @@ describe("layout problems from a real render, in a real browser", () => {
       expect(await sentence().textContent()).toContain("taller than the 1280x720 stage");
       // No change to make that is the same every time, so no Fix.
       expect(await ribbon().locator("[data-ribbon='fix']").isHidden()).toBe(true);
+      expect(problems).toEqual([]);
+    },
+    SLOW,
+  );
+
+  it(
+    "shows the storyboard a problem the render found after the board was already open",
+    async () => {
+      const sentenceOf = (n: number) =>
+        `Slide ${n} says what it says at length, so that the audience has to read it. `;
+      const long = (n: number) => sentenceOf(n).repeat(8).slice(0, 590);
+      addScene({
+        id: "kl",
+        title: "Too much text",
+        layout: "text-media",
+        blocks: Array.from({ length: 7 }, (_, n) => note(`kl-body-${n}`, long(n))),
+      });
+      await openScene("kl", "kl-body-0");
+      await page.keyboard.press("g");
+      await page.locator(".ed-board").waitFor();
+      const mark = page.locator(".ed-card[data-id='kl'] .ed-pill[data-kind='check']");
+      // The first question starts a second Chrome, so the answer comes after the board is up.
+      expect(await mark.count()).toBe(0);
+      await mark.waitFor(AWHILE);
+      expect(await mark.textContent()).toMatch(/to check$/);
       expect(problems).toEqual([]);
     },
     SLOW,

@@ -1,15 +1,12 @@
 import type { ApplyOptions, Op, Scene, Session } from "@depthcue/core";
-import { h, renderScene } from "@depthcue/player";
+import { h } from "@depthcue/player";
 import { afterWhenMoving } from "./cleanup.ts";
 import type { Count } from "./commentview.ts";
 import { problemOf } from "./fields.ts";
 import { sortableItems } from "./sortable.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL, newScene, uniqueId } from "./templates.ts";
+import { createDrawQueue, type Drawn, fitThumbnails, isStale, thumbnailFrame } from "./thumbnail.ts";
 
-/** A thumbnail draws the real slide at this width and scales it down, so it shows the true layout. editor.css sets the same size. */
-const STAGE_WIDTH = 1280;
-/** How many thumbnails are drawn before the browser gets to paint, so a long deck never blocks a frame. */
-const DRAWN_PER_FRAME = 2;
 /** How long the edited scene waits for typing to pause before its thumbnail is drawn again. */
 const EDIT_QUIET_MS = 250;
 const SCENE_TITLE_LIMIT = 120;
@@ -21,6 +18,8 @@ export interface StripHooks {
   comments?(): ReadonlyMap<string, Count>;
   /** How many changes since the last review each scene has, read once each time the list is brought up to date. */
   changed?(): ReadonlyMap<string, number>;
+  /** Opens the storyboard. The strip has a button for it only when it is given a way to. */
+  storyboard?(): void;
 }
 
 export interface Strip {
@@ -48,11 +47,8 @@ interface Item {
   duplicate: HTMLButtonElement;
   remove: HTMLButtonElement;
   /** What the thumbnail was last drawn from. A different scene object, or theme, means it is out of date. */
-  drawn: { scene: Scene; theme: string } | undefined;
+  drawn: Drawn | undefined;
 }
-
-const isStale = (item: Item, scene: Scene, theme: string) =>
-  item.drawn === undefined || item.drawn.scene !== scene || item.drawn.theme !== theme;
 
 /** A copy of a scene under a new id. Ids inside a scene only have to be unique within it, so they stay. */
 function copyOf(scene: Scene, taken: ReadonlySet<string>) {
@@ -94,9 +90,24 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     if (run([{ op: "scene.add", scene, after: current }]).ok) hooks.select(scene.id);
   });
 
+  // Every scene on one screen. It sits above the list, so it is found without scrolling to the end of a long deck.
+  let storyboard: HTMLButtonElement | null = null;
+  const openBoard = hooks.storyboard;
+  if (openBoard) {
+    storyboard = h("button", {
+      type: "button",
+      class: "ed-open-board",
+      "data-action": "storyboard",
+      title: "See every scene on one screen",
+    });
+    storyboard.append(h("span", { class: "ed-icon ed-icon-board", "aria-hidden": "true" }), "Storyboard");
+    storyboard.addEventListener("click", () => openBoard());
+  }
+
   const element = h(
     "nav",
     { class: "ed-scenes", "aria-label": "Scenes" },
+    storyboard,
     list,
     h("div", { class: "ed-add-scene" }, layoutChoice, addScene),
     problem,
@@ -174,8 +185,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
 
   // Thumbnails
 
-  const stale = new Set<string>();
-  let frame: number | undefined;
+  const queue = createDrawQueue(draw);
   let quiet: ReturnType<typeof setTimeout> | undefined;
 
   function draw(id: string) {
@@ -183,43 +193,14 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     const scene = session.doc.scenes[id];
     if (!item || !scene) return;
     const theme = session.doc.deck.theme;
-    if (!isStale(item, scene, theme)) return;
-    const view = h("div", { class: "dc-view" }, renderScene(scene, { assetBase: "" }));
-    for (const node of view.querySelectorAll<HTMLElement>("[data-gated]")) node.dataset.revealed = "true";
-    for (const video of view.querySelectorAll("video")) video.controls = false;
-    for (const image of view.querySelectorAll("img")) image.loading = "lazy";
+    if (!isStale(item.drawn, scene, theme)) return;
     // The picture itself is inert, so nothing in it can take focus or a click; the thumbnail around it takes them.
-    item.thumb.replaceChildren(
-      h(
-        "div",
-        { class: "dc-player ed-thumb-frame", "data-theme": theme, inert: true },
-        h("div", { class: "dc-stage" }, view),
-      ),
-      item.changes,
-      item.notes,
-    );
+    item.thumb.replaceChildren(thumbnailFrame(scene, theme), item.changes, item.notes);
     item.drawn = { scene, theme };
     measure();
   }
 
-  function drain() {
-    frame = undefined;
-    for (const id of [...stale].slice(0, DRAWN_PER_FRAME)) {
-      stale.delete(id);
-      draw(id);
-    }
-    if (stale.size > 0) frame = requestAnimationFrame(drain);
-  }
-
-  const kick = () => {
-    if (frame === undefined && stale.size > 0) frame = requestAnimationFrame(drain);
-  };
-
-  /** The slide is drawn at a fixed size, so the scale that fits the thumbnail's width is set on the list. */
-  function measure() {
-    const width = list.querySelector<HTMLElement>(".ed-thumb")?.clientWidth ?? 0;
-    if (width > 0) list.style.setProperty("--thumb-k", String(width / STAGE_WIDTH));
-  }
+  const measure = () => fitThumbnails(list);
   const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : undefined;
   observer?.observe(list);
 
@@ -233,7 +214,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       if (live.has(id)) continue;
       item.li.remove();
       items.delete(id);
-      stale.delete(id);
+      queue.remove(id);
       sortable.remove(id);
     }
 
@@ -284,8 +265,8 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       item.remove.title = "Delete scene";
       item.remove.toggleAttribute("disabled", total < 2);
 
-      if (isStale(item, scene, deck.theme)) {
-        stale.add(id);
+      if (isStale(item.drawn, scene, deck.theme)) {
+        queue.add(id);
         if (item.drawn === undefined) fresh = true;
         else edited = true;
       }
@@ -305,12 +286,12 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     list.dataset.axis = layout.display.includes("flex") && layout.flexDirection.startsWith("row") ? "x" : "y";
 
     // A scene never drawn yet is drawn at once; one being typed into waits for a pause.
-    if (fresh) kick();
+    if (fresh) queue.kick();
     if (edited) {
       if (quiet !== undefined) clearTimeout(quiet);
       quiet = setTimeout(() => {
         quiet = undefined;
-        kick();
+        queue.kick();
       }, EDIT_QUIET_MS);
     }
   }
@@ -321,18 +302,12 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     flush() {
       if (quiet !== undefined) clearTimeout(quiet);
       quiet = undefined;
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      frame = undefined;
-      for (const id of [...stale]) {
-        stale.delete(id);
-        draw(id);
-      }
+      queue.flush();
     },
     destroy() {
       if (quiet !== undefined) clearTimeout(quiet);
-      if (frame !== undefined) cancelAnimationFrame(frame);
       observer?.disconnect();
-      stale.clear();
+      queue.destroy();
     },
   };
 }

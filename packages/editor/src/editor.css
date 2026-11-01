@@ -1387,6 +1387,207 @@ body {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M3.5 3.5l9 9M12.5 3.5l-9 9'/%3E%3C/svg%3E");
 }
 
+.ed-icon-board {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Crect x='2' y='2.5' width='5' height='4.5' rx='1'/%3E%3Crect x='9' y='2.5' width='5' height='4.5' rx='1'/%3E%3Crect x='2' y='9' width='5' height='4.5' rx='1'/%3E%3Crect x='9' y='9' width='5' height='4.5' rx='1'/%3E%3C/svg%3E");
+}
+
+.ed-icon-back {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 8H3M7 3.5 2.5 8 7 12.5'/%3E%3C/svg%3E");
+}
+
+/* The way into the storyboard, above the list of scenes. */
+.ed-app .ed-open-board {
+  width: 100%;
+  margin-bottom: var(--dc-space-3);
+  gap: var(--dc-space-2);
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+/*
+ * The storyboard: the strip of scenes full screen, as a grid. It covers the whole window, bar and all, because it is
+ * a place of its own with its own way back. The cards draw the slide as the strip does, so they share its thumbnail.
+ */
+.ed-board {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--dc-bg);
+  color: var(--dc-text);
+}
+
+.ed-board[hidden] {
+  display: none;
+}
+
+.ed-board:focus {
+  outline: none;
+}
+
+.ed-board-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-3);
+  padding: var(--dc-space-2) var(--dc-space-4);
+  border-bottom: 1px solid var(--dc-line);
+  background: var(--dc-surface);
+}
+
+.ed-board-head h2 {
+  margin: 0;
+  font-family: var(--dc-font-display);
+  font-size: 1.25rem;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.ed-app .ed-board-head button {
+  gap: var(--dc-space-2);
+}
+
+.ed-board-count {
+  color: var(--dc-muted);
+  font: 0.75rem var(--dc-font-mono);
+}
+
+.ed-board-head p {
+  margin: 0 0 0 auto;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.ed-board-grid {
+  /* The scale that fits a card's picture to the 1280px slide it draws; the board measures and replaces it. */
+  --thumb-k: 0.25;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  /* Rows as tall as their card. Left to `auto`, a deck longer than the window squeezes every row to fit it. */
+  grid-auto-rows: max-content;
+  gap: var(--dc-space-4);
+  align-content: start;
+  margin: 0;
+  padding: var(--dc-space-4);
+  overflow: auto;
+  list-style: none;
+}
+
+.ed-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-surface);
+}
+
+.ed-card[data-current] {
+  border-color: var(--dc-action);
+  box-shadow: 0 0 0 1px var(--dc-action);
+}
+
+/* The keyboard is on the button under the picture, and the ring goes round the whole card. */
+.ed-card:has(:focus-visible) {
+  outline: 3px solid var(--dc-evidence);
+  outline-offset: 2px;
+}
+
+.ed-app .ed-card-pick:focus-visible {
+  outline: none;
+}
+
+.ed-card .ed-thumb {
+  order: 0;
+  border-width: 0 0 1px;
+  border-radius: 0;
+}
+
+.ed-app .ed-card-pick {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "number name"
+    "pills pills";
+  align-items: baseline;
+  gap: var(--dc-space-2);
+  width: 100%;
+  min-height: 0;
+  padding: var(--dc-space-2) var(--dc-space-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.ed-card-number {
+  grid-area: number;
+  color: var(--dc-muted);
+  font: 0.75rem var(--dc-font-mono);
+}
+
+.ed-card-name {
+  grid-area: name;
+  display: -webkit-box;
+  overflow: hidden;
+  font-weight: 500;
+  line-height: 1.25;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.ed-app .ed-card[data-current] .ed-card-name {
+  font-weight: 600;
+}
+
+.ed-pills {
+  grid-area: pills;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dc-space-1);
+}
+
+.ed-pill {
+  padding: 0 0.5em;
+  border: 1px solid var(--dc-line);
+  border-radius: 999px;
+  color: var(--dc-muted);
+  font: 0.6875rem / 1.25rem var(--dc-font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ed-pill[data-lead="agent"] {
+  border-color: var(--dc-evidence);
+  color: var(--dc-evidence);
+}
+
+.ed-pill[data-kind="changed"] {
+  border-color: var(--dc-action);
+  background: var(--dc-action);
+  color: var(--dc-bg);
+}
+
+.ed-pill[data-kind="check"],
+.ed-pill[data-kind="comments"][data-tasks] {
+  border-color: var(--dc-action);
+  color: var(--dc-action);
+}
+
+@media (max-width: 760px) {
+  .ed-board-head p {
+    display: none;
+  }
+
+  .ed-board-grid {
+    padding: var(--dc-space-3) var(--dc-space-4);
+  }
+}
+
 /*
  * The drawer of changes over the right of the stage: a row for each change with where it is, what it was struck out
  * and what it is marked, and the two answers. On a phone it is a sheet at the foot of the screen.

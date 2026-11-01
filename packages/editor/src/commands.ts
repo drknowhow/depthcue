@@ -37,6 +37,8 @@ export interface CommandSources {
   /** Opens the drawer of the changes since the last review, or closes it. */
   toggleReview?(): void;
   reviewOpen?(): boolean;
+  /** Opens the storyboard, which shows every scene on one screen. */
+  storyboard?(): void;
   save(): void;
   present(): void;
   showKeys(): void;
@@ -217,6 +219,17 @@ export function listCommands(from: CommandSources): Command[] {
       group: "Everywhere",
       words: "agent accept revert diff drawer",
       run: toggleReview,
+    });
+  }
+  const storyboard = from.storyboard;
+  if (storyboard) {
+    add({
+      id: "storyboard",
+      title: "Open the storyboard",
+      group: "Everywhere",
+      words: "grid overview sorter all scenes",
+      keys: from.keysOf("storyboard"),
+      run: storyboard,
     });
   }
   add({ id: "save", title: "Save now", group: "Everywhere", keys: from.keysOf("save"), run: from.save });

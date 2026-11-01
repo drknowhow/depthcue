@@ -367,4 +367,14 @@ describe("everywhere", () => {
     get("review").run();
     expect(toggle).toHaveBeenCalledTimes(1);
   });
+
+  it("offers the storyboard when the editor has one, with the key that opens it", () => {
+    expect(ids()).not.toContain("storyboard");
+    const open = vi.fn();
+    supplied = { ...supplied, storyboard: open };
+    expect(get("storyboard").title).toBe("Open the storyboard");
+    expect(get("storyboard").keys).toEqual([["key:storyboard"]]);
+    get("storyboard").run();
+    expect(open).toHaveBeenCalledTimes(1);
+  });
 });

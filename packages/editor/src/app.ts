@@ -13,10 +13,12 @@ import { deckPanel, panelHost } from "./panels.ts";
 import { createQuickBar } from "./quickbar.ts";
 import { createReviewDrawer } from "./reviewdrawer.ts";
 import { countsByScene, summaryOf } from "./reviewview.ts";
-import { createRibbon } from "./ribbon.ts";
+import { createRibbon, problemsOf } from "./ribbon.ts";
 import { createSceneBar } from "./scenebar.ts";
 import { createShortcuts, keyName } from "./shortcuts.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
+import { createStoryboard } from "./storyboard.ts";
+import { checksByScene } from "./storyboardview.ts";
 import { createStrip } from "./strip.ts";
 import { createToolbar } from "./toolbar.ts";
 
@@ -230,11 +232,20 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     ),
   );
   const notices = h("div", { class: "ed-notices" });
+  // The strip, full screen. It reads the same counts the strip and the ribbon do, so the numbers on a card are theirs.
+  const storyboard = createStoryboard(session, {
+    open: (id) => select(id),
+    selected: () => selected,
+    comments: () => countsOf(store.comments.state.comments, session.doc).byScene,
+    changed: () => countsByScene(store.review.changes()),
+    checks: () => checksByScene(problemsOf(session, (id) => watch?.of(id) ?? [])),
+  });
   const strip = createStrip(session, {
     select: (id) => select(id),
     act: (ops, options) => session.apply(ops, options),
     comments: () => countsOf(store.comments.state.comments, session.doc).byScene,
     changed: () => countsByScene(store.review.changes()),
+    storyboard: () => storyboard.open(),
   });
   const quick = createQuickBar(session, {
     edits: editsFor("quick"),
@@ -265,7 +276,13 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       showProblem(result.ok ? undefined : problemOf(result));
     },
   });
-  const layout = createLayoutWatch(store, { scene: () => selected, changed: () => ribbon.render() });
+  const layout = createLayoutWatch(store, {
+    scene: () => selected,
+    changed() {
+      ribbon.render();
+      storyboard.render();
+    },
+  });
   watch = layout;
   // Every key the editor answers is in one table, which also draws the sheet that the ? key and the bar open.
   const shortcuts = createShortcuts(host, {
@@ -283,6 +300,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     // Alt+F10 moves the keyboard into the toolbar of the chosen block.
     toolbar: () => toolbar.focus(),
     palette: () => palette.toggle(),
+    storyboard: () => storyboard.open(),
   });
   // Everything the editor can do, found by typing. Each command calls what the buttons call, so it does the same thing,
   // in the same one undo step, and is listed only while it can be done.
@@ -315,6 +333,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
           renderReview();
         },
         reviewOpen: () => drawer.isOpen,
+        storyboard: () => storyboard.open(),
         save: () => void store.save(),
         present: () => void window.open(present.href, "_blank", "noopener"),
         showKeys: () => shortcuts.open(),
@@ -335,6 +354,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     floor,
     shortcuts.sheet,
     palette.element,
+    storyboard.element,
   );
   host.replaceChildren(root);
   // A file dropped anywhere but on an image would open in this tab and take the editor away.
@@ -346,7 +366,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   root.addEventListener("dragover", refuseFiles);
   root.addEventListener("drop", refuseFiles);
 
-  const renderScenes = () => strip.render(selected);
+  const renderScenes = () => {
+    strip.render(selected);
+    storyboard.render();
+  };
 
   /** The part of the bar that follows the store: the title, undo, redo and how saving is going. */
   function renderStatus() {
@@ -588,6 +611,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       unsubscribeReview();
       unsubscribeHistory();
       drawer.destroy();
+      storyboard.destroy();
       strip.destroy();
       sceneBar.destroy();
       quick.destroy();

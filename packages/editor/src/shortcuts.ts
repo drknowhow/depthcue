@@ -23,6 +23,8 @@ export interface ShortcutActions {
   toolbar(): boolean;
   /** Opens the palette that finds anything the editor can do. */
   palette(): void;
+  /** Opens the storyboard: every scene on one screen. */
+  storyboard(): void;
 }
 
 export interface Shortcut {
@@ -120,6 +122,13 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
       // Once it is open the palette hears the keys itself, and this key shuts it there.
       handle: (event) =>
         when(mod(event) && !event.shiftKey && event.key.toLowerCase() === "k", () => actions.palette()),
+    },
+    {
+      id: "storyboard",
+      group: "Everywhere",
+      does: "See every scene on one screen, and open one",
+      keys: [["G"]],
+      handle: (event) => when(letter("g")(event), () => actions.storyboard()),
     },
     {
       id: "help",
