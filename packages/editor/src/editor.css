@@ -1387,6 +1387,90 @@ body {
   font-size: 0.75rem;
 }
 
+/* The palette that finds anything to do, over a dimmed editor and near its top, so the list grows downward. */
+.ed-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 31;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  padding: 12dvh var(--dc-space-4) var(--dc-space-4);
+  background: color-mix(in srgb, var(--dc-text) 40%, transparent);
+}
+
+.ed-palette[hidden] {
+  display: none;
+}
+
+.ed-palette-card {
+  display: grid;
+  gap: var(--dc-space-2);
+  width: min(34rem, 100%);
+  padding: var(--dc-space-3);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-lg);
+  background: var(--dc-surface);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 30%);
+  font-size: 0.875rem;
+}
+
+.ed-app .ed-palette input.ed-palette-input {
+  min-height: 2.75rem;
+  font-size: 1rem;
+}
+
+.ed-palette-list {
+  display: grid;
+  max-height: min(24rem, 55dvh);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.ed-palette-option {
+  display: flex;
+  align-items: center;
+  gap: var(--dc-space-3);
+  min-height: 2.5rem;
+  padding: var(--dc-space-1) var(--dc-space-3);
+  border-radius: var(--dc-radius-md);
+  cursor: pointer;
+}
+
+.ed-palette-option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--dc-action) 12%, var(--dc-surface));
+  box-shadow: inset 3px 0 var(--dc-action);
+}
+
+.ed-palette-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-palette-group {
+  flex: 0 0 auto;
+  color: var(--dc-muted);
+  font-size: 0.75rem;
+}
+
+.ed-palette-empty {
+  margin: 0;
+  padding: var(--dc-space-3);
+  color: var(--dc-muted);
+}
+
+/* A touch screen has no key to press, so the list does not say which. */
+@media (hover: none) {
+  .ed-palette-option .ed-keys {
+    display: none;
+  }
+}
+
 .ed-app .ed-tb-mini {
   min-width: 1.75rem;
   min-height: 2.25rem;

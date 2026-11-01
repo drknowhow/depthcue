@@ -187,7 +187,7 @@ block to go after). The new block is chosen and has the keyboard, and one Undo t
 
 The keys the editor answers are one table in `shortcuts.ts`, and the key handler and the shortcut sheet both read it.
 `T`, `C` and `I` add a text, a chart or an image (`I` opens the file chooser) just as the bar's buttons do, and each
-button has its key written on it. `Ctrl+Z`, `Ctrl+Shift+Z` or `Ctrl+Y`, `Ctrl+S`, `P` and `Alt+F10` are in the table
+button has its key written on it. `Ctrl+Z`, `Ctrl+Shift+Z` or `Ctrl+Y`, `Ctrl+S`, `Ctrl+K`, `P` and `Alt+F10` are in the table
 too. `?`, or the `?` button at the end of the bar, opens the sheet: a dialog that lists every key, takes the keyboard
 while it is open, gives it back on `Escape`, `?`, Close or a press outside the card, and lets no other key act behind
 it. A letter key is a letter in a field or in text being edited on the slide, it acts once when held down, and a key
@@ -214,6 +214,20 @@ last answer for a scene until the next one arrives, so a problem does not blink 
 deck that has changed since is dropped. The server starts a headless browser for the first question, answers one
 question at a time, and closes the browser after 30 seconds with nothing to check. A machine with no browser says so
 once, is left alone for a minute, and then the ribbon lists only what the core finds, as it did before.
+
+`Ctrl+K` (`Command+K` on a Mac), or the Everything button in the bar, opens the palette: one field over a list of what
+can be done now. It is a dialog whose field is a combobox that controls a listbox, so a screen reader reads each choice
+as the arrow keys move over it. Typing narrows the list (`search` in `palette.ts`: every word must match, a word at the
+start of a title counts most, then a word inside one, then its letters in order; extra words that the list does not
+show count for half). The arrows go round at the ends, `Enter` closes the palette and then runs the command, so a
+command that moves the keyboard has the last word, and `Escape` or `Ctrl+K` closes it and gives the keyboard back.
+No key is heard behind it. Which commands exist is decided each time it opens (`listCommands` in `commands.ts`), and
+one that cannot be done is left out and not greyed: Fix and Next or Previous problem, the three ways to add (and a
+clip when the deck has a video, a claim when the scene has none), Pin or Put back and Remove for the chosen block,
+Auto layout when something is pinned, the leads and layouts the scene does not have, Go to each other scene, Undo and
+Redo when there is something to undo or redo, Save, Present from this scene and the shortcut sheet. The keys written
+beside a command come from the table in `shortcuts.ts`. There is no align command because a block has no alignment
+to set; position is a frame, and Pin and Auto layout are the two ways to change it.
 
 An area that holds nothing gets a dashed place on the slide, drawn by the editor only, never by the player or the
 export: Evidence while the claim cites nothing, Support when every block is cited, Media on a slide of text, Text on

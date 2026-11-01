@@ -3,14 +3,16 @@ import { h } from "@depthcue/player";
 import { createAdder } from "./adder.ts";
 import { createCanvas } from "./canvas.ts";
 import { popoverChip } from "./chip.ts";
+import { listCommands } from "./commands.ts";
 import { createCueBook } from "./cues.ts";
 import { type Edits, problemOf } from "./fields.ts";
 import { createLayoutWatch, type LayoutWatch } from "./layout-watch.ts";
+import { createPalette } from "./palette.ts";
 import { deckPanel, panelHost } from "./panels.ts";
 import { createQuickBar } from "./quickbar.ts";
 import { createRibbon } from "./ribbon.ts";
 import { createSceneBar } from "./scenebar.ts";
-import { createShortcuts } from "./shortcuts.ts";
+import { createShortcuts, keyName } from "./shortcuts.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
 import { createStrip } from "./strip.ts";
 import { createToolbar } from "./toolbar.ts";
@@ -169,6 +171,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     hasVideo: () => adder.hasVideo(),
     build: (on) => canvas.setBuild(on),
     keys: () => shortcuts.open(),
+    palette: () => palette.toggle(),
   });
   // What `depthcue check` and `depthcue render` would say about the deck, one problem at a time. The rules are theirs:
   // the core's for what the files say, and a render's for what the audience would see.
@@ -203,6 +206,35 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     },
     // Alt+F10 moves the keyboard into the toolbar of the chosen block.
     toolbar: () => toolbar.focus(),
+    palette: () => palette.toggle(),
+  });
+  // Everything the editor can do, found by typing. Each command calls what the buttons call, so it does the same thing,
+  // in the same one undo step, and is listed only while it can be done.
+  const palette = createPalette({
+    commands: () =>
+      listCommands({
+        session,
+        scene: () => selected,
+        block: () => selectedBlock,
+        add: (kind) => void adder.quick(kind),
+        pickImage: () => quick.pickImage(),
+        claim: () => adder.claim(),
+        hasVideo: () => adder.hasVideo(),
+        togglePin: (id) => toolbar.togglePin(id),
+        remove: (id) => toolbar.remove(id),
+        setLead: (lead) => sceneBar.setLead(lead),
+        setLayout: (layout) => sceneBar.setLayout(layout),
+        autoLayout: () => sceneBar.autoLayout(),
+        ribbon,
+        goTo: (id) => select(id),
+        undo: () => session.undo(),
+        redo: () => session.redo(),
+        save: () => void store.save(),
+        present: () => void window.open(present.href, "_blank", "noopener"),
+        showKeys: () => shortcuts.open(),
+        keysOf: (id) => shortcuts.keysOf(id),
+      }),
+    keyName,
   });
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
@@ -216,6 +248,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     strip.element,
     floor,
     shortcuts.sheet,
+    palette.element,
   );
   host.replaceChildren(root);
   // A file dropped anywhere but on an image would open in this tab and take the editor away.
@@ -384,6 +417,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     select,
     destroy() {
       shortcuts.destroy();
+      palette.destroy();
       layout.destroy();
       ribbon.destroy();
       unsubscribeSession();

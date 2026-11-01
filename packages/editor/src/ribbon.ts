@@ -35,6 +35,8 @@ export interface RibbonHooks {
 export interface Ribbon {
   readonly element: HTMLElement;
   readonly problems: readonly Problem[];
+  /** The problem on show, which Fix would settle if it has a fix. */
+  readonly current: Problem | undefined;
   /** Brings the ribbon up to date with the deck and the scene on show. Changes text and visibility, never the controls. */
   render(): void;
   /** Takes the person to the next problem, or the one before it, as the buttons do. */
@@ -212,6 +214,9 @@ export function createRibbon(session: Session, hooks: RibbonHooks): Ribbon {
     element,
     get problems() {
       return problems;
+    },
+    get current() {
+      return problems[at];
     },
     render,
     step,

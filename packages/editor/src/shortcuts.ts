@@ -19,6 +19,8 @@ export interface ShortcutActions {
   pin(): boolean;
   /** Moves the keyboard into the toolbar of the chosen block. False when there is none. */
   toolbar(): boolean;
+  /** Opens the palette that finds anything the editor can do. */
+  palette(): void;
 }
 
 export interface Shortcut {
@@ -102,6 +104,15 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
       handle: (event) => when(mod(event) && event.key.toLowerCase() === "s", () => actions.save()),
     },
     {
+      id: "palette",
+      group: "Everywhere",
+      does: "Find anything to do, by typing a few letters of it",
+      keys: [["Mod", "K"]],
+      // Once it is open the palette hears the keys itself, and this key shuts it there.
+      handle: (event) =>
+        when(mod(event) && !event.shiftKey && event.key.toLowerCase() === "k", () => actions.palette()),
+    },
+    {
       id: "help",
       group: "Everywhere",
       does: "Show this list",
@@ -156,13 +167,15 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
 }
 
 /** What a key is called on this computer. */
-const nameOf = (token: string) =>
+export const keyName = (token: string) =>
   token === "Mod" ? (/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl") : token;
 
 export interface Shortcuts {
   /** The shortcut sheet, shut until `?` or the bar's button opens it. It belongs inside the editor's root. */
   readonly sheet: HTMLElement;
   readonly isOpen: boolean;
+  /** The ways to press the key with this id in the table, for a place that says which key does the same thing. */
+  keysOf(id: string): readonly (readonly string[])[] | undefined;
   open(): void;
   close(): void;
   destroy(): void;
@@ -211,7 +224,7 @@ export function createShortcuts(host: HTMLElement, actions: ShortcutActions): Sh
                 { class: "ed-keys" },
                 ...entry.keys.flatMap((combo, at) => [
                   ...(at > 0 ? [h("span", { class: "ed-keys-or" }, "or")] : []),
-                  ...combo.map((token) => h("kbd", {}, nameOf(token))),
+                  ...combo.map((token) => h("kbd", {}, keyName(token))),
                 ]),
               ),
             ),
@@ -293,6 +306,7 @@ export function createShortcuts(host: HTMLElement, actions: ShortcutActions): Sh
     get isOpen() {
       return !sheet.hidden;
     },
+    keysOf: (id) => table.find((entry) => entry.id === id)?.keys,
     open,
     close: shut,
     destroy() {
