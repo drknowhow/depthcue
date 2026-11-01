@@ -431,6 +431,16 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         showProblem(result.ok ? undefined : problemOf(result));
       },
       editData: (id) => void toolbar.openPanel(id, "data"),
+      setTextStyle(id, key, value) {
+        const result = session.apply([
+          { op: "block.set", scene: selected, id, set: { [key]: value === "" ? null : value } },
+        ]);
+        showProblem(result.ok ? undefined : problemOf(result));
+      },
+      upgradeScene(id) {
+        const result = session.apply([{ op: "scene.upgrade", id }]);
+        showProblem(result.ok ? undefined : problemOf(result));
+      },
       cell: () => tables.cell(selectedBlock),
       editCell(action, at) {
         if (selectedBlock !== undefined) tables.run(selectedBlock, action, at);

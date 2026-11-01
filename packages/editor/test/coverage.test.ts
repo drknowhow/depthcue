@@ -501,6 +501,27 @@ const WAYS: Record<string, Entry> = {
     },
   },
   "scene.blocks<text>.text": { where: "Typed in place on the slide", reach: () => textBox(blocks.text) },
+  "scene.blocks<text>.tone": {
+    where: "Text toolbar, Style chip, Color; the format bar for the selected words",
+    reach: () => {
+      choose(blocks.text, "text");
+      return field(openChip("style") as HTMLElement, "style:tone");
+    },
+  },
+  "scene.blocks<text>.size": {
+    where: "Text toolbar, Style chip, Size; Size in the block's right-click menu",
+    reach: () => {
+      choose(blocks.text, "text");
+      return field(openChip("style") as HTMLElement, "style:size");
+    },
+  },
+  "scene.blocks<text>.align": {
+    where: "Text toolbar, Style chip, Align; Align in the block's right-click menu",
+    reach: () => {
+      choose(blocks.text, "text");
+      return field(openChip("style") as HTMLElement, "style:align");
+    },
+  },
   "scene.blocks<text>.sourceIds": {
     where: "Text toolbar, Cite chip",
     reach: () => cited("text", blocks.text),
@@ -687,11 +708,7 @@ const WAYS: Record<string, Entry> = {
  * Properties schema 0.3 added that the editor cannot edit yet, by the step of docs/CONTENT_RANGE.md that adds their
  * controls. The step that adds a control takes its prefix out of this list and gives each property a way in WAYS.
  */
-const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
-  ["scene.blocks<text>.tone", "Step 5, text styles"],
-  ["scene.blocks<text>.size", "Step 5, text styles"],
-  ["scene.blocks<text>.align", "Step 5, text styles"],
-];
+const PENDING: ReadonlyArray<[prefix: string, step: string]> = [];
 const pending = (path: string) =>
   PENDING.some(
     ([prefix]) => path === prefix || path.startsWith(`${prefix}.`) || path.startsWith(`${prefix}[`),

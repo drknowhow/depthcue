@@ -59,6 +59,8 @@ function sources(): CommandSources {
       step: spy("step"),
       fixNext: spy("fixNext"),
     },
+    setTextStyle: spy("setTextStyle"),
+    upgradeScene: spy("upgradeScene"),
     goTo: spy("goTo"),
     undo: spy("undo"),
     redo: spy("redo"),
@@ -220,6 +222,75 @@ describe("the chosen block", () => {
   it("does not offer a comment on a block that is not on the scene", () => {
     on.block = "no-such-block";
     expect(ids()).not.toContain("comment");
+  });
+});
+
+describe("the look of a text", () => {
+  const LOOKS = ["Size", "Align", "Color"];
+  const submenus = () => {
+    const found: Record<string, string[]> = {};
+    for (const command of list()) {
+      if (!command.submenu || !LOOKS.includes(command.submenu)) continue;
+      const labels = found[command.submenu] ?? [];
+      labels.push(command.label ?? command.title);
+      found[command.submenu] = labels;
+    }
+    return found;
+  };
+
+  it("offers a size, an alignment and a color for a text, as three submenus of the block's menu", () => {
+    on.block = "method-body";
+    expect(submenus()).toEqual({
+      Size: ["Small", "Large", "Extra large"],
+      Align: ["Center", "End"],
+      Color: ["Text", "Muted", "Action", "Evidence"],
+    });
+    for (const id of ["size-l", "align-center", "tone-evidence"]) expect(get(id).targets).toEqual(["block"]);
+  });
+
+  it("does not offer the size, alignment or color the text already has, and offers to take a color off", () => {
+    on.block = "method-body";
+    store.session.apply([
+      {
+        op: "block.set",
+        scene: "method",
+        id: "method-body",
+        set: { size: "l", align: "center", tone: "muted" },
+      },
+    ]);
+    expect(submenus()).toEqual({
+      Size: ["Small", "Medium", "Extra large"],
+      Align: ["Start", "End"],
+      Color: ["Text", "Action", "Evidence", "Default"],
+    });
+  });
+
+  it("hands the editor the value, and an empty one for the size or alignment that means none", () => {
+    on.block = "method-body";
+    store.session.apply([
+      { op: "block.set", scene: "method", id: "method-body", set: { size: "l", align: "end" } },
+    ]);
+    get("size-xl").run();
+    expect(calls.setTextStyle).toHaveBeenLastCalledWith("method-body", "size", "xl");
+    get("size-m").run();
+    expect(calls.setTextStyle).toHaveBeenLastCalledWith("method-body", "size", "");
+    get("align-start").run();
+    expect(calls.setTextStyle).toHaveBeenLastCalledWith("method-body", "align", "");
+    get("tone-action").run();
+    expect(calls.setTextStyle).toHaveBeenLastCalledWith("method-body", "tone", "action");
+  });
+
+  it("offers nothing about the look of a block that is not a text", () => {
+    on.block = "method-diagram";
+    expect(submenus()).toEqual({});
+  });
+
+  it("offers to use text styles in a scene that is below 0.3, and not in one that is not", () => {
+    expect(get("use-text-styles").label).toBe("Use text styles");
+    get("use-text-styles").run();
+    expect(calls.upgradeScene).toHaveBeenCalledWith("method");
+    store.session.apply([{ op: "scene.upgrade", id: "method" }]);
+    expect(ids()).not.toContain("use-text-styles");
   });
 });
 

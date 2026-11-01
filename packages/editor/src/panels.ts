@@ -474,7 +474,7 @@ export function evidencePanel(host: PanelHost, sceneId: string): Panel {
         checkField(host.edits, {
           key: "panel:evidence",
           label: "Evidence",
-          items: scene.blocks.map((block) => ({ id: block.id, label: describeBlock(block) })),
+          items: scene.blocks.map((block) => ({ id: block.id, label: describeBlock(block, 36, scene) })),
           none: "Add a block to use as evidence.",
           read: () => live()?.summary?.evidenceIds ?? [],
           commit: (ids) =>
@@ -534,7 +534,7 @@ export function scenePanel(host: PanelHost, current: () => string): ScenePanel {
     const list = () => scene()?.steps ?? [];
     const revealable = [
       ...(s.summary ? [{ id: s.summary.id, label: `Claim: ${s.summary.text.slice(0, 30)}` }] : []),
-      ...s.blocks.map((block) => ({ id: block.id, label: describeBlock(block) })),
+      ...s.blocks.map((block) => ({ id: block.id, label: describeBlock(block, 36, s) })),
     ];
     const setSteps = (next: Step[]): Op => set({ steps: next.length > 0 ? next : null });
     const now = list();

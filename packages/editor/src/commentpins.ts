@@ -67,7 +67,7 @@ type Open = { kind: "thread"; id: string } | { kind: "new"; block: string; at: P
 function nameOf(scene: Scene, id: string): string {
   if (scene.summary?.id === id) return "the claim";
   const block = scene.blocks.find((candidate) => candidate.id === id);
-  return block ? describeBlock(block, 40) : "a block that is gone";
+  return block ? describeBlock(block, 40, scene) : "a block that is gone";
 }
 
 function whenOf(at: string): string {

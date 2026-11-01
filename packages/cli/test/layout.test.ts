@@ -254,6 +254,27 @@ describe("layoutDiagnostics", () => {
     expect(found?.fix).toContain("theme");
   });
 
+  it("names the tone of low-contrast text that is colored with one, and the ways out that a tone has", () => {
+    const faint = rgb(224, 101, 61);
+    const [found] = layoutDiagnostics(scene, measure({ text: [sample({ fg: faint, tone: "action" })] }));
+    expect(found?.code).toBe("low-contrast");
+    expect(found?.fix).toContain('colored "action"');
+    expect(found?.fix).toContain("size l or xl");
+    expect(found?.fix).not.toContain("the other theme");
+  });
+
+  it("accepts text of a tone at 3:1 when it is drawn large, as size l and xl are", () => {
+    const faint = rgb(224, 101, 61);
+    expect(contrastRatio(faint, white)).toBeGreaterThan(3);
+    expect(contrastRatio(faint, white)).toBeLessThan(4.5);
+    expect(
+      layoutDiagnostics(scene, measure({ text: [sample({ fg: faint, tone: "action", fontPx: 25 })] })),
+    ).toEqual([]);
+    expect(
+      layoutDiagnostics(scene, measure({ text: [sample({ fg: faint, tone: "action", fontPx: 22 })] })),
+    ).toHaveLength(1);
+  });
+
   it("accepts large text at 3:1", () => {
     const grey = rgb(130, 130, 130);
     expect(contrastRatio(grey, white)).toBeGreaterThan(3);

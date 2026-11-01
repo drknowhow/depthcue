@@ -1,11 +1,19 @@
-import { type ChartKind, LEADS, type Session } from "@depthcue/core";
+import { type ChartKind, LEADS, readsMarkup, type Session } from "@depthcue/core";
 import { chartCommands } from "./chartwire.ts";
 import { afterWhenMoving } from "./cleanup.ts";
 import type { Spot } from "./grid.ts";
 import type { Command } from "./palette.ts";
 import type { Ribbon } from "./ribbon.ts";
 import { type CellAction, cellCommands } from "./tablecells.ts";
-import { LAYOUT_CHOICES, type Layout, LEAD_LABEL, type NewBlockKind } from "./templates.ts";
+import {
+  ALIGN_LABEL,
+  LAYOUT_CHOICES,
+  type Layout,
+  LEAD_LABEL,
+  type NewBlockKind,
+  SIZE_LABEL,
+  TONE_LABEL,
+} from "./templates.ts";
 
 /** What the commands call on. The mounted editor supplies each of them, so this file holds no state of its own. */
 export interface CommandSources {
@@ -37,6 +45,13 @@ export interface CommandSources {
   chartKind?(id: string, kind: ChartKind): void;
   /** Opens the data of a chart, where its rows and series are edited. */
   editData?(id: string): void;
+  /**
+   * Sets the size, alignment or color of a text, or with an empty value takes it off. A scene below 0.3 is brought up to
+   * it by the first one set, so its text is read as markup from then on.
+   */
+  setTextStyle?(id: string, key: "size" | "align" | "tone", value: string): void;
+  /** Brings a scene below 0.3 up to it, so its text is read as markup. */
+  upgradeScene?(id: string): void;
   /** The cell of the chosen table that has the keyboard, or that the menu was opened on. Row -1 is the header. */
   cell?(): Spot | undefined;
   /** Does an action of the cell menu to the chosen table at a cell, as one change. */
@@ -305,6 +320,37 @@ export function listCommands(from: CommandSources): Command[] {
       }
     }
   }
+  // How the chosen text looks: its size, alignment and color, each a submenu of the right-click menu.
+  const setStyle = from.setTextStyle;
+  if (block?.type === "text" && setStyle) {
+    const looks = (
+      key: "size" | "align" | "tone",
+      name: string,
+      labels: Record<string, string>,
+      current: string | undefined,
+      plain?: string,
+    ) => {
+      const options = Object.entries(labels).filter(([value]) => value !== (current ?? plain));
+      // A color has no value that means none, so there is a choice that takes it off.
+      if (plain === undefined && current !== undefined) options.push(["", "Default"]);
+      for (const [value, label] of options) {
+        add({
+          id: `${key}-${value === "" ? "default" : value}`,
+          title: `${name}: ${label}`,
+          group: "The chosen block",
+          words: `text look ${key === "size" ? "bigger smaller font" : key === "align" ? "left center right" : "tone"}`,
+          targets: ["block"],
+          label,
+          section: "look",
+          submenu: name,
+          run: () => setStyle(block.id, key, value === plain ? "" : value),
+        });
+      }
+    };
+    looks("size", "Size", SIZE_LABEL, block.size, "m");
+    looks("align", "Align", ALIGN_LABEL, block.align, "start");
+    looks("tone", "Color", TONE_LABEL, block.tone);
+  }
   if (chosen !== undefined && item) {
     add({
       id: "comment",
@@ -402,6 +448,19 @@ export function listCommands(from: CommandSources): Command[] {
       label: "Duplicate",
       section: "scene-edit",
       run: () => duplicateScene(sceneId),
+    });
+  }
+  const upgradeScene = from.upgradeScene;
+  if (upgradeScene && !readsMarkup(scene)) {
+    add({
+      id: "use-text-styles",
+      title: "Use text styles in this scene",
+      group: "This scene",
+      words: "upgrade markup bold italic list link color size align schema 0.3",
+      targets: ["scene"],
+      label: "Use text styles",
+      section: "scene-style",
+      run: () => upgradeScene(sceneId),
     });
   }
   if (removeScene && order.length > 1) {

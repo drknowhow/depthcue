@@ -599,8 +599,29 @@ describe("right-clicking a scene in the strip", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(editor.sceneId).toBe("opening");
     expect(menu().getAttribute("aria-label")).toBe("Scene menu");
-    // The first scene has nowhere earlier to go.
-    expect(labels()).toEqual(["Duplicate", "Delete", "-", "Move later", "-", "Present from here"]);
+    // The first scene has nowhere earlier to go. The demo deck is below 0.3, so it can start using text styles.
+    expect(labels()).toEqual([
+      "Duplicate",
+      "Delete",
+      "-",
+      "Use text styles",
+      "-",
+      "Move later",
+      "-",
+      "Present from here",
+    ]);
+  });
+
+  it("brings a scene below 0.3 up to it with Use text styles, and then no longer offers it", () => {
+    context(row("opening"));
+    item("Use text styles").click();
+    expect(store.session.doc.scenes.opening?.schemaVersion).toBe("0.3");
+    expect(store.session.doc.scenes.demand?.schemaVersion).not.toBe("0.3");
+    context(row("opening"));
+    expect(labels()).not.toContain("Use text styles");
+    // One undo takes the whole upgrade back.
+    store.session.undo();
+    expect(store.session.doc.scenes.opening?.schemaVersion).not.toBe("0.3");
   });
 
   it("duplicates, moves and deletes the scene that was clicked, and not the one on show", () => {
@@ -938,7 +959,7 @@ describe("closing without choosing", () => {
     expect(labels()).toContain("Duplicate");
     context(row("opening"));
     expect(labels()).not.toContain("Cut");
-    expect(menu().querySelectorAll(".ed-menu-item")).toHaveLength(4);
+    expect(menu().querySelectorAll(".ed-menu-item")).toHaveLength(5);
   });
 });
 
