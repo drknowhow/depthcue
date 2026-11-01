@@ -4,6 +4,7 @@ import { createAdder } from "./adder.ts";
 import { createCanvas } from "./canvas.ts";
 import { popoverChip } from "./chip.ts";
 import { listCommands } from "./commands.ts";
+import { countsOf } from "./commentview.ts";
 import { createCueBook } from "./cues.ts";
 import { type Edits, problemOf } from "./fields.ts";
 import { createLayoutWatch, type LayoutWatch } from "./layout-watch.ts";
@@ -97,6 +98,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     },
     // The count of a field is in the toolbar; this line is for what was refused.
     hint: (text, problem) => showProblem(problem ? text : undefined),
+    comments: { book: store.comments, changed: () => renderComments() },
     select: (id) => selectBlock(id),
     deselect: () => selectBlock(undefined),
     remove: (id) => toolbar.remove(id),
@@ -145,6 +147,32 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
     "Present",
   );
+  // Comments: the button shows or hides the pins and says how many are open; a second one, only while there are some,
+  // brings the resolved ones back into view. In a narrow window the words give way to the icons, which keep their names.
+  const commentCount = h("span", { class: "ed-count" });
+  const commentsButton = h(
+    "button",
+    { type: "button", "data-action": "comments", "aria-pressed": "true" },
+    h("span", { class: "ed-icon ed-icon-comments", "aria-hidden": "true" }),
+    h("span", { class: "ed-bar-words" }, "Comments"),
+    commentCount,
+  );
+  commentsButton.addEventListener("click", () => {
+    const pins = canvas.comments;
+    if (pins) pins.setShown(!pins.shown);
+  });
+  const resolvedCount = h("span", { class: "ed-count ed-count-plain" });
+  const resolvedButton = h(
+    "button",
+    { type: "button", "data-action": "resolved", "aria-pressed": "false" },
+    h("span", { class: "ed-icon ed-icon-resolved", "aria-hidden": "true" }),
+    h("span", { class: "ed-bar-words" }, "Resolved"),
+    resolvedCount,
+  );
+  resolvedButton.addEventListener("click", () => {
+    const pins = canvas.comments;
+    if (pins) pins.setShowResolved(!pins.showResolved);
+  });
   const sceneBar = createSceneBar(session, {
     edits: editsFor("scene"),
     problem: showProblem,
@@ -155,12 +183,24 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     { class: "ed-bar" },
     deckTitle,
     sceneBar.element,
-    h("div", { class: "ed-actions" }, undo, redo, status, retry, deckChip.chip.wrap, present),
+    h(
+      "div",
+      { class: "ed-actions" },
+      undo,
+      redo,
+      status,
+      retry,
+      deckChip.chip.wrap,
+      commentsButton,
+      resolvedButton,
+      present,
+    ),
   );
   const notices = h("div", { class: "ed-notices" });
   const strip = createStrip(session, {
     select: (id) => select(id),
     act: (ops, options) => session.apply(ops, options),
+    comments: () => countsOf(store.comments.state.comments, session.doc).byScene,
   });
   const quick = createQuickBar(session, {
     edits: editsFor("quick"),
@@ -170,6 +210,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     claim: () => adder.claim(),
     hasVideo: () => adder.hasVideo(),
     build: (on) => canvas.setBuild(on),
+    comment: () => toggleCommenting(),
     keys: () => shortcuts.open(),
     palette: () => palette.toggle(),
   });
@@ -196,6 +237,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   const shortcuts = createShortcuts(host, {
     add: (kind) => void adder.quick(kind),
     pickImage: () => quick.pickImage(),
+    comment: () => toggleCommenting(),
     undo: () => session.undo(),
     redo: () => session.redo(),
     save: () => void store.save(),
@@ -222,6 +264,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         hasVideo: () => adder.hasVideo(),
         togglePin: (id) => toolbar.togglePin(id),
         remove: (id) => toolbar.remove(id),
+        comment: (id) => void canvas.comments?.compose(id),
+        commentsShown: () => canvas.comments?.shown ?? false,
+        showComments: (on) => canvas.comments?.setShown(on),
         setLead: (lead) => sceneBar.setLead(lead),
         setLayout: (layout) => sceneBar.setLayout(layout),
         autoLayout: () => sceneBar.autoLayout(),
@@ -278,12 +323,48 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         : state.message
           ? `${SAVE_LABEL[state.save]}. ${state.message}`
           : SAVE_LABEL[state.save];
+    // A plain "Saved" says nothing the dot does not, so a narrow window may leave the word to the tooltip.
+    status.title = status.textContent;
+    status.toggleAttribute("data-quiet", state.save === "saved" && !state.message);
     present.setAttribute("href", `/present#/${encodeURIComponent(selected)}`);
+  }
+
+  /** Starts the Comment tool, or stops it. The key, the quick bar's button and the palette all come here. */
+  function toggleCommenting() {
+    const pins = canvas.comments;
+    if (pins) pins.setTool(!pins.tool);
+  }
+
+  /** The Comments button and the tool's button: how many are open, whether they are shown, whether the tool is on. */
+  function renderComments() {
+    const pins = canvas.comments;
+    if (!pins) return;
+    const { comments, problem, ready } = store.comments.state;
+    const { total } = countsOf(comments, session.doc);
+    const counted = ready && problem === undefined;
+    commentCount.textContent = counted && total.open > 0 ? String(total.open) : "";
+    commentCount.toggleAttribute("data-tasks", total.tasks > 0);
+    const open = `${total.open} open ${total.open === 1 ? "comment" : "comments"}`;
+    const said = problem
+      ? `Comments cannot be shown. ${problem}`
+      : `${counted ? open : "Comments"}${total.tasks > 0 ? `, ${total.tasks} waiting for the agent` : ""}. ${pins.shown ? "Shown on the slides. Press to hide them." : "Hidden. Press to show them."}`;
+    commentsButton.setAttribute("aria-label", said);
+    commentsButton.title = said;
+    commentsButton.setAttribute("aria-pressed", String(pins.shown));
+    commentsButton.toggleAttribute("disabled", problem !== undefined);
+    resolvedButton.hidden = !(pins.shown && total.resolved > 0);
+    resolvedButton.setAttribute("aria-pressed", String(pins.showResolved));
+    resolvedCount.textContent = String(total.resolved);
+    const resolved = `${total.resolved} resolved ${total.resolved === 1 ? "comment" : "comments"}. ${pins.showResolved ? "Shown dimmed. Press to hide them." : "Hidden. Press to show them."}`;
+    resolvedButton.setAttribute("aria-label", resolved);
+    resolvedButton.title = resolved;
+    quick.setCommenting(pins.tool);
   }
 
   /** The popovers and buttons of the bar, redrawn from the deck. Saving changes none of it, so a save skips this. */
   function renderBar() {
     renderStatus();
+    renderComments();
     sceneBar.render(selected, typingIn === "scene");
     quick.render(selected, typingIn === "quick");
     const live = session.doc.scenes[selected];
@@ -386,6 +467,11 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     renderStatus();
     renderNotices();
   });
+  // The pins follow the book on their own. The bar and the strip read the counts from it.
+  const unsubscribeComments = store.comments.subscribe(() => {
+    renderComments();
+    renderScenes();
+  });
 
   // A click on the stage that lands on no block, and not on the toolbar or the build badges, lets go of the choice.
   // The quick bar is beside the stage and not in it, so a press on the bar keeps the choice its adds go after.
@@ -395,7 +481,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     "click",
     (event) => {
       const target = event.target;
-      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar, .ed-build"))
+      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar, .ed-build, .ed-comments"))
         selectBlock(undefined);
     },
     true,
@@ -422,6 +508,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       ribbon.destroy();
       unsubscribeSession();
       unsubscribeStore();
+      unsubscribeComments();
       strip.destroy();
       sceneBar.destroy();
       quick.destroy();

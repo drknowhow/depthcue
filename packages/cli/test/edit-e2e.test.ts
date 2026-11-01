@@ -2410,6 +2410,320 @@ describe("the Ctrl K palette in a real browser", () => {
   }
 });
 
+describe("comments in a real browser", () => {
+  const NOW = "2026-11-01T10:00:00.000Z";
+  const block = (id: string) => page.locator(`.ed-frame [data-id='${id}']`);
+  // The empty pin that marks where a comment being written will point is not a comment's pin.
+  const pins = () => page.locator(".ed-pin[data-pin]");
+  const thread = () => page.locator(".ed-thread");
+  const field = () => thread().locator("[data-comment='field']");
+  const control = (name: string) => thread().locator(`[data-comment='${name}']`);
+  const messages = () => thread().locator(".ed-thread-message");
+  const topButton = () => page.locator(".ed-actions [data-action='comments']");
+  const resolvedToggle = () => page.locator(".ed-actions [data-action='resolved']");
+  const focusedName = () =>
+    page.evaluate(() => (document.activeElement as HTMLElement | null)?.getAttribute("data-comment") ?? null);
+  const commentsPath = () => join(folder, "comments.json");
+  type Saved = {
+    id: string;
+    scene: string;
+    block: string;
+    anchor: { x: number; y: number };
+    thread: Array<{ author: string; text: string }>;
+    resolved: boolean;
+    ask?: boolean;
+  };
+  const commentsOnDisk = (): Saved[] =>
+    existsSync(commentsPath()) ? JSON.parse(readFileSync(commentsPath(), "utf8")).comments : [];
+  /** A comment as the file has it, so a test can start with one there, or write one as an agent would. */
+  const entry = (over: Partial<Saved> = {}): Saved => ({
+    id: "c1",
+    scene: "method",
+    block: "method-diagram",
+    anchor: { x: 0.5, y: 0.5 },
+    thread: [{ author: "you", text: "Is this the right diagram?" }],
+    resolved: false,
+    ...over,
+  });
+  const writeComments = (...comments: Saved[]) =>
+    writeFileSync(
+      commentsPath(),
+      `${JSON.stringify(
+        {
+          format: "depthcue-comments/1",
+          comments: comments.map((comment) => ({
+            ...comment,
+            thread: comment.thread.map((message) => ({ ...message, at: NOW })),
+          })),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  const boxOf = async (locator: Locator) => {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error("the element should be drawn");
+    return box;
+  };
+  const centerOf = async (locator: Locator) => {
+    const box = await boxOf(locator);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+  const deckBefore = () => JSON.stringify(disk());
+
+  it("makes a comment with the tool, writes only comments.json, and puts its pin where the block was pressed", async () => {
+    await openScene("method", "method-diagram");
+    const untouched = deckBefore();
+    await page.keyboard.press("m");
+    await page.locator(".ed-comment-banner").waitFor();
+    expect(await page.locator("[data-quick='comment']").getAttribute("aria-pressed")).toBe("true");
+    const box = await boxOf(block("method-diagram"));
+    await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.5);
+
+    await thread().waitFor();
+    expect(await focusedName()).toBe("field");
+    expect(await page.locator(".ed-comment-banner").isHidden()).toBe(true);
+    await page.keyboard.type("Make this label shorter.");
+    await control("add").click();
+
+    await pins().first().waitFor();
+    await page.waitForFunction(
+      () => document.querySelector(".ed-thread")?.getAttribute("data-thread") === "thread:c1",
+    );
+    const [written] = commentsOnDisk();
+    expect(written).toMatchObject({ id: "c1", scene: "method", block: "method-diagram", resolved: false });
+    expect(written?.thread.map((message) => [message.author, message.text])).toEqual([
+      ["you", "Make this label shorter."],
+    ]);
+    expect(written?.anchor.x).toBeCloseTo(0.25, 1);
+    expect(written?.anchor.y).toBeCloseTo(0.5, 1);
+    expect(JSON.stringify(disk())).toBe(untouched);
+    // The pin is centered on the point that was pressed, and the box beside it has the keyboard for the first reply.
+    const at = await centerOf(pins().first());
+    expect(Math.abs(at.x - (box.x + box.width * 0.25))).toBeLessThan(3);
+    expect(Math.abs(at.y - (box.y + box.height * 0.5))).toBeLessThan(3);
+    expect(await focusedName()).toBe("field");
+    expect(await topButton().locator(".ed-count").textContent()).toBe("1");
+    expect(problems).toEqual([]);
+  });
+
+  it("asks the agent, and the pin says the comment is waiting for it", async () => {
+    await openScene("method", "method-body");
+    await page.keyboard.press("m");
+    const box = await boxOf(block("method-body"));
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    await field().waitFor();
+    await page.keyboard.type("Cut this to one line.");
+    await control("ask").click();
+    await pins().first().waitFor();
+    expect(await pins().first().getAttribute("data-state")).toBe("task");
+    expect(commentsOnDisk()[0]?.ask).toBe(true);
+    expect(await topButton().locator(".ed-count").getAttribute("data-tasks")).not.toBeNull();
+    expect(problems).toEqual([]);
+  });
+
+  it("replies with the keyboard staying in the box, then resolves and reopens, each written to the file", async () => {
+    writeComments(entry());
+    await openScene("method", "method-diagram");
+    await pins().first().click();
+    await thread().waitFor();
+    expect(await focusedName()).toBe("field");
+    await page.keyboard.type("It is, thanks.");
+    await control("reply").click();
+    await messages().nth(1).waitFor();
+    expect(commentsOnDisk()[0]?.thread.map((message) => message.author)).toEqual(["you", "you"]);
+    expect(await field().inputValue()).toBe("");
+    expect(await focusedName()).toBe("field");
+
+    await control("resolve").click();
+    await page.waitForFunction(() => document.querySelectorAll(".ed-pin").length === 0);
+    expect(commentsOnDisk()[0]?.resolved).toBe(true);
+    expect(await control("resolve").textContent()).toBe("Reopen");
+    expect(await resolvedToggle().locator(".ed-count").textContent()).toBe("1");
+    // A press on the top bar is a press elsewhere, which puts the empty box away; the pin brings the thread back.
+    await resolvedToggle().click();
+    await pins().first().waitFor();
+    expect(await pins().first().getAttribute("data-state")).toBe("resolved");
+    await pins().first().click();
+    await thread().waitFor();
+
+    await control("resolve").click();
+    await page.waitForFunction(
+      () => document.querySelector(".ed-pin")?.getAttribute("data-state") === "open",
+    );
+    expect(commentsOnDisk()[0]?.resolved).toBe(false);
+    expect(problems).toEqual([]);
+  });
+
+  it("closes the thread on Escape and gives the keyboard back to its pin", async () => {
+    writeComments(entry());
+    await openScene("method", "method-diagram");
+    await pins().first().click();
+    await thread().waitFor();
+    await page.keyboard.press("Escape");
+    await thread().waitFor({ state: "hidden" });
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-pin") ?? null)).toBe("c1");
+    expect(problems).toEqual([]);
+  });
+
+  it("deletes a thread only after a second press, and the file follows", async () => {
+    writeComments(entry(), entry({ id: "c2", block: "method-body" }));
+    await openScene("method", "method-diagram");
+    await pins().first().click();
+    await control("delete").click();
+    expect(await control("delete").textContent()).toBe("Delete the thread?");
+    expect(commentsOnDisk()).toHaveLength(2);
+    await control("delete").click();
+    await page.waitForFunction(() => document.querySelectorAll(".ed-pin").length === 1);
+    expect(commentsOnDisk().map((comment) => comment.id)).toEqual(["c2"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("hides the pins from the top bar and brings them back, and the strip counts what is open", async () => {
+    writeComments(entry(), entry({ id: "c2", block: "method-body", ask: true }));
+    await openScene("method", "method-diagram");
+    await page.waitForFunction(() => document.querySelectorAll(".ed-pin").length === 2);
+    expect(await topButton().locator(".ed-count").textContent()).toBe("2");
+    const notes = page.locator(".ed-scene-list > li[data-id='method'] .ed-scene-notes");
+    expect(await notes.textContent()).toBe("2");
+    expect(await notes.isVisible()).toBe(true);
+    expect(await page.locator(".ed-scene-list > li[data-id='opening'] .ed-scene-notes").isHidden()).toBe(
+      true,
+    );
+
+    await topButton().click();
+    await page.waitForFunction(() => document.querySelectorAll(".ed-pin").length === 0);
+    expect(await topButton().getAttribute("aria-pressed")).toBe("false");
+    await topButton().click();
+    await page.waitForFunction(() => document.querySelectorAll(".ed-pin").length === 2);
+    expect(await topButton().getAttribute("aria-pressed")).toBe("true");
+    expect(problems).toEqual([]);
+  });
+
+  it("takes in a comment and a reply that an agent writes to the file, without a reload or losing a draft", async () => {
+    await openScene("method", "method-diagram");
+    expect(await pins().count()).toBe(0);
+    writeComments(entry({ ask: true }));
+    await pins().first().waitFor();
+    expect(await pins().first().getAttribute("data-state")).toBe("task");
+    expect(await topButton().locator(".ed-count").textContent()).toBe("1");
+
+    await pins().first().click();
+    await field().fill("a draft in progress");
+    writeComments(
+      entry({
+        ask: true,
+        thread: [
+          { author: "you", text: "Is this the right diagram?" },
+          { author: "agent", text: "Yes, it matches the method." },
+        ],
+      }),
+    );
+    await messages().nth(1).waitFor();
+    expect(await field().inputValue()).toBe("a draft in progress");
+    expect(await pins().first().getAttribute("data-state")).toBe("answered");
+    expect(await thread().locator(".ed-thread-state").textContent()).toBe("The agent has replied.");
+    expect(problems).toEqual([]);
+  });
+
+  it("keeps a pin on its block when the block is pinned and then moved", async () => {
+    writeComments(entry({ anchor: { x: 0.75, y: 0.25 } }));
+    await openScene("method", "method-diagram");
+    await pins().first().waitFor();
+    const near = async () => {
+      const [pin, box] = [await centerOf(pins().first()), await boxOf(block("method-diagram"))];
+      return { dx: pin.x - (box.x + box.width * 0.75), dy: pin.y - (box.y + box.height * 0.25), box };
+    };
+    const first = await near();
+    expect(Math.abs(first.dx)).toBeLessThan(3);
+    expect(Math.abs(first.dy)).toBeLessThan(3);
+
+    await block("method-diagram").click();
+    await page.keyboard.press("p");
+    await saved();
+    const pinned = await near();
+    expect(Math.abs(pinned.dx)).toBeLessThan(4);
+    expect(Math.abs(pinned.dy)).toBeLessThan(4);
+
+    await page.keyboard.press("Shift+ArrowRight");
+    await page.keyboard.press("Shift+ArrowDown");
+    await saved();
+    const moved = await near();
+    expect(moved.box.x).toBeGreaterThan(pinned.box.x + 10);
+    expect(Math.abs(moved.dx)).toBeLessThan(4);
+    expect(Math.abs(moved.dy)).toBeLessThan(4);
+    expect(problems).toEqual([]);
+  });
+
+  it("puts a comment whose block was removed in the corner of the slide, marked, with its thread still readable", async () => {
+    writeComments(entry({ block: "method-diagram" }), entry({ id: "c2", block: "method-diagram" }));
+    external([{ op: "block.remove", scene: "method", id: "method-diagram" }]);
+    await openScene("method", "method-body");
+    const pin = pins().first();
+    await pin.waitFor();
+    expect(await pin.getAttribute("data-orphan")).not.toBeNull();
+    const slide = await boxOf(page.locator(".ed-frame"));
+    const at = await centerOf(pin);
+    expect(at.x).toBeLessThan(slide.x + slide.width / 4);
+    expect(at.y).toBeLessThan(slide.y + slide.height / 4);
+    // A second one stands beside the first, so both can be pressed.
+    const next = await centerOf(pins().nth(1));
+    expect(next.x - at.x).toBeGreaterThan(24);
+    expect(Math.abs(next.y - at.y)).toBeLessThan(2);
+    await pin.click();
+    expect(await thread().locator(".ed-thread-state").textContent()).toContain("is gone");
+    expect(problems).toEqual([]);
+  });
+
+  for (const [width, height] of [
+    [1440, 900],
+    [1024, 768],
+  ] as const) {
+    it(`keeps the top bar inside the window at ${width} wide with open and resolved comments, and leaves the deck title some room`, async () => {
+      writeComments(entry(), entry({ id: "c2", resolved: true }));
+      await page.setViewportSize({ width, height });
+      await openScene("method", "method-diagram");
+      await topButton().locator(".ed-count").waitFor();
+      const bar = await page.evaluate(() => {
+        const width = (selector: string) =>
+          document.querySelector(selector)?.getBoundingClientRect().width ?? 0;
+        const right = (selector: string) =>
+          document.querySelector(selector)?.getBoundingClientRect().right ?? 0;
+        return {
+          sideways: document.documentElement.scrollWidth > window.innerWidth,
+          deck: width(".ed-deck"),
+          lastEdge: right(".ed-actions"),
+          quick: document.querySelector(".ed-quick")?.getBoundingClientRect().height ?? 0,
+          one: document.querySelector("[data-quick='comment']")?.getBoundingClientRect().height ?? 0,
+        };
+      });
+      expect(bar.sideways).toBe(false);
+      expect(bar.deck).toBeGreaterThan(60);
+      expect(bar.lastEdge).toBeLessThanOrEqual(width);
+      // The quick bar is still one row of buttons, not a stack.
+      expect(bar.quick).toBeLessThan(bar.one * 2);
+      expect(await topButton().locator(".ed-count").textContent()).toBe("1");
+      expect(await resolvedToggle().locator(".ed-count").textContent()).toBe("1");
+      expect(problems).toEqual([]);
+    });
+  }
+
+  it("keeps the thread inside the slide on a phone, with the pin still pressable", async () => {
+    writeComments(entry({ anchor: { x: 0.95, y: 0.05 } }));
+    await page.setViewportSize({ width: 390, height: 780 });
+    await openScene("method", "method-diagram");
+    await pins().first().click();
+    await thread().waitFor();
+    const host = await boxOf(page.locator(".ed-canvas-host"));
+    const card = await boxOf(thread());
+    expect(card.x).toBeGreaterThanOrEqual(host.x - 1);
+    expect(card.x + card.width).toBeLessThanOrEqual(host.x + host.width + 1);
+    expect(card.y).toBeGreaterThanOrEqual(host.y - 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+    expect(problems).toEqual([]);
+  });
+});
+
 describe("layout problems from a real render, in a real browser", () => {
   // The first question starts a second Chrome, so these have more time than the others.
   const SLOW = 45_000;

@@ -21,6 +21,8 @@ export interface QuickBarHooks {
   hasVideo(): boolean;
   /** The Build order button was pressed: show the badges on the slide, or put them away. */
   build?(on: boolean): void;
+  /** The Comment button was pressed: start the tool that comments on a block, or stop it. */
+  comment?(): void;
   /** The ? button was pressed: show the list of keyboard shortcuts. */
   keys(): void;
   /** The Everything button was pressed: open the palette that finds anything to do. */
@@ -31,6 +33,8 @@ export interface QuickBar {
   readonly element: HTMLElement;
   /** Opens the file chooser that adds an image, as the Image button does. */
   pickImage(): void;
+  /** Shows whether the Comment tool is on, which the M key and Escape change without the button. */
+  setCommenting(on: boolean): void;
   /** Brings the bar up to date with the scene being edited. `typing` is true while a keystroke in the notes is applied. */
   render(sceneId: string, typing?: boolean): void;
   destroy(): void;
@@ -109,6 +113,16 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     { "data-quick": "build", "aria-pressed": "false", class: "ed-quick-build" },
   );
 
+  // Comments are about the slide and not on it, so the tool sits with the other ways of looking at it.
+  const comment = withKey(
+    actionButton("Comment", () => hooks.comment?.(), {
+      "data-quick": "comment",
+      "aria-pressed": "false",
+      title: "Comment on a block: click it and write",
+    }),
+    "M",
+  );
+
   // Everything and the keys sit at the far end: ways to find things, and not things to add.
   const everything = actionButton("Everything", () => hooks.palette(), {
     "data-quick": "palette",
@@ -130,6 +144,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     h("span", { class: "ed-quick-rule", "aria-hidden": "true" }),
     notes.chip.wrap,
     order,
+    comment,
     everything,
     keys,
   );
@@ -137,6 +152,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
   return {
     element,
     pickImage: () => imageInput?.click(),
+    setCommenting: (on) => comment.setAttribute("aria-pressed", String(on)),
     destroy: notes.destroy,
     render(sceneId, typing = false) {
       current = sceneId;

@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { memoryDraftStore } from "@depthcue/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Editor, mountEditor } from "../src/app.ts";
 import { type EditorStore, openStore } from "../src/store.ts";
 import { newBlock } from "../src/templates.ts";
@@ -34,7 +34,11 @@ interface Schema {
  */
 function walk(node: Schema, path: string, into: string[], root = false) {
   if (node.oneOf) {
-    for (const branch of node.oneOf) walk(branch, `${path}<${branch.properties?.type?.const}>`, into, true);
+    // A block is told apart by its type, and an operation by its op.
+    for (const branch of node.oneOf) {
+      const kind = branch.properties?.type?.const ?? branch.properties?.op?.const;
+      walk(branch, `${path}<${kind}>`, into, true);
+    }
     return;
   }
   if (node.properties) {
@@ -53,6 +57,9 @@ const shipped = () => {
   const paths: string[] = [];
   walk(readSchema("deck"), "deck", paths, true);
   walk(readSchema("scene"), "scene", paths, true);
+  // The comments file and the operations that change it are part of the format too, though they sit beside the deck.
+  walk(readSchema("comments"), "comments", paths, true);
+  walk(readSchema("comment-ops"), "commentOps", paths, true);
   return paths;
 };
 
@@ -67,6 +74,17 @@ const blocks = { text: "", image: "", clip: "" };
 beforeEach(async () => {
   server = new FakeServer();
   server.assets.push("assets/walk.mp4");
+  // One comment to open, so the controls of a thread have something to act on.
+  server.externalComment([
+    {
+      op: "comment.add",
+      scene: SCENE,
+      block: "chart-demand",
+      anchor: { x: 0.5, y: 0.5 },
+      author: "you",
+      text: "Is this the right quarter?",
+    },
+  ]);
   store = await openStore(server, () => memoryDraftStore());
   const scene = store.session.doc.scenes[SCENE];
   const image = [...store.session.doc.assets].sort().find((path) => /\.(png|jpe?g|webp|svg)$/.test(path));
@@ -85,6 +103,7 @@ beforeEach(async () => {
   document.body.replaceChildren(host);
   editor = mountEditor(host, store);
   editor.select(SCENE);
+  await vi.waitFor(() => expect(store.comments.state.ready).toBe(true));
 });
 afterEach(() => editor.destroy());
 
@@ -170,8 +189,131 @@ const FRAMES = Object.fromEntries(
   ]),
 );
 
+const NEVER_AUTHOR =
+  "The editor always writes as you, and the agent writes under its own name through deck_comment.";
+const NEVER_STAMP = "Written by the server when a message is sent, so a person cannot set it.";
+const NEVER_COMMENT_ID =
+  "Given by the file when a comment is added, and the open thread supplies it afterwards.";
+
+const within = (root: Element | null, selector: string) => (root ? find(root, selector) : null);
+/** Starts a comment on the chosen picture from the palette, as a person without a pointer does, and answers with its box. */
+const composing = () => {
+  choose(blocks.image, "other");
+  document.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true, cancelable: true }),
+  );
+  (find(host, ".ed-palette [data-command='comment']") as HTMLElement | null)?.click();
+  return find(host, ".ed-thread");
+};
+/** Opens the thread of the comment the deck starts with, from its pin. */
+const threading = () => {
+  (find(host, ".ed-pin") as HTMLElement | null)?.click();
+  return find(host, ".ed-thread");
+};
+/** The tool that starts a comment by pressing a block, which is where the scene, the block and the point come from. */
+const pressing = () => find(host, "[data-quick='comment']") && find(host, ".ed-comment-catch");
+
+/** What a comment is made of, and how each part is reached. The operations below are the same controls. */
+const COMMENT_WAYS: Record<string, Entry> = {
+  "comments.$schema": { never: NEVER_FORMAT },
+  "comments.format": { never: NEVER_FORMAT },
+  "comments.comments": {
+    where: "Quick bar, Comment (or M) to add; the open thread's Delete to remove",
+    reach: () => find(host, "[data-quick='comment']") && within(threading(), "[data-comment='delete']"),
+  },
+  "comments.comments[].id": { never: NEVER_COMMENT_ID },
+  "comments.comments[].scene": {
+    where: "Comment tool: a comment is made on the scene that is on show",
+    reach: pressing,
+  },
+  "comments.comments[].block": {
+    where: "Comment tool: the block that is pressed, or the chosen block from the palette",
+    reach: pressing,
+  },
+  "comments.comments[].anchor": {
+    where: "Comment tool: the point of the block that is pressed",
+    reach: pressing,
+  },
+  "comments.comments[].anchor.x": {
+    where: "Comment tool: the point of the block that is pressed",
+    reach: pressing,
+  },
+  "comments.comments[].anchor.y": {
+    where: "Comment tool: the point of the block that is pressed",
+    reach: pressing,
+  },
+  "comments.comments[].thread": {
+    where: "A pin opens its thread, and Reply adds to it",
+    reach: () => within(threading(), "[data-comment='reply']"),
+  },
+  "comments.comments[].thread[].author": { never: NEVER_AUTHOR },
+  "comments.comments[].thread[].text": {
+    where: "Comment box and Reply box, the text area",
+    reach: () => within(composing(), "[data-comment='field']"),
+  },
+  "comments.comments[].thread[].at": { never: NEVER_STAMP },
+  "comments.comments[].resolved": {
+    where: "Open thread, Resolve and Reopen",
+    reach: () => within(threading(), "[data-comment='resolve']"),
+  },
+  "comments.comments[].ask": {
+    where: "Comment box, Ask the agent (only when the comment is made)",
+    reach: () => within(composing(), "[data-comment='ask']"),
+  },
+
+  commentOps: {
+    where: "The buttons of the comment box and the open thread send them",
+    reach: () => within(composing(), "[data-comment='add']"),
+  },
+  "commentOps<comment.add>.op": {
+    where: "Comment box, Comment",
+    reach: () => within(composing(), "[data-comment='add']"),
+  },
+  "commentOps<comment.add>.id": { never: NEVER_COMMENT_ID },
+  "commentOps<comment.add>.scene": { where: "Comment tool: the scene on show", reach: pressing },
+  "commentOps<comment.add>.block": { where: "Comment tool: the block pressed", reach: pressing },
+  "commentOps<comment.add>.anchor": { where: "Comment tool: the point pressed", reach: pressing },
+  "commentOps<comment.add>.anchor.x": { where: "Comment tool: the point pressed", reach: pressing },
+  "commentOps<comment.add>.anchor.y": { where: "Comment tool: the point pressed", reach: pressing },
+  "commentOps<comment.add>.author": { never: NEVER_AUTHOR },
+  "commentOps<comment.add>.text": {
+    where: "Comment box, the text area",
+    reach: () => within(composing(), "[data-comment='field']"),
+  },
+  "commentOps<comment.add>.ask": {
+    where: "Comment box, Ask the agent",
+    reach: () => within(composing(), "[data-comment='ask']"),
+  },
+  "commentOps<comment.reply>.op": {
+    where: "Open thread, Reply",
+    reach: () => within(threading(), "[data-comment='reply']"),
+  },
+  "commentOps<comment.reply>.id": { never: NEVER_COMMENT_ID },
+  "commentOps<comment.reply>.author": { never: NEVER_AUTHOR },
+  "commentOps<comment.reply>.text": {
+    where: "Open thread, the reply text area",
+    reach: () => within(threading(), "[data-comment='field']"),
+  },
+  "commentOps<comment.resolve>.op": {
+    where: "Open thread, Resolve",
+    reach: () => within(threading(), "[data-comment='resolve']"),
+  },
+  "commentOps<comment.resolve>.id": { never: NEVER_COMMENT_ID },
+  "commentOps<comment.reopen>.op": {
+    where: "Open thread of a resolved comment, Reopen (the same button as Resolve)",
+    reach: () => within(threading(), "[data-comment='resolve']"),
+  },
+  "commentOps<comment.reopen>.id": { never: NEVER_COMMENT_ID },
+  "commentOps<comment.delete>.op": {
+    where: "Open thread, Delete, pressed twice",
+    reach: () => within(threading(), "[data-comment='delete']"),
+  },
+  "commentOps<comment.delete>.id": { never: NEVER_COMMENT_ID },
+};
+
 const WAYS: Record<string, Entry> = {
   ...FRAMES,
+  ...COMMENT_WAYS,
   "deck.$schema": { never: NEVER_FORMAT },
   "deck.schemaVersion": { never: NEVER_FORMAT },
   "deck.id": { never: NEVER_ID },
@@ -417,6 +559,10 @@ describe("every property of a deck can be edited", () => {
         "scene.blocks<bar-chart>.data[].value",
         "scene.blocks<clip>.frame.w",
         "scene.steps[].reveal",
+        "comments.comments[].anchor.x",
+        "comments.comments[].thread[].text",
+        "commentOps<comment.reply>.text",
+        "commentOps<comment.delete>.id",
       ]),
     );
   });

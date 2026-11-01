@@ -37,6 +37,7 @@ export {
   commentWarnings,
   emptyComments,
   isOrphan,
+  isTask,
   openComments,
   orphansOf,
   readComments,

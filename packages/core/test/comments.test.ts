@@ -18,6 +18,7 @@ import {
   docToFiles,
   emptyComments,
   isOrphan,
+  isTask,
   loadDoc,
   OP_NAMES,
   openComments,
@@ -292,6 +293,32 @@ describe("resolving, reopening and deleting", () => {
     expect(result.prevRev).toBe(commentsRevision(file));
     expect(result.rev).toBe(commentsRevision(result.file));
     expect(openComments(result.file).map((c) => c.id)).toEqual(["c1", "c3"]);
+  });
+});
+
+describe("a task for the agent", () => {
+  const asked = () => applied(emptyComments(), [add({ ask: true })]);
+  const only = (file: CommentsFile) => file.comments[0] as CommentsFile["comments"][number];
+
+  it("is an open comment marked ask that the person spoke last on", () => {
+    expect(isTask(only(asked()))).toBe(true);
+  });
+
+  it("is not a comment that was not asked about", () => {
+    expect(isTask(only(withOne()))).toBe(false);
+  });
+
+  it("stops being one when the agent answers, and is one again when the person writes after it", () => {
+    const answered = applied(asked(), [{ op: "comment.reply", id: "c1", author: "agent", text: "Done." }]);
+    expect(isTask(only(answered))).toBe(false);
+    const again = applied(answered, [{ op: "comment.reply", id: "c1", author: "you", text: "Not quite." }]);
+    expect(isTask(only(again))).toBe(true);
+  });
+
+  it("is not one once it is resolved, and is one again when it is reopened", () => {
+    const resolved = applied(asked(), [{ op: "comment.resolve", id: "c1" }]);
+    expect(isTask(only(resolved))).toBe(false);
+    expect(isTask(only(applied(resolved, [{ op: "comment.reopen", id: "c1" }])))).toBe(true);
   });
 });
 

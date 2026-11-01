@@ -74,12 +74,16 @@ describe("the top bar", () => {
     expect(button("retry").hidden).toBe(true);
     expect(status().dataset.state).toBe("saved");
     expect(status().textContent).toBe("Saved");
+    // A plain "Saved" may be left to its dot in a narrow window, and still has its words as a tooltip.
+    expect(status().hasAttribute("data-quiet")).toBe(true);
+    expect(status().title).toBe("Saved");
   });
 
   it("enables undo and redo as the work changes", () => {
     store.session.apply([retitle("Edited")]);
     expect(button("undo").disabled).toBe(false);
     expect(status().textContent).toBe("Unsaved changes");
+    expect(status().hasAttribute("data-quiet")).toBe(false);
     button("undo").click();
     expect(button("redo").disabled).toBe(false);
     expect(openingTitle(store.session.doc)).not.toBe("Edited");

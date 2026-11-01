@@ -321,6 +321,73 @@ describe("a server leaves the comments alone", () => {
       listener.destroy();
     }
   });
+
+  /** Opens the event stream a page listens to and collects what the server sends down it. */
+  const listen = async (path: string, port = server.port) => {
+    const events: string[] = [];
+    const listener = request({
+      host: "127.0.0.1",
+      port,
+      path,
+      headers: { Host: `127.0.0.1:${port}` },
+    });
+    await new Promise<void>((started, fail) => {
+      listener.on("response", (response) => {
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => events.push(String(chunk)));
+        started();
+      });
+      listener.on("error", fail);
+      listener.end();
+    });
+    return { text: () => events.join(""), stop: () => listener.destroy() };
+  };
+
+  it("tells the editor when the comments change, on an event of their own, and tells no other page", async () => {
+    const editor = await listen("/_depthcue/events?comments=1");
+    const deckWindow = await listen("/_depthcue/events");
+    try {
+      done([add("Another")]);
+      await new Promise((wait) => setTimeout(wait, 300));
+      expect(editor.text()).toContain("event: comments");
+      expect(editor.text()).not.toContain("event: change");
+      expect(deckWindow.text()).not.toContain("comments");
+      expect(deckWindow.text()).not.toContain("event: change");
+      // A change to the deck is still the deck window's to hear, and the editor's.
+      const scene = join(deck, "scenes", "method.json");
+      writeFileSync(scene, `${readFileSync(scene, "utf8")} `);
+      await new Promise((wait) => setTimeout(wait, 300));
+      expect(deckWindow.text()).toContain("event: change");
+      expect(editor.text()).toContain("event: change");
+    } finally {
+      editor.stop();
+      deckWindow.stop();
+    }
+  });
+
+  it("sends a server with no editor no comment event, even to a page that asks for it", async () => {
+    const readOnly = await startServer({ folder: deck, playerDir: join(root, "player"), port: 0 });
+    const asking = await listen("/_depthcue/events?comments=1", readOnly.port);
+    try {
+      done([add("Another")]);
+      await new Promise((wait) => setTimeout(wait, 300));
+      expect(asking.text()).not.toContain("comments");
+    } finally {
+      asking.stop();
+      await readOnly.close();
+    }
+  });
+
+  it("does not send a comment event for the temporary file a write passes through", async () => {
+    const editor = await listen("/_depthcue/events?comments=1");
+    try {
+      writeFileSync(join(deck, "comments.json.depthcue-1.tmp"), "{}");
+      await new Promise((wait) => setTimeout(wait, 300));
+      expect(editor.text()).not.toContain("event: comments");
+    } finally {
+      editor.stop();
+    }
+  });
 });
 
 describe("the built player does not carry the comments code", () => {

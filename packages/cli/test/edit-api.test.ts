@@ -12,7 +12,15 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { docToFiles, loadDoc, readCueMap, revisionOf } from "@depthcue/core";
+import {
+  COMMENTS_FILE,
+  commentsRevision,
+  docToFiles,
+  emptyComments,
+  loadDoc,
+  readCueMap,
+  revisionOf,
+} from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assetName, sniffImage } from "../src/edit-api.ts";
 import type { LayoutAnswer, LayoutChecker } from "../src/edit-layout.ts";
@@ -718,6 +726,160 @@ describe("layout", () => {
   it("closes the checker, and the browser with it, when the server closes", async () => {
     await server.close();
     expect(closes).toBe(1);
+  });
+});
+
+describe("comments", () => {
+  const COMMENTS = "/_depthcue/api/comments";
+  const post = (body: unknown, extra: Call = {}) => call(COMMENTS, { ...json(body), ...extra });
+  const diskText = () => readFileSync(join(folder, COMMENTS_FILE), "utf8");
+  const deckFiles = () =>
+    ["deck.json", ...readdirSync(join(folder, "scenes")).map((name) => `scenes/${name}`)].map((path) =>
+      readFileSync(join(folder, path), "utf8"),
+    );
+  const add = (text = "Is this the right headline?", extra: Record<string, unknown> = {}) => ({
+    op: "comment.add",
+    scene: "opening",
+    block: "opening-title",
+    anchor: { x: 0.25, y: 0.5 },
+    author: "you",
+    text,
+    ...extra,
+  });
+  /** A comment added through the call, so a later call has something to answer, with the revision it left. */
+  const started = async (extra: Record<string, unknown> = {}) => {
+    const first = await post({ baseRev: (await call(COMMENTS)).json.rev, ops: [add("First", extra)] });
+    expect(first.status).toBe(200);
+    return first.json.rev as string;
+  };
+
+  it("reads no comments from a deck that has none, with the revision to start from", async () => {
+    const answer = await call(COMMENTS);
+    expect(answer.status).toBe(200);
+    expect(answer.json).toEqual({ rev: commentsRevision(emptyComments()), comments: [] });
+    expect(existsSync(join(folder, COMMENTS_FILE))).toBe(false);
+  });
+
+  it("reads every comment, the resolved ones too, because the editor decides what to show", async () => {
+    const rev = await started();
+    await post({ baseRev: rev, ops: [{ op: "comment.resolve", id: "c1" }] });
+    const answer = await call(COMMENTS);
+    expect(answer.json.comments).toMatchObject([{ id: "c1", resolved: true }]);
+    expect(answer.json.rev).toBe(commentsRevision(JSON.parse(diskText())));
+  });
+
+  it("adds a comment as the person, writes only comments.json, and answers with the new file", async () => {
+    const before = deckFiles();
+    const answer = await post({ baseRev: commentsRevision(emptyComments()), ops: [add(), add("Second")] });
+    expect(answer.status).toBe(200);
+    const file = JSON.parse(diskText());
+    expect(answer.json.comments).toEqual(file.comments);
+    expect(answer.json.rev).toBe(commentsRevision(file));
+    expect(answer.json.changed).toEqual(["c1", "c2"]);
+    expect(file.comments[0]).toMatchObject({
+      id: "c1",
+      scene: "opening",
+      block: "opening-title",
+      anchor: { x: 0.25, y: 0.5 },
+      resolved: false,
+      thread: [{ author: "you", text: "Is this the right headline?" }],
+    });
+    expect(file.comments[0].ask).toBeUndefined();
+    expect(deckFiles()).toEqual(before);
+    expect(
+      readdirSync(folder)
+        .filter((name) => name.endsWith(".tmp"))
+        .concat(readdirSync(join(folder, "scenes")).filter((name) => name.endsWith(".tmp"))),
+    ).toEqual([]);
+  });
+
+  it("marks a comment as a task for the agent when it is added with ask", async () => {
+    await started({ ask: true });
+    expect(JSON.parse(diskText()).comments[0].ask).toBe(true);
+  });
+
+  it("replies, resolves, reopens and deletes against the revision each call returned", async () => {
+    let rev = await started();
+    const send = async (op: Record<string, unknown>) => {
+      const answer = await post({ baseRev: rev, ops: [op] });
+      expect(answer.status, JSON.stringify(answer.json)).toBe(200);
+      rev = answer.json.rev as string;
+      return answer.json.comments as Array<Record<string, unknown>>;
+    };
+    expect(
+      await send({ op: "comment.reply", id: "c1", author: "you", text: "Maybe shorter?" }),
+    ).toMatchObject([{ thread: [{ text: "First" }, { author: "you", text: "Maybe shorter?" }] }]);
+    expect(await send({ op: "comment.resolve", id: "c1" })).toMatchObject([{ resolved: true }]);
+    expect(await send({ op: "comment.reopen", id: "c1" })).toMatchObject([{ resolved: false }]);
+    expect(await send({ op: "comment.delete", id: "c1" })).toEqual([]);
+  });
+
+  it("refuses a stale revision with 409 and the revision that is there, and writes nothing", async () => {
+    await started();
+    const text = diskText();
+    const answer = await post({ baseRev: commentsRevision(emptyComments()), ops: [add("Late")] });
+    expect(answer.status).toBe(409);
+    expect(answer.json.error).toBe("stale");
+    expect(answer.json.rev).toBe(commentsRevision(JSON.parse(text)));
+    expect(String(answer.json.message)).toContain("Read them");
+    expect(diskText()).toBe(text);
+  });
+
+  it("refuses an operation the core refuses, with where and why, and writes nothing", async () => {
+    const answer = await post({
+      baseRev: commentsRevision(emptyComments()),
+      ops: [add("Fine"), add("Lost", { block: "no-such-block" })],
+    });
+    expect(answer.status).toBe(422);
+    expect(answer.json.error).toBe("bad-op");
+    expect(answer.json.diagnostics).toMatchObject([{ at: "ops/1/block", severity: "error" }]);
+    expect(existsSync(join(folder, COMMENTS_FILE))).toBe(false);
+  });
+
+  it("will not read or change a comments.json that is not valid, and leaves it as the person wrote it", async () => {
+    const hand = '{ "format": "depthcue-comments/1", "comments": [ 5 ] } // mine';
+    writeFileSync(join(folder, COMMENTS_FILE), hand);
+    const read = await call(COMMENTS);
+    expect(read.status).toBe(422);
+    expect(read.json.error).toBe("unreadable-comments");
+    expect(String(read.json.message)).toContain("by hand");
+    const written = await post({ baseRev: commentsRevision(emptyComments()), ops: [add()] });
+    expect(written.status).toBe(422);
+    expect(written.json.error).toBe("unreadable-comments");
+    expect(diskText()).toBe(hand);
+  });
+
+  it("says why when the deck has errors, and writes nothing", async () => {
+    writeFileSync(join(folder, "scenes", "opening.json"), "{ not json");
+    expect((await call(COMMENTS)).json.error).toBe("unreadable-deck");
+    const answer = await post({ baseRev: commentsRevision(emptyComments()), ops: [add()] });
+    expect(answer.status).toBe(422);
+    expect(existsSync(join(folder, COMMENTS_FILE))).toBe(false);
+  });
+
+  it("needs the token, JSON, a body of the right shape and a body of a sensible size", async () => {
+    expect((await call(COMMENTS, { token: false })).status).toBe(403);
+    expect((await post({ baseRev: "x", ops: [] }, { token: false })).status).toBe(403);
+    expect((await call(COMMENTS, { method: "POST", body: "{}" })).status).toBe(415);
+    expect((await call(COMMENTS, { ...json({}) })).status).toBe(400);
+    expect((await post({ baseRev: 5, ops: [] })).status).toBe(400);
+    expect((await post({ baseRev: "x", ops: "no" })).status).toBe(400);
+    expect(
+      (
+        await call(COMMENTS, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{ nope",
+        })
+      ).status,
+    ).toBe(400);
+    expect((await post({ baseRev: "x", ops: [add("y".repeat(70_000))] })).status).toBe(413);
+    expect(existsSync(join(folder, COMMENTS_FILE))).toBe(false);
+  });
+
+  it("answers no other method", async () => {
+    expect((await call(COMMENTS, { method: "DELETE" })).status).toBe(404);
+    expect((await call(COMMENTS, { ...json({}), method: "PUT" })).status).toBe(404);
   });
 });
 

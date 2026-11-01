@@ -6,13 +6,13 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writ
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type DraftStore, loadDoc, type Op, revisionOf } from "@depthcue/core";
+import { COMMENTS_FILE, type CommentOp, type DraftStore, loadDoc, type Op, revisionOf } from "@depthcue/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadDeckDir } from "../../cli/src/loader.ts";
 import { type RunningServer, startServer } from "../../cli/src/serve.ts";
-import { createApi } from "../../editor/src/api.ts";
+import { type Api, createApi } from "../../editor/src/api.ts";
 import { type EditorStore, openStore } from "../../editor/src/store.ts";
 import { createDepthcueServer, type DepthcueServer } from "../src/server.ts";
 
@@ -49,7 +49,9 @@ const memoryDrafts = (): DraftStore => {
 };
 
 /** An editor over the real edit server at `dir`, wired like the browser's: a token, and paths under the server. */
-async function openEditor(dir: string): Promise<{ store: EditorStore; close: () => Promise<void> }> {
+async function openEditor(
+  dir: string,
+): Promise<{ store: EditorStore; api: Api; close: () => Promise<void> }> {
   const playerDir = join(root, `player-${dir.length}`);
   const editorDir = join(root, `editor-${dir.length}`);
   mkdirSync(playerDir, { recursive: true });
@@ -66,6 +68,7 @@ async function openEditor(dir: string): Promise<{ store: EditorStore; close: () 
   const store = await openStore(api, memoryDrafts);
   return {
     store,
+    api,
     close: async () => {
       store.dispose();
       await running.close();
@@ -78,14 +81,26 @@ interface ToolAnswer {
   json: Record<string, unknown>;
 }
 
-async function deckApply(client: Client, baseRev: string, ops: Op[]): Promise<ToolAnswer> {
-  const result = (await client.callTool({ name: "deck_apply", arguments: { base_rev: baseRev, ops } })) as {
+async function callTool(client: Client, name: string, args: Record<string, unknown>): Promise<ToolAnswer> {
+  const result = (await client.callTool({ name, arguments: args })) as {
     isError?: boolean;
     content: Array<{ type: string; text?: string }>;
   };
   const text = result.content.find((part) => part.type === "text")?.text ?? "{}";
   return { isError: result.isError === true, json: JSON.parse(text) as Record<string, unknown> };
 }
+
+const deckApply = (client: Client, baseRev: string, ops: Op[]) =>
+  callTool(client, "deck_apply", { base_rev: baseRev, ops });
+const deckComment = (client: Client, baseRev: string, ops: unknown[]) =>
+  callTool(client, "deck_comment", { base_rev: baseRev, ops });
+/** The comments part of the outline an agent reads first: the revision to pass, how many are open, and the tasks. */
+const commentsOutline = async (client: Client) =>
+  (await callTool(client, "deck_get", {})).json.comments as {
+    rev: string;
+    open: number;
+    tasks?: Array<{ id: string; scene: string; block: string; text: string }>;
+  };
 
 async function connect(dir: string): Promise<{ client: Client; server: DepthcueServer }> {
   const mcp = createDepthcueServer(dir);
@@ -172,5 +187,133 @@ describe("one command layer under the editor and the agent tools", () => {
     expect(editor.status.save).toBe("error");
     expect(snapshot(folder)).toEqual(afterAgent);
     expect(revisionOnDisk(folder)).toBe(now);
+  });
+});
+
+describe("one comment layer under the editor and the agent tools", () => {
+  const commentsText = (dir: string) => readFileSync(join(dir, COMMENTS_FILE), "utf8");
+  /** The file with the two things that must differ left out: who wrote a message, and when. */
+  const sameButAuthors = (text: string) => {
+    const file = JSON.parse(text) as { comments: Array<{ thread: Array<Record<string, string>> }> };
+    for (const comment of file.comments) {
+      for (const message of comment.thread) Object.assign(message, { author: "-", at: "-" });
+    }
+    return file;
+  };
+  const NOTE = {
+    scene: "method",
+    block: "method-diagram",
+    anchor: { x: 0.4, y: 0.6 },
+    text: "Make this label shorter.",
+  };
+
+  async function both(): Promise<{ api: Api; folder: string }> {
+    const dir = join(root, "deck");
+    cpSync(demo, dir, { recursive: true });
+    const opened = await openEditor(dir);
+    editor = opened.store;
+    closeEditor = opened.close;
+    const connected = await connect(dir);
+    agent = connected.client;
+    depthcue = connected.server;
+    await editor.comments.sync();
+    return { api: opened.api, folder: dir };
+  }
+
+  it("shows the agent what the person asked for, and the editor what the agent answered", async () => {
+    await both();
+    const asked = await editor.comments.apply([
+      { op: "comment.add", ...NOTE, author: "you", ask: true } satisfies CommentOp,
+    ]);
+    expect(asked).toEqual({ ok: true, added: ["c1"] });
+
+    const seen = await commentsOutline(agent);
+    expect(seen.open).toBe(1);
+    expect(seen.tasks).toEqual([{ id: "c1", scene: "method", block: "method-diagram", text: NOTE.text }]);
+
+    const answered = await deckComment(agent, seen.rev, [
+      { op: "comment.reply", id: "c1", text: "Shortened it." },
+      { op: "comment.resolve", id: "c1" },
+    ]);
+    expect(answered.isError).toBe(false);
+
+    await editor.comments.sync();
+    const [comment] = editor.comments.state.comments;
+    expect(comment?.resolved).toBe(true);
+    expect(comment?.thread.map((message) => [message.author, message.text])).toEqual([
+      ["you", NOTE.text],
+      ["agent", "Shortened it."],
+    ]);
+    expect((await commentsOutline(agent)).tasks).toBeUndefined();
+  });
+
+  it("writes the same file for the same comments, whoever signs them", async () => {
+    const byEditor = await both();
+    const editorFolder = byEditor.folder;
+    const agentFolder = join(root, "by-agent");
+    cpSync(demo, agentFolder, { recursive: true });
+    const second = await connect(agentFolder);
+    const agentTools = second.client;
+    try {
+      // The agent's tool signs for it, so the same steps go to the editor with the person's name added.
+      const steps = [
+        { op: "comment.add", ...NOTE },
+        { op: "comment.reply", id: "c1", text: "Or cut it." },
+        { op: "comment.resolve", id: "c1" },
+        { op: "comment.reopen", id: "c1" },
+        {
+          op: "comment.add",
+          scene: "opening",
+          block: "opening-title",
+          anchor: { x: 0.9, y: 0.1 },
+          text: "Long.",
+        },
+      ];
+      const signed = steps.map((step) =>
+        step.op === "comment.add" || step.op === "comment.reply" ? { ...step, author: "you" } : step,
+      ) as CommentOp[];
+      const written = await editor.comments.apply(signed);
+      expect(written.ok).toBe(true);
+      const outline = await commentsOutline(agentTools);
+      const done = await deckComment(agentTools, outline.rev, steps);
+      expect(done.isError, JSON.stringify(done.json)).toBe(false);
+
+      expect(sameButAuthors(commentsText(editorFolder))).toEqual(sameButAuthors(commentsText(agentFolder)));
+      // Both leave the file as the core writes it, so a person's diff and an agent's diff read alike.
+      for (const dir of [editorFolder, agentFolder]) {
+        const text = commentsText(dir);
+        expect(text).toBe(`${JSON.stringify(JSON.parse(text), null, 2)}\n`);
+      }
+      // And neither moved the deck.
+      expect(snapshot(editorFolder)).toEqual(snapshot(demo));
+      expect(snapshot(agentFolder)).toEqual(snapshot(demo));
+    } finally {
+      await agentTools.close();
+      await second.server.close();
+    }
+  });
+
+  it("refuses a stale revision and a block that is not there the same way from both sides, and writes nothing", async () => {
+    const { api, folder: dir } = await both();
+    const stale = "0000000000000000";
+    const add = { op: "comment.add", ...NOTE } as const;
+
+    const byEditor = await api.saveComments([{ ...add, author: "you" }], stale);
+    const byAgent = await deckComment(agent, stale, [add]);
+    expect(byEditor).toMatchObject({ ok: false, kind: "stale" });
+    expect(byAgent.isError).toBe(true);
+    expect(byAgent.json).toMatchObject({ ok: false, code: "stale-revision" });
+
+    const fresh = (await commentsOutline(agent)).rev;
+    const nowhere = { ...add, block: "no-such-block" };
+    const badEditor = await api.saveComments([{ ...nowhere, author: "you" }], fresh);
+    const badAgent = await deckComment(agent, fresh, [nowhere]);
+    expect(badEditor).toMatchObject({ ok: false, kind: "rejected" });
+    expect(badAgent.json).toMatchObject({ ok: false, code: "bad-op" });
+    // One diagnostic, said in the same words on both sides.
+    const diagnostics = badAgent.json.diagnostics as Array<{ message: string }>;
+    expect(badEditor.ok ? "" : badEditor.message).toContain(diagnostics[0]?.message);
+
+    expect(() => commentsText(dir)).toThrow();
   });
 });

@@ -50,10 +50,15 @@ async function start(host: HTMLElement) {
   });
 
   if (typeof EventSource === "function") {
-    const events = new EventSource("/_depthcue/events");
+    // The editor asks to hear about the comments too. Nothing else is told when only they change.
+    const events = new EventSource("/_depthcue/events?comments=1");
     events.addEventListener("change", () => void store.syncFromDisk());
+    events.addEventListener("comments", () => void store.comments.sync());
     // A dropped connection can hide a change; look again when it comes back.
-    events.addEventListener("open", () => void store.syncFromDisk());
+    events.addEventListener("open", () => {
+      void store.syncFromDisk();
+      void store.comments.sync();
+    });
   }
 }
 

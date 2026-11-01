@@ -1050,6 +1050,341 @@ body {
   background: color-mix(in srgb, var(--dc-action) 10%, transparent);
 }
 
+/*
+ * Comments: a numbered pin where each one was made, the thread that opens from a pin, and the tool that starts one.
+ * The layer takes no clicks except on the pins, the thread and, while the tool is on, the catcher over the slide.
+ */
+.ed-comments {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ed-comments[hidden],
+.ed-comment-catch[hidden],
+.ed-comment-banner[hidden],
+.ed-thread-state[hidden],
+.ed-thread-problem[hidden] {
+  display: none;
+}
+
+.ed-comment-catch {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  pointer-events: auto;
+}
+
+.ed-comment-banner {
+  position: absolute;
+  top: var(--dc-space-3);
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 2 * var(--dc-space-4));
+  margin: 0;
+  padding: var(--dc-space-1) var(--dc-space-3);
+  translate: -50% 0;
+  border-radius: 999px;
+  background: var(--dc-text);
+  color: var(--dc-bg);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none;
+}
+
+.ed-comment-banner[data-problem] {
+  background: var(--dc-action);
+}
+
+.ed-pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* The corner that points back to the block is flat; a build badge, which is round, is not mistaken for a comment. */
+.ed-app .ed-pin {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 1.75rem;
+  height: 1.75rem;
+  min-height: 0;
+  padding: 0;
+  border: 2px solid var(--dc-bg);
+  border-radius: 50% 50% 50% 0;
+  background: var(--dc-text);
+  color: var(--dc-bg);
+  font: 600 0.75rem / 1 var(--dc-font-mono);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 28%);
+  pointer-events: auto;
+}
+
+.ed-app .ed-pin[data-state="task"] {
+  background: var(--dc-action);
+}
+
+.ed-app .ed-pin[data-state="answered"] {
+  background: var(--dc-evidence);
+}
+
+.ed-app .ed-pin[data-state="resolved"] {
+  border-color: var(--dc-line);
+  background: var(--dc-surface);
+  color: var(--dc-muted);
+}
+
+/* A comment on a block that is gone waits in the slide's corner, outlined so it reads as homeless. */
+.ed-app .ed-pin[data-orphan] {
+  border-style: dashed;
+  border-color: var(--dc-action);
+}
+
+.ed-app .ed-pin:hover,
+.ed-app .ed-pin[aria-expanded="true"] {
+  border-color: var(--dc-bg);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--dc-action) 35%, transparent),
+    0 2px 8px rgb(0 0 0 / 28%);
+}
+
+.ed-thread {
+  position: absolute;
+  display: grid;
+  gap: var(--dc-space-2);
+  box-sizing: border-box;
+  width: min(20rem, calc(100% - 2 * var(--dc-space-2)));
+  max-height: calc(100% - 2 * var(--dc-space-2));
+  padding: var(--dc-space-3);
+  overflow: auto;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-surface);
+  color: var(--dc-text);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
+  pointer-events: auto;
+}
+
+.ed-thread-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--dc-space-2);
+}
+
+.ed-thread-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.ed-app .ed-thread-close {
+  flex-shrink: 0;
+  width: 1.5rem;
+  min-height: 1.5rem;
+  padding: 0;
+  justify-content: center;
+  border-color: transparent;
+  background: transparent;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.ed-thread-state {
+  margin: 0;
+  color: var(--dc-muted);
+  font-size: 0.75rem;
+}
+
+.ed-thread-list {
+  display: grid;
+  gap: var(--dc-space-2);
+  max-height: 12rem;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.ed-thread-list:empty {
+  display: none;
+}
+
+.ed-thread-message {
+  padding-left: var(--dc-space-2);
+  border-left: 2px solid var(--dc-line);
+}
+
+.ed-thread-message[data-author="agent"] {
+  border-left-color: var(--dc-evidence);
+}
+
+.ed-thread-who {
+  margin: 0;
+  color: var(--dc-muted);
+  font-size: 0.75rem;
+}
+
+.ed-thread-who time {
+  margin-left: var(--dc-space-1);
+}
+
+.ed-thread-text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ed-thread-form {
+  display: grid;
+  gap: var(--dc-space-2);
+}
+
+.ed-thread-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dc-space-2);
+}
+
+.ed-app .ed-thread-send {
+  border-color: var(--dc-text);
+  background: var(--dc-text);
+  color: var(--dc-bg);
+}
+
+.ed-thread-problem {
+  margin: 0;
+  color: var(--dc-action);
+  font-size: 0.8125rem;
+}
+
+/* Where a comment being written will point, until it is sent. */
+.ed-app .ed-pin-draft {
+  border-style: dashed;
+  border-color: var(--dc-text);
+  background: var(--dc-bg);
+  color: var(--dc-text);
+  pointer-events: none;
+}
+
+/*
+ * The two comment buttons of the top bar: an icon, the words while the window has room for them, and a count. In a
+ * narrow window the words are left to assistive technology and the tooltip, so the bar keeps room for the deck's title.
+ */
+.ed-app .ed-actions [data-action="comments"],
+.ed-app .ed-actions [data-action="resolved"] {
+  gap: var(--dc-space-2);
+}
+
+.ed-icon {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  background: currentcolor;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.ed-icon-comments {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M2.5 2.5h11v8h-6l-3 3v-3h-2z'/%3E%3C/svg%3E");
+}
+
+.ed-icon-resolved {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6'/%3E%3Cpath d='M5.2 8.2l2 2 3.6-4'/%3E%3C/svg%3E");
+}
+
+@media (max-width: 1279px) {
+  .ed-app .ed-actions [data-action="comments"],
+  .ed-app .ed-actions [data-action="resolved"] {
+    gap: var(--dc-space-1);
+  }
+
+  .ed-actions [data-action="comments"] .ed-bar-words,
+  .ed-actions [data-action="resolved"] .ed-bar-words {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/*
+ * A laptop-sized window has less room than the bars' buttons are padded for. Their padding shrinks, and a plain "Saved"
+ * is left to its dot and its tooltip, so the top bar keeps room for the deck's title and the quick bar stays one row.
+ * A phone has its own layout below.
+ */
+@media (min-width: 761px) and (max-width: 1279px) {
+  .ed-app .ed-actions button,
+  .ed-app .ed-actions .ed-link,
+  .ed-app .ed-quick button,
+  .ed-app .ed-quick .ed-button {
+    padding-inline: var(--dc-space-2);
+  }
+
+  .ed-quick .ed-kbd {
+    margin-left: var(--dc-space-1);
+  }
+
+  .ed-status[data-quiet] {
+    font-size: 0;
+  }
+}
+
+/* The count of open comments, on the top bar's button; it turns to the action color when the agent is being waited on. */
+.ed-count:empty {
+  display: none;
+}
+
+.ed-count:not(:empty) {
+  min-width: 1.25rem;
+  padding: 0 0.35em;
+  border-radius: 999px;
+  background: var(--dc-text);
+  color: var(--dc-bg);
+  font: 600 0.75rem / 1.25rem var(--dc-font-mono);
+  text-align: center;
+}
+
+.ed-count[data-tasks] {
+  background: var(--dc-action);
+}
+
+/* Resolved comments are done with, so their count is not drawn in the color that asks for attention. */
+.ed-count.ed-count-plain:not(:empty) {
+  background: var(--dc-line);
+  color: var(--dc-text);
+}
+
+/* The same count on a scene's thumbnail, in the lower corner; the scene's own buttons are in the upper one. */
+.ed-scene-notes {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  min-width: 1.25rem;
+  padding: 0 0.35em;
+  border-radius: 999px;
+  background: var(--dc-text);
+  color: var(--dc-bg);
+  font: 600 0.75rem / 1.25rem var(--dc-font-mono);
+  text-align: center;
+  pointer-events: none;
+}
+
+.ed-scene-notes[data-tasks] {
+  background: var(--dc-action);
+}
+
+.ed-scene-notes[hidden] {
+  display: none;
+}
+
 /* The layer over the slide. It takes no clicks itself, so the slide under it still gets them. */
 .ed-overlay {
   position: absolute;
@@ -1247,7 +1582,7 @@ body {
   outline-color: var(--dc-bg);
 }
 
-.ed-app .ed-quick .ed-quick-build[aria-pressed="true"] {
+.ed-app .ed-quick [aria-pressed="true"] {
   background: var(--dc-bg);
   color: var(--dc-text);
 }

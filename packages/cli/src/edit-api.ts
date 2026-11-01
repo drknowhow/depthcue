@@ -7,12 +7,14 @@ import {
   type Cue,
   type CueMap,
   checkCues,
+  commentsRevision,
   cueMapPath,
   type Diagnostic,
   loadDoc,
   readCueMap,
   revisionOf,
 } from "@depthcue/core";
+import { applyCommentsToFolder, readFolderComments } from "./comments-api.ts";
 import { openDeck } from "./deck-api.ts";
 import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
@@ -362,6 +364,75 @@ async function layout(response: ServerResponse, url: URL, ctx: EditContext) {
   );
 }
 
+export const MAX_COMMENT_OPS_BYTES = 64 * 1024;
+
+/**
+ * The comments beside the deck, every one of them: the editor decides which to show. `rev` is the revision to name as
+ * `baseRev` in the next change. A comments file that is not valid is reported and left alone, so a hand edit survives.
+ */
+function loadComments(response: ServerResponse, ctx: EditContext) {
+  const read = readFolderComments(ctx.folder);
+  if (!read.ok) {
+    return send(response, 422, {
+      error: read.code,
+      message:
+        read.code === "unreadable-comments"
+          ? "comments.json is not valid, so the editor shows no comments and will not change the file. Fix it by hand."
+          : "The deck has errors, so its comments cannot be read. `depthcue check` lists them.",
+      diagnostics: read.diagnostics.map(plain),
+    });
+  }
+  return send(response, 200, { rev: commentsRevision(read.file), comments: read.file.comments });
+}
+
+/**
+ * Applies comment operations for the editor, all or none, against the revision the editor read. It is the same
+ * `applyCommentsToFolder` that `deck_comment` and `depthcue comments apply` run, so a comment written here is read by
+ * an agent exactly as one it wrote itself. On success the answer carries the new file, so the editor needs no second read.
+ */
+async function applyComments(request: IncomingMessage, response: ServerResponse, ctx: EditContext) {
+  if (!String(request.headers["content-type"]).startsWith("application/json")) {
+    return send(response, 415, { error: "bad-request", message: "Send application/json." });
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse((await readBody(request, MAX_COMMENT_OPS_BYTES)).toString("utf8"));
+  } catch (error) {
+    if (error instanceof TooLarge) {
+      return send(response, 413, {
+        error: "too-large",
+        message: "That change to the comments is too large.",
+      });
+    }
+    return send(response, 400, { error: "bad-request", message: "The body is not valid JSON." });
+  }
+  if (!isRecord(body) || typeof body.baseRev !== "string" || !Array.isArray(body.ops)) {
+    return send(response, 400, {
+      error: "bad-request",
+      message: "Send { baseRev: string, ops: CommentOp[] }.",
+    });
+  }
+  const outcome = applyCommentsToFolder(ctx.folder, body.ops, body.baseRev);
+  if (outcome.ok) {
+    const fresh = readFolderComments(ctx.folder);
+    if (!fresh.ok)
+      return send(response, 500, { error: "server", message: "The comments could not be read back." });
+    return send(response, 200, {
+      rev: outcome.rev,
+      comments: fresh.file.comments,
+      changed: outcome.changed,
+      removed: outcome.removed,
+    });
+  }
+  const stale = outcome.code === "stale-revision" || outcome.code === "changed-on-disk";
+  return send(response, stale ? 409 : 422, {
+    error: stale ? "stale" : outcome.code,
+    message: outcome.hint,
+    ...(outcome.rev === undefined ? {} : { rev: outcome.rev }),
+    diagnostics: outcome.diagnostics.map(plain),
+  });
+}
+
 /** Handles `/_depthcue/api/*`. Returns false when the path is not an edit API path. */
 export async function handleEditApi(
   request: IncomingMessage,
@@ -386,6 +457,9 @@ export async function handleEditApi(
     else if (route === "/_depthcue/api/cues" && request.method === "POST")
       await saveCues(request, response, ctx);
     else if (route === "/_depthcue/api/layout" && request.method === "GET") await layout(response, url, ctx);
+    else if (route === "/_depthcue/api/comments" && request.method === "GET") loadComments(response, ctx);
+    else if (route === "/_depthcue/api/comments" && request.method === "POST")
+      await applyComments(request, response, ctx);
     else {
       send(response, 404, { error: "not-found", message: "There is no such editor call." });
     }

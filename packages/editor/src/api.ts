@@ -1,4 +1,4 @@
-import type { Cue } from "@depthcue/core";
+import type { Comment, CommentOp, Cue } from "@depthcue/core";
 
 export interface ApiDiagnostic {
   code: string;
@@ -48,6 +48,19 @@ export type LayoutAnswer =
   | { available: true; diagnostics: ApiDiagnostic[] }
   | { available: false; message: string };
 
+/**
+ * The comments beside the deck as the server has them, all of them, resolved ones included. `rev` is the comments' own
+ * revision, to send back as the base of the next change. A file that is not valid, or a server that cannot be reached,
+ * is `ok: false` with the reason, and the editor then shows no comments and writes none.
+ */
+export type CommentsAnswer = { ok: true; rev: string; comments: Comment[] } | { ok: false; message: string };
+
+export type CommentsSaveResult =
+  | { ok: true; rev: string; comments: Comment[] }
+  /** The comments changed on disk after the editor read them; `rev` is what is there now. */
+  | { ok: false; kind: "stale"; rev: string; message: string }
+  | { ok: false; kind: "rejected" | "failed"; message: string };
+
 /** What the editor needs from the server. A test can stand in for it. */
 export interface Api {
   loadDeck(): Promise<DeckPayload>;
@@ -60,6 +73,10 @@ export interface Api {
   saveCues(source: string, cues: readonly Cue[], clip?: ClipSize): Promise<{ cues: Cue[]; duration: number }>;
   /** What a render of the saved scene shows is wrong with it. Never rejects: a failure is `available: false`. */
   loadLayout(scene: string): Promise<LayoutAnswer>;
+  /** The comments of the deck. Never rejects: a failure is `ok: false`. */
+  loadComments(): Promise<CommentsAnswer>;
+  /** Applies comment operations, all or none, against the revision the editor last read. */
+  saveComments(ops: readonly CommentOp[], baseRev: string): Promise<CommentsSaveResult>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -169,6 +186,49 @@ export function createApi(token: string, send: typeof fetch = (...args) => fetch
       } catch {
         return { available: false, message: "The editor could not reach the server." };
       }
+    },
+
+    async loadComments() {
+      try {
+        const response = await call("comments");
+        const answer = await body(response);
+        if (response.ok && typeof answer.rev === "string" && Array.isArray(answer.comments)) {
+          return { ok: true, rev: answer.rev, comments: answer.comments as Comment[] };
+        }
+        return { ok: false, message: messageOf(answer, response) };
+      } catch {
+        return { ok: false, message: "The editor could not reach the server." };
+      }
+    },
+
+    async saveComments(ops, baseRev) {
+      let response: Response;
+      try {
+        response = await call("comments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseRev, ops }),
+        });
+      } catch {
+        return {
+          ok: false,
+          kind: "failed",
+          message: "The editor could not reach the server. Is `depthcue edit` still running?",
+        };
+      }
+      const answer = await body(response);
+      if (response.ok && typeof answer.rev === "string" && Array.isArray(answer.comments)) {
+        return { ok: true, rev: answer.rev, comments: answer.comments as Comment[] };
+      }
+      if (response.status === 409) {
+        return { ok: false, kind: "stale", rev: String(answer.rev), message: messageOf(answer, response) };
+      }
+      const first = diagnosticsOf(answer)[0];
+      return {
+        ok: false,
+        kind: response.status === 422 ? "rejected" : "failed",
+        message: first ? `${first.message}${first.fix ? ` ${first.fix}` : ""}` : messageOf(answer, response),
+      };
     },
   };
 }

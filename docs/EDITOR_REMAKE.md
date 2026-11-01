@@ -83,11 +83,39 @@ resolving a resolved comment changes nothing. A comment whose block or scene is 
 gets an `orphaned-comment` warning from `commentWarnings`, and can still be answered, resolved or deleted.
 
 The deck never sees the file. `loadDeckDir` lists only `deck.json`, `scenes/` and `assets/`; the server serves only
-those and its file watcher ignores comment changes; `export` copies referenced assets and the runtime and puts only
-the deck in the page; and the player and presenter do not import the comments code. Tests cover each of these: an
-export with comments is the same files and page as one without, `/comments.json` is a 404, the deck and presenter
-windows in Chrome never request it, and the built player and standalone scripts contain none of its code. In the CLI,
-`applyCommentsDir` writes the file atomically and refuses to overwrite one that is not valid JSON.
+those, and a change to the comments file reloads no deck or presenter window; `export` copies referenced assets and
+the runtime and puts only the deck in the page; and the player and presenter do not import the comments code. Tests
+cover each of these: an export with comments is the same files and page as one without, `/comments.json` is a 404, the
+deck and presenter windows in Chrome never request it, and the built player and standalone scripts contain none of
+its code. In the CLI, `applyCommentsDir` writes the file atomically and refuses to overwrite one that is not valid
+JSON.
+
+The one exception is the editor. `depthcue edit` has a read and write route for the file, `/_depthcue/api/comments`
+(GET gives the file and its revision; POST takes `ops` and `baseRev`, with 409 for a stale revision and 422 for
+operations the core refuses). The editor opens `/_depthcue/events?comments=1`, and only the edit server answers that
+with an `event: comments` when the file changes, so a comment an agent writes shows up in the open editor without a
+reload. The read-only server ignores the flag.
+
+### In the editor
+
+Comments are made and read on the slide. The Comment button on the quick bar, or `M`, turns the comment tool on for
+one comment: the cursor changes, a banner says so, and pressing a block opens a box beside the point that was pressed,
+marked by a dashed empty pin. The anchor is where the press landed, as a fraction of the block, so the pin follows
+the block when it is moved, resized or pinned. Without a pointer (the palette's Comment command), the pin goes at the
+block's top right. The box has the keyboard, Comment saves, and Ask the agent saves with `ask` set. That is the only
+place a person asks the agent; a later reply never does. `Esc` closes a thread and puts the keyboard back on its pin.
+
+A pin is numbered by the comment's place in the file among the scene's comments, and resolved ones keep their numbers.
+It shows its state in color and in its label: open, waiting for the agent, answered by the agent, resolved. Pressing
+it opens the thread with a reply box, Resolve and Reopen, and a Delete that asks twice. After a reply the box is empty
+and holds the keyboard again. A pin whose block is gone sits at the slide's top left with a dashed edge, and its thread
+says the block is gone. Comments on a scene that was deleted are not shown or counted.
+
+The top bar has a Comments button with the count of open comments (in the action color while any waits on the agent)
+and a Resolved button with a count that shows or hides resolved pins, dimmed. Below 1280 px wide both keep only their
+icon and count. Each thumbnail on the strip carries the scene's open count. Comments are not part of Undo, because a
+reply may already have been read by an agent. A save against an old revision is read again and tried once more, so
+a comment the agent wrote in between is kept, and a second stale answer is shown as a message, not retried.
 
 ### Checks
 

@@ -1,11 +1,16 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
+  applyCommentOps,
   applyOps,
+  type CommentOp,
+  type CommentsFile,
   type Cue,
   checkCues,
+  commentsRevision,
   cueMapPath,
   docToFiles,
+  emptyComments,
   loadDoc,
   type Op,
   revisionOf,
@@ -14,6 +19,8 @@ import type {
   Api,
   ApiDiagnostic,
   ClipSize,
+  CommentsAnswer,
+  CommentsSaveResult,
   CueList,
   DeckPayload,
   LayoutAnswer,
@@ -66,6 +73,20 @@ export class FakeServer implements Api {
   noRender = false;
   /** Holds loadLayout's answers until this settles. */
   layoutGate: Promise<void> | undefined;
+  /** The comments file, as the server keeps it. It is `undefined` until a comment is written, like a missing file. */
+  comments: CommentsFile = emptyComments();
+  /** Makes loadComments answer that the file cannot be read, with this message, like a comments.json that is not valid. */
+  commentsBroken: string | undefined;
+  commentLoads = 0;
+  commentSaves: Array<{ ops: CommentOp[]; baseRev: string }> = [];
+  /** Makes the next saveComments answer with this instead of running. */
+  nextCommentSave: CommentsSaveResult | undefined;
+  /** Runs inside a comment save before it answers, so a test can change the comments mid-request. */
+  duringCommentSave: (() => void) | undefined;
+  /** Holds loadComments' answers, which are read when the call is made, until this settles. */
+  commentGate: Promise<void> | undefined;
+  /** The time written into a new message. A test sets it to know what it will read back. */
+  clock = "2026-11-01T10:00:00.000Z";
 
   constructor() {
     const demo = readDemo();
@@ -163,6 +184,51 @@ export class FakeServer implements Api {
       : { available: true, diagnostics: structuredClone(this.layouts[scene] ?? []) };
     await this.layoutGate;
     return answer;
+  }
+
+  get commentsRev(): string {
+    return commentsRevision(this.comments);
+  }
+
+  /** A comment made behind the editor's back, as the agent's tool would make it. Returns the revision it left. */
+  externalComment(ops: CommentOp[]): string {
+    const { doc } = loadDoc({ text: this.text, assets: this.assets });
+    if (!doc) throw new Error("the fake server's deck should be valid");
+    const result = applyCommentOps(this.comments, ops, this.commentsRev, { doc, now: () => this.clock });
+    if (!result.ok) throw new Error(`the external comment was refused: ${result.diagnostics[0]?.message}`);
+    this.comments = result.file;
+    return result.rev;
+  }
+
+  async loadComments(): Promise<CommentsAnswer> {
+    this.commentLoads += 1;
+    const answer: CommentsAnswer =
+      this.commentsBroken === undefined
+        ? { ok: true, rev: this.commentsRev, comments: structuredClone(this.comments.comments) }
+        : { ok: false, message: this.commentsBroken };
+    await this.commentGate;
+    return answer;
+  }
+
+  async saveComments(ops: readonly CommentOp[], baseRev: string): Promise<CommentsSaveResult> {
+    this.commentSaves.push({ ops: structuredClone([...ops]), baseRev });
+    this.duringCommentSave?.();
+    if (this.nextCommentSave) {
+      const answer = this.nextCommentSave;
+      this.nextCommentSave = undefined;
+      return answer;
+    }
+    const { doc } = loadDoc({ text: this.text, assets: this.assets });
+    if (!doc) throw new Error("the fake server's deck should be valid");
+    const result = applyCommentOps(this.comments, ops, baseRev, { doc, now: () => this.clock });
+    if (!result.ok) {
+      const first = result.diagnostics[0];
+      return result.code === "stale-revision"
+        ? { ok: false, kind: "stale", rev: result.rev, message: first?.message ?? "Stale." }
+        : { ok: false, kind: "rejected", message: first?.message ?? "Refused." };
+    }
+    this.comments = result.file;
+    return { ok: true, rev: result.rev, comments: structuredClone(result.file.comments) };
   }
 }
 

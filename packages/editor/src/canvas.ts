@@ -2,6 +2,7 @@ import { type Frame, isMarker, type Op, type Scene, type Session, TEXT_LIMITS } 
 import { h, renderScene } from "@depthcue/player";
 import { createBuildBadges } from "./buildbadges.ts";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
+import { type CommentPins, type CommentSurface, createCommentPins } from "./commentpins.ts";
 import { type CueBook, clock } from "./cues.ts";
 import { createFrameDrag } from "./framedrag.ts";
 import { drawGhosts, type GhostHooks } from "./ghosts.ts";
@@ -31,6 +32,8 @@ export interface CanvasHooks {
   cues?: CueBook;
   /** Adds to an area of the slide that holds nothing yet, which the slide draws a place for. */
   ghosts?: GhostHooks;
+  /** The comments beside the deck. With them the slide draws a pin for each comment of the scene. */
+  comments?: CommentSurface;
 }
 
 export interface Canvas {
@@ -56,6 +59,8 @@ export interface Canvas {
   refreshCues(): void;
   /** Shows or hides the build order: a badge beside each part that says which step reveals it. */
   setBuild(on: boolean): void;
+  /** The pins of the comments on the slide, when the canvas was given comments. */
+  readonly comments: CommentPins | undefined;
   /** Stops watching the size of the slide. */
   destroy(): void;
 }
@@ -191,6 +196,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     drag.place();
     pins.place();
     build.place();
+    notes?.place();
     hooks.changed?.();
   };
 
@@ -501,6 +507,9 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     problem: (text) => hooks.hint(text ?? "", text !== undefined),
   });
 
+  // After the badges, so a thread opens over them, and before the toolbar, which the editor adds to the overlay later.
+  const notes = hooks.comments && createCommentPins(session, element, overlay, nodeOf, hooks.comments);
+
   function focusBlock(id: string) {
     const node = nodeOf(id);
     const target = node?.matches("[data-edit], [data-pick]")
@@ -532,10 +541,12 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     setBuild(on) {
       build.setOn(on);
     },
+    comments: notes,
     destroy() {
       drag.destroy();
       pins.destroy();
       build.destroy();
+      notes?.destroy();
     },
     get typing() {
       return typing;
@@ -549,6 +560,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         drag.draw(undefined);
         pins.draw(undefined);
         build.draw(undefined);
+        notes?.draw(undefined);
         hooks.changed?.();
         return;
       }
@@ -580,6 +592,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       drag.draw(scene);
       pins.draw(scene);
       build.draw(scene);
+      notes?.draw(scene);
       mark(selectedId);
       if (focusedId) {
         // After an undo or a redo the keyboard stays on the bar it was on.
