@@ -143,6 +143,13 @@ const CASES: Record<string, () => void | Promise<void>> = {
     press(palette().querySelector("input") as HTMLElement, "k", { ctrlKey: true });
     expect(palette().hidden).toBe(true);
   },
+  storyboard() {
+    const board = host.querySelector<HTMLElement>(".ed-board") as HTMLElement;
+    expect(board.hidden).toBe(true);
+    const event = press(document, "g");
+    expect(event.defaultPrevented).toBe(true);
+    expect(board.hidden).toBe(false);
+  },
   help() {
     press(document, "?");
     expect(sheet().hidden).toBe(false);
@@ -211,6 +218,7 @@ describe("the table of shortcuts", () => {
       pin: () => false,
       toolbar: () => false,
       palette() {},
+      storyboard() {},
     }).map((entry) => entry.id);
     expect([...drawn].sort()).toEqual([...table].sort());
     expect([...table].sort()).toEqual(Object.keys(CASES).sort());

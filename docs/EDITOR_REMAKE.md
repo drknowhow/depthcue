@@ -218,6 +218,35 @@ person's own edit, and it would drop off the list. So the editor remembers the c
 and sends their ids with the next save (`keepAgent`); the server leaves them out of the fold and marks them as the agent's
 again. The memory is dropped for a change the person edits again afterwards.
 
+### The storyboard
+
+The storyboard shows every scene on one screen. The Storyboard button at the top of the scene strip opens it, and so do
+the G key and the palette command "Open the storyboard". Each scene is a card: the slide as it is drawn, its number and
+title, and a row of pills for what is waiting on it.
+
+- The lead: Human, Agent or Shared. An agent-led scene has a colored pill. A scene with no `lead` is Human.
+- "N changed": changes since the last review, the same count as the mark on the strip's thumbnail.
+- "N to check": the problems the ribbon counts for that scene, from the core checks and a real render.
+- "N comments": open comments. The pill is outlined when the agent has been asked about one.
+- "N pinned": blocks that sit where they were put instead of in the layout's slots.
+
+Only the lead is always there. The others appear when their count is above zero. A card's name for a screen reader says
+all of it in a sentence, such as "Scene 3, Method. Lead: Agent. 2 changes to review. 1 pinned block."
+
+A click on the picture or the card, or Enter, opens that scene on the slide and closes the storyboard. The arrow keys move
+over the cards by the rows they are drawn in, so Up and Down follow the grid however many cards fit across the window.
+Home and End go to the first and last card, and Esc or "Back to the slide" returns the keyboard to where it was before.
+The card of the scene on show has the keyboard when the board opens.
+
+While the storyboard is open, no key reaches the slide behind it. A T does not add a text block nobody can see, and Ctrl Z
+does not undo something the person is not looking at. The rest of the editor is inert, so Tab and a screen reader stay
+on the board.
+
+The grid is built each time the board opens and dropped when it closes, so a long deck costs nothing while the person
+edits. The pictures use the strip's renderer and are drawn two a frame, the scene on show first, so a long deck is not
+drawn in one frame. While the board is open the cards follow the deck: an agent's write, a comment or a
+finished check changes a pill in place without moving the keyboard.
+
 ## Rules for every change
 
 - Core commands stay the only way to change a deck, from the editor, the CLI and MCP.
