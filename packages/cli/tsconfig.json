@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "paths": { "@depthcue/core": ["../core/src/index.ts"] }
+    "paths": {
+      "@depthcue/core": ["../core/src/index.ts"],
+      "@depthcue/player": ["../player/src/index.ts"]
+    }
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "../player/src/css.d.ts"]
 }
