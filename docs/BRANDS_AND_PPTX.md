@@ -27,13 +27,13 @@ Decisions (Dimitri, 2026-11-01):
 
 - `colors`: a palette for `paper` and for `ink` (the same seven names as a deck palette), each optional, checked by the
   same contrast rules. The deck's own palette goes on top, unless the brand sets `lock`, which refuses deck-level
-  palette and font changes so a deck cannot drift off brand.
-- `chart`: up to six series colors, each at least 3:1 against the slide background (WCAG 1.4.11). Without it, charts
-  take their colors from the palette by position, as today.
+  palette and font changes so a deck cannot drift off brand. Each palette may carry `chart`: up to six series colors,
+  each at least 3:1 against that palette's slide background (WCAG 1.4.11), so light and dark slides get their own.
+  Without it, charts take their colors from the palette by position, as today.
 - `fonts`: one of the four built-in pairs, or the brand's own display, body and (optional) mono faces. A face names its
-  family, its license, and its files with weight and style. A face may name no files, for a company font that is
-  installed on its people's machines; it then names a built-in pair to fall back to, and `check` warns that the look
-  depends on the viewer's machine.
+  family and its files with weight and style, and a license when it carries files. A face may name no files, for a
+  company font that is installed on its people's machines; it then names a built-in pair to fall back to, and `check`
+  warns that the look depends on the viewer's machine.
 - `logos`: one for light slides and one for dark, SVG or PNG, with alt text.
 - `chrome`: what sits on every slide, like a PowerPoint master: the logo (corner and size), a footer line, the slide
   number, and an accent (none, a bar along the top, or a bar down the start side). A template says whether it shows
@@ -45,10 +45,13 @@ Decisions (Dimitri, 2026-11-01):
   rules, and reversed text (the background color on a dark fill) is allowed when it passes.
 
 **Templates.** A template is a slide layout with named slots. Each slot has a frame (percent of the 16:9 slide, as
-pinning uses), what it accepts (text roles and block types), a default style, how many blocks it stacks (one by
-default), whether it is required, and a hint that tells a person or an agent what goes there. A template also has a
-background: a named color, or a brand image under a scrim color. A scene uses either a built-in layout or a template,
-never both. Its blocks name their slot; a block can still be pinned on top.
+pinning uses), a role (title, subtitle, claim, body, picture, chart, table or content, which becomes the PowerPoint
+placeholder type), what it accepts (text roles and block types), a vertical alignment, a default style, how many
+blocks it stacks (one by default), whether it is required, and a hint that tells a person or an agent what goes there.
+A template also has a background: a named color, or a brand image under a scrim color. A scene uses either a built-in
+layout or a template, never both. Its blocks name their slot, and a scene's claim, with its evidence links, goes in the
+template's claim slot. A pinned block keeps its slot and only takes its position from its own frame; a pinned block
+with no slot floats over the template.
 
 Depthcue ships a default brand with about ten templates (title, section, agenda, statement, big number, quote, two
 columns, comparison, full image, closing) and about seven styles (callout, stat, kicker, card, highlight, pull quote,
