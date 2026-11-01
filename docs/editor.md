@@ -69,6 +69,35 @@ every scene on one screen. Each card is the slide as it is drawn, with its numbe
 Press a card or Enter to open that scene on the slide. The arrow keys move over the cards, Home and End go to the first
 and last, and `Esc` goes back to where you were. While the storyboard is open no key reaches the slide behind it.
 
+## Right-click menu
+
+Right-click a block, the claim, an empty part of the slide or a scene in the strip, and a menu lists what you can do
+there. It is built from the same commands as the palette, so the two cannot disagree. A command that cannot be done is
+left out and not greyed, and each command shows its key.
+
+- **A block.** Cut, Copy, Paste (after this block), Duplicate and Delete; Pin where it is, or Put back in layout; Comment;
+  Move earlier and Move later. The claim has Paste, Delete and Comment.
+- **An empty part of the slide.** Paste here; Add a text, a chart or an image here; Layout and Lead, each a submenu; Put
+  every pinned block back, when one is pinned; and Show or hide the comments.
+- **A scene in the strip.** Duplicate, Delete, Move earlier, Move later and Present from here.
+
+Right-clicking chooses what you pointed at first, so the menu acts on it. `Shift+F10` or the Menu key opens the same
+menu under the chosen block, or under the scene the keyboard is on. On a touch screen or with a pen, press and hold for
+half a second without moving. The arrow keys move over the items, Home and End go to the first and last, `Enter` or
+`Space` runs one, Right opens a submenu and Left closes it, and `Esc` closes the menu and puts the keyboard back on the
+block or scene. In text you are typing in, or in a field, a right-click and `Shift+F10` are the browser's own menu, which
+has the spelling suggestions. Use the palette to reach a command on a block you are typing in.
+
+Copy puts the block on the clipboard as its words, which any other program can paste, and as the block itself, which
+the editor of another deck can paste. Paste adds a new block with an id of its own: after the chosen block, or into the
+first area that takes its kind when none is chosen. Paste here on empty space that no area takes pins the block at the
+pointer. Duplicate keeps a pinned block pinned, a little down and to the right of the original. A pasted image or video
+whose file is not in this deck is refused with a message that names the file, since the deck cannot show a file it does
+not have. Cut, paste and duplicate are each one step of Undo.
+
+A menu cannot always read the clipboard. Where the browser says no, Paste uses the last block you copied in this editor,
+or asks you to press `Ctrl+V`, which always works.
+
 ## Finding things and keys
 
 `Ctrl+K` (`Command+K` on a Mac) or the Everything button opens a palette: type a few letters of anything you can do now,
@@ -79,14 +108,20 @@ such as Go to a scene, Pin, Present from this scene or Undo. `?` or the `?` butt
 | `T` `C` `I` | Add a text, a chart or an image                  |
 | `M`         | Comment on a block                               |
 | `P`         | Pin the chosen block where it is, or put it back |
+| `Ctrl+X`    | Cut the chosen block                             |
+| `Ctrl+C`    | Copy it, also into another deck                  |
+| `Ctrl+V`    | Paste a copied block after it                    |
+| `Ctrl+D`    | Duplicate it                                     |
 | `G`         | Open the storyboard                              |
 | `Ctrl+K`    | Open the palette                                 |
 | `Ctrl+Z`    | Undo                                             |
 | `Alt+F10`   | Move the keyboard to the chosen block's toolbar  |
+| `Shift+F10` | Open its right-click menu; the Menu key does too |
 | `?`         | List every key                                   |
 
-A letter key is a letter while you are typing in a field or in text on the slide. Delete removes the chosen block, and
-`Esc` lets go of it.
+A letter key is a letter while you are typing in a field or in text on the slide, and `Ctrl+X`, `Ctrl+C`, `Ctrl+V` and
+`Ctrl+D` leave a field and text on the slide to the browser the same way. Delete removes the chosen block, and `Esc`
+lets go of it.
 
 ## Related guides
 

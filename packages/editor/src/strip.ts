@@ -28,6 +28,10 @@ export interface Strip {
   render(selected: string): void;
   /** Draws every stale thumbnail now. The strip does this by itself a frame later. */
   flush(): void;
+  /** What the buttons of a scene do, for the right-click menu: each is one step of Undo, and a refusal is shown under the list. */
+  duplicate(id: string): void;
+  remove(id: string): void;
+  move(id: string, direction: -1 | 1): void;
   destroy(): void;
 }
 
@@ -90,6 +94,29 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     if (run([{ op: "scene.add", scene, after: current }]).ok) hooks.select(scene.id);
   });
 
+  function duplicateScene(id: string) {
+    const scene = session.doc.scenes[id];
+    if (!scene) return;
+    const copy = copyOf(scene, new Set(session.doc.deck.scenes));
+    if (run([{ op: "scene.add", scene: copy, after: id }]).ok) hooks.select(copy.id);
+  }
+
+  function removeScene(id: string) {
+    const order = session.doc.deck.scenes;
+    const at = order.indexOf(id);
+    if (at < 0) return;
+    const neighbour = order[at + 1] ?? order[at - 1];
+    // Only the scene being edited has to hand over the slide; deleting another leaves the slide as it is.
+    // Asked before the removal, because the editor re-points its own selection as the deck changes.
+    const editing = id === current;
+    if (run([{ op: "scene.remove", id }]).ok && editing && neighbour) hooks.select(neighbour);
+  }
+
+  function moveScene(id: string, direction: -1 | 1) {
+    const after = afterWhenMoving(session.doc.deck.scenes, id, direction);
+    if (after !== undefined) run([{ op: "scene.move", id, after }]);
+  }
+
   // Every scene on one screen. It sits above the list, so it is found without scrolling to the end of a long deck.
   let storyboard: HTMLButtonElement | null = null;
   const openBoard = hooks.storyboard;
@@ -128,30 +155,15 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     // Dragging is for the mouse; these two are the way to reorder from the keyboard.
     const mover = (direction: -1 | 1, action: string) => {
       const button = h("button", { type: "button", "data-action": action });
-      button.addEventListener("click", () => {
-        const after = afterWhenMoving(session.doc.deck.scenes, id, direction);
-        if (after !== undefined) run([{ op: "scene.move", id, after }]);
-      });
+      button.addEventListener("click", () => moveScene(id, direction));
       return button;
     };
     const earlier = mover(-1, "move-scene-earlier");
     const later = mover(1, "move-scene-later");
     const duplicate = h("button", { type: "button", "data-action": "duplicate-scene" });
-    duplicate.addEventListener("click", () => {
-      const scene = session.doc.scenes[id] as Scene;
-      const copy = copyOf(scene, new Set(session.doc.deck.scenes));
-      if (run([{ op: "scene.add", scene: copy, after: id }]).ok) hooks.select(copy.id);
-    });
+    duplicate.addEventListener("click", () => duplicateScene(id));
     const remove = h("button", { type: "button", "data-action": "delete-scene", class: "ed-danger" });
-    remove.addEventListener("click", () => {
-      const order = session.doc.deck.scenes;
-      const at = order.indexOf(id);
-      const neighbour = order[at + 1] ?? order[at - 1];
-      // Only the scene being edited has to hand over the slide; deleting another leaves the slide as it is.
-      // Asked before the removal, because the editor re-points its own selection as the deck changes.
-      const editing = id === current;
-      if (run([{ op: "scene.remove", id }]).ok && editing && neighbour) hooks.select(neighbour);
-    });
+    remove.addEventListener("click", () => removeScene(id));
 
     // A mark on the picture, so it is seen without reading. The button beside it says the same in words. It sits in
     // the picture's lower corner, which the scene's own buttons in the upper one never cover.
@@ -299,6 +311,9 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
   return {
     element,
     render,
+    duplicate: duplicateScene,
+    remove: removeScene,
+    move: moveScene,
     flush() {
       if (quiet !== undefined) clearTimeout(quiet);
       quiet = undefined;

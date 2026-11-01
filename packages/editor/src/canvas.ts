@@ -6,7 +6,7 @@ import { type CommentPins, type CommentSurface, createCommentPins } from "./comm
 import { type CueBook, clock } from "./cues.ts";
 import { createFrameDrag } from "./framedrag.ts";
 import { drawGhosts, type GhostHooks } from "./ghosts.ts";
-import { frameOver, NUDGE, NUDGE_BIG, slideIn } from "./pin.ts";
+import { frameOver, NUDGE, NUDGE_BIG, type Rect, slideIn } from "./pin.ts";
 import { createSlotDrag } from "./slotdrag.ts";
 import { restingBox, snap, standings } from "./snap.ts";
 import { describeBlock, IMAGE_FILE, needsAlt } from "./templates.ts";
@@ -55,6 +55,8 @@ export interface Canvas {
    * block with this frame leaves it where it is.
    */
   measure(id: string): Frame | undefined;
+  /** The room the slide is drawn in, in pixels, or undefined while no scene is drawn. The slide is the 16 by 9 box inside it. */
+  room(): Rect | undefined;
   /** Puts the keyboard on a block: the caret at the end of its text, or the block itself when it has none. */
   focusBlock(id: string): void;
   /** Draws the rows of cue chips again from the cue book, without redrawing the slide or resetting a video. */
@@ -534,6 +536,10 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       const room = slot.querySelector<HTMLElement>(".dc-view");
       if (!node || !room) return undefined;
       return frameOver(restingBox(node), slideIn(room.getBoundingClientRect()));
+    },
+    room() {
+      const room = slot.querySelector<HTMLElement>(".dc-view");
+      return room ? room.getBoundingClientRect() : undefined;
     },
     focusBlock,
     refreshCues() {

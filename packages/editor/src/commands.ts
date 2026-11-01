@@ -1,4 +1,5 @@
 import { LEADS, type Session } from "@depthcue/core";
+import { afterWhenMoving } from "./cleanup.ts";
 import type { Command } from "./palette.ts";
 import type { Ribbon } from "./ribbon.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL, type NewBlockKind } from "./templates.ts";
@@ -19,6 +20,20 @@ export interface CommandSources {
   remove(id: string): void;
   /** Opens the box that writes a comment on a block, or the claim. */
   comment(id: string): void;
+  /** What Cut, Copy and Duplicate do to a block. A command is listed only when the editor supplies what it calls. */
+  cut?(id: string): void;
+  copy?(id: string): void;
+  duplicate?(id: string): void;
+  /** Pastes the block the clipboard holds: after the chosen block, or where the menu was opened on the empty slide. */
+  paste?(): void;
+  /** Whether Paste could find a block. Without it Paste is listed whenever the editor can paste. */
+  canPaste?(): boolean;
+  /** Moves a block one place along the slide's order, as the arrows of its toolbar do. */
+  moveBlock?(id: string, direction: -1 | 1): void;
+  /** What the buttons of a scene in the strip do. */
+  duplicateScene?(id: string): void;
+  removeScene?(id: string): void;
+  moveScene?(id: string, direction: -1 | 1): void;
   /** Whether the comments are on the slide, and putting them there or away. */
   commentsShown(): boolean;
   showComments(on: boolean): void;
@@ -85,12 +100,33 @@ export function listCommands(from: CommandSources): Command[] {
     });
   }
 
+  // The menu on the empty slide: Paste first, then what can be added. An add there is an add of the quick bar.
+  const chosen = from.block();
+  const block = chosen === undefined ? undefined : scene.blocks.find((candidate) => candidate.id === chosen);
+  const paste = from.paste;
+  const canPaste = paste !== undefined && (from.canPaste?.() ?? true);
+  if (paste && canPaste && chosen === undefined) {
+    add({
+      id: "paste-here",
+      title: "Paste a block",
+      group: "Add",
+      words: "clipboard copied",
+      keys: from.keysOf("paste"),
+      targets: ["slide"],
+      label: "Paste here",
+      section: "add",
+      run: paste,
+    });
+  }
   add({
     id: "add-text",
     title: "Add a text",
     group: "Add",
     words: "paragraph heading words",
     keys: from.keysOf("add-text"),
+    targets: ["slide"],
+    label: "Add a text here",
+    section: "add",
     run: () => from.add("text"),
   });
   add({
@@ -99,6 +135,9 @@ export function listCommands(from: CommandSources): Command[] {
     group: "Add",
     words: "bar graph numbers",
     keys: from.keysOf("add-chart"),
+    targets: ["slide"],
+    label: "Add a chart here",
+    section: "add",
     run: () => from.add("bar-chart"),
   });
   add({
@@ -107,6 +146,9 @@ export function listCommands(from: CommandSources): Command[] {
     group: "Add",
     words: "picture photo upload file",
     keys: from.keysOf("add-image"),
+    targets: ["slide"],
+    label: "Add an image here",
+    section: "add",
     run: () => from.pickImage(),
   });
   if (from.hasVideo()) {
@@ -115,6 +157,9 @@ export function listCommands(from: CommandSources): Command[] {
       title: "Add a clip",
       group: "Add",
       words: "video movie",
+      targets: ["slide"],
+      label: "Add a clip here",
+      section: "add",
       run: () => from.add("clip"),
     });
   }
@@ -124,12 +169,82 @@ export function listCommands(from: CommandSources): Command[] {
       title: "Add a claim",
       group: "Add",
       words: "headline statement",
+      targets: ["slide"],
+      section: "add",
       run: () => from.claim(),
     });
   }
 
-  const chosen = from.block();
-  const block = chosen === undefined ? undefined : scene.blocks.find((candidate) => candidate.id === chosen);
+  // The chosen block, or the claim. The menu lists them in three sections: what is done to it, where it goes, and notes.
+  const item = block !== undefined || (chosen !== undefined && scene.summary?.id === chosen);
+  if (chosen !== undefined && block) {
+    const { cut, copy } = from;
+    if (cut) {
+      add({
+        id: "cut",
+        title: "Cut the block",
+        group: "The chosen block",
+        words: "clipboard remove take",
+        keys: from.keysOf("cut"),
+        targets: ["block"],
+        label: "Cut",
+        section: "edit",
+        run: () => cut(chosen),
+      });
+    }
+    if (copy) {
+      add({
+        id: "copy",
+        title: "Copy the block",
+        group: "The chosen block",
+        words: "clipboard",
+        keys: from.keysOf("copy"),
+        targets: ["block"],
+        label: "Copy",
+        section: "edit",
+        run: () => copy(chosen),
+      });
+    }
+  }
+  if (item && paste && canPaste) {
+    add({
+      id: "paste",
+      title: block ? "Paste after the block" : "Paste a block",
+      group: "The chosen block",
+      words: "clipboard copied",
+      keys: from.keysOf("paste"),
+      targets: ["block", "claim"],
+      label: "Paste",
+      section: "edit",
+      run: paste,
+    });
+  }
+  if (chosen !== undefined && block && from.duplicate) {
+    const duplicate = from.duplicate;
+    add({
+      id: "duplicate",
+      title: "Duplicate the block",
+      group: "The chosen block",
+      words: "copy again twin",
+      keys: from.keysOf("duplicate"),
+      targets: ["block"],
+      label: "Duplicate",
+      section: "edit",
+      run: () => duplicate(chosen),
+    });
+  }
+  if (chosen !== undefined && item) {
+    add({
+      id: "remove",
+      title: block ? "Remove the block" : "Remove the claim",
+      group: "The chosen block",
+      words: "delete",
+      targets: ["block", "claim"],
+      label: "Delete",
+      section: "edit",
+      run: () => from.remove(chosen),
+    });
+  }
   if (chosen !== undefined && block) {
     add({
       id: "pin",
@@ -137,40 +252,55 @@ export function listCommands(from: CommandSources): Command[] {
       group: "The chosen block",
       words: "unpin free move frame",
       keys: from.keysOf("pin"),
+      targets: ["block"],
+      label: block.frame ? "Put back in layout" : "Pin where it is",
+      section: "place",
       run: () => from.togglePin(chosen),
     });
+    const moveBlock = from.moveBlock;
+    if (moveBlock) {
+      const order = scene.blocks.map((candidate) => candidate.id);
+      for (const direction of [-1, 1] as const) {
+        if (afterWhenMoving(order, chosen, direction) === undefined) continue;
+        const name = direction === -1 ? "earlier" : "later";
+        add({
+          id: `move-${name}`,
+          title: `Move the block ${name}`,
+          group: "The chosen block",
+          words: "order reading arrow",
+          targets: ["block"],
+          label: `Move ${name}`,
+          section: "place",
+          run: () => moveBlock(chosen, direction),
+        });
+      }
+    }
   }
-  if (chosen !== undefined && (block || scene.summary?.id === chosen)) {
+  if (chosen !== undefined && item) {
     add({
       id: "comment",
       title: block ? "Comment on the block" : "Comment on the claim",
       group: "The chosen block",
       words: "note feedback ask agent review",
+      targets: ["block", "claim"],
+      label: "Comment",
+      section: "review",
       run: () => from.comment(chosen),
-    });
-    add({
-      id: "remove",
-      title: block ? "Remove the block" : "Remove the claim",
-      group: "The chosen block",
-      words: "delete",
-      run: () => from.remove(chosen),
     });
   }
 
-  add({
-    id: "comments-toggle",
-    title: from.commentsShown() ? "Hide the comments" : "Show the comments",
-    group: "This scene",
-    words: "notes pins feedback review",
-    run: () => from.showComments(!from.commentsShown()),
-  });
-  if (scene.blocks.some((candidate) => candidate.frame)) {
+  for (const choice of LAYOUT_CHOICES) {
+    if (choice.value === scene.layout) continue;
     add({
-      id: "auto-layout",
-      title: "Put every pinned block back in its layout",
+      id: `layout-${choice.value}`,
+      title: `Layout: ${choice.label}`,
       group: "This scene",
-      words: "auto unpin reset frames",
-      run: () => from.autoLayout(),
+      words: "template arrangement",
+      targets: ["slide"],
+      label: choice.label,
+      section: "scene",
+      submenu: "Layout",
+      run: () => from.setLayout(choice.value),
     });
   }
   const lead = scene.lead ?? "human";
@@ -181,18 +311,77 @@ export function listCommands(from: CommandSources): Command[] {
       title: `Lead: ${LEAD_LABEL[value]}`,
       group: "This scene",
       words: "who leads human agent shared",
+      targets: ["slide"],
+      label: LEAD_LABEL[value],
+      section: "scene",
+      submenu: "Lead",
       run: () => from.setLead(value),
     });
   }
-  for (const choice of LAYOUT_CHOICES) {
-    if (choice.value === scene.layout) continue;
+  if (scene.blocks.some((candidate) => candidate.frame)) {
     add({
-      id: `layout-${choice.value}`,
-      title: `Layout: ${choice.label}`,
+      id: "auto-layout",
+      title: "Put every pinned block back in its layout",
       group: "This scene",
-      words: "template arrangement",
-      run: () => from.setLayout(choice.value),
+      words: "auto unpin reset frames",
+      targets: ["slide"],
+      label: "Put every pinned block back",
+      section: "scene",
+      run: () => from.autoLayout(),
     });
+  }
+  add({
+    id: "comments-toggle",
+    title: from.commentsShown() ? "Hide the comments" : "Show the comments",
+    group: "This scene",
+    words: "notes pins feedback review",
+    targets: ["slide"],
+    section: "view",
+    run: () => from.showComments(!from.commentsShown()),
+  });
+  // The scene in the strip. Right-clicking a scene chooses it, so these act on the scene on show, like the rest.
+  const order = session.doc.deck.scenes;
+  const at = order.indexOf(sceneId);
+  const { duplicateScene, removeScene, moveScene } = from;
+  if (duplicateScene) {
+    add({
+      id: "duplicate-scene",
+      title: "Duplicate this scene",
+      group: "This scene",
+      words: "copy again twin",
+      targets: ["scene"],
+      label: "Duplicate",
+      section: "scene-edit",
+      run: () => duplicateScene(sceneId),
+    });
+  }
+  if (removeScene && order.length > 1) {
+    add({
+      id: "remove-scene",
+      title: "Delete this scene",
+      group: "This scene",
+      words: "remove",
+      targets: ["scene"],
+      label: "Delete",
+      section: "scene-edit",
+      run: () => removeScene(sceneId),
+    });
+  }
+  if (moveScene) {
+    for (const direction of [-1, 1] as const) {
+      if (order[at + direction] === undefined) continue;
+      const name = direction === -1 ? "earlier" : "later";
+      add({
+        id: `move-scene-${name}`,
+        title: `Move this scene ${name}`,
+        group: "This scene",
+        words: "order strip arrow",
+        targets: ["scene"],
+        label: `Move ${name}`,
+        section: "scene-move",
+        run: () => moveScene(sceneId, direction),
+      });
+    }
   }
 
   session.doc.deck.scenes.forEach((id, at) => {
@@ -238,6 +427,9 @@ export function listCommands(from: CommandSources): Command[] {
     title: "Present from this scene",
     group: "Everywhere",
     words: "show slideshow play",
+    targets: ["scene"],
+    label: "Present from here",
+    section: "present",
     run: from.present,
   });
   add({

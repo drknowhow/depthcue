@@ -25,6 +25,17 @@ export interface ShortcutActions {
   palette(): void;
   /** Opens the storyboard: every scene on one screen. */
   storyboard(): void;
+  /**
+   * Puts the chosen block on the clipboard, and with `cut` takes it off the slide. It fills what a copy or cut event
+   * carries. False when no block is chosen, to leave the event to the browser.
+   */
+  copy(data: DataTransfer | null, cut: boolean): boolean;
+  /** Pastes the block a paste event carries, after the chosen block. False when it carries none. */
+  paste(data: DataTransfer | null): boolean;
+  /** Duplicates the chosen block, unless the key is `again` held down. False when no block is chosen. */
+  duplicate(again: boolean): boolean;
+  /** Opens the right-click menu on what the keyboard is on: the chosen block or a scene of the strip. False when there is none. */
+  menu(): boolean;
 }
 
 export interface Shortcut {
@@ -138,6 +149,38 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
       // Opening the sheet is the dispatcher's job, which needs the sheet.
     },
     {
+      id: "cut",
+      group: "The chosen block",
+      does: "Cut it, to paste it elsewhere",
+      keys: [["Mod", "X"]],
+      // The browser sends a cut event, which carries the clipboard and needs no permission: see `onClipboard`.
+    },
+    {
+      id: "copy",
+      group: "The chosen block",
+      does: "Copy it, also into another deck",
+      keys: [["Mod", "C"]],
+    },
+    {
+      id: "paste",
+      group: "The chosen block",
+      does: "Paste a copied block after it",
+      keys: [["Mod", "V"]],
+    },
+    {
+      id: "duplicate",
+      group: "The chosen block",
+      does: "Duplicate it",
+      keys: [["Mod", "D"]],
+      // A browser would bookmark the page on this key, so while a block is chosen the key is ours.
+      handle: (event) =>
+        mod(event) &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "d" &&
+        !typesInto(event.target) &&
+        actions.duplicate(event.repeat),
+    },
+    {
       id: "pin",
       group: "The chosen block",
       does: "Pin it where it is, or put it back in its area",
@@ -150,6 +193,18 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
       does: "Move the keyboard to its toolbar",
       keys: [["Alt", "F10"]],
       handle: (event) => event.key === "F10" && event.altKey && actions.toolbar(),
+    },
+    {
+      id: "menu",
+      group: "The chosen block",
+      does: "Open its right-click menu",
+      keys: [["Shift", "F10"], ["Menu"]],
+      // Typing in a text keeps the browser's own menu, which has the spelling suggestions.
+      handle: (event) =>
+        (event.key === "ContextMenu" ||
+          (event.key === "F10" && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey)) &&
+        !typesInto(event.target) &&
+        actions.menu(),
     },
     {
       id: "edit",
@@ -211,7 +266,7 @@ export function createShortcuts(host: HTMLElement, actions: ShortcutActions): Sh
     pointerOver = event.target instanceof Node && host.contains(event.target);
   };
 
-  const owned = (event: KeyboardEvent) => {
+  const owned = (event: Event) => {
     const { target } = event;
     const nowhere =
       target === null ||
@@ -315,7 +370,23 @@ export function createShortcuts(host: HTMLElement, actions: ShortcutActions): Sh
     }
   };
 
+  /**
+   * A copy, a cut or a paste of the chosen block. The page hears these for a key press, with the clipboard attached, so
+   * they need no permission. A field keeps its own, and so do words the person selected.
+   */
+  const onClipboard = (event: ClipboardEvent) => {
+    if (event.defaultPrevented || !owned(event) || !sheet.hidden || typesInto(event.target)) return;
+    if (document.getSelection()?.isCollapsed === false) return;
+    const took =
+      event.type === "paste"
+        ? actions.paste(event.clipboardData)
+        : actions.copy(event.clipboardData, event.type === "cut");
+    if (took) event.preventDefault();
+  };
+  const CLIPBOARD_EVENTS = ["copy", "cut", "paste"] as const;
+
   document.addEventListener("keydown", onKey);
+  for (const type of CLIPBOARD_EVENTS) document.addEventListener(type, onClipboard);
   document.addEventListener("pointermove", track, true);
   document.addEventListener("pointerdown", track, true);
 
@@ -329,6 +400,7 @@ export function createShortcuts(host: HTMLElement, actions: ShortcutActions): Sh
     close: shut,
     destroy() {
       document.removeEventListener("keydown", onKey);
+      for (const type of CLIPBOARD_EVENTS) document.removeEventListener(type, onClipboard);
       document.removeEventListener("pointermove", track, true);
       document.removeEventListener("pointerdown", track, true);
     },
