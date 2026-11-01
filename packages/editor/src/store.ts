@@ -99,7 +99,8 @@ export interface EditorStore {
 const isCueMap = (path: string) => path.endsWith(".cues.json");
 
 const docOf = (payload: DeckPayload): Doc | undefined =>
-  loadDoc({ text: payload.text, assets: payload.assets }).doc ?? undefined;
+  loadDoc({ text: payload.text, assets: payload.assets, brandFiles: payload.brandFiles ?? [] }).doc ??
+  undefined;
 
 /**
  * Opens the deck from the server into a core session and restores a draft left by an earlier visit. It keeps
@@ -166,7 +167,11 @@ export async function openStore(
     },
   });
 
-  const recovery = recoverDraft(drafts, { assets: initial.assets, savedRev: session.rev });
+  const recovery = recoverDraft(drafts, {
+    assets: initial.assets,
+    ...(initial.brandFiles === undefined ? {} : { brandFiles: initial.brandFiles }),
+    savedRev: session.rev,
+  });
   if (recovery.status === "found") {
     if (recovery.diskChanged) {
       held = recovery.doc;

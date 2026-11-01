@@ -1,0 +1,221 @@
+# Brands, templates and PowerPoint export
+
+Status: approved 2026-11-01, campaign `depthcue-brands-pptx`.
+
+Goal: a company defines its brand once (colors, fonts, logo, footer, slide templates and component styles), every
+slide made in that brand follows it, a person and an agent both build slides from its templates, and any deck exports
+to a PowerPoint file that people can keep editing.
+
+Before this work: two presets (Paper, Ink) with a palette, four built-in font pairs, three flow layouts (title,
+claim-evidence, text-media) plus pinned frames, no logo or footer on slides, no named block styles, and no export
+besides the offline folder. Templates, theme authoring and editable PPTX were listed for 0.2, 0.6 and 0.7 in
+`docs/PLAN.md`; this plan brings them forward.
+
+Decisions (Dimitri, 2026-11-01):
+
+- A brand is copied into each deck, so a deck stays self-contained for git, sharing and offline export. A person keeps
+  one master brand folder and copies it in with `depthcue brand use`; running it again updates the copy.
+- Templates are linked, like PowerPoint layouts. A scene names its template and each block names a slot. Changing a
+  template or a style changes every slide that uses it. Agents fill slots by id and never set coordinates.
+- The PowerPoint export is editable by default, and also gets: the brand as the PowerPoint slide master with each
+  template as a New Slide layout, import of a brand from a `.potx` or `.pptx`, a picture mode, and embedded videos.
+
+## The parts
+
+**Brand.** A folder `brand/` inside the deck, named by `deck.json` as `"brand": "<id>"`. It holds `brand.json`,
+`templates/<id>.json`, and its files under `fonts/`, `logos/` and `images/`. `brand.json` has:
+
+- `colors`: a palette for `paper` and for `ink` (the same seven names as a deck palette), each optional, checked by the
+  same contrast rules. The deck's own palette goes on top, unless the brand sets `lock`, which refuses deck-level
+  palette and font changes so a deck cannot drift off brand.
+- `chart`: up to six series colors, each at least 3:1 against the slide background (WCAG 1.4.11). Without it, charts
+  take their colors from the palette by position, as today.
+- `fonts`: one of the four built-in pairs, or the brand's own display, body and (optional) mono faces. A face names its
+  family, its license, and its files with weight and style. A face may name no files, for a company font that is
+  installed on its people's machines; it then names a built-in pair to fall back to, and `check` warns that the look
+  depends on the viewer's machine.
+- `logos`: one for light slides and one for dark, SVG or PNG, with alt text.
+- `chrome`: what sits on every slide, like a PowerPoint master: the logo (corner and size), a footer line, the slide
+  number, and an accent (none, a bar along the top, or a bar down the start side). A template says whether it shows
+  the full chrome, a minimal one (logo only) or none.
+- `styles`: the brand's components. A style is a named look for a block, chosen from a bounded list of properties:
+  font (display, body, mono), size, weight, case, tone, fill (none, surface, action, evidence, text), border, an
+  accent edge, corner radius, padding and alignment, and which block kinds it applies to. A block takes one with
+  `"style": "callout"`. The block's own tone, size and align still win. Text on a fill is held to the same contrast
+  rules, and reversed text (the background color on a dark fill) is allowed when it passes.
+
+**Templates.** A template is a slide layout with named slots. Each slot has a frame (percent of the 16:9 slide, as
+pinning uses), what it accepts (text roles and block types), a default style, how many blocks it stacks (one by
+default), whether it is required, and a hint that tells a person or an agent what goes there. A template also has a
+background: a named color, or a brand image under a scrim color. A scene uses either a built-in layout or a template,
+never both. Its blocks name their slot; a block can still be pinned on top.
+
+Depthcue ships a default brand with about ten templates (title, section, agenda, statement, big number, quote, two
+columns, comparison, full image, closing) and about seven styles (callout, stat, kicker, card, highlight, pull quote,
+label). Every deck can use them, drawn in its own brand's colors and fonts. A brand's template or style with the same
+id replaces the built-in one, and a brand can hide the built-ins.
+
+Changing a scene's template maps its blocks to the new slots by kind and order, through one core helper used by the
+editor and agents alike. A block that fits no slot is reported, never dropped.
+
+**PowerPoint export.** `depthcue export <deck> --format pptx` renders each scene in Chrome at 1280 by 720, as
+`depthcue render` does, measures every block, and writes a `.pptx` with pptxgenjs (MIT):
+
+| In Depthcue                       | In PowerPoint                                                                |
+| --------------------------------- | ---------------------------------------------------------------------------- |
+| Text, claims, eyebrows            | Text boxes at the measured place, with bold, italic, links, colors and lists |
+| Images                            | Pictures, with their alt text                                                |
+| Tables                            | Native tables                                                                |
+| Charts (all six kinds, bar-chart) | Native charts whose data can be edited, in the deck's series colors          |
+| Clips                             | Embedded videos; `--posters` writes the poster and a link instead            |
+| Speaker notes                     | Speaker notes (`--no-notes` leaves them out)                                 |
+| Sources                           | A small line of links at the foot of the slide                               |
+| Build steps                       | All shown on one slide; `--steps` writes one slide per click step            |
+| Brand chrome and templates        | The slide master, and one PowerPoint layout per template                     |
+| Fonts                             | Named; PowerPoint cannot carry font files, so the export lists the families  |
+
+`--pictures` writes each slide as one exact image with its notes, for when the look matters more than editing.
+Interactive charts, the control lease, the presenter window and transitions have no PowerPoint form; the export says
+what it left out of each slide. The same deck gives the same bytes every time.
+
+**Brand import.** `depthcue brand import <file.potx|.pptx>` reads the file's theme colors, font names, master logo and
+slide layouts into a brand folder. Layout placeholders become template slots. A color that fails the contrast rules
+is reported and the preset's color is kept, and the report lists everything else it did not take.
+
+## Steps (one merge each)
+
+1. **Contracts.** Schema 0.4 fixes every new field before any feature is built: the brand file and its checks, the
+   template file, the deck's `brand`, the scene's `template`, the block's `slot` and `style`, and the operations
+   (`brand.set`, `style.set`, `template.set`, and slot changes through `block.set`). The deck revision covers the
+   brand folder, so a stale save is refused when the brand changed. The template-change helper lives in core. The
+   player shows a template scene as labeled slot boxes until step 3. Core only. This document lands here.
+2. **PowerPoint export.** The editable export for everything a deck has today: text, images, tables, the six charts,
+   notes, sources, pinned blocks, fonts named, a report of what was left out, and the same bytes every time.
+3. **Brand in the player.** Brand colors, chart colors and fonts (custom faces served by the server and copied by the
+   export), chrome, styles, template slots and backgrounds. `depthcue render` reports slot overflow, chrome overlap,
+   and contrast of text on a background image, measured on the rendered pixels.
+4. **Brand import.** `depthcue brand import`, tested on a fixture file generated in the test, and checked by hand on a
+   theme that ships with PowerPoint on this PC.
+5. **Default brand and brand commands.** The built-in templates and styles, `depthcue brand init`, `brand use`
+   (copies a brand into a deck and refuses to overwrite local changes without `--force`), `brand check`, and
+   `depthcue new --brand`. A fixture deck in a second, made-up brand with its own open-license fonts and logo.
+6. **PowerPoint extras.** Slide master and template layouts, picture mode, embedded videos, `--steps`, an export
+   endpoint for the editor, and the MCP export tool.
+7. **Editor: use a brand.** A template picker with thumbnails when adding a scene, Change template with a preview of
+   where each block goes, empty slots showing their hint (never in an export), a Style menu on the block toolbar and
+   the right-click menu, the chrome on the slide, and Download PowerPoint.
+8. **Editor: define a brand.** A Brand panel (logos, colors for both presets with refusals at the swatch, chart colors,
+   fonts from a pair or uploaded files, chrome, styles with a live preview, the template list), Save scene as template,
+   and Edit template, where slots are boxes you drag and resize with the pinning snap.
+9. **Close-out.** Guides (brands, templates, PowerPoint with the supported subset), the demo in two brands, PowerPoint's
+   own slide images next to the player's, changelog, budgets, bench and results.
+
+## How it runs
+
+Steps in one wave touch different files and are built at the same time:
+
+- Wave A: 1 contracts and 2 PowerPoint export (it covers today's content, so it does not wait for the brand).
+- Wave B: 3 brand in the player and 4 brand import.
+- Wave C: 5 default brand and brand commands, and 6 PowerPoint extras.
+- Wave D: 7 editor, use a brand. Wave E: 8 editor, define a brand. Wave F: 9 close-out.
+
+The conductor (Opus) writes each brief, reviews every diff and screenshot before it merges, and settles conflicts. A
+builder (a Sonnet subagent, Opus for the contracts) builds one step in its own worktree, runs the full verify, and
+opens the PR without merging. A merge script with no model waits for CI on the branch's own commit, merges, and waits
+for CI on main. Cod reviews the contracts PR. Every PowerPoint step is also checked by opening its file in PowerPoint
+on this PC and exporting the slides to images, because CI can only read the file's XML.
+
+## What holds for every step
+
+- Agent parity: every new property has an operation, an MCP description and a check, and the same change made in the
+  editor and through `depthcue apply` writes the same files.
+- Old decks: 0.1 to 0.3 decks load and look unchanged, and a file becomes 0.4 only when it uses a new field.
+- Each step adds its own e2e test file. Text-fit assertions in real-browser tests keep the headroom the earlier
+  campaigns needed for CI's wider fonts.
+- The plan has 9 steps. A new step needs Dimitri's OK; bugs found on the way get their own fix.
+
+## Budgets
+
+- Editor script stays under 90 KB (89.3 KB before). The brand panel, the template editor and other rarely used parts
+  load on demand, each with its own budget row of at most 30 KB.
+- Exported page script: 14 KB to 16 KB (the raise approved for the content range).
+- Core runtime stays under 60 KB (45.2 KB before). Player styles stay under 30 KB.
+- Fonts, logos and images are files beside the deck, not script. An export copies only what the deck uses.
+- pptxgenjs is a dependency of the CLI only and never reaches a page.
+
+## Not in this plan
+
+Embedding font files inside the `.pptx`, PowerPoint animations for build steps, importing a whole `.pptx` deck as
+scenes (0.3 in `docs/PLAN.md`), a shared brand folder that decks point to, uploading a brand from the editor to a
+library, and per-block raw hex colors.
+
+## Step 1 record: what the contracts fixed
+
+- **Files.** `brand/brand.json`, `brand/templates/<id>.json` (the file name is the template's id; a file whose `id`
+  differs is `template-id-mismatch`), and the brand's own files under `brand/fonts/`, `brand/logos/` and
+  `brand/images/`. Both kinds of JSON file say `"schemaVersion": "0.4"`, the only version they have. Their schemas are
+  published as `packages/core/schema/brand.schema.json` and `template.schema.json`. A brand file names its files
+  relative to `brand/`.
+- **Schema 0.4.** deck.json gains `brand` (an id, which brand.json must repeat: `brand-id-mismatch`). A scene gains
+  `template` and has exactly one of `layout` and `template` (`layout-and-template`; neither keeps the old
+  `missing-property` at `/layout`). A block gains `slot` and `style`. A 0.4 field in a file that says an older version
+  is `brand-needs-version`, `template-needs-version`, `slot-needs-version` or `style-needs-version`. A file becomes 0.4
+  only when an operation gives it a 0.4 field; a scene below 0.3 is upgraded on the way, so its text is escaped. New
+  scenes are written as 0.4. `scene.upgrade` still means 0.3.
+- **Doc.** A Doc gains `brand`, `templates` (the brand's, by id) and `brandFiles` (the brand folder's other files).
+  `DeckFiles` gains `brandFiles`; the CLI loader reads brand.json and the templates as text and lists the rest.
+- **Built-ins and resolution.** `BUILT_IN_TEMPLATES` holds `section` and `two-column`, `BUILT_IN_STYLES` holds `callout`
+  and `stat`; step 5 adds the rest. `templatesOf` and `blockStylesOf` give the built-ins (unless the brand's
+  `hideBuiltIn` names the set) with the brand's on top by id. `styleOf(deck, brand)` takes the preset, then the
+  brand's palette for that preset, then the deck's palette; fonts are the deck's pair, then the brand's pair (or its
+  faces' `fallback`), then `editorial`. A `lock`ed brand ignores the deck's palette and pair, and deck.json setting
+  either is `brand-locked`.
+- **One look function.** `lookOf(doc)` in `look.ts` gives the `DeckLook` declared in `exported.ts`: theme, resolved
+  colors, chart colors, the pair, the brand's faces as file paths, the chrome with the logo for the theme, and the
+  styles and templates the scenes use. It is not wired yet; step 3 hands it to the player. The player imports neither
+  it nor the registry: the player bundle has no built-in template or style in it.
+- **Scene checks.** `unknown-template`, `unknown-slot`, `unknown-style`, `style-wrong-kind`, `slot-refuses-block`,
+  `slot-over-max`, `missing-slot` (every block of a template scene names a slot), `slot-without-template`,
+  `claim-in-template`, and the warning `slot-empty` for a required slot. A pinned block still names a slot that takes
+  its kind, but floats at its frame: it neither fills the slot nor counts toward `max`.
+- **Brand checks.** Errors: `unused-brand` (brand.json or templates while deck.json names no brand), `missing-brand`
+  (deck.json names a brand the folder lacks), `missing-brand-file` (a font, logo or background image not on disk),
+  `missing-logo` (logos that name no file, or chrome that places a logo the brand lacks), `palette-low-contrast` at
+  `/colors/<preset>/<color>` with "On ink slides, " in front, `chart-low-contrast` (3:1 on the deck's background),
+  `style-low-contrast` (text on a fill; reversed text in `bg` passes when it reaches the minimum). Warnings:
+  `face-without-files` (the look depends on the viewer's machine), `body-without-bold`, `chrome-crowded` (two chrome
+  parts in one place), `background-unmeasured` (until step 3 measures text on an image). Templates: `duplicate-id` for
+  slots, `frame-off-slide`, `slots-overlap`, `unknown-style`, `style-wrong-kind` and `template-low-contrast` (text on a
+  strong background is drawn in `bg`). Contrast is checked for the deck's theme.
+- **Validation.** Ajv still compiles deck, scene, ops and comments. brand.json and templates are checked by
+  `schemacheck.ts`, a small interpreter of the JSON-schema subset those two schemas use, because their compiled Ajv
+  code cost about 10 KB gzip of core and 5 KB brotli of the editor. Its errors equal Ajv's (path, keyword, params,
+  order), which `schemacheck.test.ts` holds by running both on the fixture and on thousands of one-change mutations;
+  a keyword it does not know throws.
+- **Operations.** `brand.set` makes a brand (it needs `id` and `name`), edits brand.json keys (null deletes one) and,
+  with `set: null`, takes the brand off: deck.json loses `brand`, and brand.json and the template files are removed;
+  fonts, logos and images stay on disk. The id never changes. `deck.set` refuses `brand`, `brand.set` refuses `styles`.
+  `style.set` and `template.set` write or remove one by id and need a brand (`no-brand`); `template.set` fills `id`
+  and `schemaVersion`. Slot and style changes go through `block.set`. Removing a style or template still in use fails
+  on the result as `invalid-deck`, with the scene's own error.
+- **Changing a template.** `retemplate(doc, scene, { template } | { layout })` returns the operations and the ids of
+  blocks no slot takes, which are never dropped. A block keeps its slot when the new template has it; others go to the
+  first slot that takes their kind and has room, in order. A claim becomes a heading block with the claim's id and
+  escaped text (body text when it is longer than a heading allows), since a template has no claim; its evidence links
+  are dropped. Moving to a layout clears every slot.
+- **Revision.** It covers brand.json and the templates, independent of formatting. A deck without a brand hashes as
+  before: the v0-1 fixture stays `ec4e0cd5c59ef06a` and the demo `eb9d45889adffe19`, pinned in `brand.test.ts`. Brand
+  binaries count no more than assets do. Drafts keep the brand; a review keeps the reviewed brand but lists no brand
+  change, and accepting uses the current brand.
+- **CLI, editor and MCP.** `loader.ts` reads the brand; `edit-api.ts` lets the editor save brand.json and templates and
+  sends `brandFiles`; `deck-api.ts` puts the brand, every template with its slots (id, accepts, hint, max, required)
+  and every style in the outline, and a block's slot and style in the detailed one. deck_get and deck_apply describe
+  templates, slots, styles and the three operations within the size test's limits. The editor loads and saves a
+  branded deck and lists `deck.brand`, `scene.template` and each block's `slot` and `style` as `PENDING` for steps 7
+  and 8.
+- **Player.** A template scene draws each slot as a dashed box with its id, its blocks stacked inside, until step 3
+  places slots at their frames. The fixture's chart-and-note scene overflows that stack in `depthcue render`.
+- **Sizes.** Core runtime 45.2 to 56.3 KB gzip (limit 60). Player script 10.1 to 10.3 KB (the placeholder), core code
+  in the player 5.1 to 4.9 KB, exported page 13.3 to 13.2 KB. The editor script went from 89.3 to 97.2 KB brotli,
+  over its 90 KB limit: the editor bundles all of core, and the 0.4 schema, checks and built-ins come with it. Not
+  fixed in this step; the options are in the PR.

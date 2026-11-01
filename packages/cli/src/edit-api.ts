@@ -59,7 +59,8 @@ function authorized(request: IncomingMessage, ctx: EditContext): string | undefi
   return crossOrigin(request, ctx.origins());
 }
 
-const SAVEABLE = /^(deck\.json|scenes\/[^/\\]+\.json)$/;
+/** What the editor may write: deck.json, the scenes, and the brand's brand.json and templates. */
+const SAVEABLE = /^(deck\.json|scenes\/[^/\\]+\.json|brand\/brand\.json|brand\/templates\/[^/\\]+\.json)$/;
 
 /** The change ids a save says are still the agent's. Anything that is not a short list of short strings is ignored. */
 export const keptAgent = (value: unknown): string[] =>
@@ -95,7 +96,7 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
     if (!SAVEABLE.test(path) || typeof text !== "string") {
       return send(response, 400, {
         error: "bad-request",
-        message: `"${path}" is not a file the editor may write. Only deck.json and scenes/<id>.json.`,
+        message: `"${path}" is not a file the editor may write. Only deck.json, scenes/<id>.json, brand/brand.json and brand/templates/<id>.json.`,
       });
     }
     files[path] = text;
@@ -118,7 +119,11 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
       rev: diskRev,
     });
   }
-  const next = loadDoc({ text: files, assets: onDisk.assets });
+  const next = loadDoc({
+    text: files,
+    assets: onDisk.assets,
+    ...(onDisk.brandFiles ? { brandFiles: onDisk.brandFiles } : {}),
+  });
   if (!next.doc) {
     return send(response, 422, {
       error: "invalid",
@@ -154,6 +159,7 @@ function deck(response: ServerResponse, ctx: EditContext) {
     rev: revisionOf(opened.doc),
     text: files.text,
     assets: files.assets,
+    brandFiles: [...(files.brandFiles ?? [])],
     warnings: opened.diagnostics.filter((d) => d.severity === "warning").map(plain),
   });
 }

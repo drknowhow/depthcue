@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "0.4",
+  "id": "harbor",
+  "name": "Harbor Analytics",
+  "colors": { "paper": { "action": "#0B6E6E", "evidence": "#2D4BB8" } },
+  "chart": ["#0B6E6E", "#2D4BB8", "#B4531F"],
+  "fonts": "modern",
+  "logos": { "light": "logos/harbor.svg", "alt": "Harbor Analytics" },
+  "chrome": {
+    "logo": { "corner": "top-end", "size": "s" },
+    "footer": { "text": "Harbor Analytics, for internal use", "place": "start" },
+    "number": { "place": "end" },
+    "accent": "top"
+  },
+  "styles": {
+    "kicker": { "name": "Kicker", "for": ["caption"], "case": "upper", "weight": "bold", "tone": "action" },
+    "quiet-panel": {
+      "name": "Quiet panel",
+      "for": ["body", "quote"],
+      "fill": "surface",
+      "border": "line",
+      "radius": "m",
+      "pad": "m"
+    }
+  }
+}

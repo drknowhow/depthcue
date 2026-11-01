@@ -167,6 +167,26 @@ function ghost(node: HTMLElement): HTMLElement {
 }
 
 /**
+ * A template scene, for now: one labeled region per slot its blocks name, in the order the slots first appear, each
+ * holding its blocks in order. The player has not yet the template itself, so the slots are stacked, not placed.
+ */
+function slotRegions(entries: ReadonlyArray<{ block: Block; slot: HTMLElement }>): HTMLElement[] {
+  const slots = new Map<string, HTMLElement[]>();
+  for (const { block, slot } of entries) {
+    const id = block.slot ?? "";
+    slots.set(id, [...(slots.get(id) ?? []), slot]);
+  }
+  return [...slots].map(([id, nodes]) =>
+    h(
+      "div",
+      { class: "dc-region dc-slot", "data-slot": id },
+      h("span", { class: "dc-slot-label", "aria-hidden": "true" }, id),
+      ...nodes,
+    ),
+  );
+}
+
+/**
  * One scene as DOM. Every block is present; the player shows and hides gated ones as steps advance. A pinned block
  * (one with a `frame`) sits at its frame, in a layer over a 16 by 9 slide, in block order. Its place in the template
  * stays reserved, so pinning one block moves nothing else.
@@ -182,7 +202,9 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
   const pinned = blocks.flatMap(({ block, node }) => (block.frame ? [pin(node, block.frame)] : []));
 
   let body: HTMLElement[];
-  if (scene.layout === "claim-evidence") {
+  if (scene.template !== undefined) {
+    body = slotRegions(blocks);
+  } else if (scene.layout === "claim-evidence") {
     const evidenceIds = new Set(scene.summary?.evidenceIds ?? []);
     const claim = scene.summary
       ? h(
@@ -216,6 +238,7 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
     {
       class: "dc-scene",
       "data-layout": scene.layout,
+      "data-template": scene.template,
       "data-lead": scene.lead ?? "human",
       "data-framed": pinned.length > 0,
       "data-scene": scene.id,

@@ -2,7 +2,15 @@
 // Run with `pnpm schema`; CI re-runs it and fails if the committed output differs.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { commentOpsSchema, commentsSchema, deckSchema, opsSchema, sceneSchema } from "../src/schema.ts";
+import {
+  brandSchema,
+  commentOpsSchema,
+  commentsSchema,
+  deckSchema,
+  opsSchema,
+  sceneSchema,
+  templateSchema,
+} from "../src/schema.ts";
 
 const require = createRequire(import.meta.url);
 const Ajv = require("ajv").default;
@@ -19,6 +27,8 @@ for (const [name, schema] of [
   ["ops", opsSchema],
   ["comments", commentsSchema],
   ["comment-ops", commentOpsSchema],
+  ["brand", brandSchema],
+  ["template", templateSchema],
 ]) {
   writeFileSync(new URL(`schema/${name}.schema.json`, root), `${JSON.stringify(schema, null, 2)}\n`);
 }
@@ -39,6 +49,8 @@ ajv.addSchema(opsSchema);
 ajv.addSchema(commentsSchema);
 ajv.addSchema(commentOpsSchema);
 
+// The brand and template schemas are published above but not compiled: src/schemacheck.ts reads them at run time,
+// which costs core and the editor far less than Ajv's generated code for them would.
 const code = standaloneCode(ajv, {
   validateDeck: deckSchema.$id,
   validateScene: sceneSchema.$id,

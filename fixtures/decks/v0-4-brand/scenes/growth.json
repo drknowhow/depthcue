@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "0.4",
+  "id": "growth",
+  "title": "Growth",
+  "template": "chart-and-note",
+  "blocks": [
+    {
+      "id": "growth-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Ships handled rose a third once the berths reopened",
+      "slot": "title"
+    },
+    {
+      "id": "growth-chart",
+      "type": "chart",
+      "kind": "bar",
+      "title": "Ships handled each month",
+      "columns": [
+        { "label": "Month" },
+        { "label": "Berth A" },
+        { "label": "Berth B" },
+        { "label": "Berth C" }
+      ],
+      "rows": [["July", 40, 0, 0], ["August", 42, 18, 12], ["September", 44, 30, 26]],
+      "sourceIds": ["harbor-log"],
+      "slot": "chart"
+    },
+    {
+      "id": "growth-note",
+      "type": "text",
+      "role": "body",
+      "text": "Each bar is one berth. B and C were closed in July.",
+      "slot": "note"
+    }
+  ],
+  "sources": [{ "id": "harbor-log", "title": "Harbor master's berth log, July to September" }]
+}

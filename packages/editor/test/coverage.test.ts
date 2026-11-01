@@ -705,10 +705,20 @@ const WAYS: Record<string, Entry> = {
 };
 
 /**
- * Properties schema 0.3 added that the editor cannot edit yet, by the step of docs/CONTENT_RANGE.md that adds their
- * controls. The step that adds a control takes its prefix out of this list and gives each property a way in WAYS.
+ * Properties a schema added that the editor cannot edit yet, by the step that adds their controls: for schema 0.4, the
+ * steps of docs/BRANDS_AND_PPTX.md. The step that adds a control takes its prefix out of this list and gives each
+ * property a way in WAYS. A block type added later fails "has a way" above until it is listed here or given a way.
  */
-const PENDING: ReadonlyArray<[prefix: string, step: string]> = [];
+const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
+  ["deck.brand", "BRANDS_AND_PPTX step 8, the Brand panel"],
+  ["scene.template", "BRANDS_AND_PPTX step 7, the template picker and Change template"],
+  ...["text", "image", "bar-chart", "clip", "table", "chart"].flatMap(
+    (type): Array<[string, string]> => [
+      [`scene.blocks<${type}>.slot`, "BRANDS_AND_PPTX step 7, Change template"],
+      [`scene.blocks<${type}>.style`, "BRANDS_AND_PPTX step 7, the Style menu"],
+    ],
+  ),
+];
 const pending = (path: string) =>
   PENDING.some(
     ([prefix]) => path === prefix || path.startsWith(`${prefix}.`) || path.startsWith(`${prefix}[`),

@@ -216,6 +216,27 @@
   display: none;
 }
 
+/*
+ * A template scene, until the player draws templates: each slot a labeled region, stacked in the order the scene
+ * names them, so a person can see which block went where.
+ */
+.dc-slot {
+  position: relative;
+  padding: 1.6em 0.9em 0.9em;
+  border: 1px dashed var(--dc-line);
+  border-radius: 0.4em;
+}
+
+.dc-slot-label {
+  position: absolute;
+  top: 0.35em;
+  left: 0.9em;
+  color: var(--dc-muted);
+  font-family: var(--dc-font-mono);
+  font-size: 0.7em;
+  letter-spacing: 0.04em;
+}
+
 .dc-heading,
 .dc-claim {
   margin: 0;

@@ -1,12 +1,15 @@
 import {
   applyOps,
   type Block,
+  brandPartOf,
   type Diagnostic,
   type Doc,
+  kitOf,
   loadDoc,
   revisionOf,
   type Scene,
   sceneRevision,
+  slotMax,
 } from "@depthcue/core";
 import { loadDeckDir } from "./loader.ts";
 import { recordAgentWrite } from "./review-file.ts";
@@ -28,8 +31,42 @@ export function openDeck(folder: string): OpenResult {
 const blockSummary = (block: Block) => ({
   id: block.id,
   type: block.type,
+  ...(block.slot === undefined ? {} : { slot: block.slot }),
+  ...(block.style === undefined ? {} : { style: block.style }),
   ...(block.frame === undefined ? {} : { frame: block.frame }),
 });
+
+/**
+ * The templates and component styles a scene of the deck may name, its brand's and Depthcue's own, as an agent needs
+ * them to choose: each template with its slots, what each takes and what goes there. A brand's own are marked `brand`.
+ */
+function kitSummary(doc: Doc) {
+  const kit = kitOf(brandPartOf(doc));
+  const own = (set: object | undefined, id: string) =>
+    set !== undefined && Object.hasOwn(set, id) ? { brand: true } : {};
+  return {
+    templates: Object.entries(kit.templates).map(([id, template]) => ({
+      id,
+      name: template.name,
+      description: template.description,
+      ...own(doc.templates, id),
+      slots: template.slots.map((slot) => ({
+        id: slot.id,
+        accepts: slot.accepts,
+        hint: slot.hint,
+        ...(slotMax(slot) > 1 ? { max: slotMax(slot) } : {}),
+        ...(slot.required ? { required: true } : {}),
+        ...(slot.style === undefined ? {} : { style: slot.style }),
+      })),
+    })),
+    styles: Object.entries(kit.styles).map(([id, style]) => ({
+      id,
+      name: style.name,
+      for: style.for,
+      ...own(doc.brand?.styles, id),
+    })),
+  };
+}
 
 export function getOutline(doc: Doc, detail: Detail = "concise") {
   return {
@@ -38,13 +75,17 @@ export function getOutline(doc: Doc, detail: Detail = "concise") {
     title: doc.deck.title,
     theme: doc.deck.theme,
     language: doc.deck.language,
+    ...(doc.brand === undefined
+      ? {}
+      : { brand: { id: doc.brand.id, name: doc.brand.name, ...(doc.brand.lock ? { locked: true } : {}) } }),
+    ...kitSummary(doc),
     scenes: doc.deck.scenes.map((id) => {
       const scene = doc.scenes[id] as Scene;
       const pinned = scene.blocks.filter((block) => block.frame !== undefined).length;
       const base = {
         id,
         title: scene.title,
-        layout: scene.layout,
+        ...(scene.template === undefined ? { layout: scene.layout } : { template: scene.template }),
         lead: scene.lead ?? "human",
         blocks: scene.blocks.length,
         steps: scene.steps?.length ?? 0,

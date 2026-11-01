@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "urn:depthcue:schema:0.3:ops",
+  "$id": "urn:depthcue:schema:0.4:ops",
   "title": "Depthcue operations",
   "type": "array",
   "minItems": 1,
@@ -313,6 +313,73 @@
           "id": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "set"
+        ],
+        "properties": {
+          "op": {
+            "const": "brand.set"
+          },
+          "set": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "id",
+          "style"
+        ],
+        "properties": {
+          "op": {
+            "const": "style.set"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "style": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "id",
+          "template"
+        ],
+        "properties": {
+          "op": {
+            "const": "template.set"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "template": {
+            "type": [
+              "object",
+              "null"
+            ]
           }
         }
       }

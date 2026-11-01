@@ -104,8 +104,9 @@ describe("the tool list", () => {
       new RegExp(`${op} keys: ([a-z, ]+)\\.`).exec(description ?? "")?.[1]?.split(", ") ?? [];
     const settable = (schema: { properties: object }, apart: string[]) =>
       Object.keys(schema.properties).filter((key) => !apart.includes(key));
+    // A deck's "brand" is written by brand.set, together with brand/brand.json, never by deck.set.
     expect(listed("deck.set").sort(), "update the deck.set keys in the deck_apply description").toEqual(
-      settable(deckSchema, ["$schema", "schemaVersion", "id", "scenes"]).sort(),
+      settable(deckSchema, ["$schema", "schemaVersion", "id", "scenes", "brand"]).sort(),
     );
     expect(listed("scene.set").sort(), "update the scene.set keys in the deck_apply description").toEqual(
       settable(sceneSchema, ["$schema", "schemaVersion", "id", "blocks"]).sort(),
@@ -868,4 +869,75 @@ describe("the built binary", () => {
       await remote.close();
     }
   }, 30_000);
+});
+
+describe("a branded deck", () => {
+  const branded = fileURLToPath(new URL("../../../fixtures/decks/v0-4-brand", import.meta.url));
+  let dir: string;
+  let own: DepthcueServer;
+  let agent: Client;
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), "depthcue-mcp-brand-"));
+    cpSync(branded, dir, { recursive: true });
+    own = createDepthcueServer(dir);
+    agent = new Client({ name: "brand-test", version: "0.0.0" });
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    await Promise.all([own.server.connect(serverSide), agent.connect(clientSide)]);
+  });
+
+  afterAll(async () => {
+    await agent.close();
+    await own.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const ask = async (name: string, args: Record<string, unknown> = {}) => {
+    const result = (await agent.callTool({ name, arguments: args })) as { content: Array<{ text?: string }> };
+    return JSON.parse(result.content[0]?.text ?? "null");
+  };
+
+  it("shows the agent its brand, and each template's slots with what goes in them", async () => {
+    const outline = await ask("deck_get");
+    expect(outline.brand).toEqual({ id: "harbor", name: "Harbor Analytics" });
+    const cover = outline.templates.find((template: { id: string }) => template.id === "cover");
+    expect(cover).toMatchObject({ brand: true });
+    for (const slot of cover.slots) {
+      expect(slot.accepts.length, slot.id).toBeGreaterThan(0);
+      expect(slot.hint, slot.id).toMatch(/\w/);
+    }
+    expect(outline.templates.map((template: { id: string }) => template.id)).toEqual(
+      expect.arrayContaining(["section", "two-column", "cover", "chart-and-note"]),
+    );
+    expect(outline.styles.map((style: { id: string }) => style.id)).toEqual(
+      expect.arrayContaining(["callout", "stat"]),
+    );
+    expect(outline.scenes.find((scene: { id: string }) => scene.id === "welcome")).toMatchObject({
+      template: "cover",
+    });
+    const detailed = await ask("deck_get", { detail: "detailed" });
+    const welcome = detailed.scenes.find((scene: { id: string }) => scene.id === "welcome");
+    for (const block of welcome.blockList) expect(block.slot, block.id).toBeDefined();
+  });
+
+  it("writes a component style and a template through deck_apply", async () => {
+    const reply = await ask("deck_apply", {
+      base_rev: (await ask("deck_get")).rev,
+      ops: [
+        { op: "style.set", id: "figure", style: { name: "Figure", for: ["chart"] } },
+        { op: "block.set", scene: "growth", id: "growth-chart", set: { style: "figure" } },
+      ],
+    });
+    expect(reply.ok, JSON.stringify(reply)).toBe(true);
+    expect(JSON.parse(readFileSync(join(dir, "brand", "brand.json"), "utf8")).styles.figure).toEqual({
+      name: "Figure",
+      for: ["chart"],
+    });
+    const refused = await ask("deck_apply", {
+      base_rev: (await ask("deck_get")).rev,
+      ops: [{ op: "block.set", scene: "growth", id: "growth-note", set: { style: "figure" } }],
+    });
+    expect(refused.ok).toBe(false);
+    expect(refused.diagnostics.map((d: { code: string }) => d.code)).toContain("style-wrong-kind");
+  });
 });

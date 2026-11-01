@@ -36,7 +36,7 @@ describe("scene structure", () => {
   it("lists the allowed properties when nothing is close", () => {
     const found = first(checkScene(scene({ background: "red" }), "scenes/a.json"));
     expect(found.fix).toBe(
-      "Allowed here: $schema, schemaVersion, id, title, layout, lead, summary, blocks, sources, reading, steps, notes.",
+      "Allowed here: $schema, schemaVersion, id, title, layout, template, lead, summary, blocks, sources, reading, steps, notes.",
     );
   });
 
