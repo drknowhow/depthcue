@@ -23,7 +23,7 @@ import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
 import { loadDeckDir } from "./loader.ts";
 import { loadReviewDir, recordPersonWrite, saveReviewDir } from "./review-file.ts";
-import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
+import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
 
 export interface EditContext {
   /** The deck folder, already resolved to its real path. */
@@ -140,6 +140,13 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
   } catch (error) {
     if (error instanceof ChangedOnDiskError) {
       return send(response, 409, { error: "stale", message: error.message, rev: diskRev });
+    }
+    if (error instanceof RefusedSaveError) {
+      return send(response, 422, {
+        error: "refused-save",
+        message: "Something in the deck folder stops the save, so nothing was written.",
+        diagnostics: error.diagnostics.map(plain),
+      });
     }
     throw error;
   }

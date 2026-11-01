@@ -4,11 +4,13 @@
 import {
   cpSync,
   existsSync,
+  lstatSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -202,6 +204,43 @@ describe("a branded deck through the CLI", () => {
       'brand/templates/__proto__.json  error  "__proto__" is not a template id, so this file holds no template.',
     );
     expect(({} as Record<string, unknown>).evil).toBeUndefined();
+  });
+
+  it("reads a brand folder that is a link, but refuses to write through it, touching nothing", async () => {
+    for (const linked of ["brand", "brand/templates"]) {
+      const dir = copy();
+      const elsewhere = copy();
+      const target = join(elsewhere, ...linked.split("/"));
+      rmSync(join(dir, ...linked.split("/")), { recursive: true });
+      symlinkSync(target, join(dir, ...linked.split("/")), "junction");
+      expect(lstatSync(join(dir, ...linked.split("/"))).isSymbolicLink()).toBe(true);
+
+      const check = await cli("check", dir);
+      expect(check.code, check.text).toBe(0);
+      const before = snapshot(dir);
+      const theirs = snapshot(elsewhere);
+      const result = await apply(dir, [STYLE, TEMPLATE]);
+      expect(result.code).toBe(1);
+      expect(result.text).toContain(`${linked}/  error  ${linked}/ is a link to`);
+      expect(result.text).toContain("Rejected (refused-save); nothing was written.");
+      expect(snapshot(dir)).toEqual(before);
+      expect(snapshot(elsewhere)).toEqual(theirs);
+      // An edit that writes nothing under brand/ goes ahead.
+      const title = await apply(dir, [{ op: "scene.set", id: "growth", set: { title: "Growth, by berth" } }]);
+      expect(title.code, title.text).toBe(0);
+      expect(snapshot(elsewhere)).toEqual(theirs);
+    }
+  });
+
+  it("refuses to make a brand over brand files left in a folder deck.json named no brand for", async () => {
+    const dir = copy(plain);
+    cpSync(join(fixture, "brand"), join(dir, "brand"), { recursive: true });
+    const before = snapshot(dir);
+    const result = await apply(dir, [{ op: "brand.set", set: { id: "acme", name: "Acme" } }]);
+    expect(result.code).toBe(1);
+    expect(result.text).toContain("brand/brand.json  error  This file was in the brand folder");
+    expect(result.text).toContain("brand/templates/cover.json  error  This file was in the brand folder");
+    expect(snapshot(dir)).toEqual(before);
   });
 
   it("refuses an operation that leaves a scene on a removed template, and writes nothing", async () => {

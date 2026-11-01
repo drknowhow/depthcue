@@ -13,7 +13,7 @@ import {
 } from "@depthcue/core";
 import { loadDeckDir } from "./loader.ts";
 import { recordAgentWrite } from "./review-file.ts";
-import { ChangedOnDiskError, saveDeckDir } from "./save.ts";
+import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
 
 /** How much a read returns. Concise is for deciding what to do next; detailed is for doing it. */
 export type Detail = "concise" | "detailed";
@@ -148,7 +148,13 @@ export type ApplyOutcome =
     }
   | {
       ok: false;
-      code: "unreadable-deck" | "stale-revision" | "bad-op" | "invalid-deck" | "changed-on-disk";
+      code:
+        | "unreadable-deck"
+        | "stale-revision"
+        | "bad-op"
+        | "invalid-deck"
+        | "changed-on-disk"
+        | "refused-save";
       /** The deck's current revision, when it could be read. */
       rev?: string;
       diagnostics: Diagnostic[];
@@ -165,6 +171,8 @@ const HINTS = {
     "Every operation applied, but the result is not a valid deck, so nothing was kept. Fix what the diagnostics name and send the operations again with the same base_rev.",
   "changed-on-disk":
     "The deck folder changed while the edit was being applied. Nothing was written. Read the deck again with deck_get, then redo the edit with the new revision.",
+  "refused-save":
+    "Nothing was written: something in the deck folder stops the save, as the diagnostics say. It needs a person to change the folder; sending the operations again will not help.",
 } as const;
 
 /**
@@ -215,6 +223,15 @@ export function applyToFolder(folder: string, ops: unknown, baseRev: string): Ap
         rev: revisionOf(opened.doc),
         diagnostics: [],
         hint: HINTS["changed-on-disk"],
+      };
+    }
+    if (error instanceof RefusedSaveError) {
+      return {
+        ok: false,
+        code: "refused-save",
+        rev: revisionOf(opened.doc),
+        diagnostics: error.diagnostics,
+        hint: HINTS["refused-save"],
       };
     }
     throw error;
