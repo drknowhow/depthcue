@@ -76,7 +76,8 @@ describe("a table in the player", () => {
     expect(node.querySelector("thead")).toBeNull();
     expect(node.querySelectorAll("tbody tr")).toHaveLength(3);
     expect(renderTable({ ...table, header: true }).querySelector("thead")).not.toBeNull();
-    expect(renderTable({ ...table, title: undefined }).querySelector("caption")).toBeNull();
+    const { title: _title, ...untitled } = table;
+    expect(renderTable(untitled).querySelector("caption")).toBeNull();
   });
 
   it("sets every word as text, never as markup", () => {
