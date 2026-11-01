@@ -22,6 +22,8 @@ export interface ExportData {
   deck: Deck;
   scenes: Scene[];
   files: Record<string, unknown>;
+  /** How the deck looks, worked out when it was exported, so the page draws the brand without reading a brand file. */
+  look?: DeckLook;
 }
 
 /** A face of a brand's own, ready to load: its family, and its files by deck-relative path. */

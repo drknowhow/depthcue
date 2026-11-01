@@ -13,16 +13,19 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   assetsOf,
+  BRAND_DIR,
+  brandFilePath,
   cueMapPath,
+  type DeckLook,
   type Diagnostic,
   EXPORT_FORMAT,
   type ExportData,
   type FontPair,
+  lookOf,
   type Scene,
-  styleOf,
 } from "@depthcue/core";
 import { openDeck } from "./deck-api.ts";
-import { builtFontsDir, builtStandaloneDir } from "./serve.ts";
+import { BRAND_FILES, builtFontsDir, builtStandaloneDir } from "./serve.ts";
 
 /** Names the file in the exported folder that lists what the export wrote, so a later export can replace it. */
 export const EXPORT_MARKER = ".depthcue-export";
@@ -61,6 +64,8 @@ export interface ExportSummary {
   skipped: string[];
   /** Cue maps embedded in the page, by deck-relative path. */
   cueMaps: string[];
+  /** The brand files copied, deck-relative and in path order: its faces, the logo for the deck's theme and its template images. */
+  brandFiles: string[];
   /** The font pair the page carries. Only this pair's files are copied, so the page weighs what its deck uses. */
   fonts: FontPair;
   notes: boolean;
@@ -128,6 +133,34 @@ function fontStylesheet(fontsDir: string, pair: FontPair): { files: string[] } {
   }
   for (const name of files) if (!existsSync(join(fontsDir, name))) throw missing(`file ${name}`);
   return { files: [...new Set(files)].sort() };
+}
+
+/**
+ * The brand files a deck draws with, deck-relative: the brand's faces, the logo for the deck's theme, and the images
+ * its templates put behind a slide. Nothing else in the brand folder goes, such as brand.json, the templates or a
+ * logo for the other theme, because a page does not read them. Only files the server would hand a page, that are
+ * there and that stay inside the brand folder, are listed.
+ */
+function brandFilesOf(look: DeckLook, folder: string): string[] {
+  const wanted = new Set<string>();
+  for (const face of [look.faces?.display, look.faces?.body, look.faces?.mono]) {
+    for (const file of face?.files ?? []) wanted.add(file.path);
+  }
+  if (look.chrome?.logo) wanted.add(look.chrome.logo.path);
+  for (const template of Object.values(look.templates)) {
+    if (template.background?.image) wanted.add(brandFilePath(template.background.image));
+  }
+  const root = realish(join(folder, BRAND_DIR));
+  const prefix = `${BRAND_DIR}/`;
+  return [...wanted]
+    .filter((path) => {
+      if (!path.startsWith(prefix) || !BRAND_FILES.test(path.slice(prefix.length))) return false;
+      if (path.split("/").some((part) => part === ".." || part === ".")) return false;
+      const file = join(folder, path);
+      if (!existsSync(file) || !statSync(file).isFile()) return false;
+      return within(root, realish(file));
+    })
+    .sort();
 }
 
 /** The path as the file system sees it, even when its last parts do not exist yet. */
@@ -211,7 +244,8 @@ function sweep(out: string, stale: readonly string[]) {
 
 /**
  * Exports a deck folder as a folder that opens by double-click: `index.html` with the deck inside it, the
- * script and styles beside it, the one font pair the deck uses, and only the assets a scene names. Nothing is fetched, so it works from
+ * script and styles beside it, the one font pair the deck uses, only the assets a scene names, and the brand files it
+ * draws with (its faces, the logo for its theme and its templates' images). Nothing is fetched, so it works from
  * `file://`, from a USB stick, and with no network. A deck with errors writes nothing.
  */
 export function exportDeck(request: ExportRequest): ExportResult {
@@ -231,8 +265,11 @@ export function exportDeck(request: ExportRequest): ExportResult {
     }
   }
 
-  // The deck's font pair decides which stylesheet goes, and that stylesheet names the files that go with it.
-  const fonts = styleOf(doc.deck).fonts;
+  // How the deck looks is worked out here, once, and goes into the page, so the page needs no brand file to read it.
+  // The look's font pair decides which stylesheet goes (a brand's faces load over it), and that stylesheet names the
+  // files that go with it.
+  const look = lookOf(doc);
+  const fonts = look.fonts;
   const fontsDir = request.fontsDir ?? builtFontsDir();
   const fontSheet = fontStylesheet(fontsDir, fonts);
 
@@ -274,10 +311,11 @@ export function exportDeck(request: ExportRequest): ExportResult {
   const assets = [...used].sort();
   const skipped = [...doc.assets].filter((path) => !used.has(path) && !Object.hasOwn(files, path)).sort();
 
-  const data: ExportData = { format: EXPORT_FORMAT, deck: doc.deck, scenes, files };
+  const brandFiles = brandFilesOf(look, request.folder);
+  const data: ExportData = { format: EXPORT_FORMAT, deck: doc.deck, scenes, files, look };
   const html = page(data, fonts);
   const fontPaths = [`${fonts}.css`, ...fontSheet.files].map((name) => `${FONTS_DIR}/${name}`);
-  const writing = new Set(["index.html", ...runtimeFiles, ...fontPaths, ...assets]);
+  const writing = new Set(["index.html", ...runtimeFiles, ...fontPaths, ...assets, ...brandFiles]);
 
   const stale = claim(outDir, writing);
   mkdirSync(outDir, { recursive: true });
@@ -289,7 +327,7 @@ export function exportDeck(request: ExportRequest): ExportResult {
   sweep(outDir, stale);
 
   let bytes = 0;
-  for (const path of assets) {
+  for (const path of [...assets, ...brandFiles]) {
     const to = join(outDir, path);
     mkdirSync(dirname(to), { recursive: true });
     copyFileSync(join(request.folder, path), to);
@@ -316,6 +354,7 @@ export function exportDeck(request: ExportRequest): ExportResult {
       assets,
       skipped,
       cueMaps,
+      brandFiles,
       fonts,
       notes: keepNotes,
       files: writing.size,

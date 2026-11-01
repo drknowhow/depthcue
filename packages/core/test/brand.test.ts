@@ -43,6 +43,14 @@ import {
 } from "../src/index.ts";
 import { brandDir, brandDoc, demoDoc, loadDir } from "./helpers.ts";
 
+/** The files the branded fixture's brand folder holds besides its JSON: two font files, their license and the logo. */
+const FIXTURE_BRAND_FILES = [
+  "brand/fonts/HarborSans-Bold.woff2",
+  "brand/fonts/HarborSans-Regular.woff2",
+  "brand/fonts/OFL.txt",
+  "brand/logos/harbor.svg",
+];
+
 const codes = (diagnostics: readonly Diagnostic[]): string[] => diagnostics.map((d) => d.code);
 const errors = (diagnostics: readonly Diagnostic[]): string[] =>
   codes(diagnostics.filter((d) => d.severity === "error"));
@@ -82,7 +90,7 @@ describe("the branded fixture", () => {
     expect(errors(diagnostics)).toEqual([]);
     expect(doc?.brand?.id).toBe("harbor");
     expect(Object.keys(doc?.templates ?? {}).sort()).toEqual(["chart-and-note", "cover"]);
-    expect([...(doc?.brandFiles ?? [])]).toEqual(["brand/logos/harbor.svg"]);
+    expect([...(doc?.brandFiles ?? [])]).toEqual(FIXTURE_BRAND_FILES);
   });
 
   it("writes back exactly the files it was read from", () => {
@@ -811,7 +819,13 @@ describe("lookOf", () => {
     expect(dark.chart).toEqual(["#4FC4C4", "#8FA5FF", "#F0A06A"]);
     expect(dark.colors.action).toBe(PRESETS.ink.action);
     expect(look.fonts).toBe("modern");
-    expect(look.faces).toBeUndefined();
+    // The fixture carries two faces of its own, under family names of its own, over the fallback pair.
+    expect(look.faces?.display).toEqual({
+      family: "Harbor Display",
+      files: [{ path: "brand/fonts/HarborSans-Bold.woff2", weight: 700, style: "normal" }],
+    });
+    expect(look.faces?.body.family).toBe("Harbor Sans");
+    expect(look.faces?.mono).toBeUndefined();
     expect(look.chrome).toEqual({
       logo: { path: "brand/logos/harbor.svg", alt: "Harbor Analytics", corner: "top-end", size: "s" },
       footer: { text: "Harbor Analytics, for internal use", place: "start" },
@@ -926,7 +940,7 @@ describe("brand.set", () => {
     if (!result.ok) return;
     expect(result.doc.deck.brand).toBeUndefined();
     expect(Object.keys(docToFiles(result.doc)).filter((path) => path.startsWith("brand/"))).toEqual([]);
-    expect([...(result.doc.brandFiles ?? [])]).toEqual(["brand/logos/harbor.svg"]);
+    expect([...(result.doc.brandFiles ?? [])]).toEqual(FIXTURE_BRAND_FILES);
     expect(apply(brandDoc(), [{ op: "brand.set", set: null }])).toMatchObject({
       ok: false,
       code: "invalid-deck",
@@ -1226,7 +1240,7 @@ describe("drafts and reviews of a branded deck", () => {
     if (recovery.status !== "found") return;
     expect(recovery.doc.brand?.name).toBe("Harbor");
     expect(Object.keys(recovery.doc.templates ?? {}).sort()).toEqual(["chart-and-note", "cover"]);
-    expect([...(recovery.doc.brandFiles ?? [])]).toEqual(["brand/logos/harbor.svg"]);
+    expect([...(recovery.doc.brandFiles ?? [])]).toEqual(FIXTURE_BRAND_FILES);
   });
 
   it("read back a review of a branded deck, list scene changes but not brand changes, and accept them", () => {

@@ -453,8 +453,8 @@ export function checkTemplate(
         file,
         "/background/image",
         "background-unmeasured",
-        "Text on a picture cannot be checked from the files: its contrast depends on the picture.",
-        "Run depthcue render on a scene of this template, which measures the text on it.",
+        "Whether text on this picture can be read depends on the picture, so the files alone cannot say.",
+        "Run depthcue render on a scene of this template. It measures the pixels under each line of text and reports background-low-contrast where the contrast falls short.",
       ),
     );
   } else if (background !== undefined) {

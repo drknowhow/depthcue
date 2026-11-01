@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 
-import { PALETTE_COLORS } from "@depthcue/core";
+import { type DeckLook, PALETTE_COLORS } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mountPlayer, type Player } from "../src/player.ts";
 import { mountPresenterView } from "../src/presenter.ts";
-import { applyLook, lookKey } from "../src/style.ts";
+import { applyLook, faceCss, lookKey } from "../src/style.ts";
 import { demoSource } from "./helpers.ts";
+import { COLORS as THEME_COLORS, lookWith } from "./looks.ts";
 
 const COLORS = {
   bg: "#101820",
@@ -51,6 +52,195 @@ describe("applyLook", () => {
     expect(element.hasAttribute("data-fonts")).toBe(false);
     applyLook(element, { theme: "ink" });
     expect(element.getAttribute("style") ?? "").toBe("");
+  });
+});
+
+describe("applyLook with a deck's look", () => {
+  const face = (family: string, files: Array<[string, number]>) => ({
+    family,
+    files: files.map(([path, weight]) => ({ path, weight, style: "normal" as const })),
+  });
+  const branded = lookWith({
+    chart: ["#112233", "#445566"],
+    faces: {
+      display: face("Harbor Display", [["brand/fonts/Display-Bold.woff2", 700]]),
+      body: face("Harbor Sans", [
+        ["brand/fonts/Sans-Regular.woff2", 400],
+        ["brand/fonts/Sans-Bold.woff2", 700],
+      ]),
+    },
+  });
+
+  it("sets all nine colors of the theme, each as its own --dc property", () => {
+    const element = document.createElement("div");
+    applyLook(element, lookWith({ fonts: "technical" }));
+    expect(element.dataset.theme).toBe("ink");
+    expect(element.dataset.fonts).toBe("technical");
+    expect(Object.keys(THEME_COLORS)).toHaveLength(9);
+    for (const [name, value] of Object.entries(THEME_COLORS)) {
+      expect(element.style.getPropertyValue(`--dc-${name}`), name).toBe(value);
+    }
+  });
+
+  it("sets the brand's chart colors in order, and takes off the ones a shorter list leaves", () => {
+    const element = document.createElement("div");
+    applyLook(element, branded);
+    expect(element.style.getPropertyValue("--dc-chart-1")).toBe("#112233");
+    expect(element.style.getPropertyValue("--dc-chart-2")).toBe("#445566");
+    expect(element.style.getPropertyValue("--dc-chart-3")).toBe("");
+    applyLook(element, lookWith({ chart: ["#abcdef"] }));
+    expect(element.style.getPropertyValue("--dc-chart-1")).toBe("#abcdef");
+    expect(element.style.getPropertyValue("--dc-chart-2")).toBe("");
+  });
+
+  it("names the brand's faces first in the pair's stacks, and takes the names off when the brand goes", () => {
+    const element = document.createElement("div");
+    applyLook(element, branded);
+    expect(element.style.getPropertyValue("--dc-face-display")).toBe('"Harbor Display",');
+    expect(element.style.getPropertyValue("--dc-face-body")).toBe('"Harbor Sans",');
+    expect(element.style.getPropertyValue("--dc-face-mono")).toBe("");
+    applyLook(element, lookWith());
+    expect(element.style.getPropertyValue("--dc-face-display")).toBe("");
+    expect(element.style.getPropertyValue("--dc-display-weight")).toBe("");
+  });
+
+  it("gives the display face the weight it has a file nearest bold for, and none when it has no file", () => {
+    const heavy = (weights: number[]) =>
+      lookWith({
+        faces: {
+          display: face("D", weights.map((weight) => [`brand/fonts/D-${weight}.woff2`, weight])),
+          body: face("B", []),
+        },
+      });
+    const weightOf = (look: DeckLook) => {
+      const element = document.createElement("div");
+      applyLook(element, look);
+      return element.style.getPropertyValue("--dc-display-weight");
+    };
+    expect(weightOf(heavy([400, 700]))).toBe("700");
+    expect(weightOf(heavy([400, 600]))).toBe("600");
+    expect(weightOf(heavy([300, 900]))).toBe("900");
+    expect(weightOf(heavy([500, 900]))).toBe("500");
+    expect(weightOf(heavy([]))).toBe("");
+  });
+
+  it("leaves out a family that cannot be put in a stylesheet whole, so a brand cannot write one", () => {
+    const element = document.createElement("div");
+    const evil = lookWith({
+      faces: {
+        display: face('X"}body{display:none}@font-face{font-family:"Y', [["brand/fonts/x.woff2", 400]]),
+        body: face("Fine", [["brand/fonts/f.woff2", 400]]),
+      },
+    });
+    applyLook(element, evil);
+    expect(element.style.getPropertyValue("--dc-face-display")).toBe("");
+    expect(faceCss(evil, ".")).not.toContain("display:none");
+    expect(faceCss(evil, ".")).toContain('"Fine"');
+  });
+});
+
+describe("faceCss", () => {
+  const faces = {
+    display: { family: "Harbor Display", files: [{ path: "brand/fonts/D.woff2", weight: 700, style: "normal" as const }] },
+    body: {
+      family: "Harbor Sans",
+      files: [
+        { path: "brand/fonts/S.woff2", weight: 400, style: "normal" as const },
+        { path: "brand/fonts/S-Italic.otf", weight: 400, style: "italic" as const },
+      ],
+    },
+    mono: { family: "Harbor Mono", files: [] },
+  };
+
+  it("is one font-face rule per file, with the deck's folder in front of the path, and swaps while it loads", () => {
+    const css = faceCss(lookWith({ faces }), "/decks/q3");
+    expect(css.split("\n")).toEqual([
+      '@font-face{font-family:"Harbor Display";src:url("/decks/q3/brand/fonts/D.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}',
+      '@font-face{font-family:"Harbor Sans";src:url("/decks/q3/brand/fonts/S.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}',
+      '@font-face{font-family:"Harbor Sans";src:url("/decks/q3/brand/fonts/S-Italic.otf");font-weight:400;font-style:italic;font-display:swap}',
+    ]);
+  });
+
+  it("is empty for a look with no faces, a deck's plain look, and none", () => {
+    expect(faceCss(lookWith(), ".")).toBe("");
+    expect(faceCss({ theme: "paper" }, ".")).toBe("");
+    expect(faceCss(undefined, ".")).toBe("");
+  });
+
+  it("declares a file once however many jobs the face does, and skips a path that is not a brand font", () => {
+    const same = { family: "One", files: [{ path: "brand/fonts/One.woff2", weight: 400, style: "normal" as const }] };
+    const css = faceCss(
+      lookWith({
+        faces: {
+          display: same,
+          body: same,
+          mono: { family: "Bad", files: [{ path: "brand/fonts/../../x.woff2", weight: 400, style: "normal" as const }] },
+        },
+      }),
+      ".",
+    );
+    expect(css.split("\n")).toHaveLength(1);
+    expect(css).not.toContain("Bad");
+  });
+});
+
+describe("a look's faces in a document", () => {
+  const faced = (path: string) =>
+    lookWith({
+      faces: {
+        display: { family: "Doc Face", files: [{ path, weight: 700, style: "normal" as const }] },
+        body: { family: "Doc Face", files: [] },
+      },
+    });
+
+  it("go into one stylesheet the document holds, which a changed look replaces rather than adds to", () => {
+    const element = document.createElement("div");
+    document.body.append(element);
+    const held = () => (document as unknown as { adoptedStyleSheets: CSSStyleSheet[] }).adoptedStyleSheets;
+    if (!("adoptedStyleSheets" in document) || typeof CSSStyleSheet !== "function") {
+      // The page keeps the built-in pair where the browser cannot hold the faces; nothing to check but that it is quiet.
+      expect(() => applyLook(element, faced("brand/fonts/A.woff2"))).not.toThrow();
+      element.remove();
+      return;
+    }
+    const written: string[] = [];
+    const replace = CSSStyleSheet.prototype.replaceSync;
+    CSSStyleSheet.prototype.replaceSync = function (css: string) {
+      written.push(css);
+      return replace.call(this, css);
+    };
+    try {
+      applyLook(element, faced("brand/fonts/A.woff2"));
+      const sheets = held().length;
+      expect(sheets).toBeGreaterThan(0);
+      // The same look again writes nothing: a thumbnail strip draws the look once per slide.
+      const count = written.length;
+      applyLook(element, faced("brand/fonts/A.woff2"));
+      expect(written).toHaveLength(count);
+      // A changed look replaces the one sheet.
+      applyLook(element, faced("brand/fonts/B.woff2"));
+      expect(held()).toHaveLength(sheets);
+      expect(written.at(-1)).toContain("B.woff2");
+      expect(written.at(-1)).not.toContain("A.woff2");
+      // The brand goes: the faces go with it.
+      applyLook(element, lookWith());
+      expect(held()).toHaveLength(sheets);
+      expect(written.at(-1)).toBe("");
+    } finally {
+      CSSStyleSheet.prototype.replaceSync = replace;
+      element.remove();
+    }
+  });
+});
+
+describe("lookKey of a deck's look", () => {
+  it("changes for any part of the look, the brand's faces and the chrome included, and not for the same look again", () => {
+    const base = lookKey(lookWith());
+    expect(lookKey(lookWith())).toBe(base);
+    expect(lookKey(lookWith({ theme: "paper" }))).not.toBe(base);
+    expect(lookKey(lookWith({ chart: ["#112233"] }))).not.toBe(base);
+    expect(lookKey(lookWith({ chrome: { accent: "top" } }))).not.toBe(base);
+    expect(lookKey(lookWith({ colors: { ...THEME_COLORS, action: "#000000" } }))).not.toBe(base);
   });
 });
 

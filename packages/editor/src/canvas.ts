@@ -25,6 +25,7 @@ import { createSlotDrag } from "./slotdrag.ts";
 import { restingBox, snap, standings } from "./snap.ts";
 import { cellFocus, wireTables } from "./tablewire.ts";
 import { describeBlock, IMAGE_FILE, needsAlt } from "./templates.ts";
+import { lookFor } from "./thumbnail.ts";
 
 export interface CanvasHooks {
   /** A short line about the field being edited, such as "Heading 42 of 90". `problem` marks a refused edit. */
@@ -701,14 +702,21 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
 
       // A cell that has the keyboard is told apart from the rest of the slide, so it gets the keyboard back after a redraw.
       const cellAt = cellFocus(slot);
+      // The slide is drawn in the brand, from the same look the player is given, so what is edited is what is presented.
+      const look = lookFor(session.doc);
       const view = h(
         "div",
         { class: "dc-view" },
-        renderScene(scene, { assetBase: "", language: session.doc.deck.language }),
+        renderScene(scene, {
+          assetBase: "",
+          language: session.doc.deck.language,
+          look,
+          number: session.doc.deck.scenes.indexOf(scene.id) + 1,
+        }),
       );
       for (const node of view.querySelectorAll<HTMLElement>("[data-gated]")) node.dataset.revealed = "true";
       const frame = h("div", { class: "dc-player ed-frame" }, h("div", { class: "dc-stage" }, view));
-      applyLook(frame, session.doc.deck);
+      applyLook(frame, look, "");
       editors.clear();
       for (const field of fieldsOf(scene, view)) wire(field, sceneId);
       wirePicker(scene, view);

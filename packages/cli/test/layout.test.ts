@@ -221,6 +221,100 @@ describe("layoutDiagnostics", () => {
     });
   });
 
+  describe("a branded template", () => {
+    it("reports a slot whose blocks are bigger than it, by how much, and points at the block that runs out", () => {
+      const [tall, wide, ...rest] = layoutDiagnostics(
+        scene,
+        measure({
+          slots: [
+            { id: "left", template: "split", block: "intro", x: 0, y: 42 },
+            { id: "right", template: "split", block: "the-chart", x: 17, y: 0 },
+          ],
+        }),
+      );
+      expect(rest).toEqual([]);
+      expect(tall).toMatchObject({
+        severity: "error",
+        code: "slot-overflow",
+        file: "scenes/tall.json",
+        path: "/blocks/0",
+      });
+      expect(tall?.message).toBe(
+        'The blocks in the slot "left" of the template "split" are 42px taller than the slot, so they run out of it over whatever is next to it.',
+      );
+      expect(tall?.fix).toContain("pick a template whose slot is bigger");
+      expect(wide).toMatchObject({ code: "slot-overflow", path: "/blocks/1" });
+      expect(wide?.message).toContain("17px wider than the slot");
+    });
+
+    it("reports the brand's chrome lying over a block, naming the part and how far it reaches", () => {
+      const found = layoutDiagnostics(
+        scene,
+        measure({
+          chrome: [
+            { part: "logo", id: "intro", width: 80, height: 24 },
+            { part: "number", id: "the-chart", width: 12, height: 9 },
+          ],
+        }),
+      );
+      expect(found.map((d) => [d.code, d.severity, d.path])).toEqual([
+        ["chrome-overlap", "error", "/blocks/0"],
+        ["chrome-overlap", "error", "/blocks/1"],
+      ]);
+      expect(found[0]?.message).toBe('The brand\'s logo overlaps "intro" by 80x24px.');
+      expect(found[1]?.message).toBe('The brand\'s slide number overlaps "the-chart" by 12x9px.');
+      expect(found[0]?.fix).toContain('"minimal" or "none"');
+    });
+
+    const line = (ratio: number, more: Partial<NonNullable<LayoutMeasure["picture"]>[number]> = {}) => ({
+      id: "intro",
+      text: "one two",
+      ratio,
+      fontPx: 18,
+      weight: 400,
+      ...more,
+    });
+
+    it("reports text whose contrast over the picture falls short, from the pixels measured", () => {
+      const [found, ...rest] = layoutDiagnostics(scene, measure({ picture: [line(2.7)] }));
+      expect(rest).toEqual([]);
+      expect(found).toMatchObject({
+        severity: "error",
+        code: "background-low-contrast",
+        file: "scenes/tall.json",
+        path: "/blocks/0",
+      });
+      expect(found?.message).toBe(
+        'Text in "intro" has a contrast of 2.70:1 over the template\'s picture where the picture is weakest; WCAG AA needs 4.5:1: "one two".',
+      );
+      expect(found?.fix).toContain("Raise the template's scrim");
+    });
+
+    it("asks large text for 3:1, passes a line that reaches its minimum, and names the weakest line of a block once", () => {
+      expect(layoutDiagnostics(scene, measure({ picture: [line(3.1, { fontPx: 28 })] }))).toEqual([]);
+      expect(layoutDiagnostics(scene, measure({ picture: [line(4.5)] }))).toEqual([]);
+      const found = layoutDiagnostics(scene, measure({ picture: [line(5), line(3.4), line(4)] }));
+      expect(found).toHaveLength(1);
+      expect(found[0]?.message).toContain("3.40:1");
+    });
+
+    it("leaves the page's own colors out of it over a picture, where they say nothing of what is under the text", () => {
+      const faint = sample({ fg: rgb(200, 200, 200), bg: white, picture: true });
+      expect(layoutDiagnostics(scene, measure({ text: [faint] }))).toEqual([]);
+      const [found] = layoutDiagnostics(scene, measure({ text: [{ ...faint, picture: false }] }));
+      expect(found?.code).toBe("low-contrast");
+    });
+
+    it("says to check the brand folder when a brand image did not load", () => {
+      const [found] = layoutDiagnostics(
+        scene,
+        measure({ images: [{ id: "", src: "./brand/logos/mark.svg", ok: false }] }),
+      );
+      expect(found).toMatchObject({ code: "image-failed" });
+      expect(found?.fix).toBe("Check that the file exists in the brand folder and is a valid image.");
+    });
+  });
+
   it("flags text under the minimum size once per block, naming the smallest", () => {
     const found = layoutDiagnostics(
       scene,

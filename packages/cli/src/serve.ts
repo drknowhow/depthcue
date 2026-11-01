@@ -4,7 +4,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { dirname, extname, join, resolve, sep } from "node:path";
-import { COMMENTS_FILE, REVIEW_FILE } from "@depthcue/core";
+import { COMMENTS_FILE, lookOf, REVIEW_FILE } from "@depthcue/core";
+import { openDeck } from "./deck-api.ts";
 import { type EditContext, handleEditApi } from "./edit-api.ts";
 import { createLayoutChecker, type LayoutChecker } from "./edit-layout.ts";
 import { createLeaseRelay, RELAY_PREFIX } from "./lease-relay.ts";
@@ -80,7 +81,17 @@ const TYPES: Record<string, string> = {
   ".webm": "video/webm",
   ".csv": "text/csv; charset=utf-8",
   ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
 };
+
+/**
+ * The brand files a page may read, by path under brand/: its fonts, its logos and its images. The server answers only
+ * these, and the export copies only these, so the two cannot disagree about what a page can reach.
+ */
+export const BRAND_FILES =
+  /^(fonts\/.+\.(woff2|woff|ttf|otf)|logos\/.+\.(svg|png)|images\/.+\.(jpg|jpeg|png|webp|svg))$/i;
 
 const FAVICON =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='%23FF633F'/%3E%3C/svg%3E";
@@ -317,6 +328,15 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       return file ? sendFile(request, response, file) : send(response, 404, "Not found.");
     }
 
+    // How the deck looks, worked out here from its brand so the page needs no brand file and knows no built-in
+    // template. A deck with errors has no look: the page draws it from deck.json alone, as before.
+    if (path === "/look.json") {
+      const opened = openDeck(folder);
+      return opened.ok
+        ? send(response, 200, JSON.stringify(lookOf(opened.doc)), TYPES[".json"])
+        : send(response, 404, "Not found.");
+    }
+
     // Each kind of file is resolved inside its own root, so "/assets/../notes.txt" cannot reach a sibling file.
     let file: string | undefined;
     if (path === "/deck.json") file = inside(folder, "deck.json");
@@ -324,6 +344,9 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       file = inside(join(folder, "scenes"), path.slice("/scenes/".length));
     else if (path.startsWith("/assets/"))
       file = inside(join(folder, "assets"), path.slice("/assets/".length));
+    // Only the brand's fonts, logos and images; never brand.json or its templates, which are for the tools.
+    else if (path.startsWith("/brand/") && BRAND_FILES.test(path.slice("/brand/".length)))
+      file = inside(join(folder, "brand"), path.slice("/brand/".length));
     return file ? sendFile(request, response, file, FILE_POLICY) : send(response, 404, "Not found.");
   };
 
@@ -351,7 +374,14 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       }, 60);
       return;
     }
-    if (changed !== "deck.json" && !changed.startsWith("scenes/") && !changed.startsWith("assets/")) return;
+    if (
+      changed !== "deck.json" &&
+      !changed.startsWith("scenes/") &&
+      !changed.startsWith("assets/") &&
+      !changed.startsWith("brand/")
+    ) {
+      return;
+    }
     clearTimeout(pending);
     pending = setTimeout(() => {
       for (const client of listeners) client.write("event: change\ndata: {}\n\n");

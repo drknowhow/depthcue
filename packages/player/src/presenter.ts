@@ -114,7 +114,7 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
   function paint() {
     deckTitle.textContent = source.deck.title;
     document.title = `${source.deck.title} (presenter)`;
-    applyLook(root, source.deck);
+    applyLook(root, source.look ?? source.deck, source.assetBase);
     const here = scene();
     const holder: Holder | "waiting" = here && shown ? shown.holder : "waiting";
     root.dataset.holder = holder;

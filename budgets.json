@@ -59,7 +59,7 @@
       "name": "exported page script",
       "file": "packages/player/dist/standalone/depthcue.js",
       "metric": "brotli",
-      "limitBytes": 14336
+      "limitBytes": 16384
     },
     {
       "name": "core code in the player",

@@ -1,7 +1,7 @@
 import type { Diagnostic } from "@depthcue/core";
 import type { Browser, LaunchOptions } from "playwright-core";
 import { openDeck } from "./deck-api.ts";
-import { type LayoutMeasure, layoutDiagnostics, measureLayout } from "./layout.ts";
+import { type LayoutMeasure, layoutDiagnostics, measureLayout, measurePicture } from "./layout.ts";
 import { builtPlayerDir, type RunningServer, startServer } from "./serve.ts";
 
 export interface RenderOptions {
@@ -38,6 +38,12 @@ export class RenderError extends Error {}
 const CLEAN_CSS = `
 *, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }
 .dc-controls { display: none !important; }
+`;
+
+/** The page with its text taken away, so what is left under each line can be measured. Pictures and marks stay. */
+const NO_TEXT_CSS = `
+.dc-scene, .dc-scene * { color: transparent !important; text-shadow: none !important; text-decoration-color: transparent !important; -webkit-text-fill-color: transparent !important; }
+.dc-scene text { fill: transparent !important; }
 `;
 
 export async function launchBrowser(): Promise<Browser> {
@@ -139,6 +145,16 @@ export async function openRenderer(folder: string): Promise<Renderer> {
           options.screenshot === false
             ? undefined
             : await page.locator(".dc-stage").screenshot({ type: "png", animations: "disabled" });
+        // Text on a brand picture is judged on the pixels under it, so the page is photographed again with the text taken
+        // away. This comes after the photograph a caller gets, which keeps its text.
+        if (measure.lines) {
+          await page.addStyleTag({ content: NO_TEXT_CSS });
+          const shot = await page.screenshot({ type: "png", animations: "disabled" });
+          measure.picture = await page.evaluate(measurePicture, {
+            shot: shot.toString("base64"),
+            lines: measure.lines.slice(0, 400),
+          });
+        }
         return {
           scene,
           step,

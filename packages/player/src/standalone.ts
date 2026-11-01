@@ -23,6 +23,8 @@ function start(host: HTMLElement) {
       scenes: data.scenes,
       assetBase: ".",
       files: data.files ?? {},
+      // The look the export worked out, so the page draws the brand without reading any brand file.
+      ...(data.look ? { look: data.look } : {}),
     };
     document.title = source.deck.title;
     const player = mountPlayer(host, source, { modules: firstPartyModules });
