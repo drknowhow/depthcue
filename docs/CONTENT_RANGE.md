@@ -374,7 +374,7 @@ and text e2e files (two tests each, run only with `SHOTS` set) and the one test 
 - **The sample deck is no longer the tests' fixture.** The plan did not say the sample deck was one. With the new
   sample deck 186 tests failed, so they read `fixtures/decks/v0-1`, a copy of the old deck. The step 7 record has the
   numbers.
-- **Left for later.** The speed bench, license text files in an export (see findings), and a way for `depthcue apply`
+- **Left for later.** The speed bench, a license text file beside an export (see findings), and a way for `depthcue apply`
   to print the `text-is-literal` warning that `deck_apply` returns.
 
 ### Walkthrough
@@ -401,8 +401,10 @@ Driven by a script on a copy of the demo deck, in Chrome at 1440 by 900 and 1024
 - `depthcue apply` (`packages/cli/src/index.ts`, `apply()`) does not print the warnings `deck_apply` returns, so an agent
   that writes markup into a scene older than 0.3 sees no sign that it shows as typed.
 - `PRODUCT.md` line 27 still says the editor saves to the deck folder only on request. It saves by itself.
-- An export has no license text for the fonts. The texts are in `brand/fonts/`. Whether the name-table records inside the
-  subset files are enough for the OFL was not checked. Owners: `packages/cli` export and the player's font build.
+- An export has no separate license text file for the fonts; the texts are in `brand/fonts/`. Every woff2 file in
+  `brand/fonts/` (32 files, checked with fontTools on 2026-11-01) keeps its copyright (name ID 0), the OFL license
+  description (13) and the license URL (14) in its name table. OFL 1.1 accepts those machine-readable fields in place of a
+  text file. A license file beside an export would still help a reader find it. Owner: `packages/cli` export.
 - At 1024 by 768 the chart Data popover's four buttons are below the fold and need a scroll. Owner: the chart panel and
   popover CSS in `packages/editor`.
 - The swatch is called Accent and the matching tone is called Action. Both are `action` in the file.
