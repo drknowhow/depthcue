@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "0.3",
+  "id": "trend",
+  "title": "Four quarters of change",
+  "layout": "claim-evidence",
+  "lead": "human",
+  "summary": {
+    "id": "claim-trend",
+    "text": "Channel B keeps gaining share.",
+    "evidenceIds": ["chart-trend"]
+  },
+  "blocks": [
+    {
+      "id": "chart-trend",
+      "type": "chart",
+      "kind": "line",
+      "title": "Share of orders by quarter",
+      "unit": "%",
+      "columns": [{ "label": "Quarter" }, { "label": "Channel A" }, { "label": "Channel B" }],
+      "rows": [["Q1", 52, 48], ["Q2", 48, 52], ["Q3", 44, 56], ["Q4", 40, 60]],
+      "sourceIds": ["source-quarters"]
+    },
+    {
+      "id": "table-orders",
+      "type": "table",
+      "title": "Orders by quarter",
+      "columns": [
+        { "label": "Quarter" },
+        { "label": "Channel A", "kind": "number", "unit": "orders" },
+        { "label": "Channel B", "kind": "number", "unit": "orders" }
+      ],
+      "rows": [["Q1", 5200, 4800], ["Q2", 4800, 5200], ["Q3", 4400, 5600], ["Q4", 4000, 6000]],
+      "sourceIds": ["source-quarters"]
+    }
+  ],
+  "sources": [{ "id": "source-quarters", "title": "Orders by quarter", "asset": "assets/quarters.csv" }],
+  "reading": {
+    "text": "Channel B gained share in each of the four quarters, from 48% of orders in the first to 60% in the last. The lines cross between the first and second quarters."
+  },
+  "notes": "The lines cross between Q1 and Q2. Say that once, then move on."
+}

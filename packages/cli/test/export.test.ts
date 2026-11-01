@@ -17,7 +17,7 @@ import { EXPORT_FORMAT, type ExportData, type FontPair } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXPORT_MARKER, ExportError, type ExportRequest, exportDeck } from "../src/export.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
 let root: string;
 let deck: string;

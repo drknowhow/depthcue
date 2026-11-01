@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.1",
+  "schemaVersion": "0.3",
   "id": "method",
   "title": "How we compared them",
   "layout": "text-media",
@@ -15,7 +15,7 @@
       "id": "method-body",
       "type": "text",
       "role": "body",
-      "text": "Each order is counted once, in the channel where the customer placed it. Returns are excluded."
+      "text": "- Each order is counted once, in the channel where the customer placed it.\n- [Returns are excluded]{action}.\n- Both channels use the same quarter, as the [finance glossary](https://example.com/glossary) defines it."
     },
     {
       "id": "method-diagram",

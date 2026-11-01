@@ -17,6 +17,8 @@ Depthcue is not published to npm yet, so you run it from a clone of the reposito
 
 - [Deck format](/guides/deck-format/): what is in a deck folder and every field it can hold.
 - [The editor](/guides/editor/): change a deck by clicking it, with autosave, a storyboard and a command palette.
+- [Tables and charts](/guides/tables-and-charts/): type or paste the data, and choose from six kinds of chart.
+- [Style](/guides/style/): the preset, seven colors, four font pairs, and the tone, size and alignment of text.
 - [Placing blocks](/guides/placement/): move a block between areas, or pin it anywhere on the slide.
 - [Comments and review](/guides/comments-and-review/): notes for people and agents, and accepting what an agent changed.
 - [Presenter view](/guides/presenter/): notes, a timer and a preview of the next move.

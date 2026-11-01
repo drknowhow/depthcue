@@ -8,24 +8,30 @@ both can present. A deck is typed JSON with stable ids, so it can be generated, 
 by hand, and read afterwards as a document.
 
 **Status: 0.1, before release.** Nothing is published to npm yet, so you run it from a clone. The deck schema is
-0.2 (decks written for 0.1 still load) and can still change. [The plan](docs/PLAN.md) has the thesis, the architecture and the roadmap to 1.0.
+0.3 (decks written for 0.1 and 0.2 still load) and can still change. [The plan](docs/PLAN.md) has the thesis, the architecture and the roadmap to 1.0.
 
 ## What works today
 
 - **Write and check.** `depthcue check` validates every scene, reference and asset and says where each problem is.
   `depthcue render` draws each scene in a headless browser and reports overflow, clipping, overlap, small text and
   low contrast, with a PNG per scene if you ask.
-- **Edit by hand.** `depthcue edit` opens a browser editor where you click a block to change it, pin a block
-  anywhere on the slide, comment on a block, and accept or revert what an agent changed. Its changes go through the
-  same operations an agent uses and save by themselves. See [the editor](docs/editor.md),
-  [placing blocks](docs/placement.md), and [comments and review](docs/comments-and-review.md).
+- **Edit by hand.** `depthcue edit` opens a browser editor where you click a block to change it, right-click for a
+  menu of what you can do there, pin a block anywhere on the slide, comment on a block, and accept or revert what an
+  agent changed. Its changes go through the same operations an agent uses and save by themselves. See
+  [the editor](docs/editor.md), [placing blocks](docs/placement.md), and
+  [comments and review](docs/comments-and-review.md).
 - **Edit by agent.** `depthcue-mcp` is an MCP server with five tools: `deck_get`, `deck_apply`, `deck_comment`,
   `deck_render` and `deck_present`. An edit is one transaction against a revision. A stale revision is rejected,
   never merged. A person's comments sit beside the deck, never in it, and an agent can answer them with `deck_comment`.
 - **Present.** Keyboard navigation, a reading view for the audience, and a [presenter window](docs/presenter.md)
   with notes, a timer and a preview of the next move. A person can [hand control to an agent](docs/lease.md) and
   take it back at once.
-- **Blocks.** Text, images, bar charts, and [Kinescript clips](docs/clips.md) with cue chips that jump to a moment.
+- **Blocks.** Text with bold, italic, links, lists and colored words, tables you can type or paste into, six kinds of
+  chart (bar, stacked bar, line, area, scatter and donut), images, and [Kinescript clips](docs/clips.md) with cue
+  chips that jump to a moment. See [tables and charts](docs/tables-and-charts.md).
+- **Style.** Two presets (Paper and Ink), seven palette colors and four font pairs, set for the whole deck, and a
+  tone, size and alignment for each text. A color that would make text hard to read is refused. See
+  [style](docs/style.md).
 - **Deliver offline.** `depthcue export` writes a folder that opens by double-click, with [no server and no
   network](docs/export.md).
 
@@ -72,8 +78,8 @@ bundled demo, trimmed:
 ```
 fixtures/decks/demo/
   deck.json
-  scenes/opening.json  demand.json  method.json
-  assets/method.svg  report.csv
+  scenes/opening.json  demand.json  trend.json  method.json
+  assets/method.svg  report.csv  quarters.csv
 ```
 
 ```json
@@ -108,8 +114,8 @@ both.
 
 ## Speed
 
-Speed is a requirement. The player and the editor are separate builds, and the chart and clip modules load when a
-scene needs them. `budgets.json` holds a size limit for each piece, and CI fails a build that goes over one.
+Speed is a requirement. The player and the editor are separate builds, and the bar chart, table and clip modules
+load when a scene needs them. `budgets.json` holds a size limit for each piece, and CI fails a build that goes over one.
 
 ## Brand
 

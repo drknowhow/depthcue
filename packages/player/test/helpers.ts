@@ -4,7 +4,9 @@ import type { Deck, Scene } from "@depthcue/core";
 import type { PlayerSource } from "../src/load.ts";
 
 // happy-dom replaces the global URL, so the path is built from dirname rather than from import.meta.url.
-export const demoDir = resolve(import.meta.dirname, "../../../fixtures/decks/demo");
+// The old sample deck: three scenes, all schema 0.1. Tests read this copy, so the sample deck in
+// fixtures/decks/demo can show new features without moving them.
+export const demoDir = resolve(import.meta.dirname, "../../../fixtures/decks/v0-1");
 
 const read = (path: string) => JSON.parse(readFileSync(join(demoDir, path), "utf8"));
 

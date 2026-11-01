@@ -12,16 +12,22 @@ It writes `<deck folder name>-export` in the current directory, or the folder yo
 
 ## What is in the folder
 
-| File               | What it is                                                                       |
-| ------------------ | -------------------------------------------------------------------------------- |
-| `index.html`       | The page. The whole deck is inside it as data.                                   |
-| `depthcue.js`      | The player, the chart module and the clip module, in one script (8.1 KB Brotli). |
-| `depthcue.css`     | The player's styles.                                                             |
-| `assets/`          | Only the files a scene names: images, clips and their posters, and source files. |
-| `.depthcue-export` | A list of what the export wrote, so a later export can replace it safely.        |
+| File               | What it is                                                                                          |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| `index.html`       | The page. The whole deck is inside it as data.                                                      |
+| `depthcue.js`      | The player and the chart, clip and table modules, in one script (13.3 KB Brotli).                   |
+| `depthcue.css`     | The player's styles.                                                                                |
+| `fonts/`           | The deck's font pair: `<pair>.css` and the font files it names. The other three pairs are left out. |
+| `assets/`          | Only the files a scene names: images, clips and their posters, and source files.                    |
+| `.depthcue-export` | A list of what the export wrote, so a later export can replace it safely.                           |
 
 Assets that no scene names are left out, and the command lists them. A clip's cue map, the small file beside a
 built clip that says where its parts begin, is put into the page and not copied.
+
+Tables and charts need nothing extra. The player draws them from the deck's data as a real table and as SVG, so they
+show in the export, in print and to a screen reader the way they do in `depthcue serve`. The fonts are loaded by
+relative path, so the page keeps its look from a folder with no network. The pairs weigh 192 KB (editorial),
+252 KB (modern), 293 KB (classic) and 262 KB (technical). See [Style](style.md).
 
 ## Why the page is built this way
 
@@ -31,7 +37,7 @@ holds the deck in a `<script type="application/json">` element and loads one cla
 module inside it. Nothing is requested except the page's own files and its assets, all by relative path, which is
 also why the folder can be moved or renamed.
 
-A deck with a chart or a clip block works the same as in `depthcue serve`: the modules start when a scene needs
+A deck with a bar chart, a clip or a table works the same as in `depthcue serve`: the modules start when a scene needs
 them. They just come out of the one script instead of separate files.
 
 ## Notes
@@ -77,9 +83,9 @@ a `message`.
 
 | File          | Budget  | Measured |
 | ------------- | ------- | -------- |
-| `depthcue.js` | 10.0 KB | 8.1 KB   |
+| `depthcue.js` | 14.0 KB | 13.3 KB  |
 
-The styles are the same file as the live player's, 3.5 KB. The budget is checked by `pnpm budgets`.
+The styles are the same file as the live player's, 4.7 KB. The budget is checked by `pnpm budgets`.
 
 ## How it is tested
 

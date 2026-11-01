@@ -23,27 +23,62 @@ the files as they are. Keep mine as copy hands you your version as a file first 
 
 ## Working on the slide
 
-- **Text.** Click it and type. A claim is typed the same way.
-- **Choosing a block.** Click it. A toolbar floats beside the block with what that kind of block has: a role menu for
-  text, a cite chip for sources, Add bar and Sort for a chart, and Edit for an image or a video. Every block's toolbar
-  also has Move earlier and Move later arrows, and Free and Layout buttons for pinning.
+- **Text.** Click it and type. A claim is typed the same way. Bold, italic, links, lists and colored words are in
+  [Formatting text](#formatting-text).
+- **Choosing a block.** Click it. A toolbar floats beside the block with what that kind of block has: a role menu and
+  a Style chip for text, a cite chip for sources, a Data chip for a chart, a Table chip for a table, Add bar and Sort
+  for an old bar chart, and Edit for an image or a video. Every block's toolbar also has Move earlier and Move later
+  arrows, and Free and Layout buttons for pinning.
+- **Tables.** Click a cell and type. Right-click a cell for its menu, and paste cells from a spreadsheet. See
+  [Tables and charts](tables-and-charts.md).
 - **Video markers.** A video's Cues popover adds a marker at the playhead, renames, retimes or removes one. Markers
   live in a file beside the video, are written as soon as you make them, and are not part of Undo; the popover has
   its own Undo marker change button.
-- **Charts.** Drag a bar to change its value, or choose a bar and use the arrow keys (Shift moves five steps). Labels
-  are typed in place.
+- **Charts.** The Data chip opens the chart's rows and series in a grid, and the right-click menu changes the kind.
+  See [Tables and charts](tables-and-charts.md). On an old bar chart, drag a bar to change its value, or choose a bar
+  and use the arrow keys (Shift moves five steps). Labels are typed in place.
 - **Images.** Drop or paste a file on the image. Alt text is flagged until you write it.
-- **Adding.** The quick bar at the foot of the stage has Text, Chart, Image, Clip and Claim, a Notes popover for the
-  speaker notes and the reading version, and Build order. `T`, `C` and `I` do the first three from the keyboard. An
-  area of the slide that holds nothing shows a dashed place; click it to add there.
+- **Adding.** The quick bar at the foot of the stage has Text, Chart, Table, Image, Clip and Claim, a Notes popover
+  for the speaker notes and the reading version, and Build order. `T`, `C` and `I` add a text, a chart or an image
+  from the keyboard. An area of the slide that holds nothing shows a dashed place; click it to add there.
 - **Scenes.** The strip adds a scene, and each scene has buttons to duplicate or delete it. Drag a scene to move it.
 - **Moving between areas.** Drag a block by the grip beside it. See [Placing blocks](placement.md).
 - **Build order.** The Build order button puts a badge on each block. Press a badge to choose the step that reveals
   that block, or to start a new step.
-- **Layout, lead and theme.** The top bar sets a scene's layout and who leads it (human, agent or shared). The Deck
-  popover sets the title, language, theme and modules, and the Scene popover the scene's title, steps and sources.
+- **Layout, lead and style.** The top bar sets a scene's layout and who leads it (human, agent or shared). The Deck
+  popover sets the title, language, modules and the deck's look (see [Deck style](#deck-style)), and the Scene popover
+  the scene's title, steps and sources.
 
 Every property in the deck's schema can be edited here, and a test fails when one has no control.
+
+## Formatting text
+
+Click into a text block. While the cursor is in it, a second row appears under the block's toolbar:
+
+- **Bold and Italic**, also `Ctrl+B` and `Ctrl+I`.
+- **Link**, also `Ctrl+K` while the cursor is in text. Select the words first. A box asks for the address, which has to
+  start with `https://` or `mailto:` and has no spaces. A link opens in a new tab.
+- **Four color dots** for the selected words: Text, Muted, Action and Evidence, each drawn in the deck's own color. Press
+  the dot again to take the color off.
+- **Bulleted list and Numbered list**, for body text only. Pasted lines that start with `- ` or `1. ` become a list too.
+
+In a body, `Enter` is a line break, or a new item inside a list. In a heading, a caption or a quote it ends the edit.
+Paste brings in the words and leaves the formatting behind, and asterisks you paste stay asterisks. The count on the
+toolbar counts what the audience sees, so `**bold**` counts four characters.
+
+The Style chip on the toolbar sets the whole block: Size (Small, Medium, Large, Extra large), Align (Start, Center,
+End) and Color (Default, Text, Muted, Action, Evidence). The right-click menu of a text has the same three as submenus.
+See [Style](style.md).
+
+A scene saved before schema 0.3 has no format bar, and what you type stays as typed. Right-click the scene in the
+strip and choose Use text styles, and it gets one. Setting a size, alignment or color on a block does the same. The
+words look the same afterward: a star that was typed before stays a star.
+
+## Deck style
+
+The Deck popover has a Style section for the preset (Paper or Ink), seven colors and four font pairs. A color that
+would leave text hard to read is refused, with the reason. [Style](style.md) lists each color, the font pairs and the
+contrast rules.
 
 ## Problems the checks found
 
@@ -71,15 +106,22 @@ and last, and `Esc` goes back to where you were. While the storyboard is open no
 
 ## Right-click menu
 
-Right-click a block, the claim, an empty part of the slide or a scene in the strip, and a menu lists what you can do
-there. It is built from the same commands as the palette, so the two cannot disagree. A command that cannot be done is
-left out and not greyed, and each command shows its key.
+Right-click a block, a cell of a table, the claim, an empty part of the slide or a scene in the strip, and a menu lists
+what you can do there. It is built from the same commands as the palette, so the two cannot disagree. A command that
+cannot be done is left out and not greyed, and each command shows its key. A chart kind the data cannot take is shown
+greyed, with the reason.
 
 - **A block.** Cut, Copy, Paste (after this block), Duplicate and Delete; Pin where it is, or Put back in layout; Comment;
   Move earlier and Move later. The claim has Paste, Delete and Comment.
-- **An empty part of the slide.** Paste here; Add a text, a chart or an image here; Layout and Lead, each a submenu; Put
-  every pinned block back, when one is pinned; and Show or hide the comments.
-- **A scene in the strip.** Duplicate, Delete, Move earlier, Move later and Present from here.
+- **A text.** Size, Align and Color as submenus, with the choice the text has now ticked.
+- **A chart.** Edit data, and a Chart type submenu of the six kinds with the current one ticked. A kind the data cannot
+  take is greyed, with the reason.
+- **A cell of a table.** Insert row above and below, Insert column left and right, Delete row, Delete column, Show or
+  Hide header row, and Make column numbers or text. Right-click the table's border or title for the block's own menu.
+- **An empty part of the slide.** Paste here; Add a text, a chart, a table or an image here; Layout and Lead, each a
+  submenu; Put every pinned block back, when one is pinned; Deck style; and Show or hide the comments.
+- **A scene in the strip.** Duplicate, Delete, Move earlier, Move later, Use text styles (for a scene saved before
+  schema 0.3) and Present from here.
 
 Right-clicking chooses what you pointed at first, so the menu acts on it. `Shift+F10` or the Menu key opens the same
 menu under the chosen block, or under the scene the keyboard is on. On a touch screen or with a pen, press and hold for
@@ -112,8 +154,10 @@ such as Go to a scene, Pin, Present from this scene or Undo. `?` or the `?` butt
 | `Ctrl+C`    | Copy it, also into another deck                  |
 | `Ctrl+V`    | Paste a copied block after it                    |
 | `Ctrl+D`    | Duplicate it                                     |
+| `Ctrl+B`    | Bold the selected words in a text                |
+| `Ctrl+I`    | Italic the selected words in a text              |
 | `G`         | Open the storyboard                              |
-| `Ctrl+K`    | Open the palette                                 |
+| `Ctrl+K`    | Open the palette, or link the words in a text    |
 | `Ctrl+Z`    | Undo                                             |
 | `Alt+F10`   | Move the keyboard to the chosen block's toolbar  |
 | `Shift+F10` | Open its right-click menu; the Menu key does too |
@@ -121,10 +165,48 @@ such as Go to a scene, Pin, Present from this scene or Undo. `?` or the `?` butt
 
 A letter key is a letter while you are typing in a field or in text on the slide, and `Ctrl+X`, `Ctrl+C`, `Ctrl+V` and
 `Ctrl+D` leave a field and text on the slide to the browser the same way. Delete removes the chosen block, and `Esc`
-lets go of it.
+lets go of it. Inside a table's cells the keys are the grid's: see [Tables and charts](tables-and-charts.md).
+
+## For an agent
+
+Everything above is also an operation, so an agent can do it in the same deck while you work. Text in a scene of schema
+0.3 reads markup: `**bold**`, `*italic*`, `[words](https://example.com)`, `[words]{action}` for a tone, `- ` and `1. `
+lines for lists in a body, and a backslash to write a character as itself. Text in an older scene is drawn as typed, so
+a star stays a star. `scene.upgrade` brings the scene to 0.3 and escapes what it holds, so its words keep their
+meaning. This turns the demo's demand scene to 0.3 and adds a body with a list, bold, a link and a colored phrase:
+
+```json
+[
+  { "op": "scene.upgrade", "id": "demand" },
+  {
+    "op": "block.add",
+    "scene": "demand",
+    "block": {
+      "id": "demand-note",
+      "type": "text",
+      "role": "body",
+      "text": "- B leads **by 20 points**.\n- The [order snapshot](https://example.com/orders) has the counts.\n- [Check the returns]{action} before acting."
+    }
+  }
+]
+```
+
+```sh
+depthcue apply my-deck ops.json --base-rev "$(depthcue rev my-deck)"
+depthcue check my-deck
+```
+
+`apply` prints `Applied.` and the new revision, and `check` prints `0 errors, 0 warnings`. Run `scene.upgrade` before
+writing markup into a scene that is older than 0.3. Otherwise the markup is kept, but it shows as typed, and the
+`deck_apply` tool warns `text-is-literal` where `depthcue apply` says nothing. Setting a `tone`, `size` or `align`
+on a block upgrades its scene by itself. Table and chart blocks are in
+[Tables and charts](tables-and-charts.md#for-an-agent), and the palette, fonts and block styles are in
+[Style](style.md#for-an-agent).
 
 ## Related guides
 
+- [Tables and charts](tables-and-charts.md): data, the cell menu, paste and the six chart kinds.
+- [Style](style.md): the palette, fonts, tone, size and alignment.
 - [Placing blocks](placement.md): pinning, moving, resizing and the layout's areas.
 - [Comments and review](comments-and-review.md): notes for people and agents, and the agent's changes.
 - [Presenter view](presenter.md): present from any scene.

@@ -1,7 +1,7 @@
 # Depthcue: plan
 
-Status: v0.1 is built and trialed, and the editor was rebuilt on 2026-11-01 (see below). The rest of this plan is
-as written on 2026-10-30. "Depthcue" is a working name. Name, license and repo visibility are Yep's proposals
+Status: v0.1 is built and trialed, the editor was rebuilt on 2026-11-01, and the same day the content range grew to
+tables, six kinds of chart, rich text and a deck style (see below). The rest of this plan is as written on 2026-10-30. "Depthcue" is a working name. Name, license and repo visibility are Yep's proposals
 and wait for Dimitri's approval. Evidence for every claim here is in `RESEARCH.md`.
 
 **Editor rebuild, 2026-11-01.** After testing v0.1 the owner found the editor too complicated and asked for direct
@@ -11,6 +11,15 @@ placement is in, as a human override on top of the automatic layouts, so the lin
 canvas" mean a canvas without layouts. Agents still place blocks in areas. The user guides are [the
 editor](editor.md), [placing blocks](placement.md) and [comments and review](comments-and-review.md); the build
 record is [EDITOR_REMAKE.md](EDITOR_REMAKE.md).
+
+**Content range, 2026-11-01.** A deck can now look like a real one. Text takes bold, italic, links, lists and colored
+words, and a tone, size and alignment. A deck has a palette of seven colors and one of four font pairs, and a color
+that would make text hard to read is refused. Tables and six kinds of chart (bar, stacked bar, line, area, scatter,
+donut) are blocks that a person can type or paste into. The schema is 0.3, and older decks load unchanged. This
+moves tables and theme editing, listed for 0.2 in the roadmap, and the first half of 0.4's "mature charts and
+tables", into v0.1. Data binding to CSV or JSON, provenance for cells and a lint that checks a chart against its
+claim stay in 0.4. The user guides are [tables and charts](tables-and-charts.md) and [style](style.md); the build
+record is [CONTENT_RANGE.md](CONTENT_RANGE.md).
 
 ## Thesis
 

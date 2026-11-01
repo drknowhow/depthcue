@@ -38,7 +38,9 @@ import type {
 } from "../src/api.ts";
 
 // happy-dom replaces the global URL, so the path is built from dirname rather than from import.meta.url.
-export const demoDir = resolve(import.meta.dirname, "../../../fixtures/decks/demo");
+// The old sample deck: three scenes, all schema 0.1. Tests read this copy, so the sample deck in
+// fixtures/decks/demo can show new features without moving them.
+export const demoDir = resolve(import.meta.dirname, "../../../fixtures/decks/v0-1");
 
 function readDemo(): { text: Record<string, string>; assets: string[] } {
   const text: Record<string, string> = { "deck.json": readFileSync(join(demoDir, "deck.json"), "utf8") };

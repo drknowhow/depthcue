@@ -17,7 +17,7 @@ import { builtEditorDir, builtPlayerDir, type RunningServer, startServer } from 
  * `depthcue apply`, which has to be the same file, and the table in the player and in an exported page.
  */
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
 /** A server with no browser to render in. None of these tests is about layout, and none needs a second Chrome. */
 const NO_LAYOUT: LayoutChecker = {

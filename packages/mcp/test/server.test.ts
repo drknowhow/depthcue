@@ -16,7 +16,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDepthcueServer, type DepthcueServer, TOOL_NAMES } from "../src/server.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 const built = fileURLToPath(new URL("../dist/main.js", import.meta.url));
 
 let folder: string;
