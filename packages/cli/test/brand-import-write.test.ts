@@ -350,7 +350,14 @@ describe("writeBrand", () => {
 
   it("writes only names an import makes, so that the marker can list every file", () => {
     const out = join(make(), "brand");
-    for (const name of ["notes.txt", "templates/Upper.json", "images/a.gif", "../escape.json", "a/b.json"]) {
+    for (const name of [
+      "notes.txt",
+      "templates/Upper.json",
+      "images/a.gif",
+      "images/a..b.png",
+      "../escape.json",
+      "a/b.json",
+    ]) {
       const error = failure(() => writeBrand(out, SOURCE, files("brand.json", name)));
       expect(error.code, name).toBe("write-failed");
       expect(error.message, name).toContain("which it does not write");

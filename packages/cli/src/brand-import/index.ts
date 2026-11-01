@@ -203,10 +203,16 @@ function logoCandidates(
   return { list, layout: title };
 }
 
-/** The stock name for a picture file in the brand's `images/` folder: its part's name, made safe. */
+/**
+ * The stock name for a picture file in the brand's `images/` folder: its part's name, made safe. The contract's file name
+ * has no two dots in a row and at most 200 characters with `images/` and the extension, so runs of dots become one dot and
+ * the name is cut short.
+ */
 const imageStem = (part: string): string =>
   basename(part, extname(part))
     .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/\.{2,}/g, ".")
+    .slice(0, 100)
     .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "") || "background";
 
 const isWebp = (data: Uint8Array): boolean =>
@@ -315,6 +321,7 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
 
   // Templates.
   const imageFiles = new Map<string, string>();
+  const imageNames = new Set<string>();
   const context: TemplateContext = {
     pkg,
     slide,
@@ -344,8 +351,11 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
       if (problem) return { why: `its SVG has ${problem}, which a template's background may not` };
       const known = imageFiles.get(part);
       if (known) return { file: known };
-      let file = `images/${imageStem(part)}.${ext}`;
-      for (let n = 2; files.has(file); n++) file = `images/${imageStem(part)}-${n}.${ext}`;
+      // Windows and macOS keep one file for "Photo.png" and "photo.png", so a name is taken whatever its case.
+      const stem = imageStem(part);
+      let file = `images/${stem}.${ext}`;
+      for (let n = 2; imageNames.has(file.toLowerCase()); n++) file = `images/${stem}-${n}.${ext}`;
+      imageNames.add(file.toLowerCase());
       imageFiles.set(part, file);
       files.set(file, data);
       return { file };

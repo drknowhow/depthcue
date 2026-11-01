@@ -45,7 +45,7 @@ const within = (parent: string, child: string): boolean => {
  * may list nothing else, so it cannot name a thesis or a photo of somebody's to be removed.
  */
 const WRITTEN =
-  /^(?:brand\.json|templates\/[a-z][a-z0-9-]*\.json|logos\/logo\.(?:png|svg)|images\/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:jpg|jpeg|png|webp|svg))$/;
+  /^(?:brand\.json|templates\/[a-z][a-z0-9-]*\.json|logos\/logo\.(?:png|svg)|images\/(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]*\.(?:jpg|jpeg|png|webp|svg))$/;
 
 const HASH = /^[0-9a-f]{64}$/;
 

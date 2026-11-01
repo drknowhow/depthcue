@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { BLOCK_KINDS, BRAND_LIMITS, FRAME_MIN } from "@depthcue/core";
 import { describe, expect, it } from "vitest";
 import { importBrand } from "../src/brand-import/index.ts";
@@ -13,11 +15,13 @@ import {
   type PackageSpec,
   PNG,
   PNG_DATA,
+  partsOf,
   type ShapeSpec,
   SVG_NS,
   SVG_XLINK,
   temporaryFolders,
   writeFixture,
+  zipParts,
 } from "./brand-import-fixtures.ts";
 
 const make = temporaryFolders();
@@ -617,6 +621,91 @@ describe("the background of a layout", () => {
     ).toEqual([]);
   });
 
+  describe("the name of its picture file", () => {
+    /** Imports a file of these parts, and returns what it wrote, with the brand's own checks as the import ran them. */
+    async function importPartsOf(parts: Map<string, string | Uint8Array>) {
+      const folder = make();
+      const file = join(folder, "Harbor.potx");
+      writeFileSync(file, await zipParts(parts));
+      const result = await importBrand({ file, out: join(folder, "out") });
+      if (!result.ok) throw new Error(`The import failed: ${result.code}: ${result.message}`);
+      return {
+        result,
+        out: join(folder, "out"),
+        images: result.report.files.filter((name) => name.startsWith("images/")),
+      };
+    }
+
+    it("has no two dots in a row, which the contract refuses: they become one", async () => {
+      const { result, images, out } = await importPartsOf(
+        partsOf(
+          only(
+            [layout("Pic", [ph("body", { x: 8, y: 26, w: 84, h: 60 })], { bg: { picture: "image..1.png" } })],
+            {
+              media: { "logo.png": PNG, "image..1.png": PNG },
+            },
+          ),
+        ),
+      );
+      expect(images).toEqual(["images/image.1.png"]);
+      expect(JSON.parse(readFileSync(join(out, "templates", "pic.json"), "utf8")).background.image).toBe(
+        "images/image.1.png",
+      );
+      expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    });
+
+    it("is cut short enough for the contract's limit on the length of the path", async () => {
+      const long = `${"a".repeat(300)}.png`;
+      const { images, result } = await importPartsOf(
+        partsOf(
+          only([layout("Pic", [ph("body", { x: 8, y: 26, w: 84, h: 60 })], { bg: { picture: long } })], {
+            media: { "logo.png": PNG, [long]: PNG },
+          }),
+        ),
+      );
+      expect(images).toHaveLength(1);
+      expect((images[0] as string).length).toBeLessThanOrEqual(200);
+      expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    });
+
+    it.each([
+      ["Photo.png", "photo.png", ["images/Photo.png", "images/photo-2.png"]],
+      ["photo.png", "Photo.png", ["images/Photo-2.png", "images/photo.png"]],
+    ])(
+      "is not one that only differs in case from another (%s, then %s), because a folder on Windows or a Mac holds one file for both",
+      async (first, second, expected) => {
+        // Two pictures in different folders of the file, with names that differ only by case, and different bytes.
+        const parts = partsOf(
+          only(
+            [
+              layout("One", [ph("body", { x: 8, y: 26, w: 84, h: 60 })], {
+                bg: { picture: first as string },
+              }),
+              layout("Two", [ph("body", { x: 8, y: 26, w: 84, h: 60 })], {
+                bg: { picture: first as string },
+              }),
+            ],
+            { media: { "logo.png": PNG, [first as string]: PNG } },
+          ),
+        );
+        const other = new Uint8Array(PNG);
+        other[other.length - 5] = (other[other.length - 5] as number) ^ 1;
+        parts.set(`ppt/other/${second}`, other);
+        const rels = "ppt/slideLayouts/_rels/slideLayout2.xml.rels";
+        parts.set(rels, (parts.get(rels) as string).replace(`../media/${first}`, `../other/${second}`));
+
+        const { images, out } = await importPartsOf(parts);
+        expect(new Set(images.map((name) => name.toLowerCase())).size).toBe(2);
+        expect(images).toEqual(expected);
+        // Each template shows its own picture.
+        const read = (name: string) => new Uint8Array(readFileSync(join(out, ...name.split("/"))));
+        const one = JSON.parse(readFileSync(join(out, "templates", "one.json"), "utf8")).background.image;
+        const two = JSON.parse(readFileSync(join(out, "templates", "two.json"), "utf8")).background.image;
+        expect(read(one)).toEqual(PNG);
+        expect(read(two)).toEqual(other);
+      },
+    );
+  });
   it("shares one image file between layouts that paint the same picture", async () => {
     const done = await importFixture(
       make,
