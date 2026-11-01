@@ -354,7 +354,7 @@ describe("the right-click menu in a real browser", () => {
 
     await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.8, { button: "right" });
     await menuItem(page, "Add a chart here").click();
-    await expect.poll(() => kindsOf(deck, "method")).toContain("bar-chart");
+    await expect.poll(() => kindsOf(deck, "method")).toContain("chart");
     expect(problems).toEqual([]);
   });
 });

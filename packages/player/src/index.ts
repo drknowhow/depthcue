@@ -1,5 +1,7 @@
 import "./player.css";
 
+export { CHART_KIND_LABELS, chartTable, renderChart } from "./charts/draw.ts";
+export { niceTicks } from "./charts/scale.ts";
 export { h } from "./dom.ts";
 export type { PlayerSource } from "./load.ts";
 export { loadDeck, readDeckJson } from "./load.ts";
@@ -34,7 +36,7 @@ export { mountPlayer } from "./player.ts";
 export { renderReading } from "./reading.ts";
 export { assetUrl, safeUrl } from "./safe.ts";
 export type { RenderContext } from "./scene.ts";
-export { renderChartTable, renderScene, renderSources, unitText } from "./scene.ts";
+export { renderChartTable, renderScene, renderSources } from "./scene.ts";
 export type { Look } from "./style.ts";
 export { applyLook, lookKey } from "./style.ts";
-export { numberText, renderTable } from "./table.ts";
+export { numberText, renderTable, unitText } from "./table.ts";

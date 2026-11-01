@@ -714,23 +714,23 @@ body {
  * one being typed in shows its field flat on the cell, so the table does not change size under the caret. An empty cell
  * keeps the height of one with words in it, because there is nothing else to click.
  */
-.ed-frame .ed-grid :is(th, td) {
+:is(.ed-frame, .ed-chart-grid) .ed-grid :is(th, td) {
   height: 2.3em;
   cursor: cell;
 }
 
-.ed-frame .ed-grid :is(th, td):hover {
+:is(.ed-frame, .ed-chart-grid) .ed-grid :is(th, td):hover {
   background: color-mix(in srgb, var(--dc-evidence) 10%, transparent);
 }
 
-.ed-frame .ed-grid :is(th, td):focus,
-.ed-frame .ed-grid :is(th, td):focus-within {
+:is(.ed-frame, .ed-chart-grid) .ed-grid :is(th, td):focus,
+:is(.ed-frame, .ed-chart-grid) .ed-grid :is(th, td):focus-within {
   outline: 2px solid var(--dc-evidence);
   outline-offset: 2px;
   background: color-mix(in srgb, var(--dc-evidence) 10%, transparent);
 }
 
-.ed-frame .ed-grid :is(th, td):has([aria-invalid]) {
+:is(.ed-frame, .ed-chart-grid) .ed-grid :is(th, td):has([aria-invalid]) {
   outline-color: var(--dc-action);
 }
 
@@ -739,18 +739,18 @@ body {
  * type, so the words are where they were and the cell has the size they give it. The editor's own style for a field is
  * more specific than a class, so each thing it sets is set again here.
  */
-.ed-frame .ed-grid [data-editing] {
+:is(.ed-frame, .ed-chart-grid) .ed-grid [data-editing] {
   position: relative;
 }
 
-.ed-frame .ed-grid .ed-grid-ghost {
+:is(.ed-frame, .ed-chart-grid) .ed-grid .ed-grid-ghost {
   visibility: hidden;
   white-space: pre-wrap;
 }
 
-.ed-frame .ed-grid .ed-grid-input,
-.ed-frame .ed-grid .ed-grid-input:focus,
-.ed-frame .ed-grid .ed-grid-input:focus-visible {
+:is(.ed-frame, .ed-chart-grid) .ed-grid .ed-grid-input,
+:is(.ed-frame, .ed-chart-grid) .ed-grid .ed-grid-input:focus,
+:is(.ed-frame, .ed-chart-grid) .ed-grid .ed-grid-input:focus-visible {
   position: absolute;
   inset: 0;
   display: block;
@@ -2011,6 +2011,56 @@ body {
   grid-template-columns: minmax(0, 1fr) 4.5rem auto;
 }
 
+/*
+ * A chart's data: its title and unit over the grid that edits its rows, and the buttons that add and take away rows and
+ * series. The grid scrolls inside the popover when it holds many rows or series, so the buttons stay in reach.
+ */
+.ed-chart-data {
+  display: grid;
+  gap: var(--dc-space-3);
+  width: min(24rem, calc(100vw - 4rem));
+}
+
+.ed-chart-data .ed-tb-form {
+  width: auto;
+}
+
+/* Four buttons share one line, so the popover stays short enough to fit beside the chart in a small window. */
+.ed-chart-data .ed-row {
+  flex-wrap: nowrap;
+  gap: var(--dc-space-1);
+}
+
+.ed-chart-data .ed-row button {
+  flex: 1 1 auto;
+  padding-inline: 0.5em;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.ed-chart-grid {
+  max-height: 16rem;
+  overflow: auto;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-sm);
+}
+
+.ed-chart-grid .ed-grid {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.ed-chart-grid .ed-grid :is(th, td) {
+  min-width: 4.5rem;
+  padding: 0.35em 0.6em;
+}
+
+.ed-chart-grid .ed-grid thead th {
+  position: sticky;
+  top: 0;
+  background: var(--dc-surface);
+}
+
 .ed-tb-rowtools {
   display: flex;
   gap: 2px;
@@ -2492,6 +2542,38 @@ body {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* A choice that cannot be made now stays in the menu, greyed, with the reason under it, so it is not looked for in vain. */
+.ed-app .ed-menu-item[aria-disabled="true"] {
+  flex-wrap: wrap;
+  cursor: not-allowed;
+}
+
+.ed-app .ed-menu-item[aria-disabled="true"] .ed-menu-label {
+  color: var(--dc-muted);
+}
+
+.ed-menu-why {
+  flex: 1 0 100%;
+  max-width: 14rem;
+  color: var(--dc-muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+/* The choice in force in a menu of choices wears a tick; the others leave its room empty so the words line up. */
+.ed-app .ed-menu-item[role="menuitemradio"]::before {
+  content: "\2713";
+  flex: none;
+  width: 1em;
+  margin-right: calc(var(--dc-space-2) - var(--dc-space-4));
+  visibility: hidden;
+}
+
+.ed-app .ed-menu-item[aria-checked="true"]::before {
+  visibility: visible;
 }
 
 .ed-menu .ed-keys {

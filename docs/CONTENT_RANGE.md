@@ -197,3 +197,41 @@ Declined in review:
   it for chart data.
 - **Size.** Editor script grew from 73.6 to 79.2 KB brotli of 90, so steps 3, 5 and 6 share about 10 KB. The `table`
   module is 0.6 KB of 3.0. Player script and styles, and the exported page script, are within their limits.
+
+## Step 6 record: the chart block
+
+- **Static form.** As with tables, the six kinds (bar, stacked bar, line, area, scatter, donut) are drawn in the core
+  player by `renderChart` (`charts/scale.ts`, `svg.ts`, `draw.ts`) as one SVG, so a chart shows in reading view,
+  thumbnails, the editor, the exported page and `depthcue render` with no module. The lazy `chart` module still serves
+  only the old `bar-chart`, so its row stays at 3 KB (1.4 used) and the approved raise to 8 KB was not needed. The cost
+  moved to the exported page script, which holds the player: 11.9 KB brotli, limit raised from 10 to 12 KB.
+- **Reading it.** Each chart is a `figure` holding `svg[role=img]` labeled "<Kind> chart: <title>", plus a real table of
+  its data in a visually hidden block, built by `renderTable`, so a screen reader gets rows and columns with units.
+- **Color is never alone.** Series 1 and 2 take the deck's `evidence` and `action` colors, so a palette that sets them
+  recolors every chart. Series 3 to 6 are OKLCH mixes of the deck's tokens, set as `--dc-s1` to `--dc-s6` by the
+  stylesheet; no color is stored in the file. Each series also has its own mark (circle, square, triangle, diamond,
+  inverted triangle, cross), and two or more series always get a legend. A donut lists each part with its swatch, name and value.
+- **Palette check.** Run with the dataviz validator: the Paper preset passes its adjacent-pair CVD floor (lowest 23.0)
+  and normal-vision floor (26.3); Ink passes except the lightness band, because the preset's tokens sit near L 0.70.
+  A scatter's pairs beyond the adjacent ones are not all distinct by color; the marks and the legend carry them.
+- **Adding and typing.** The Chart button and C add a `chart` of kind bar with three sample rows (Category, Value).
+  Its Data chip opens step 4's grid in a popover with Title, Unit and four buttons (add and delete row, add and delete
+  series). The popover stands beside the chart where the slide has room, so the chart changes as the person types. One
+  edit or paste is one `block.set`, so one Undo. Pasted columns get a kind the way a table's do.
+- **Switching kind.** Right-click the chart: Edit data, then Chart type with the six kinds, the current one ticked. A
+  kind the data cannot take is shown greyed with the core's own `checkData` message as the reason, and pressing it does
+  nothing. Data is kept: a switch writes only `kind`, except to or from scatter, which turns the first column between
+  text and numbers when every cell converts. The same six are in the palette (without the greyed ones).
+- **Old bar charts.** Choosing a kind on a `bar-chart` swaps it for the equivalent `chart` of that kind with
+  `chartFromBarChart` and `replaceBlockOps`: same id, so claims, cues and steps still point at it, one Undo.
+- **Checks.** A document cannot hold a `checkData` error (`apply` and load refuse it), so `row-length`, `cell-kind`,
+  `donut-shape` and `donut-value` reach the person as the refusal of the edit that would cause them, in the problem
+  line with the core's message and its fix. The ribbon cannot show them; unit tests hold the text for all four. The
+  render check reports a chart that does not fit its slot or frame, because the SVG has a minimum size (20 by 11 em)
+  that a smaller slot cannot contain. It does not measure the text inside the SVG.
+- **Not built.** No per-column unit control (`columns[].unit` is agent-only, and the grid keeps it); no kind select in
+  the Data popover (the menu and palette cover it); the quick bar and top bar have no new buttons. A ghost menu lists
+  kinds in the core's accepts order, so Chart comes last. The donut's percent labels use a halo, and direct labels at
+  line ends were dropped for the legend.
+- **Size.** Editor script 80.4 to 84.7 KB brotli of 90, so step 6 took 4.3 KB. Player script 9.7 KB and styles
+  4.4 KB; core code in the player 3.9 KB of 5.0.

@@ -120,18 +120,23 @@ describe("newBlock", () => {
   it("picks an id that is free across the whole scene, including its claim and steps", () => {
     const demand = scene(base, "demand");
     const ids = idsInScene(demand);
-    const first = newBlock(demand, "bar-chart");
+    const first = newBlock(demand, "chart");
     expect(ids.has(first.id)).toBe(false);
     const crowded = { ...demand, blocks: [...demand.blocks, first] } as Scene;
-    const second = newBlock(crowded, "bar-chart");
+    const second = newBlock(crowded, "chart");
     expect(second.id).not.toBe(first.id);
     expect(idsInScene(crowded).has(second.id)).toBe(false);
   });
 
-  it("starts a chart with two rows and a text block with words to replace", () => {
+  it("starts a chart as a bar chart of three rows and a text block with words to replace", () => {
     const method = scene(base, "method");
-    const chart = newBlock(method, "bar-chart");
-    expect(chart.type === "bar-chart" && chart.data).toHaveLength(2);
+    const chart = newBlock(method, "chart");
+    expect(chart).toMatchObject({ type: "chart", kind: "bar" });
+    expect(chart.type === "chart" && chart.rows).toHaveLength(3);
+    expect(chart.type === "chart" && chart.columns.map((column) => column.label)).toEqual([
+      "Category",
+      "Value",
+    ]);
     const text = newBlock(method, "text");
     expect(text.type === "text" && text.role).toBe("body");
     expect(text.type === "text" && text.text.length).toBeGreaterThan(0);
@@ -175,7 +180,7 @@ describe("alt text that nobody has written", () => {
 
   it("is never asked of a block that has no alt text", () => {
     expect(needsAlt(newBlock(method, "text"))).toBe(false);
-    expect(needsAlt(newBlock(method, "bar-chart"))).toBe(false);
+    expect(needsAlt(newBlock(method, "chart"))).toBe(false);
   });
 });
 
@@ -230,5 +235,12 @@ describe("describeBlock", () => {
   it("falls back to a plain name for an untitled chart", () => {
     const untitled = Object.assign({}, chart, { title: undefined }) as Block;
     expect(describeBlock(untitled)).toBe("Chart: Bar chart");
+  });
+
+  it("names an untitled chart of the new kind by the kind it is drawn as", () => {
+    const made = newBlock(scene(demo(), "method"), "chart");
+    expect(describeBlock(made)).toBe("Chart: Bar chart");
+    expect(describeBlock({ ...made, kind: "stacked-bar" } as Block)).toBe("Chart: Stacked bar chart");
+    expect(describeBlock({ ...made, title: "Orders" } as Block)).toBe("Chart: Orders");
   });
 });

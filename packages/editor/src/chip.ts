@@ -88,6 +88,20 @@ export function fitPopover(pop: HTMLElement, bounds: Bounds, up: boolean) {
   pop.scrollTop = scrolled;
 }
 
+/**
+ * Slides an open popover clear of the block it edits, to whichever side has room for it, so a person who changes a
+ * chart's data watches the chart change. With no room on either side it stays where it is, over the block.
+ */
+export function standBeside(pop: HTMLElement, block: Bounds, bounds: Bounds, gap = 8) {
+  const box = pop.getBoundingClientRect();
+  if (box.right <= block.left || box.left >= block.right) return;
+  const nearest = [block.left - gap - box.width, block.right + gap]
+    .filter((left) => left >= bounds.left && left + box.width <= bounds.right)
+    .sort((a, b) => Math.abs(a - box.left) - Math.abs(b - box.left))[0];
+  if (nearest === undefined) return;
+  pop.style.left = `${Math.round((Number.parseFloat(pop.style.left) || 0) + nearest - box.left)}px`;
+}
+
 /** A chip with its popover and what keeps it behaving: Escape and a press elsewhere close it, and it stays fitted. */
 export interface PopoverChip {
   readonly chip: Chip;

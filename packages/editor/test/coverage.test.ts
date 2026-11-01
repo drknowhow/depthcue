@@ -69,7 +69,7 @@ let store: EditorStore;
 let editor: Editor;
 // A scene with a claim, steps, sources, a chart and one block of each other kind, so every control has something to edit.
 const SCENE = "demand";
-const blocks = { text: "", image: "", clip: "", table: "" };
+const blocks = { text: "", image: "", clip: "", table: "", chart: "" };
 // A table with a column of words and a column of numbers with a unit, so each kind of column has its controls.
 const TABLE: Block = {
   id: "table-demand",
@@ -105,12 +105,14 @@ beforeEach(async () => {
     newBlock(scene, "image", image),
     newBlock(scene, "clip", "assets/walk.mp4"),
     TABLE,
+    newBlock(scene, "chart"),
   ];
   const result = store.session.apply(
     added.map((block) => ({ op: "block.add" as const, scene: SCENE, block })),
   );
   if (!result.ok) throw new Error("the extra blocks should be accepted");
-  [blocks.text, blocks.image, blocks.clip, blocks.table] = added.map((block) => block.id) as [
+  [blocks.text, blocks.image, blocks.clip, blocks.table, blocks.chart] = added.map((block) => block.id) as [
+    string,
     string,
     string,
     string,
@@ -182,6 +184,7 @@ const FRAMED: Record<string, { id: () => string; kind: "text" | "other" }> = {
   text: { id: () => blocks.text, kind: "text" },
   image: { id: () => blocks.image, kind: "other" },
   "bar-chart": { id: () => "chart-demand", kind: "other" },
+  chart: { id: () => blocks.chart, kind: "other" },
   clip: { id: () => blocks.clip, kind: "other" },
   table: { id: () => blocks.table, kind: "other" },
 };
@@ -221,6 +224,19 @@ const cellMenu = (selector: string) => {
     new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 300, clientY: 200 }),
   );
   return find(host, ".ed-menu[data-target='cell']:not([hidden])");
+};
+/** Right-clicks the chart, as a person does, and answers with the menu that opens. */
+const chartMenu = () => {
+  const node = find(host, `.ed-frame [data-id='${blocks.chart}']`);
+  node?.dispatchEvent(
+    new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 300, clientY: 200 }),
+  );
+  return find(host, ".ed-menu[data-target='block']:not([hidden])");
+};
+/** The popover of the chart's Data chip, with the chart chosen. */
+const dataPop = () => {
+  choose(blocks.chart, "other");
+  return openChip("data") as HTMLElement;
 };
 /** Starts a comment on the chosen picture from the palette, as a person without a pointer does, and answers with its box. */
 const composing = () => {
@@ -554,6 +570,41 @@ const WAYS: Record<string, Entry> = {
     reach: () => cited("other", "chart-demand"),
   },
 
+  "scene.blocks<chart>.id": { never: NEVER_ID },
+  "scene.blocks<chart>.type": { never: NEVER_KIND },
+  "scene.blocks<chart>.kind": {
+    where: "Right-click the chart: Chart type (or Ctrl K, Chart type)",
+    reach: () => within(chartMenu(), "[data-command='chart-line']"),
+  },
+  "scene.blocks<chart>.title": {
+    where: "Chart toolbar, Data chip, Title",
+    reach: () => field(dataPop(), "data:title"),
+  },
+  "scene.blocks<chart>.unit": {
+    where: "Chart toolbar, Data chip, Unit",
+    reach: () => field(dataPop(), "data:unit"),
+  },
+  "scene.blocks<chart>.columns": {
+    where: "Chart toolbar, Data chip: Add series and Delete series, or a paste over the grid",
+    reach: () => within(dataPop(), "[data-chart='series']"),
+  },
+  "scene.blocks<chart>.columns[].label": {
+    where: "Chart toolbar, Data chip, a header cell of the grid typed in place",
+    reach: () => within(dataPop(), "th[data-cell]"),
+  },
+  "scene.blocks<chart>.columns[].unit": {
+    never:
+      "A person writes the unit once, in the chart's Unit, or into a column's label, such as Price (USD). A column's own unit is for an agent, and the grid keeps it when it edits.",
+  },
+  "scene.blocks<chart>.rows": {
+    where: "Chart toolbar, Data chip: the grid typed in place or pasted over; Add row and Delete row",
+    reach: () => within(dataPop(), "td[data-cell]"),
+  },
+  "scene.blocks<chart>.sourceIds": {
+    where: "Chart toolbar, Cite chip",
+    reach: () => cited("other", blocks.chart),
+  },
+
   "scene.blocks<clip>.id": { never: NEVER_ID },
   "scene.blocks<clip>.type": { never: NEVER_KIND },
   "scene.blocks<clip>.source": {
@@ -640,7 +691,6 @@ const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
   ["scene.blocks<text>.tone", "Step 5, text styles"],
   ["scene.blocks<text>.size", "Step 5, text styles"],
   ["scene.blocks<text>.align", "Step 5, text styles"],
-  ["scene.blocks<chart>", "Step 6, chart types"],
 ];
 const pending = (path: string) =>
   PENDING.some(

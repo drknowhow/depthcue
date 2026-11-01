@@ -96,8 +96,9 @@ describe("adding to an area of the slide", () => {
 
   it("adds a chart to the media area a text-only slide does not draw yet", async () => {
     scene = "words";
-    await adder.add("media", "bar-chart");
+    await adder.add("media", "chart");
     expect(blocks("words")).toEqual(["only", "words-chart"]);
+    expect(session.doc.scenes.words?.blocks[1]).toMatchObject({ type: "chart", kind: "bar" });
     expect(added).toEqual(["words-chart"]);
   });
 
@@ -181,7 +182,7 @@ describe("adding where nobody named an area", () => {
   it("puts a chart in the media area whatever is chosen", async () => {
     scene = "words";
     chosen = "only";
-    await adder.quick("bar-chart");
+    await adder.quick("chart");
     expect(blocks("words")).toEqual(["only", "words-chart"]);
     await adder.quick("text");
     expect(blocks("words")).toEqual(["only", "words-text", "words-chart"]);

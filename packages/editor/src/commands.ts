@@ -1,4 +1,5 @@
-import { LEADS, type Session } from "@depthcue/core";
+import { type ChartKind, LEADS, type Session } from "@depthcue/core";
+import { chartCommands } from "./chartwire.ts";
 import { afterWhenMoving } from "./cleanup.ts";
 import type { Spot } from "./grid.ts";
 import type { Command } from "./palette.ts";
@@ -32,6 +33,10 @@ export interface CommandSources {
   canPaste?(): boolean;
   /** Moves a block one place along the slide's order, as the arrows of its toolbar do. */
   moveBlock?(id: string, direction: -1 | 1): void;
+  /** Changes the kind of a chart, or turns an old bar chart into a chart of that kind, as one change. */
+  chartKind?(id: string, kind: ChartKind): void;
+  /** Opens the data of a chart, where its rows and series are edited. */
+  editData?(id: string): void;
   /** The cell of the chosen table that has the keyboard, or that the menu was opened on. Row -1 is the header. */
   cell?(): Spot | undefined;
   /** Does an action of the cell menu to the chosen table at a cell, as one change. */
@@ -141,12 +146,12 @@ export function listCommands(from: CommandSources): Command[] {
     id: "add-chart",
     title: "Add a chart",
     group: "Add",
-    words: "bar graph numbers",
+    words: "bar line area scatter donut graph numbers plot",
     keys: from.keysOf("add-chart"),
     targets: ["slide"],
     label: "Add a chart here",
     section: "add",
-    run: () => from.add("bar-chart"),
+    run: () => from.add("chart"),
   });
   add({
     id: "add-table",
@@ -195,6 +200,12 @@ export function listCommands(from: CommandSources): Command[] {
 
   // The chosen block, or the claim. The menu lists them in three sections: what is done to it, where it goes, and notes.
   const item = block !== undefined || (chosen !== undefined && scene.summary?.id === chosen);
+  // A chart's own commands come first in its menu: its data and its kind are what it is most often asked for.
+  const { chartKind, editData } = from;
+  if (block && chartKind) {
+    for (const command of chartCommands(scene, block, { chartKind, editData }, session.doc.deck.language))
+      add(command);
+  }
   if (chosen !== undefined && block) {
     const { cut, copy } = from;
     if (cut) {

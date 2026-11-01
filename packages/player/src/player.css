@@ -545,6 +545,172 @@
   background: var(--dc-surface);
 }
 
+/*
+ * Chart. The drawing is SVG in its own units, scaled to the room it has, with text at 12 of them. A chart at least as
+ * wide as 20 type units keeps that text near 11 pixels or more, so a slot or frame narrower than that is a chart that
+ * does not fit, and the render check reports the overflow. Series colors come from the deck's palette by position, so a
+ * new palette recolors them: the first two are the deck's evidence and action colors, and the rest are the hues between
+ * them, taken round the long way (blue to green to yellow to orange) and the short way (through purple). Text is never
+ * in a series' color: marks carry it, and each series also has its own shape.
+ */
+
+.dc-plot-figure {
+  --dc-s1: var(--dc-evidence);
+  --dc-s2: var(--dc-action);
+  --dc-s3: var(--dc-muted);
+  --dc-s4: var(--dc-text);
+  --dc-s5: var(--dc-muted);
+  --dc-s6: var(--dc-text);
+}
+
+@supports (color: color-mix(in oklch longer hue, red, blue)) {
+  .dc-plot-figure {
+    --dc-s3: color-mix(in oklch longer hue, var(--dc-evidence) 80%, var(--dc-action));
+    --dc-s4: color-mix(in oklch longer hue, var(--dc-evidence) 20%, var(--dc-action));
+    --dc-s5: color-mix(in oklch, var(--dc-evidence) 65%, var(--dc-action));
+    --dc-s6: color-mix(in oklch longer hue, var(--dc-evidence) 35%, var(--dc-action));
+  }
+}
+
+.dc-plot-figure [data-s="1"] {
+  --c: var(--dc-s1);
+}
+
+.dc-plot-figure [data-s="2"] {
+  --c: var(--dc-s2);
+}
+
+.dc-plot-figure [data-s="3"] {
+  --c: var(--dc-s3);
+}
+
+.dc-plot-figure [data-s="4"] {
+  --c: var(--dc-s4);
+}
+
+.dc-plot-figure [data-s="5"] {
+  --c: var(--dc-s5);
+}
+
+.dc-plot-figure [data-s="6"] {
+  --c: var(--dc-s6);
+}
+
+.dc-plot-figure figcaption {
+  margin: 0 0 0.9em;
+  font: 500 0.8em / 1.2 var(--dc-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dc-plot {
+  display: block;
+  width: 100%;
+  max-width: 34em;
+  min-width: 20em;
+  height: auto;
+  overflow: visible;
+}
+
+.dc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em 1.3em;
+  margin: 0 0 0.8em;
+  padding: 0;
+  color: var(--dc-muted);
+  font: 0.8em / 1.3 var(--dc-font-mono);
+  list-style: none;
+}
+
+.dc-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.dc-key {
+  flex: none;
+  width: 0.95em;
+  height: 0.95em;
+  overflow: visible;
+}
+
+.dc-plot text {
+  fill: currentcolor;
+  color: var(--dc-muted);
+  font: 12px / 1 var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-plot .dc-v {
+  color: var(--dc-text);
+}
+
+.dc-plot .dc-halo {
+  color: var(--dc-text);
+  font-weight: 600;
+  stroke: var(--dc-bg);
+  stroke-linejoin: round;
+  stroke-width: 2px;
+  paint-order: stroke;
+}
+
+.dc-plot :is(.dc-grid, .dc-axis) {
+  fill: none;
+  stroke: var(--dc-line);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.dc-plot .dc-axis {
+  stroke: var(--dc-muted);
+}
+
+.dc-mark {
+  fill: var(--c);
+}
+
+.dc-ring {
+  stroke: var(--dc-bg);
+  stroke-width: 3px;
+  paint-order: stroke;
+}
+
+.dc-glyph {
+  fill: var(--dc-bg);
+}
+
+.dc-line {
+  fill: none;
+  stroke: var(--c);
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dc-wash {
+  fill: var(--c);
+  fill-opacity: 0.12;
+}
+
+/* The room a pinned chart had in its region is the room it has unpinned, whatever shape its frame is, so resizing a
+   frame never moves the blocks around it. */
+.dc-ghost .dc-plot {
+  aspect-ratio: 8 / 5;
+}
+
+/* A pinned chart fills its frame: the drawing takes what the title and legend leave, and gives up height last. */
+.dc-pinned.dc-plot-figure .dc-plot {
+  flex: 1 1 0;
+  min-height: 11em;
+  max-width: none;
+}
+
+.dc-pinned.dc-plot-figure .dc-sr-only {
+  flex: none;
+}
+
 /* Chart module: its toolbar sits in room reserved while it is pending, so hydrating moves nothing */
 
 .dc-chart-figure[data-module-state="pending"],

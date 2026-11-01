@@ -103,7 +103,7 @@ describe("what the palette lists", () => {
     get("add-text").run();
     expect(calls.add).toHaveBeenLastCalledWith("text");
     get("add-chart").run();
-    expect(calls.add).toHaveBeenLastCalledWith("bar-chart");
+    expect(calls.add).toHaveBeenLastCalledWith("chart");
     get("add-image").run();
     expect(calls.pickImage).toHaveBeenCalledTimes(1);
     expect(calls.add).toHaveBeenCalledTimes(2);

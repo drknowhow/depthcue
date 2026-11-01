@@ -24,7 +24,7 @@ const GHOST_LABEL: Record<SlotName, string> = {
 };
 
 const KIND_LABEL: Record<NewBlockKind, string> = Object.fromEntries(
-  BLOCK_KINDS.map(({ kind, label }) => [kind, kind === "bar-chart" ? "Chart" : label]),
+  BLOCK_KINDS.map(({ kind, label }) => [kind, label]),
 ) as Record<NewBlockKind, string>;
 
 const regionClass = (slot: SlotName) =>

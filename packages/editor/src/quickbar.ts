@@ -41,14 +41,14 @@ export interface QuickBar {
 }
 
 /** The order the bar lists the kinds in. A kind that is not here comes last, so a new one still gets a button. */
-const ORDER: readonly NewBlockKind[] = ["text", "bar-chart", "table", "image", "clip"];
+const ORDER: readonly NewBlockKind[] = ["text", "chart", "table", "image", "clip"];
 const rank = (kind: NewBlockKind) => {
   const at = ORDER.indexOf(kind);
   return at < 0 ? ORDER.length : at;
 };
 
 /** The key that adds a kind, written on its button. The shortcut itself is in `shortcuts.ts`. */
-const KEYS: Partial<Record<NewBlockKind, string>> = { text: "T", "bar-chart": "C", image: "I" };
+const KEYS: Partial<Record<NewBlockKind, string>> = { text: "T", chart: "C", image: "I" };
 
 /** Writes a key on a button for the eye. Assistive technology gets it from `aria-keyshortcuts` instead. */
 const withKey = <T extends HTMLElement>(
@@ -86,7 +86,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
         return withKey(picker, KEYS.image, input);
       }
       return withKey(
-        actionButton(kind === "bar-chart" ? "Chart" : label, () => hooks.add(kind), { "data-quick": kind }),
+        actionButton(label, () => hooks.add(kind), { "data-quick": kind }),
         KEYS[kind],
       );
     });

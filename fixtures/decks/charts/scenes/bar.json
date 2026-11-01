@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "0.3",
+  "id": "bar",
+  "title": "Orders by quarter",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "bar-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Both channels grew every quarter"
+    },
+    {
+      "id": "bar-chart",
+      "type": "chart",
+      "kind": "bar",
+      "title": "Orders by quarter",
+      "unit": "units",
+      "columns": [
+        {
+          "label": "Quarter"
+        },
+        {
+          "label": "Channel A"
+        },
+        {
+          "label": "Channel B"
+        }
+      ],
+      "rows": [["Q1", 4000, 3200], ["Q2", 4600, 3900], ["Q3", 5200, 4800], ["Q4", 6000, 5500]],
+      "sourceIds": ["bar-source"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "bar-source",
+      "title": "Sample figures for this deck"
+    }
+  ]
+}

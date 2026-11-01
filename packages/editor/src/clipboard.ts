@@ -53,6 +53,7 @@ export function wordsOf(block: Block, language?: string): string {
     case "text":
       return block.text;
     case "table":
+    case "chart":
       return tabSeparated(block, (value) => numberText(value, language));
     case "bar-chart":
       return [block.title, ...block.data.map((row) => `${row.label}: ${row.value}`)]
@@ -134,6 +135,7 @@ export function missingFile(assets: ReadonlySet<string>, block: Block): string |
 const PINNED_SIZE: Readonly<Record<string, { w: number; h: number }>> = {
   text: { w: 40, h: 14 },
   "bar-chart": { w: 45, h: 45 },
+  chart: { w: 45, h: 45 },
   image: { w: 40, h: 40 },
   clip: { w: 45, h: 30 },
   table: { w: 55, h: 40 },

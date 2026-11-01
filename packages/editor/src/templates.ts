@@ -7,6 +7,7 @@ import {
   placeholderAlt,
   type Scene,
 } from "@depthcue/core";
+import { CHART_KIND_LABELS } from "@depthcue/player";
 
 export type Layout = Scene["layout"];
 export type Lead = NonNullable<Scene["lead"]>;
@@ -76,17 +77,17 @@ export function newScene(doc: Doc, layout: Layout): NewScene {
   return { id, title: "New scene", layout, blocks: [heading, body] };
 }
 
-export type NewBlockKind = "text" | "image" | "bar-chart" | "clip" | "table";
+export type NewBlockKind = "text" | "image" | "chart" | "clip" | "table";
 
 export const BLOCK_KINDS: ReadonlyArray<{ kind: NewBlockKind; label: string }> = [
   { kind: "text", label: "Text" },
   { kind: "image", label: "Image" },
-  { kind: "bar-chart", label: "Bar chart" },
+  { kind: "chart", label: "Chart" },
   { kind: "table", label: "Table" },
   { kind: "clip", label: "Clip" },
 ];
 
-/** True for a kind of block the editor can add. A layout may accept more, such as the drawn charts, that it cannot add yet. */
+/** True for a kind of block the editor can add. A layout may accept more, such as the old bar chart, that it cannot add. */
 export const isNewBlockKind = (kind: string): kind is NewBlockKind =>
   BLOCK_KINDS.some((entry) => entry.kind === kind);
 
@@ -96,17 +97,21 @@ export const needsAlt = hasPlaceholderAlt;
 
 /** A new block of a kind. Images and clips need a file in the deck, so they take its path. */
 export function newBlock(scene: Scene, kind: NewBlockKind, asset?: string): Block {
-  const id = uniqueId(`${scene.id}-${kind === "bar-chart" ? "chart" : kind}`, idsInScene(scene));
+  const id = uniqueId(`${scene.id}-${kind}`, idsInScene(scene));
   switch (kind) {
     case "text":
       return { id, type: "text", role: "body", text: "New text" };
-    case "bar-chart":
+    case "chart":
+      // A bar chart of three rows to change: a category column and one series, in the grid that edits any chart.
       return {
         id,
-        type: "bar-chart",
-        data: [
-          { label: "First", value: 1 },
-          { label: "Second", value: 2 },
+        type: "chart",
+        kind: "bar",
+        columns: [{ label: "Category" }, { label: "Value" }],
+        rows: [
+          ["First", 3],
+          ["Second", 5],
+          ["Third", 4],
         ],
       };
     case "table":
@@ -156,7 +161,7 @@ export function blockLabel(block: Block): string {
     case "table":
       return block.title ?? "Table";
     case "chart":
-      return block.title ?? "Chart";
+      return block.title ?? `${CHART_KIND_LABELS[block.kind]} chart`;
   }
 }
 

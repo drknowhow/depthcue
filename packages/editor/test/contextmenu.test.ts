@@ -571,7 +571,7 @@ describe("right-clicking the empty slide", () => {
     fakeClipboard();
     context(view());
     item("Add a chart here").click();
-    expect(kinds()).toContain("bar-chart");
+    expect(kinds()).toContain("chart");
   });
 
   it("changes the layout from the submenu", () => {

@@ -383,11 +383,11 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       );
       if (!node) continue;
       node.dataset.pick = "";
-      // A chart holds sliders and text fields of its own, a clip a player and its cue chips, and a table its cells,
-      // which a button may not contain.
+      // A bar chart holds sliders and text fields of its own, a clip a player and its cue chips, a table its cells and
+      // a chart its data table, which a button may not contain.
       node.setAttribute(
         "role",
-        block.type === "bar-chart" || block.type === "clip" || block.type === "table" ? "group" : "button",
+        ["bar-chart", "chart", "clip", "table"].includes(block.type) ? "group" : "button",
       );
       const missingAlt = needsAlt(block);
       node.toggleAttribute("data-alt-missing", missingAlt);

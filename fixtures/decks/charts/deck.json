@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "0.3",
+  "id": "charts",
+  "title": "One chart of each kind",
+  "language": "en",
+  "theme": "paper",
+  "scenes": ["bar", "stacked", "line", "area", "scatter", "donut", "framed"]
+}

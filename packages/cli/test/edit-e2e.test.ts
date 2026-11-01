@@ -605,11 +605,11 @@ describe("the editor in a real browser", () => {
     await open();
     await page.locator(".ed-scene[data-scene='method']").click();
     const row = page.locator(".ed-quick");
-    await row.locator("[data-quick='bar-chart']").click();
+    await row.locator("[data-quick='chart']").click();
     await row.locator("[data-quick='claim']").click();
     await saved();
     const scene = () => disk().scenes.method;
-    expect(scene()?.blocks.map((block) => block.type)).toEqual(["text", "text", "image", "bar-chart"]);
+    expect(scene()?.blocks.map((block) => block.type)).toEqual(["text", "text", "image", "chart"]);
     expect(scene()?.summary?.text).toBe("State the claim here.");
     // The new chart is chosen, so its toolbar is up and the next thing typed is not lost.
     await page.locator(".ed-toolbar [data-tb='data']").waitFor();
@@ -1296,7 +1296,7 @@ describe("empty areas of the slide in a real browser", () => {
     if (!text || !place) throw new Error("the text and the empty media area should both be drawn");
     expect(place.x).toBeGreaterThan(text.x + text.width - 1);
     await ghost("media").locator(".ed-ghost-open").click();
-    await ghost("media").locator("[data-ghost-kind='bar-chart']").click();
+    await ghost("media").locator("[data-ghost-kind='chart']").click();
     await saved();
     expect(idsOnDisk("talk")).toEqual(["talk-body", "talk-chart"]);
     expect(await page.locator(".ed-frame .dc-media-region [data-id='talk-chart']").count()).toBe(1);
@@ -2005,7 +2005,7 @@ describe("the quick bar in a real browser", () => {
   it("adds to the first empty area when nothing is chosen, and a chart fills the media area", async () => {
     addScene({ id: "qm", title: "Media", layout: "text-media", blocks: [note("qm-words", "Words.")] });
     await openScene("qm", "qm-words");
-    await bar().locator("[data-quick='bar-chart']").click();
+    await bar().locator("[data-quick='chart']").click();
     await saved();
     expect(idsOnDisk("qm")).toEqual(["qm-words", "qm-chart"]);
     expect(await page.locator(".ed-frame .dc-media-region [data-id='qm-chart']").count()).toBe(1);
