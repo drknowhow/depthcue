@@ -10,8 +10,9 @@ import {
   kitOf,
   TEMPLATES_DIR,
   templateIdOf,
+  unusedBrand,
 } from "./brand.ts";
-import { type BrandData, readBrand, unusedBrand } from "./brandcheck.ts";
+import { type BrandData, readBrand } from "./brandcheck.ts";
 import { checkData } from "./data.ts";
 import { explain } from "./diagnostics.ts";
 import { checkFrames } from "./frames.ts";

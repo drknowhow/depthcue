@@ -1,14 +1,14 @@
 // A save that stops after any of its file operations must leave a deck folder that loads with no errors. Each batch
 // below is one transaction of operations; the save of it is cut short after every k-th write or removal, on a fresh copy
 // each time, and the folder is loaded as it was left.
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyOps, type Doc, loadDoc, type Op, retemplate, revisionOf } from "@depthcue/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadDeckDir } from "../src/loader.ts";
-import { type SaveIo, saveDeckDir, writeAtomic } from "../src/save.ts";
+import { RefusedSaveError, type SaveIo, saveDeckDir, writeAtomic } from "../src/save.ts";
 
 const branded = fileURLToPath(new URL("../../../fixtures/decks/v0-4-brand", import.meta.url));
 const plain = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
@@ -141,12 +141,12 @@ describe("a save stopped after any file operation", () => {
       { op: "block.set", scene: "context", id: "context-body", set: { style: null } },
       { op: "brand.set", set: null },
     ]);
-    expect(done.at(-4)).toBe("write deck.json");
-    expect(done.slice(-3).sort()).toEqual(
-      ["brand/brand.json", "brand/templates/chart-and-note.json", "brand/templates/cover.json"].map(
-        (path) => `remove ${path}`,
-      ),
-    );
+    expect(done.slice(-4)).toEqual([
+      "write deck.json",
+      "remove brand/templates/chart-and-note.json",
+      "remove brand/templates/cover.json",
+      "remove brand/brand.json",
+    ]);
   });
 
   it("leaves a deck that loads, for a template removed and its scene moved off it", () => {
@@ -155,6 +155,40 @@ describe("a save stopped after any file operation", () => {
       { op: "template.set", id: "chart-and-note", template: null },
     ]);
     expect(done).toEqual(["write scenes/growth.json", "remove brand/templates/chart-and-note.json"]);
+  });
+
+  it("leaves a deck that loads, for a template and the style its slot names removed together", () => {
+    const done = crashEverywhere(branded, (doc) => [
+      ...retemplate(doc, "growth", { template: "two-column" }).ops,
+      { op: "block.set", scene: "context", id: "context-body", set: { style: null } },
+      { op: "template.set", id: "chart-and-note", template: null },
+      { op: "style.set", id: "quiet-panel", style: null },
+    ]);
+    // The template names the style in a slot, so it goes before brand.json loses the style.
+    expect(done).toEqual([
+      "write scenes/context.json",
+      "write scenes/growth.json",
+      "remove brand/templates/chart-and-note.json",
+      "write brand/brand.json",
+    ]);
+  });
+
+  it("leaves a deck that loads, for built-in styles hidden while a template that names one is removed", () => {
+    const template = JSON.parse(readFileSync(join(branded, "brand/templates/chart-and-note.json"), "utf8"));
+    const slots = template.slots.map((slot: { style?: string }) =>
+      slot.style === "quiet-panel" ? { ...slot, style: "callout" } : slot,
+    );
+    const done = crashEverywhere(
+      branded,
+      (doc) => [
+        ...retemplate(doc, "growth", { template: "two-column" }).ops,
+        { op: "block.set", scene: "context", id: "context-quote", set: { style: null } },
+        { op: "template.set", id: "chart-and-note", template: null },
+        { op: "brand.set", set: { hideBuiltIn: ["styles"] } },
+      ],
+      [{ op: "template.set", id: "chart-and-note", template: { ...template, slots } }],
+    );
+    expect(done.slice(-2)).toEqual(["remove brand/templates/chart-and-note.json", "write brand/brand.json"]);
   });
 
   it("leaves a deck that loads, for a style removed with the block that used it", () => {
@@ -176,6 +210,25 @@ describe("a save stopped after any file operation", () => {
     expect(done).toEqual(["write brand/brand.json", "write scenes/context.json", "write brand/brand.json"]);
   });
 
+  it("leaves a deck that loads, for one of 24 styles replaced by a new one", () => {
+    // The fixture has two styles; 22 more puts the brand at its limit.
+    const many: Op[] = Array.from({ length: 22 }, (_, i) => ({
+      op: "style.set",
+      id: `s-${i}`,
+      style: { name: `S${i}`, for: ["body"] },
+    }));
+    const done = crashEverywhere(
+      branded,
+      () => [
+        { op: "style.set", id: "s-0", style: null },
+        { op: "style.set", id: "s-new", style: { name: "New", for: ["body"] } },
+      ],
+      many,
+    );
+    // No scene or template names s-0, so brand.json is not first written with all 25.
+    expect(done).toEqual(["write brand/brand.json"]);
+  });
+
   it("leaves a deck that loads, for built-in styles hidden once no block uses them", () => {
     const done = crashEverywhere(branded, () => [
       { op: "block.set", scene: "context", id: "context-quote", set: { style: null } },
@@ -194,5 +247,85 @@ describe("a save stopped after any file operation", () => {
       [{ op: "deck.set", set: { fonts: "classic" } }],
     );
     expect(done).toEqual(["write deck.json", "write brand/brand.json"]);
+  });
+});
+
+describe("a save that changes the brand's id, stopped after each file operation", () => {
+  // Not covered by the write order, as the Saving record says: the id is in both deck.json and brand.json, so one
+  // of them is written first. This pins that window and the hand edit the diagnostic names.
+  it("is brand-id-mismatch only after brand.json, and loads once deck.json takes the new id", () => {
+    const prepare = () => {
+      const dir = copy(plain);
+      const start = open(dir);
+      saveDeckDir(dir, start, applied(start, [{ op: "brand.set", set: { id: "acme", name: "Acme" } }]));
+      const before = open(dir);
+      const after = applied(before, [
+        { op: "brand.set", set: null },
+        { op: "brand.set", set: { id: "beta", name: "Beta" } },
+      ]);
+      return { dir, before, after };
+    };
+    const whole = prepare();
+    const all = stoppingAfter(Number.POSITIVE_INFINITY);
+    saveDeckDir(whole.dir, whole.before, whole.after, all);
+    expect(all.done).toEqual(["write brand/brand.json", "write deck.json"]);
+    expect(open(whole.dir).brand?.id).toBe("beta");
+    for (const k of [0, 1]) {
+      const { dir, before, after } = prepare();
+      expect(() => saveDeckDir(dir, before, after, stoppingAfter(k))).toThrow(Stop);
+      if (k === 0) {
+        expect(errorsIn(dir)).toEqual([]);
+        continue;
+      }
+      const [mismatch, ...rest] = errorsIn(dir);
+      expect(rest).toEqual([]);
+      expect(mismatch).toMatchObject({ code: "brand-id-mismatch", file: "brand/brand.json", path: "/id" });
+      expect(mismatch?.fix).toContain('set "brand" in deck.json to "beta"');
+      const deck = JSON.parse(readFileSync(join(dir, "deck.json"), "utf8"));
+      writeAtomic(dir, "deck.json", JSON.stringify({ ...deck, brand: "beta" }));
+      expect(errorsIn(dir)).toEqual([]);
+      expect(open(dir).brand?.id).toBe("beta");
+    }
+  });
+});
+
+describe("a brand made, stopped before deck.json, and saved again", () => {
+  const ACME: Op = { op: "brand.set", set: { id: "acme", name: "Acme" } };
+
+  /** A copy of the plain deck where a save of `ops` stopped after `limit` operations. */
+  function stopped(ops: Op[], limit: number): string {
+    const dir = copy(plain);
+    const before = open(dir);
+    expect(() => saveDeckDir(dir, before, applied(before, ops), stoppingAfter(limit))).toThrow(Stop);
+    return dir;
+  }
+
+  const refusedFiles = (dir: string, ops: Op[]): string[] => {
+    const before = open(dir);
+    try {
+      saveDeckDir(dir, before, applied(before, ops));
+    } catch (error) {
+      if (!(error instanceof RefusedSaveError)) throw error;
+      return error.diagnostics.map((d) => `${d.code} ${d.file}`);
+    }
+    return [];
+  };
+
+  it("goes ahead when the files left are the ones the save writes, with the same text", () => {
+    for (const limit of [1, 2]) {
+      const dir = stopped([ACME, SOLO], limit);
+      expect(refusedFiles(dir, [ACME, SOLO])).toEqual([]);
+      const doc = open(dir);
+      expect(doc.brand?.name).toBe("Acme");
+      expect(Object.keys(doc.templates ?? {})).toEqual(["solo"]);
+    }
+  });
+
+  it("still refuses a file left with other text, or one the save does not write", () => {
+    const renamed: Op = { op: "brand.set", set: { id: "acme", name: "Acme Co" } };
+    expect(refusedFiles(stopped([ACME], 1), [renamed])).toEqual(["leftover-brand-file brand/brand.json"]);
+    expect(refusedFiles(stopped([ACME, SOLO], 2), [ACME])).toEqual([
+      "leftover-brand-file brand/templates/solo.json",
+    ]);
   });
 });

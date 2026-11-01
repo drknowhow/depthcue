@@ -39,10 +39,12 @@ describe("the editor's stand-in for core's brand checks", () => {
     expect(checkTemplateFile({}, "cover")).toEqual([
       expect.objectContaining({ code: BRAND_CHECKS_LOADING, file: "brand/templates/cover.json" }),
     ]);
+    // A deck without a brand needs this one, at the severity it asks for, so it does not wait for the chunk.
     expect(unusedBrand(BRAND_FILE, {}, "warning")).toMatchObject({
-      severity: "error",
-      code: BRAND_CHECKS_LOADING,
+      severity: "warning",
+      code: "unused-brand",
     });
+    expect(unusedBrand(BRAND_FILE, {}, "error")).toMatchObject({ severity: "error", code: "unused-brand" });
     // The first check started the fetch: every later call waits on that one.
     expect(loadBrandChecks()).toBe(loadBrandChecks());
 

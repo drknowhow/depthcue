@@ -13,6 +13,7 @@ import {
   type SceneKit,
   templatePath,
   textOn,
+  unusedBrand,
 } from "./brand.ts";
 import { explain } from "./diagnostics.ts";
 import { own } from "./own.ts";
@@ -72,25 +73,7 @@ export function checkTemplateFile(data: unknown, id: string, file = templatePath
   ];
 }
 
-/**
- * brand.json or templates while deck.json names no brand. A deck folder leaves such files unread, and says so in a
- * warning: a save that makes or takes off a brand writes deck.json and the brand's files one after the other, and a
- * stop between them must leave a deck that loads. In a Doc, whose brand would be used, it is an error.
- */
-export function unusedBrand(file: string, brand: unknown, severity: Diagnostic["severity"]): Diagnostic {
-  const named = (brand as { id?: unknown } | null | undefined)?.id;
-  const id = typeof named === "string" ? named : "<id>";
-  return {
-    ...error(
-      file,
-      "",
-      "unused-brand",
-      "The deck folder has brand files, but deck.json names no brand, so none of it is used.",
-      `Add "brand": "${id}" to deck.json to use it, or delete brand.json and the templates from the brand folder.`,
-    ),
-    severity,
-  };
-}
+export { unusedBrand };
 
 /**
  * Reads a deck's brand against its deck.json: a deck that names a brand must have its files, and one that names none
@@ -154,7 +137,7 @@ export function checkBrand(deck: Deck, part: BrandPart, brandFiles: ReadonlySet<
         "/id",
         "brand-id-mismatch",
         `deck.json names the brand "${deck.brand}", but ${BRAND_FILE} has the id "${brand.id}".`,
-        `Make the two the same: "brand" in deck.json is the id in ${BRAND_FILE}.`,
+        `To keep this ${BRAND_FILE}, set "brand" in deck.json to "${brand.id}"; a save that changed the brand's id and stopped after ${BRAND_FILE} leaves the deck here. Or set "id" in ${BRAND_FILE} to "${deck.brand}".`,
       ),
     );
   }
@@ -327,7 +310,7 @@ const overlap = (a: Template["slots"][number]["frame"], b: Template["slots"][num
  * A sound template's facts: slot ids are unique and their frames lie on the slide, each slot takes only blocks its
  * role allows and a claim slot none, there is one claim slot at most, the style a slot gives its blocks exists and is
  * for every kind the slot takes (a claim is drawn as a heading), its background image exists, and text reads on its
- * background on each of `looks`. Slots that overlap are a warning: a designer may mean it. An image background is a
+ * background color on each of `looks`, in the template's own color and in the tone of each slot's style. Slots that overlap are a warning: a designer may mean it. An image background is a
  * warning too: only `depthcue render` can measure text on a picture.
  */
 export function checkTemplate(
@@ -339,6 +322,8 @@ export function checkTemplate(
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
   const seen = new Set<string>();
+  const background = template.background;
+  const backdrop = background?.image === undefined ? background?.color : undefined;
   template.slots.forEach((slot, i) => {
     const at = `/slots/${i}`;
     const allowed = ROLE_KINDS[slot.role];
@@ -432,10 +417,31 @@ export function checkTemplate(
             ),
           );
         }
+        // A tone with no fill under it is drawn on the background; a fill is checked with the brand's styles. A
+        // claim slot has no blocks to check, and is large text, drawn as a heading.
+        const tone = style.tone;
+        if (backdrop !== undefined && tone !== undefined && (style.fill ?? "none") === "none") {
+          const kinds = slot.accepts ?? ["heading"];
+          const large =
+            style.size === "l" || style.size === "xl" || kinds.every((kind) => kind === "heading");
+          const need = large ? CONTRAST.large : CONTRAST.text;
+          for (const { theme, colors } of looks) {
+            const ratio = contrastRatio(colors[tone], colors[backdrop]);
+            if (ratio >= need) continue;
+            out.push(
+              error(
+                file,
+                `${at}/style`,
+                "template-low-contrast",
+                `The slot "${slot.id}" draws its ${slot.role === "claim" ? "claim" : "text"} in "${tone}" (${colors[tone]}), the style "${slot.style}"'s tone, on "${backdrop}" (${colors[backdrop]}), a contrast of ${Math.floor(ratio * 100) / 100}:1 on ${theme} slides, under the ${need}:1 it needs.`,
+                "Give the slot a style whose tone reads on the background, or pick another background color.",
+              ),
+            );
+          }
+        }
       }
     }
   });
-  const background = template.background;
   if (background?.image !== undefined) {
     if (!brandFiles.has(brandFilePath(background.image))) {
       out.push(

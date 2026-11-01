@@ -3,7 +3,8 @@
  * a brand never runs them, so the editor's build puts this module where core imports brandcheck.ts (see vite.config.ts)
  * and fetches the real one, as a chunk of its own, the first time a check is wanted. Until it is in, every check answers
  * with the error `brand-checks-loading` and starts the fetch, so nothing passes unchecked: the store, on that error,
- * waits for the chunk and reads the deck again. Tests and the CLI run core's module itself.
+ * waits for the chunk and reads the deck again, and says to reload the page when it does not arrive. `unusedBrand` is
+ * core's own from brand.ts. Tests and the CLI run core's module itself.
  */
 import type { Diagnostic } from "@depthcue/core";
 import { BRAND_FILE, templatePath } from "../../core/src/brand.ts";
@@ -62,8 +63,8 @@ export const checkTemplateFile: typeof Checks.checkTemplateFile = (...args) =>
 export const checkTemplate: typeof Checks.checkTemplate = (...args) =>
   real ? real.checkTemplate(...args) : [waiting(args[4])];
 
-export const unusedBrand: typeof Checks.unusedBrand = (...args) =>
-  real ? real.unusedBrand(...args) : waiting(args[0]);
+/** Core's own, from brand.ts: a deck without a brand needs it, at the severity it asks for, with no chunk to wait on. */
+export { unusedBrand } from "../../core/src/brand.ts";
 
 /** Has no error to answer with, so it throws until the checks are in. The editor does not call it. */
 export const looksOf: typeof Checks.looksOf = (...args) => {
