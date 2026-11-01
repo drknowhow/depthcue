@@ -1,8 +1,10 @@
 # Editor remake
 
 The v0.1 editor works but is hard to use: a form panel beside a small slide, only text editable on the slide,
-no quick tools. This plan replaces it with a canvas-first editor. It is the working spec for the campaign
-`depthcue-editor-remake`; each phase below lands as one or more pull requests.
+no quick tools. This plan replaces it with a canvas-first editor. It was the working spec for the campaign
+`depthcue-editor-remake`, and each phase below landed as one or more pull requests. Status: built, 2026-11-01.
+[Results](#results) has the measurements and what is not done. The user guides are [the editor](editor.md),
+[placing blocks](placement.md) and [comments and review](comments-and-review.md).
 
 The interaction details live in a working sketch, `docs/design/editor-remake/hybrid-sketch.html`. Open it in a
 browser and click through it. It is a picture of the product, not product code: it has no deck behind it.
@@ -426,6 +428,71 @@ the Scene popover's Steps section stays for putting steps in a different order a
 - Agent changes appear in a review drawer with Accept and Revert for each change, and the storyboard lists every
   scene with its lead, changes, comments, pins and problems.
 - The editor is within budget, scene change time is reported, and screenshots at 1440 and 1024 wide were looked at.
+
+## Results
+
+Measured on 2026-11-01 at commit `f831fe6` with the trial's own tool and deck (`node tools/trial/bench.mjs run
+--tools depthcue`, then `extras`): 20 cold opens and 3 traversals of a 50-scene deck, Chrome 156, an Intel Core Ultra 7
+265, 10 Mbps and 50 ms latency. The v0.1 column is [TRIAL.md](TRIAL.md).
+
+| Measure                              | v0.1                    | Now                     | Budget   | Verdict |
+| ------------------------------------ | ----------------------- | ----------------------- | -------- | ------- |
+| Cold open to the first scene, p95    | 210 ms                  | 212 ms                  | 1.5 s    | within  |
+| Scene change, default motion, p95    | 66 ms                   | 30.8 ms (see below)     | 50 ms    | open    |
+| Scene change, reduced motion, p95    | 49 ms                   | 23 ms (see below)       | 50 ms    | within  |
+| Tab memory after 50 scenes, renderer | 203 MB (171 empty page) | 205 MB (176 empty page) | 200 MB   | over    |
+| Core runtime, gzip                   | 21.0 KB                 | 34.6 KB                 | 60.0 KB  | within  |
+| Editor script, brotli                | 25.8 KB                 | 61.0 KB                 | 90.0 KB  | within  |
+| Editor styles, brotli                | 4.9 KB                  | 9.4 KB                  | 30.0 KB  | within  |
+| Player script, brotli                | 5.5 KB                  | 5.7 KB                  | 120.0 KB | within  |
+| Player styles, brotli                | 3.5 KB                  | 3.8 KB                  | 30.0 KB  | within  |
+| Exported page script, brotli         | 8.1 KB                  | 8.4 KB                  | 10.0 KB  | within  |
+
+The other size gates (chart, clip, lease, broadcast and presenter scripts, and core code in the player) are within
+their limits and moved by 0.1 KB at most.
+
+The scene change numbers are not comparable with v0.1's. The display in this run drew a frame every 7.6 ms at p50 and
+8.4 ms at p95, against 16.8 ms at p95 in the trial, so it refreshed about twice as fast. A scene change takes the same
+number of frames as before: about 3.6 with default motion (27.3 ms at p50, 58 ms at v0.1's 60 Hz) and about 2.5 with
+reduced motion. So the player's speed looks unchanged. On a 60 Hz display the default scene change would still be
+near 60 ms, over its 50 ms budget, but that estimate comes from the frame count and was not measured at 60 Hz. The memory figure is the renderer's working set,
+which includes Chrome's shared code, so the 30 MB above an empty page is the better number, as at v0.1.
+
+### Walkthrough
+
+A scratch copy of the demo deck with one agent edit (a text change and a new lead) and one comment asking the agent,
+opened with `depthcue edit` in Chrome at 1440 by 900 and 1024 by 768, with a screenshot looked at for each step:
+
+- At 1440 the slide is 1,205 px wide, there is no form panel, and the problem ribbon, scene strip and quick bar sit
+  around it.
+- A block was chosen, pinned with `P`, and dragged. Its toolbar showed Layout and Free, Edit, Pinned and Cite. About
+  six seconds after the drop the ribbon had changed from "All clear" to "2 things to check", with the render's overlap
+  message.
+- The comment pin opened its thread with a reply box, Resolve and Delete. The Review drawer showed both agent changes
+  with the old value struck out, and the storyboard showed three cards with the pills "1 changed", "2 to check",
+  "1 comment" and "1 pinned" on the pinned scene.
+- At 1024 everything above fits. The slide is 820 px wide, the top bar collapses Review and Comments to icons and
+  counts, and Present stays visible. With a pinned block and agent changes the deck title shrinks to its first letter
+  and an ellipsis.
+
+The walkthrough did not resize a block or send it back with Layout. `packages/cli/test/edit-e2e.test.ts` does both in
+a real browser, and runs in CI.
+
+### Not done
+
+- The demo video and its scene text still show the v0.1 editor and say that changes save only when you ask.
+  `pnpm demo:capture`, `demo:scene` and `demo:render` would redo them.
+- Default scene change is over its 50 ms budget on a 60 Hz display, and tab memory is over 200 MB as measured. Both
+  were over at v0.1.
+- At 1024 px wide the deck title is almost gone when a scene has a pinned block and the agent has changes. The bar
+  should give the title a minimum width, or move Auto layout into the Scene popover.
+- Comments and video cue markers are outside the deck's Undo. An agent write that reloads the deck forgets the
+  editor's Undo steps.
+- Slides are 16 by 9 only, and agents place blocks in areas, not at frames.
+- Only Chrome was used. The render checks need Chrome or Edge.
+- [TRIAL.md](TRIAL.md) still holds the v0.1 figures. Run the trial again before quoting them.
+- Nothing is tagged or published, and the repository is private. Before it is public, [PLAN.md](PLAN.md) names the
+  owner, [RESEARCH.md](RESEARCH.md) quotes forum posts by handle, and TRIAL.md's comparison needs a fairness check.
 
 ## Not in this work
 

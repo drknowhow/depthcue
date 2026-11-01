@@ -47,7 +47,7 @@ serve  Shows the deck in the player at a loopback address and reloads the page w
        The default port is 4173; --port 0 picks a free one.
 
 edit   Opens the editor at a loopback address. Changes go through the same operations an agent uses, save
-       to the folder only when you ask, and a draft survives a closed tab. The deck must pass check.
+       to the folder by themselves, and a draft survives a closed tab. The deck must pass check.
        The player is at /present. Same default port as serve; keep one port to keep your drafts.
 
 export Writes a folder that opens by double-click: index.html with the deck inside it, the player beside it

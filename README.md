@@ -15,8 +15,10 @@ by hand, and read afterwards as a document.
 - **Write and check.** `depthcue check` validates every scene, reference and asset and says where each problem is.
   `depthcue render` draws each scene in a headless browser and reports overflow, clipping, overlap, small text and
   low contrast, with a PNG per scene if you ask.
-- **Edit by hand.** `depthcue edit` opens a browser editor. Its changes go through the same operations an agent
-  uses, save only when you ask, and a draft survives a closed tab.
+- **Edit by hand.** `depthcue edit` opens a browser editor where you click a block to change it, pin a block
+  anywhere on the slide, comment on a block, and accept or revert what an agent changed. Its changes go through the
+  same operations an agent uses and save by themselves. See [the editor](docs/editor.md),
+  [placing blocks](docs/placement.md), and [comments and review](docs/comments-and-review.md).
 - **Edit by agent.** `depthcue-mcp` is an MCP server with five tools: `deck_get`, `deck_apply`, `deck_comment`,
   `deck_render` and `deck_present`. An edit is one transaction against a revision. A stale revision is rejected,
   never merged. A person's comments sit beside the deck, never in it, and an agent can answer them with `deck_comment`.
@@ -40,6 +42,9 @@ alias depthcue="node $PWD/packages/cli/dist/main.js"
 depthcue check fixtures/decks/demo
 depthcue serve fixtures/decks/demo    # http://127.0.0.1:4173/
 depthcue export fixtures/decks/demo   # writes demo-export/, open its index.html
+
+cp -r fixtures/decks/demo my-deck     # the editor saves into the folder, so work on a copy
+depthcue edit my-deck                 # prints the address of the editor
 ```
 
 On Windows, run `node packages/cli/dist/main.js` in place of `depthcue`.

@@ -1,7 +1,16 @@
 # Depthcue: plan
 
-Status: planning, 2026-10-30. "Depthcue" is a working name. Name, license and repo visibility are Yep's proposals
+Status: v0.1 is built and trialed, and the editor was rebuilt on 2026-11-01 (see below). The rest of this plan is
+as written on 2026-10-30. "Depthcue" is a working name. Name, license and repo visibility are Yep's proposals
 and wait for Dimitri's approval. Evidence for every claim here is in `RESEARCH.md`.
+
+**Editor rebuild, 2026-11-01.** After testing v0.1 the owner found the editor too complicated and asked for direct
+editing on the slide with PowerPoint-style freedom. The editor now works on the slide itself, and a person can pin
+a block anywhere on it, comment on blocks and review an agent's changes. This changes the plan in one place: free
+placement is in, as a human override on top of the automatic layouts, so the lines below that rule out "a freeform
+canvas" mean a canvas without layouts. Agents still place blocks in areas. The user guides are [the
+editor](editor.md), [placing blocks](placement.md) and [comments and review](comments-and-review.md); the build
+record is [EDITOR_REMAKE.md](EDITOR_REMAKE.md).
 
 ## Thesis
 
@@ -122,7 +131,8 @@ undo and redo, autosave with crash recovery, screenshot capture, overflow diagno
 Accessibility foundations, because they shape the architecture: keyboard navigation, focus order, semantic
 markup, reduced motion, alt text required by the validator. One bundled fixture deck that shows all of it.
 
-**Out.** Live multi-user editing, a server op log, a marketplace, user code, a freeform canvas, a constraint
+**Out.** Live multi-user editing, a server op log, a marketplace, user code, a freeform canvas (pinning a block
+came later, see the status note), a constraint
 solver, a browser Kinescript renderer, voice conversation, live external data, PPTX and PDF export, single-file
 packaging.
 
