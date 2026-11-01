@@ -295,21 +295,48 @@ describe("a second import into the same folder", () => {
 });
 
 describe("the decks that were here before", () => {
-  const old = ["v0-1", "v0-2", "v0-3", "demo", "charts", "v0-4-brand"];
+  const plain = ["v0-1", "v0-2", "v0-3", "demo", "charts"];
+  /** The deck copied to a folder of its own, with what it holds now. */
+  const copyOf = (name: string) => {
+    const dir = make();
+    cpSync(join(decks, name), dir, { recursive: true });
+    return dir;
+  };
+  /** Everything of a deck folder but its brand folder. */
+  const outsideBrand = (dir: string) =>
+    Object.fromEntries(Object.entries(snapshot(dir)).filter(([path]) => !path.startsWith("brand/")));
 
-  it.each(old)(
-    "%s still checks clean, and importing a brand next to it changes nothing in it",
-    async (name) => {
-      const dir = make();
-      cpSync(join(decks, name), dir, { recursive: true });
-      const before = snapshot(dir);
-      expect((await cli("check", dir)).out).toBe("0 errors, 0 warnings");
+  it.each(plain)("%s takes an imported brand in brand/ and nothing else of it changes", async (name) => {
+    const dir = copyOf(name);
+    const before = outsideBrand(dir);
+    const rev = (await cli("rev", dir)).out;
+    expect((await cli("check", dir)).out).toBe("0 errors, 0 warnings");
 
-      const folder = make();
-      const { file, out } = await writeFixture(folder);
-      expect((await cli("brand", "import", file, "--out", out)).code).toBe(0);
-      expect((await cli("check", dir)).out).toBe("0 errors, 0 warnings");
-      expect(snapshot(dir)).toEqual(before);
-    },
-  );
+    const { file } = await writeFixture(make());
+    const imported = await cli("brand", "import", file, "--out", join(dir, "brand"));
+    expect(imported.code, imported.err).toBe(0);
+    expect(existsSync(join(dir, "brand", "brand.json"))).toBe(true);
+
+    // Not a byte of the deck itself is touched, and what it is told about its own state is the same.
+    expect(outsideBrand(dir)).toEqual(before);
+    expect((await cli("rev", dir)).out).toBe(rev);
+    // The deck does not name the brand yet, so check says the brand files are not used, and finds nothing else wrong.
+    const checked = await cli("check", dir);
+    expect(checked.code).toBe(0);
+    expect(checked.out).toContain("0 errors, 1 warning");
+    expect(checked.out).toContain(
+      "brand/brand.json  warning  The deck folder has brand files, but deck.json names no brand",
+    );
+  });
+
+  it("v0-4-brand has a brand of its own, which an import into its folder does not replace", async () => {
+    const dir = copyOf("v0-4-brand");
+    const before = snapshot(dir);
+    const { file } = await writeFixture(make());
+    const refused = await cli("brand", "import", file, "--out", join(dir, "brand"));
+    expect(refused.code).toBe(2);
+    expect(refused.err).toContain(join(dir, "brand"));
+    expect(snapshot(dir)).toEqual(before);
+    expect((await cli("check", dir)).out).toBe("0 errors, 0 warnings");
+  });
 });
