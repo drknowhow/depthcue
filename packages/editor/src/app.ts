@@ -417,6 +417,16 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         const result = session.apply([{ op: "block.move", scene: current.id, id, after }]);
         showProblem(result.ok ? undefined : problemOf(result));
       },
+      setTextStyle(id, key, value) {
+        const result = session.apply([
+          { op: "block.set", scene: selected, id, set: { [key]: value === "" ? null : value } },
+        ]);
+        showProblem(result.ok ? undefined : problemOf(result));
+      },
+      upgradeScene(id) {
+        const result = session.apply([{ op: "scene.upgrade", id }]);
+        showProblem(result.ok ? undefined : problemOf(result));
+      },
       cell: () => tables.cell(selectedBlock),
       editCell(action, at) {
         if (selectedBlock !== undefined) tables.run(selectedBlock, action, at);

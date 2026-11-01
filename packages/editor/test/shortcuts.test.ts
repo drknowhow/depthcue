@@ -25,6 +25,7 @@ beforeEach(mount);
 afterEach(() => {
   editor.destroy();
   vi.restoreAllMocks();
+  Reflect.deleteProperty(document, "execCommand");
 });
 
 const TEXT = "method-body";
@@ -97,6 +98,27 @@ const laidOut = (boxes: Record<string, [number, number, number, number]>) => {
     const found = this instanceof HTMLElement && this.dataset.id ? boxes[this.dataset.id] : undefined;
     return found ? rect(...found) : rect(0, 0, 0, 0);
   });
+};
+
+/**
+ * The body text of the method scene in a scene that reads markup, with all its words selected. The browser's own
+ * formatting is not here, so `commands` is what was asked of it.
+ */
+const richText = () => {
+  const upgraded = store.session.apply([{ op: "scene.upgrade", id: "method" }]);
+  if (!upgraded.ok) throw new Error("the scene should be upgraded");
+  const commands: string[] = [];
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: (name: string) => commands.push(name) > 0,
+  });
+  const node = inside(TEXT) as HTMLElement;
+  node.focus();
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  getSelection()?.removeAllRanges();
+  getSelection()?.addRange(range);
+  return { node, commands };
 };
 
 /**
@@ -265,6 +287,24 @@ const CASES: Record<string, () => void | Promise<void>> = {
     press(blockNode(PICTURE), "Escape");
     expect(editor.blockId).toBeUndefined();
   },
+  bold() {
+    const { node, commands } = richText();
+    // The key is the text's, and the browser's own bold does not run: the change is the editor's, to be one step.
+    expect(press(node, "b", { ctrlKey: true }).defaultPrevented).toBe(true);
+    expect(commands).toEqual(["bold"]);
+  },
+  italic() {
+    const { node, commands } = richText();
+    expect(press(node, "i", { metaKey: true }).defaultPrevented).toBe(true);
+    expect(commands).toEqual(["italic"]);
+  },
+  link() {
+    const { node } = richText();
+    expect(press(node, "k", { ctrlKey: true }).defaultPrevented).toBe(true);
+    // The palette stays shut, for the key is the text's, and the box that asks for the address is open.
+    expect(host.querySelector<HTMLElement>(".ed-palette")?.hidden).toBe(true);
+    expect(host.querySelector<HTMLFormElement>(".ed-fmt-link")?.hidden).toBe(false);
+  },
   "bar-value"() {
     editor.select("demand");
     const first = host.querySelector<HTMLElement>(".dc-bar") as HTMLElement;
@@ -316,6 +356,15 @@ describe("the table of shortcuts", () => {
     press(document, "k", { metaKey: true });
     expect(palette.hidden).toBe(false);
   });
+
+  it("leaves Ctrl K to the palette in a text that has no links: a scene below 0.3 reads no markup", () => {
+    const palette = host.querySelector<HTMLElement>(".ed-palette") as HTMLElement;
+    const text = inside(TEXT) as HTMLElement;
+    text.focus();
+    press(text, "k", { ctrlKey: true });
+    expect(palette.hidden).toBe(false);
+    expect(host.querySelector(".ed-fmt")).toBeNull();
+  });
 });
 
 describe("the shortcut sheet", () => {
@@ -341,6 +390,7 @@ describe("the shortcut sheet", () => {
       "Everywhere",
       "The chosen block",
       "With a block focused",
+      "Typing in a text",
       "On a chart bar",
     ]);
     const caps = (id: string) =>

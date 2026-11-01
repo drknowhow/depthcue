@@ -1,13 +1,26 @@
-import { type Frame, isMarker, type Op, type Scene, type Session, TEXT_LIMITS } from "@depthcue/core";
+import {
+  type Frame,
+  isMarker,
+  type Op,
+  parseText,
+  readsMarkup,
+  type Scene,
+  type Session,
+  serializeText,
+  TEXT_LIMITS,
+  visibleText,
+} from "@depthcue/core";
 import { applyLook, h, renderScene } from "@depthcue/player";
 import { createBuildBadges } from "./buildbadges.ts";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
 import { type CommentPins, type CommentSurface, createCommentPins } from "./commentpins.ts";
 import { type CueBook, clock } from "./cues.ts";
+import { problemOf } from "./fields.ts";
 import { createFrameDrag } from "./framedrag.ts";
 import { drawGhosts, type GhostHooks } from "./ghosts.ts";
 import type { Grid, Spot } from "./grid.ts";
 import { frameOver, NUDGE, NUDGE_BIG, type Rect, slideIn } from "./pin.ts";
+import { drawRich, flowOfDom, pastePlain, rangeIn, runFormat } from "./richtext.ts";
 import { createSlotDrag } from "./slotdrag.ts";
 import { restingBox, snap, standings } from "./snap.ts";
 import { cellFocus, wireTables } from "./tablewire.ts";
@@ -90,6 +103,11 @@ interface Field {
   node: HTMLElement;
   /** A pinned text is chosen and moved as a block, and is typed in only after Enter or a double click. */
   pinned?: boolean;
+  /**
+   * Set on a text of a scene that reads markup: the field holds the elements the player draws, is typed in as rich text,
+   * and what it reads and writes is markup. `lists` is true for body text. The limit counts what the audience sees.
+   */
+  rich?: { lists: boolean };
   read(scene: Scene): string | undefined;
   write(scene: Scene, text: string): Op;
 }
@@ -144,12 +162,15 @@ function fieldsOf(scene: Scene, root: HTMLElement): Field[] {
     if (block.type !== "text") continue;
     const node = nodes.get(block.id);
     if (!node) continue;
+    // Body text of a scene that reads markup is a `div` of paragraphs and lists, typed in as a whole.
+    const rich = readsMarkup(scene) ? { lists: block.role === "body" } : undefined;
     fields.push({
       id: block.id,
       label: `${block.role[0]?.toUpperCase()}${block.role.slice(1)}`,
       limit: TEXT_LIMITS[block.role],
-      node: node.querySelector<HTMLElement>("p") ?? node,
+      node: rich?.lists ? node : (node.querySelector<HTMLElement>("p") ?? node),
       pinned: block.frame !== undefined,
+      ...(rich && { rich }),
       read: (current) => {
         const found = current.blocks.find((candidate) => candidate.id === block.id);
         return found?.type === "text" ? found.text : undefined;
@@ -213,11 +234,21 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
   };
 
   function wire(field: Field, sceneId: string) {
-    const { node } = field;
+    const { node, rich } = field;
     node.spellcheck = true;
     let visit = 0;
+    /** True while what is typed was refused by the document, so what the field shows is not what the document has. */
+    let refused = false;
 
-    const armed = ["data-edit", "role", "aria-label", "aria-multiline", "contenteditable", "tabindex"];
+    const armed = [
+      "data-edit",
+      "data-rich",
+      "role",
+      "aria-label",
+      "aria-multiline",
+      "contenteditable",
+      "tabindex",
+    ];
     /** What the node carried before it was armed. A pinned text is also its block, which a press chooses and Tab reaches. */
     let before: [string, string | null][] = [];
     /** Makes the text typeable. A pinned text is armed only while it is being edited. */
@@ -226,8 +257,10 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       node.dataset.edit = "";
       node.setAttribute("role", "textbox");
       node.setAttribute("aria-label", field.name ?? `${field.label} text`);
-      node.setAttribute("aria-multiline", "false");
-      node.contentEditable = supportsPlaintext() ? "plaintext-only" : "true";
+      node.setAttribute("aria-multiline", String(rich?.lists === true));
+      // Rich text is made of elements, so it cannot be plain: its pastes and drops are made plain below instead.
+      if (rich) node.dataset.rich = "";
+      node.contentEditable = rich || !supportsPlaintext() ? "true" : "plaintext-only";
       node.tabIndex = 0;
     };
     const disarm = () => {
@@ -254,24 +287,54 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
 
     const scene = () => session.doc.scenes[sceneId] as Scene;
     const current = () => field.read(scene()) ?? "";
+    /** How long a text is for the limit: as the audience sees it, so markup and list markers do not count. */
+    const lengthOf = (text: string) => (rich ? visibleText(parseText(text, rich)).length : text.length);
+    /** What the field holds now, as the text the document would keep and the length the limit is about. */
+    const readNode = () => {
+      if (!rich) {
+        const text = flat(node.textContent ?? "").trim();
+        return { text, length: text.length };
+      }
+      const flow = flowOfDom(node, rich.lists);
+      return { text: serializeText(flow, rich), length: visibleText(flow).length };
+    };
 
-    const check = (text: string): string | undefined => {
-      if (text === "") return field.empty ?? "Text cannot be empty. Remove the block instead.";
-      if (text.length > field.limit) return `${text.length - field.limit} over the limit of ${field.limit}.`;
+    const check = ({ text, length }: { text: string; length: number }): string | undefined => {
+      if (rich ? length === 0 : text === "")
+        return field.empty ?? "Text cannot be empty. Remove the block instead.";
+      if (length > field.limit) {
+        const over = `${length - field.limit} over the limit of ${field.limit}.`;
+        return rich ? `${over} Shorten it, or move the detail into a body block or the reading text.` : over;
+      }
       return undefined;
     };
 
+    /** Puts what the document says in the field, in place of what was typed and refused. */
+    const showDocument = () => {
+      if (rich) drawRich(node, parseText(current(), rich), rich.lists);
+      else node.textContent = current();
+    };
+
     const update = () => {
-      const text = flat(node.textContent ?? "").trim();
-      const problem = check(text);
+      const now = readNode();
+      const problem = check(now);
       node.toggleAttribute("data-invalid", problem !== undefined);
-      hooks.hint(problem ?? `${field.label} ${text.length} of ${field.limit}`, problem !== undefined);
-      hooks.typed?.(field.id, text.length, field.limit);
+      hooks.hint(problem ?? `${field.label} ${now.length} of ${field.limit}`, problem !== undefined);
+      hooks.typed?.(field.id, now.length, field.limit);
       changed();
-      if (problem !== undefined || text === current()) return;
+      refused = problem !== undefined;
+      if (problem !== undefined || now.text === current()) return;
       typing = true;
       try {
-        session.apply([field.write(scene(), text)], { coalesce: `text:${field.key ?? field.id}:${visit}` });
+        const result = session.apply([field.write(scene(), now.text)], {
+          coalesce: `text:${field.key ?? field.id}:${visit}`,
+        });
+        // Markup can be refused though its words are in the limit: a tone too faint to read, or too much formatting.
+        if (!result.ok) {
+          refused = true;
+          node.toggleAttribute("data-invalid", true);
+          hooks.hint(problemOf(result), true);
+        }
       } finally {
         typing = false;
       }
@@ -279,14 +342,28 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
 
     node.addEventListener("focus", () => {
       visit = ++visits;
-      hooks.hint(`${field.label} ${current().length} of ${field.limit}`, false);
-      hooks.typed?.(field.id, current().length, field.limit);
+      hooks.hint(`${field.label} ${lengthOf(current())} of ${field.limit}`, false);
+      hooks.typed?.(field.id, lengthOf(current()), field.limit);
       hooks.select(field.id);
     });
     node.addEventListener("input", update);
+    // A format command is one step to undo, and what is typed after it another.
+    node.addEventListener("dc-format", () => {
+      visit = ++visits;
+    });
     node.addEventListener("beforeinput", (event) => {
-      // One line each: Enter finishes the edit. History belongs to the session, not to the browser.
-      if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") {
+      const type = event.inputType;
+      if (rich && (type === "insertFromDrop" || type === "insertFromPasteAsQuotation")) {
+        // Dropped text would bring its own elements with it. Plain text is pasted, and a drop is not a paste.
+        event.preventDefault();
+      } else if (rich?.lists && (type === "insertParagraph" || type === "insertLineBreak")) {
+        // In body text Enter is a new line, or a new item in a list, which the browser makes itself.
+        if (type === "insertParagraph" && !rangeIn(node)?.startContainer.parentElement?.closest("li")) {
+          event.preventDefault();
+          document.execCommand("insertLineBreak");
+        }
+      } else if (type === "insertParagraph" || type === "insertLineBreak") {
+        // One line each: Enter finishes the edit. History belongs to the session, not to the browser.
         event.preventDefault();
         node.blur();
         giveBack();
@@ -302,32 +379,58 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
     });
     node.addEventListener("paste", (event) => {
       event.preventDefault();
-      const pasted = flat(event.clipboardData?.getData("text/plain") ?? "");
-      if (pasted) document.execCommand("insertText", false, pasted);
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (rich) pastePlain(node, text, rich.lists);
+      else if (flat(text)) document.execCommand("insertText", false, flat(text));
     });
     node.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         // The block of a pinned text is this node, and its own Escape would let go of the choice.
         event.preventDefault();
-        node.textContent = current();
+        showDocument();
         node.removeAttribute("data-invalid");
         node.blur();
         if (field.pinned) giveBack();
         else hooks.deselect?.();
+        return;
+      }
+      // Inside a rich text these keys are the text's. Elsewhere Ctrl+K stays the palette, which is why the key is stopped
+      // here: the palette does not take a key that something has already used.
+      if (!rich || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "b" || key === "i") {
+        event.preventDefault();
+        const problem = runFormat(node, key === "b" ? "bold" : "italic");
+        if (problem !== undefined) hooks.hint(problem, true);
+      } else if (key === "k") {
+        event.preventDefault();
+        node.dispatchEvent(new Event("dc-link", { bubbles: true }));
       }
     });
-    node.addEventListener("blur", () => {
-      const text = flat(node.textContent ?? "").trim();
-      if (check(text) !== undefined) {
+    const settle = () => {
+      const now = readNode();
+      if (check(now) !== undefined || refused) {
         // Refused edits never reached the document, so show what it still says.
-        node.textContent = current();
-      } else if (node.textContent !== text) {
-        node.textContent = text;
+        showDocument();
+      } else if (rich) {
+        // The elements the browser made are replaced by the ones the player would draw for the same words.
+        drawRich(node, flowOfDom(node, rich.lists), rich.lists);
+      } else if (node.textContent !== now.text) {
+        node.textContent = now.text;
       }
+      refused = false;
       node.removeAttribute("data-invalid");
       hooks.hint("", false);
       if (field.pinned) disarm();
+    };
+    node.addEventListener("blur", (event) => {
+      // The keyboard is on its way to the box that asks for a link's address, and the selection has to wait there.
+      const to = event.relatedTarget;
+      if (rich && to instanceof Element && to.closest("[data-formatbar]")) return;
+      settle();
     });
+    // The box that asked for an address let go of the keyboard somewhere other than the text.
+    node.addEventListener("dc-settle", settle);
   }
 
   /** An image takes a picture dropped on it or pasted into it. A dropped file that is not a picture is told so. */
@@ -393,7 +496,7 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       node.toggleAttribute("data-alt-missing", missingAlt);
       node.setAttribute(
         "aria-label",
-        `${describeBlock(block, 60)}.${missingAlt ? " Alt text is missing." : ""} ${
+        `${describeBlock(block, 60, scene)}.${missingAlt ? " Alt text is missing." : ""} ${
           block.type === "text" ? "Pinned. Press Enter to type in it." : "Select to edit."
         }`,
       );
