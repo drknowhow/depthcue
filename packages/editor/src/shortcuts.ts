@@ -81,7 +81,7 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
       group: "Add to the slide",
       does: "Add a chart",
       keys: [["C"]],
-      handle: (event) => when(letter("c")(event), () => actions.add("bar-chart")),
+      handle: (event) => when(letter("c")(event), () => actions.add("chart")),
     },
     {
       id: "add-image",

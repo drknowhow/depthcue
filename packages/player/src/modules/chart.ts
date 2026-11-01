@@ -1,6 +1,6 @@
 import { h } from "../dom.ts";
 import type { HydrateContext, ModuleInstance } from "../modules.ts";
-import { unitText } from "../scene.ts";
+import { unitText } from "../table.ts";
 
 const SUFFIXES = ["th", "st", "nd", "rd"] as const;
 

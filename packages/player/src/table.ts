@@ -16,6 +16,10 @@ export function numberText(value: number, language?: string): string {
   }
 }
 
+/** A unit as it follows a number: a space and the unit, except that a percent sign sits against the number. */
+export const unitText = (unit: string | undefined) =>
+  unit === undefined ? "" : unit === "%" ? "%" : ` ${unit}`;
+
 /**
  * The table as a table. This is its static form: it reads correctly with no script, to a screen reader, and in print,
  * and the table module only adds to it. Every cell is set as text. A number column is right-aligned, with its unit

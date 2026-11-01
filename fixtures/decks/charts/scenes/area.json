@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "0.3",
+  "id": "area",
+  "title": "Active users",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "area-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Mobile caught up with web in June"
+    },
+    {
+      "id": "area-chart",
+      "type": "chart",
+      "kind": "area",
+      "title": "Active users",
+      "unit": "thousands",
+      "columns": [
+        {
+          "label": "Month"
+        },
+        {
+          "label": "Web"
+        },
+        {
+          "label": "Mobile"
+        }
+      ],
+      "rows": [
+        ["Jan", 42, 18],
+        ["Feb", 44, 24],
+        ["Mar", 43, 31],
+        ["Apr", 47, 39],
+        ["May", 49, 46],
+        ["Jun", 50, 55]
+      ],
+      "sourceIds": ["area-source"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "area-source",
+      "title": "Sample figures for this deck"
+    }
+  ]
+}

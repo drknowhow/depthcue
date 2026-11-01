@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "0.3",
+  "id": "scatter",
+  "title": "Spend against signups",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "scatter-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "More spend, fewer signups per dollar"
+    },
+    {
+      "id": "scatter-chart",
+      "type": "chart",
+      "kind": "scatter",
+      "title": "Spend against signups",
+      "columns": [
+        {
+          "label": "Spend",
+          "unit": "$k"
+        },
+        {
+          "label": "Signups"
+        },
+        {
+          "label": "Trials"
+        }
+      ],
+      "rows": [[10, 120, 60], [20, 210, 95], [30, 260, 140], [40, 330, 150], [55, 390, 210], [70, 400, 260]],
+      "sourceIds": ["scatter-source"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "scatter-source",
+      "title": "Sample figures for this deck"
+    }
+  ]
+}

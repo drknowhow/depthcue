@@ -2,6 +2,7 @@ import { type ApplyOptions, type Op, type SlotName, slotsOf } from "@depthcue/co
 import { h } from "@depthcue/player";
 import { createAdder } from "./adder.ts";
 import { createCanvas } from "./canvas.ts";
+import { kindChange } from "./chartwire.ts";
 import { popoverChip } from "./chip.ts";
 import { afterWhenMoving } from "./cleanup.ts";
 import { createBlockClipboard, type Here } from "./clipboard.ts";
@@ -417,6 +418,19 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         const result = session.apply([{ op: "block.move", scene: current.id, id, after }]);
         showProblem(result.ok ? undefined : problemOf(result));
       },
+      chartKind(id, kind) {
+        const current = session.doc.scenes[selected];
+        const block = current?.blocks.find((candidate) => candidate.id === id);
+        if (!current || !block) return;
+        const change = kindChange(current, block, kind, session.doc.deck.language);
+        if ("problem" in change) {
+          showProblem(change.problem);
+          return;
+        }
+        const result = session.apply(change.ops);
+        showProblem(result.ok ? undefined : problemOf(result));
+      },
+      editData: (id) => void toolbar.openPanel(id, "data"),
       setTextStyle(id, key, value) {
         const result = session.apply([
           { op: "block.set", scene: selected, id, set: { [key]: value === "" ? null : value } },
@@ -462,7 +476,11 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     };
   }
   // Everything the editor can do, found by typing.
-  const palette = createPalette({ commands: () => listCommands(sources()), keyName });
+  // A command that cannot be done is greyed in a menu, with its reason. The palette lists only what works.
+  const palette = createPalette({
+    commands: () => listCommands(sources()).filter((command) => command.disabled === undefined),
+    keyName,
+  });
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
   const floor = h("div", { class: "ed-stage" }, stage, quick.element, drawer.element);

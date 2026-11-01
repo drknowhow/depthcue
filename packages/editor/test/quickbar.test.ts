@@ -76,10 +76,10 @@ describe("adding to the slide", () => {
   it("writes the key of Text, Chart and Image on their buttons, and tells assistive technology the same", () => {
     const written = (node: Element) => node.querySelector(".ed-kbd")?.textContent;
     expect(written(quick("text"))).toBe("T");
-    expect(written(quick("bar-chart"))).toBe("C");
+    expect(written(quick("chart"))).toBe("C");
     expect(written(bar().querySelector<HTMLElement>("label.ed-button") as HTMLElement)).toBe("I");
     expect(quick("text").getAttribute("aria-keyshortcuts")).toBe("T");
-    expect(quick("bar-chart").getAttribute("aria-keyshortcuts")).toBe("C");
+    expect(quick("chart").getAttribute("aria-keyshortcuts")).toBe("C");
     expect(bar().querySelector("input[type='file']")?.getAttribute("aria-keyshortcuts")).toBe("I");
     // Written for the eye only: the name a screen reader reads has no stray letter in it.
     expect(bar().querySelector(".ed-kbd")?.getAttribute("aria-hidden")).toBe("true");
@@ -114,11 +114,11 @@ describe("adding to the slide", () => {
         "[data-id='method-heading'] [data-edit], [data-id='method-heading'][data-edit]",
       )
       ?.focus();
-    quick("bar-chart").click();
+    quick("chart").click();
     expect(ids()).toEqual(["method-heading", "method-body", "method-diagram", "method-chart"]);
     host.querySelector<HTMLElement>("[data-id='method-diagram']")?.click();
     expect(editor.blockId).toBe("method-diagram");
-    quick("bar-chart").click();
+    quick("chart").click();
     expect(ids()).toEqual([
       "method-heading",
       "method-body",

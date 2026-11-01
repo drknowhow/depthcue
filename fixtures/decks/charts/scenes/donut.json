@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "0.3",
+  "id": "donut",
+  "title": "Where orders come from",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "donut-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Search brings in the most orders"
+    },
+    {
+      "id": "donut-chart",
+      "type": "chart",
+      "kind": "donut",
+      "title": "Where orders come from",
+      "unit": "orders",
+      "columns": [
+        {
+          "label": "Source"
+        },
+        {
+          "label": "Orders"
+        }
+      ],
+      "rows": [["Search", 3000], ["Direct", 2000], ["Referral", 1000], ["Email", 700], ["Social", 300]],
+      "sourceIds": ["donut-source"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "donut-source",
+      "title": "Sample figures for this deck"
+    }
+  ]
+}

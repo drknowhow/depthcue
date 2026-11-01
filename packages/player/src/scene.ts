@@ -1,8 +1,9 @@
 import type { Block, Scene } from "@depthcue/core";
+import { renderChart } from "./charts/draw.ts";
 import { h } from "./dom.ts";
 import { gatedIds } from "./model.ts";
 import { assetUrl, safeUrl } from "./safe.ts";
-import { renderTable } from "./table.ts";
+import { renderTable, unitText } from "./table.ts";
 import { renderText } from "./text.ts";
 
 export interface RenderContext {
@@ -14,9 +15,6 @@ export interface RenderContext {
 
 type Source = NonNullable<Scene["sources"]>[number];
 type BarChart = Extract<Block, { type: "bar-chart" }>;
-
-export const unitText = (unit: string | undefined) =>
-  unit === undefined ? "" : unit === "%" ? "%" : ` ${unit}`;
 
 /**
  * The chart as a table with a bar in each row. This is the chart's static form: it reads correctly with no
@@ -132,13 +130,7 @@ function renderBlock(
       node = h("figure", { class: "dc-figure dc-table-figure" }, renderTable(block, ctx.language));
       break;
     case "chart":
-      // Until the player draws these, it holds their place with what they are and their title.
-      node = h(
-        "figure",
-        { class: "dc-figure dc-placeholder", "data-kind": block.kind },
-        h("p", { class: "dc-label" }, "Chart"),
-        block.title && h("figcaption", {}, block.title),
-      );
+      node = renderChart(block, ctx.language);
       break;
   }
   node.dataset.id = block.id;

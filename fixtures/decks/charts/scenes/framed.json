@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "0.3",
+  "id": "framed",
+  "title": "Two charts side by side",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "framed-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Orders grew while the wait fell",
+      "frame": {
+        "x": 5,
+        "y": 8,
+        "w": 90,
+        "h": 16
+      }
+    },
+    {
+      "id": "framed-orders",
+      "type": "chart",
+      "kind": "bar",
+      "title": "Orders by quarter",
+      "unit": "units",
+      "columns": [
+        {
+          "label": "Quarter"
+        },
+        {
+          "label": "Orders"
+        }
+      ],
+      "rows": [["Q1", 4000], ["Q2", 4600], ["Q3", 5200], ["Q4", 6000]],
+      "frame": {
+        "x": 5,
+        "y": 30,
+        "w": 44,
+        "h": 62
+      },
+      "sourceIds": ["framed-source"]
+    },
+    {
+      "id": "framed-wait",
+      "type": "chart",
+      "kind": "line",
+      "title": "Median wait",
+      "unit": "ms",
+      "columns": [
+        {
+          "label": "Week"
+        },
+        {
+          "label": "Wait"
+        }
+      ],
+      "rows": [["W1", 120], ["W2", 118], ["W3", 125], ["W4", 110], ["W5", 105], ["W6", 98]],
+      "frame": {
+        "x": 52,
+        "y": 30,
+        "w": 43,
+        "h": 62
+      },
+      "sourceIds": ["framed-source"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "framed-source",
+      "title": "Sample figures for this deck"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "0.3",
+  "id": "line",
+  "title": "Response time",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "line-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "The slow tail came down with the median"
+    },
+    {
+      "id": "line-chart",
+      "type": "chart",
+      "kind": "line",
+      "title": "Response time",
+      "unit": "ms",
+      "columns": [
+        {
+          "label": "Week"
+        },
+        {
+          "label": "Median"
+        },
+        {
+          "label": "Slowest 5%"
+        }
+      ],
+      "rows": [
+        ["W1", 120, 380],
+        ["W2", 118, 410],
+        ["W3", 125, 395],
+        ["W4", 110, 360],
+        ["W5", 105, 340],
+        ["W6", 98, 310],
+        ["W7", 96, 305],
+        ["W8", 92, 290]
+      ],
+      "sourceIds": ["line-source"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "line-source",
+      "title": "Sample figures for this deck"
+    }
+  ]
+}

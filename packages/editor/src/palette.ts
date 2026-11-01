@@ -28,6 +28,10 @@ export interface Command {
   section?: string;
   /** The name of the submenu the menu puts it in, so a long run of choices is one item that opens. */
   submenu?: string;
+  /** Why it cannot be done now. The menu lists it greyed, with the reason beside it; the palette leaves it out. */
+  disabled?: string;
+  /** Marks the choice that is in force, among the commands of a menu of choices. */
+  checked?: boolean;
   run(): void;
 }
 

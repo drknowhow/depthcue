@@ -134,7 +134,7 @@ const CASES: Record<string, () => void | Promise<void>> = {
   },
   "add-chart"() {
     press(document, "c");
-    expect(kinds()).toEqual(["text", "text", "image", "bar-chart"]);
+    expect(kinds()).toEqual(["text", "text", "image", "chart"]);
   },
   "add-image"() {
     const opened = vi.fn();

@@ -205,21 +205,21 @@ describe("adding from a place", () => {
   it("offers the kinds the area takes, and no others", () => {
     canvas.render("hollow");
     const kinds = [...menu("evidence").children].map((node) => node.textContent);
-    expect(kinds).toEqual(["Text", "Image", "Chart", "Clip", "Table"]);
+    expect(kinds).toEqual(["Text", "Image", "Clip", "Table", "Chart"]);
     canvas.render("words");
     expect([...menu("media").children].map((node) => node.textContent)).toEqual([
       "Image",
-      "Chart",
       "Clip",
       "Table",
+      "Chart",
     ]);
   });
 
   it("adds the kind that was picked, to this area", () => {
     canvas.render("words");
     open("media").click();
-    (menu("media").querySelector("[data-ghost-kind='bar-chart']") as HTMLElement).click();
-    expect(asked).toEqual([{ slot: "media", kind: "bar-chart" }]);
+    (menu("media").querySelector("[data-ghost-kind='chart']") as HTMLElement).click();
+    expect(asked).toEqual([{ slot: "media", kind: "chart" }]);
   });
 
   it("hands over the file that was chosen for an image", () => {

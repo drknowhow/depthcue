@@ -11,7 +11,8 @@ import {
 import { h } from "@depthcue/player";
 import { type Canvas, SUMMARY_LIMIT } from "./canvas.ts";
 import { addedRow, CHART_ROWS_MAX, sortedRows } from "./chart.ts";
-import { buildChip, type Chip, fillChip, fitPopover, hidePopover, showPopover } from "./chip.ts";
+import { dataPanel } from "./chartpanel.ts";
+import { buildChip, type Chip, fillChip, fitPopover, hidePopover, showPopover, standBeside } from "./chip.ts";
 import { afterWhenMoving, removeBlock, removeClaim } from "./cleanup.ts";
 import { type CueBook, measureClip, videoOf } from "./cues.ts";
 import { type CueTools, cuesPanel } from "./cuespanel.ts";
@@ -128,6 +129,11 @@ export interface Toolbar {
    * image afterwards, its Edit popover opens on the alt text. True when the image was replaced.
    */
   replaceImage(id: string, file: File): Promise<boolean>;
+  /**
+   * Opens the popover of the chosen block's chip called `name`, with the keyboard on the cell of the grid in it, or on
+   * its first control. False when the block is not the one chosen or has no such chip.
+   */
+  openPanel(id: string, name: string): boolean;
   /** Moves the keyboard into the toolbar. False when there is no toolbar to go to. */
   focus(): boolean;
   destroy(): void;
@@ -214,13 +220,18 @@ export function createToolbar(
 
   /** Keeps the open popover inside the slide, opening it upward when the toolbar is below its block. */
   function fitPop() {
-    if (open) fitPopover(open.pop, canvas.element.getBoundingClientRect(), element.dataset.side === "below");
+    if (!open) return;
+    const slide = canvas.element.getBoundingClientRect();
+    fitPopover(open.pop, slide, element.dataset.side === "below");
+    // A chart's data is edited with the chart in view, so its popover stands beside the chart where there is room.
+    const anchor = shown && open.panel.name === "data" ? canvas.nodeOf(shown.id) : undefined;
+    if (anchor) standBeside(open.pop, restingBox(anchor), slide);
   }
 
-  function openPop(chip: Chip) {
+  function openPop(chip: Chip, focus?: HTMLElement | null) {
     closePop();
     open = chip;
-    showPopover(chip);
+    showPopover(chip, focus);
     fitPop();
   }
 
@@ -390,6 +401,8 @@ export function createToolbar(
       switch (block.type) {
         case "bar-chart":
           return [chartPanel(host, sceneId, block.id)];
+        case "chart":
+          return [dataPanel(host, sceneId, block.id)];
         case "table":
           return [tablePanel(host, sceneId, block.id)];
         case "image":
@@ -606,6 +619,12 @@ export function createToolbar(
     togglePin,
     nudge,
     replaceImage: replaceImageOf,
+    openPanel(id, name) {
+      const chip = shown?.id === id ? chips.find((candidate) => candidate.panel.name === name) : undefined;
+      if (!chip) return false;
+      openPop(chip, chip.pop.querySelector<HTMLElement>("[data-cell][tabindex='0']"));
+      return true;
+    },
     focus() {
       if (element.hidden) return false;
       element.querySelector<HTMLElement>("select, button")?.focus();

@@ -181,7 +181,10 @@ export function cellCommands(block: TableBlock, at: Spot, run: (action: CellActi
 const quoted = (text: string) => (/[\t\r\n"]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text);
 
 /** A table as tab-separated rows, header first when it shows, so it pastes into a spreadsheet as the table it is. */
-export function tabSeparated(block: TableBlock, say: (value: number) => string): string {
+export function tabSeparated(
+  block: Pick<TableBlock, "columns" | "rows" | "header">,
+  say: (value: number) => string,
+): string {
   const rows = block.rows.map((row) =>
     row.map((cell) => (cell === null ? "" : typeof cell === "number" ? say(cell) : quoted(cell))),
   );
