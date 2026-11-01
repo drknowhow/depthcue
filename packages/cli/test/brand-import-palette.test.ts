@@ -29,6 +29,35 @@ function themeOf(colors: Partial<Record<ThemeKey, string>>): Theme {
   };
 }
 
+/** A small random number generator, so the same "random" themes are tried on every run. */
+function random(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+}
+
+const hexOf = (next: () => number): string =>
+  `#${Math.floor(next() * 0xffffff)
+    .toString(16)
+    .padStart(6, "0")
+    .toUpperCase()}`;
+
+const KEYS: ThemeKey[] = [
+  "dk1",
+  "lt1",
+  "dk2",
+  "lt2",
+  "accent1",
+  "accent2",
+  "accent3",
+  "accent4",
+  "accent5",
+  "accent6",
+  "hlink",
+  "folHlink",
+];
 const light = () => buildPalette({ theme: themeOf(LIGHT), map: DEFAULT_COLOR_MAP });
 const darkMap = readColorMap(parseXml('<m bg1="dk1" tx1="lt1" bg2="dk2" tx2="lt2"/>'));
 
@@ -172,10 +201,11 @@ describe("a color that fails a contrast rule", () => {
   });
 
   it("takes a color back from the preset when the partner that failed it went back too", () => {
-    // Retrospect-like: the panel color fails with the preset's evidence, which fails because the theme's did not, and
-    // the muted color had only failed against that panel.
+    // Retrospect-like: the panel color fails with the preset's evidence, which fails because the theme's did not (and a
+    // link that pale cannot be moved to read without ceasing to be the theme's), and the muted color had only failed
+    // against that panel.
     const result = buildPalette({
-      theme: themeOf({ ...LIGHT, dk2: "637052", lt2: "CCDDEA", hlink: "2998E3", accent1: "BD582C" }),
+      theme: themeOf({ ...LIGHT, dk2: "637052", lt2: "CCDDEA", hlink: "9FD3FF", accent1: "BD582C" }),
       map: DEFAULT_COLOR_MAP,
     });
     expect(result.colors.muted).toBe("#637052");
@@ -183,6 +213,41 @@ describe("a color that fails a contrast rule", () => {
     expect(result.colors.evidence).toBe(PRESETS.paper.evidence);
     expect(result.kept.map((kept) => kept.name).sort()).toEqual(["evidence", "surface"]);
     expect(contrastFailures(result.colors)).toEqual([]);
+  });
+
+  it("says in each kept line what the theme's color fails against in the palette as it ended, not as it was when it failed", () => {
+    // The text fails on this background, so it goes back to the preset's. That fails on it too, so the background goes back,
+    // and the line about the text must name the background that is in the palette, not the one it was tried on.
+    const result = buildPalette({
+      theme: themeOf({ ...LIGHT, lt1: "C16165", dk1: "8985B0" }),
+      map: DEFAULT_COLOR_MAP,
+    });
+    expect(result.colors.bg).toBe(PRESETS.paper.bg);
+    const text = result.kept.find((kept) => kept.name === "text");
+    expect(text).toMatchObject({ wanted: "#8985B0", against: "bg", againstValue: PRESETS.paper.bg });
+    expect(text?.ratio).toBeCloseTo(contrastRatio("#8985B0", PRESETS.paper.bg), 6);
+    expect(text?.ratio).toBeLessThan(CONTRAST.text);
+  });
+
+  it("tells the truth in every kept line, for 600 random themes", () => {
+    const next = random(20261102);
+    let lines = 0;
+    for (let n = 0; n < 600; n++) {
+      const colors: Partial<Record<ThemeKey, string>> = {};
+      for (const key of KEYS) colors[key] = hexOf(next).slice(1);
+      const result = buildPalette({ theme: themeOf(colors), map: DEFAULT_COLOR_MAP });
+      for (const kept of result.kept) {
+        lines++;
+        // The partner is the one in the palette, the ratio is the theme's color against it, and that fails.
+        expect(kept.againstValue, JSON.stringify(colors)).toBe(result.colors[kept.against]);
+        expect(kept.ratio, JSON.stringify(colors)).toBeCloseTo(
+          contrastRatio(kept.wanted, kept.againstValue),
+          6,
+        );
+        expect(kept.ratio, JSON.stringify(colors)).toBeLessThan(kept.need);
+      }
+    }
+    expect(lines).toBeGreaterThan(500);
   });
 
   it("holds the action color to 3:1, not 4.5:1", () => {
@@ -215,6 +280,116 @@ describe("a color that fails a contrast rule", () => {
   });
 });
 
+describe("a background the theme chose", () => {
+  // Teal, as the Ion theme's: its link color and the preset's link color both read under 4.5:1 on it.
+  const TEAL = { ...DARK, dk1: "000000", lt1: "FFFFFF", dk2: "1E5155", lt2: "C9D1DE", hlink: "58C1BA" };
+  const teal = { hex: "#1E5155", key: "dk2", plain: true, kind: "schemeClr" } as const;
+
+  it("premise: neither the theme's link nor the preset's reads on it", () => {
+    expect(contrastRatio("#58C1BA", "#1E5155")).toBeLessThan(CONTRAST.text);
+    expect(contrastRatio(PRESETS.ink.evidence, "#1E5155")).toBeLessThan(CONTRAST.text);
+    expect(contrastRatio("#FFFFFF", "#1E5155")).toBeGreaterThan(8);
+  });
+
+  it("stays, and the link moves toward the text color until it reads, instead of the background going back", () => {
+    const result = buildPalette({ theme: themeOf(TEAL), map: darkMap, background: teal });
+    expect(result.preset).toBe("ink");
+    expect(result.colors.bg).toBe("#1E5155");
+    expect(result.kept).toEqual([]);
+    expect(contrastFailures(result.colors)).toEqual([]);
+    const { evidence, bg, surface, text } = result.colors;
+    expect(evidence).not.toBe("#58C1BA");
+    expect(evidence).not.toBe(PRESETS.ink.evidence);
+    expect(contrastRatio(evidence, bg)).toBeGreaterThanOrEqual(CONTRAST.text);
+    expect(contrastRatio(evidence, surface)).toBeGreaterThanOrEqual(CONTRAST.text);
+    // It moved toward the text, by the least that reads: one step less would not have.
+    const line = result.taken.find(({ name }) => name === "evidence");
+    expect(line).toMatchObject({
+      value: evidence,
+      source: "derived",
+      from: expect.stringMatching(
+        /^Hyperlink \(hlink\) \(#58C1BA\), moved \d+% of the way toward the text color/,
+      ),
+    });
+    const share = Number(/moved (\d+)%/.exec(line?.from ?? "")?.[1]);
+    expect(mix("#58C1BA", text, share / 100)).toBe(evidence);
+    expect(contrastRatio(mix("#58C1BA", text, (share - 5) / 100), bg)).toBeLessThan(CONTRAST.text);
+    expect(share).toBeLessThanOrEqual(50);
+  });
+
+  it("leaves the theme's colors alone that read, and does not move the preset's", () => {
+    const result = buildPalette({ theme: themeOf(TEAL), map: darkMap, background: teal });
+    expect(result.colors.text).toBe("#FFFFFF");
+    expect(result.taken.filter(({ source }) => source === "derived").map(({ name }) => name)).toEqual([
+      "line",
+      "evidence",
+    ]);
+  });
+
+  it("moves a color far enough to read on the panel too, not only on the slide", () => {
+    // The panel is a lighter blue-green than the slide, so the link has to go further to read on it.
+    const colors = { ...TEAL, dk1: "24585E" };
+    const result = buildPalette({ theme: themeOf(colors), map: darkMap, background: teal });
+    expect(result.colors.bg).toBe("#1E5155");
+    expect(result.colors.surface).toBe("#24585E");
+    const { evidence, bg, surface } = result.colors;
+    expect(contrastRatio("#58C1BA", surface)).toBeLessThan(CONTRAST.text);
+    expect(contrastRatio(evidence, bg)).toBeGreaterThanOrEqual(CONTRAST.text);
+    expect(contrastRatio(evidence, surface)).toBeGreaterThanOrEqual(CONTRAST.text);
+    expect(contrastFailures(result.colors)).toEqual([]);
+  });
+  it("moves a color only when the preset's would fail too; one the preset fixes goes back to it", () => {
+    // On this blue-green the preset's muted color reads and the preset's link color does not, and the theme's fail both.
+    const sea = "#0E4250";
+    const colors = { ...TEAL, dk2: "0E4250", lt2: "4A8A94", hlink: "2F6F7A" };
+    expect(contrastRatio(PRESETS.ink.muted, sea)).toBeGreaterThanOrEqual(CONTRAST.text);
+    expect(contrastRatio(PRESETS.ink.evidence, sea)).toBeLessThan(CONTRAST.text);
+    expect(contrastRatio("#4A8A94", sea)).toBeLessThan(CONTRAST.text);
+    expect(contrastRatio("#2F6F7A", sea)).toBeLessThan(CONTRAST.text);
+    const result = buildPalette({
+      theme: themeOf(colors),
+      map: darkMap,
+      background: { hex: sea, key: "dk2", plain: true, kind: "schemeClr" },
+    });
+    expect(result.colors.bg).toBe(sea);
+    expect(contrastFailures(result.colors)).toEqual([]);
+    expect(result.colors.muted).toBe(PRESETS.ink.muted);
+    const sourceOf = (name: string) => result.taken.find((line) => line.name === name)?.source;
+    expect(sourceOf("muted")).toBe("preset");
+    expect(sourceOf("evidence")).toBe("derived");
+    expect(result.kept.map((kept) => kept.name)).toEqual(["muted"]);
+  });
+  it("goes back to the preset, as it did, when a color would have to move more than half way", () => {
+    // A mid gray: the link and the muted color would have to become the text color, and be no color of their own.
+    const result = buildPalette({ theme: themeOf({ ...LIGHT, lt1: "808080" }), map: DEFAULT_COLOR_MAP });
+    expect(result.kept.map((kept) => kept.name)).toEqual(["bg"]);
+    expect(result.colors.bg).toBe(PRESETS.paper.bg);
+    expect(result.taken.filter(({ source }) => source === "derived").map(({ name }) => name)).toEqual([
+      "line",
+    ]);
+  });
+});
+describe("every palette passes its own rules", () => {
+  it("whatever the theme, and whatever the master's background", () => {
+    const next = random(20261103);
+    let moved = 0;
+    for (let n = 0; n < 4000; n++) {
+      const colors: Partial<Record<ThemeKey, string>> = {};
+      for (const key of KEYS) colors[key] = hexOf(next).slice(1);
+      const background =
+        n % 3 === 0 ? undefined : ({ hex: hexOf(next), plain: true, kind: "srgbClr" } as const);
+      const result = buildPalette({
+        theme: themeOf(colors),
+        map: n % 2 ? DEFAULT_COLOR_MAP : darkMap,
+        ...(background ? { background } : {}),
+      });
+      expect(contrastFailures(result.colors), JSON.stringify({ colors, background })).toEqual([]);
+      if (result.taken.some(({ name, source }) => name !== "line" && source === "derived")) moved++;
+    }
+    // The themes that needed a color moved are in the run, so the moved ones are held to the rules too.
+    expect(moved).toBeGreaterThan(100);
+  });
+});
 describe("colors the theme leaves out", () => {
   it("keep the preset's, and the report says the theme had none", () => {
     const result = buildPalette({ theme: themeOf({ dk1: "000000", lt1: "FFFFFF" }), map: DEFAULT_COLOR_MAP });
@@ -266,19 +441,6 @@ describe("the chart colors", () => {
 
 describe("contrastFailures against core's own check", () => {
   // The import repeats core's list of pairs so it can repair a palette before the check runs. This keeps the two the same.
-  function random(seed: number): () => number {
-    let state = seed;
-    return () => {
-      state = (state * 1664525 + 1013904223) % 4294967296;
-      return state / 4294967296;
-    };
-  }
-
-  const hexOf = (next: () => number): string =>
-    `#${Math.floor(next() * 0xffffff)
-      .toString(16)
-      .padStart(6, "0")
-      .toUpperCase()}`;
 
   it("finds exactly the pairs core reports, for 400 random palettes", () => {
     const next = random(20261101);

@@ -152,11 +152,35 @@ function inheritedFrom(shape: Shape, master: readonly Shape[]): Shape | undefine
 const valignOf = (anchor: string | undefined): TemplateSlot["valign"] =>
   anchor === "ctr" ? "middle" : anchor === "b" ? "bottom" : undefined;
 
-/** What a `p:bg` paints: the kind of fill, the color element of a solid one, the picture element of a picture fill. */
-export function fillOf(
-  bg: XmlNode | undefined,
-  theme: Theme,
-): { kind?: string; color?: XmlNode; blip?: XmlNode } {
+export interface Fill {
+  /** The fill's element name: `solidFill`, `gradFill`, `blipFill` and the like. */
+  kind?: string;
+  /** The color of a solid fill, or the base color (`phClr`) a theme's fill style is painted in. */
+  color?: XmlNode;
+  /** The picture element of a picture fill the background itself holds. */
+  blip?: XmlNode;
+  /** True when the background points at the theme's fill list (`bgRef`), whose gradients and pictures are not read. */
+  themed?: boolean;
+}
+
+/** A fill's kind in the words a person uses. */
+export const fillWords = (kind: string): string =>
+  ({
+    solidFill: "solid",
+    gradFill: "gradient",
+    blipFill: "picture",
+    pattFill: "pattern",
+    noFill: "empty",
+    grpFill: "group",
+  })[kind] ?? kind.replace(/Fill$/, "");
+
+/**
+ * What a `p:bg` paints. A fill the background holds is read as it is. A reference to the theme's background fill list
+ * (`bgRef`, idx 1001 and up) names a solid, gradient or picture fill style painted in the color the reference gives:
+ * that color, the style's `phClr`, is what the fill is made of, and it is returned for all three so the gradient or the
+ * picture can be reduced to it.
+ */
+export function fillOf(bg: XmlNode | undefined, theme: Theme): Fill {
   const fill = child(bg, "bgPr")?.children.find((node) => /Fill$/.test(node.name));
   const reference = child(bg, "bgRef");
   if (fill) {
@@ -167,13 +191,11 @@ export function fillOf(
     };
   }
   if (reference) {
-    // A background from the theme's fill list: the first entry is a plain fill painted in the color given here.
     const kind = theme.backgroundFills[Number(reference.attrs.idx) - 1001];
+    const color = colorElement(reference);
     return {
-      ...(kind ? { kind } : {}),
-      ...(kind === "solidFill" && colorElement(reference)
-        ? { color: colorElement(reference) as XmlNode }
-        : {}),
+      ...(kind ? { kind, themed: true } : {}),
+      ...(kind && kind !== "noFill" && color ? { color } : {}),
     };
   }
   return {};
@@ -192,8 +214,9 @@ async function backgroundOf(
     left.push({ what: `The background of the layout "${layout.name}"`, why });
     return undefined;
   };
-  const { kind, color, blip } = fillOf(bg, ctx.theme);
-  if (kind === "blipFill") {
+  const { kind, color, blip, themed } = fillOf(bg, ctx.theme);
+  if (kind === undefined || kind === "noFill") return nothing("it has no fill this reads");
+  if (kind === "blipFill" && !themed) {
     const id = blip?.attrs["r:embed"];
     const part = id ? layout.rels.find((rel) => rel.id === id)?.target : undefined;
     const bytes = part ? await ctx.pkg.bytes(part) : undefined;
@@ -202,11 +225,9 @@ async function backgroundOf(
     if ("why" in added) return nothing(added.why);
     return { color: "bg", image: added.file, scrim: SCRIM };
   }
-  if (kind !== "solidFill") {
+  if (kind !== "solidFill" && !themed) {
     return nothing(
-      kind === "noFill" || kind === undefined
-        ? "it has no fill this reads"
-        : `it is a ${kind.replace(/Fill$/, "")} fill, and a template's background is a plain color or a picture`,
+      `it is a ${fillWords(kind)} fill, and a template's background is a plain color or a picture`,
     );
   }
   const resolved = resolveColor(color, ctx.theme, map);
@@ -215,12 +236,22 @@ async function backgroundOf(
       "its color is lightened, darkened or made transparent, or is written in a form this does not read",
     );
   }
+  // A gradient or a picture of the theme's own is not copied; its base color, the one it is painted in, is the background.
+  const reduction = (): void => {
+    if (kind === "solidFill") return;
+    left.push({
+      what: `The background of the layout "${layout.name}"`,
+      why: `it is the theme's ${fillWords(kind)} fill, which is not copied; only its base color ${resolved.hex} is kept`,
+    });
+  };
   const names = ["bg", "surface", "text", "action", "evidence"] as const;
   const name = names.find((candidate) => ctx.palette[candidate] === resolved.hex);
-  if (!name)
+  if (!name) {
     return nothing(
-      `its color ${resolved.hex} is not one of the brand's colors (background, panel, text, accent or link)`,
+      `its color ${resolved.hex} is not one of the brand's colors (background, panel, text, accent or link)${kind === "solidFill" ? "" : `; it is the base color of the theme's ${fillWords(kind)} fill, which is not copied`}`,
     );
+  }
+  reduction();
   // The slide's own background needs no entry.
   return name === "bg" ? undefined : { color: name };
 }

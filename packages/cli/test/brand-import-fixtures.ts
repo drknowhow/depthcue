@@ -98,6 +98,8 @@ export type ShapeSpec =
   | { kind: "shape"; name: string; frame: Frame };
 
 export type BgSpec =
+  /** A reference to the theme's background fill list: 1001 is a solid fill, 1002 a gradient, 1003 a picture, painted in this color. */
+  | { ref: 1001 | 1002 | 1003; scheme: string }
   | { scheme: string; adjust?: boolean }
   | { rgb: string }
   | { gradient: true }
@@ -111,6 +113,8 @@ export interface LayoutSpec {
   showMasterShapes?: boolean;
   shapes: ShapeSpec[];
   bg?: BgSpec;
+  /** The attributes of an `a:overrideClrMapping` on the layout, such as `bg1="dk1" tx1="lt1" bg2="dk1" tx2="lt2"`. */
+  override?: string;
 }
 
 export interface PackageSpec {
@@ -370,6 +374,9 @@ function shapeXml(spec: ShapeSpec, id: number, size: { cx: number; cy: number },
 function backgroundXml(bg: BgSpec | undefined, embeds: Embeds): string {
   if (!bg) return "";
   const wrap = (fill: string) => `<p:bg><p:bgPr>${fill}<a:effectLst/></p:bgPr></p:bg>`;
+  if ("ref" in bg) {
+    return `<p:bg><p:bgRef idx="${bg.ref}"><a:schemeClr val="${bg.scheme}"/></p:bgRef></p:bg>`;
+  }
   if ("none" in bg) return wrap("<a:noFill/>");
   if ("scheme" in bg) {
     return wrap(
@@ -625,7 +632,7 @@ export function partsOf(spec: PackageSpec = {}): Map<string, string | Uint8Array
     parts.set(
       `${base}/slideLayouts/slideLayout${at + 1}.xml`,
       xml(
-        `<p:sldLayout ${NS}${type}${shows}><p:cSld name="${esc(layout.name)}">${backgroundXml(layout.bg, embeds)}${treeXml(layout.shapes, size, embeds)}</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`,
+        `<p:sldLayout ${NS}${type}${shows}><p:cSld name="${esc(layout.name)}">${backgroundXml(layout.bg, embeds)}${treeXml(layout.shapes, size, embeds)}</p:cSld><p:clrMapOvr>${layout.override ? `<a:overrideClrMapping ${layout.override}/>` : "<a:masterClrMapping/>"}</p:clrMapOvr></p:sldLayout>`,
       ),
     );
     parts.set(

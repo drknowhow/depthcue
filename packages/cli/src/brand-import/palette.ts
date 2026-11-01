@@ -139,6 +139,47 @@ export const shownRatio = (ratio: number): string => `${Math.floor(ratio * 100) 
 /** True for a color that reads as dark: white has more contrast against it than black does. */
 export const isDark = (hex: string): boolean => luminance(hex) < 0.1791;
 
+/** A theme color moved toward the text color, because it did not read as it was. */
+interface AdjustedColor {
+  hex: string;
+  from: string;
+}
+
+interface Settled {
+  colors: Palette;
+  kept: ColorKept[];
+  reverted: Set<PaletteName>;
+  adjusted: Map<PaletteName, AdjustedColor>;
+}
+
+/** True when the color reads at `need`:1 on the slide and on a panel. */
+const readsOn = (hex: string, need: number, colors: Palette): boolean =>
+  contrastRatio(hex, colors.bg) >= need && contrastRatio(hex, colors.surface) >= need;
+
+/**
+ * A color is moved no further than this share of the way toward the text color. Past it the color is more the text's than
+ * the theme's (a link that is as dark as the text is no link), and the background is given up instead.
+ */
+const MAX_MOVE = 0.5;
+
+/**
+ * The theme's color moved toward the text color, by the least 5% steps that make it read at `need`:1 on the slide and on
+ * a panel, or nothing when that takes more than `MAX_MOVE` of the way. The text color is the one in `colors`, which the
+ * checks list first, so it reads on both whenever another color is being looked at.
+ */
+function adjustedTowards(wanted: Candidate, need: number, colors: Palette): AdjustedColor | undefined {
+  for (let step = 1; step <= MAX_MOVE * 20; step++) {
+    const hex = mix(wanted.hex, colors.text, step / 20);
+    if (readsOn(hex, need, colors)) {
+      return {
+        hex,
+        from: `${wanted.from} (${wanted.hex}), moved ${step * 5}% of the way toward the text color (${colors.text}) until it reads at ${need}:1 on the background and the panel`,
+      };
+    }
+  }
+  return undefined;
+}
+
 export function buildPalette(input: PaletteInput): PaletteResult {
   const { theme, map } = input;
   const notes: string[] = [];
@@ -192,46 +233,93 @@ export function buildPalette(input: PaletteInput): PaletteResult {
     ) ?? accents[0];
   if (action) candidates.action = action;
 
-  const colors = Object.fromEntries(
-    PALETTE_COLORS.map((name) => [name, candidates[name]?.hex ?? base[name]]),
-  ) as Palette;
-
-  // A color that fails a rule goes back to the preset's. Each pass sends one color back, so this ends: the preset's own
-  // colors pass. The text side of a failing pair goes first, so a background the theme chose stays when the preset's
-  // text reads on it.
-  const kept: ColorKept[] = [];
-  const reverted = new Set<PaletteName>();
-  for (let pass = 0; pass < PALETTE_COLORS.length; pass++) {
-    const failure = contrastFailures(colors)[0];
-    if (!failure) break;
-    const side = [failure.name, failure.against].find((name) => candidates[name] && !reverted.has(name));
-    if (!side) break;
-    const other = side === failure.name ? failure.against : failure.name;
-    const wanted = candidates[side] as Candidate;
-    reverted.add(side);
-    kept.push({
-      name: side,
-      wanted: wanted.hex,
-      from: wanted.from,
-      ratio: failure.ratio,
-      need: failure.need,
-      against: other,
-      againstValue: colors[other],
-      used: base[side],
-    });
-    colors[side] = base[side];
-  }
-  // A color sent back for a pair that no longer exists (its partner was sent back too) is the theme's again, if the
-  // whole palette still passes with it.
-  for (const entry of [...kept]) {
-    colors[entry.name] = entry.wanted;
-    if (contrastFailures(colors).length === 0) {
-      reverted.delete(entry.name);
-      kept.splice(kept.indexOf(entry), 1);
-    } else {
-      colors[entry.name] = entry.used;
+  /**
+   * Settles the palette: a color that fails a rule goes back to the preset's. Each pass handles one color, so this ends:
+   * the preset's own colors pass. The text side of a failing pair goes first, so a background the theme chose stays
+   * when the preset's text reads on it. With `adjust`, a text-side color whose preset color would fail too is moved
+   * toward the text color until it reads, before the background that it failed on is given up.
+   */
+  const settle = (adjust: boolean): Settled => {
+    const colors = Object.fromEntries(
+      PALETTE_COLORS.map((name) => [name, candidates[name]?.hex ?? base[name]]),
+    ) as Palette;
+    const kept: ColorKept[] = [];
+    const reverted = new Set<PaletteName>();
+    const adjusted = new Map<PaletteName, AdjustedColor>();
+    const handled = new Set<PaletteName>();
+    for (let pass = 0; pass < PALETTE_COLORS.length; pass++) {
+      const failure = contrastFailures(colors)[0];
+      if (!failure) break;
+      const side = [failure.name, failure.against].find((name) => candidates[name] && !handled.has(name));
+      if (!side) break;
+      const wanted = candidates[side] as Candidate;
+      handled.add(side);
+      if (adjust && side === failure.name && side !== "text" && !readsOn(base[side], failure.need, colors)) {
+        const moved = adjustedTowards(wanted, failure.need, colors);
+        if (moved) {
+          colors[side] = moved.hex;
+          adjusted.set(side, moved);
+          continue;
+        }
+      }
+      const other = side === failure.name ? failure.against : failure.name;
+      reverted.add(side);
+      kept.push({
+        name: side,
+        wanted: wanted.hex,
+        from: wanted.from,
+        ratio: failure.ratio,
+        need: failure.need,
+        against: other,
+        againstValue: colors[other],
+        used: base[side],
+      });
+      colors[side] = base[side];
     }
+    // A color sent back for a pair that no longer exists (its partner was sent back too) is the theme's again, if the
+    // whole palette still passes with it. One that comes back can free another, so this goes on until nothing changes.
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const entry of [...kept]) {
+        colors[entry.name] = entry.wanted;
+        if (contrastFailures(colors).length === 0) {
+          reverted.delete(entry.name);
+          kept.splice(kept.indexOf(entry), 1);
+          changed = true;
+        } else {
+          colors[entry.name] = entry.used;
+        }
+      }
+    }
+    // What a line says is against the palette as it ended: the partner of a pair may have been sent back since.
+    for (const entry of kept) {
+      colors[entry.name] = entry.wanted;
+      const failure = contrastFailures(colors).find(
+        (found) => found.name === entry.name || found.against === entry.name,
+      );
+      colors[entry.name] = entry.used;
+      if (!failure) continue;
+      const other = failure.name === entry.name ? failure.against : failure.name;
+      Object.assign(entry, {
+        ratio: failure.ratio,
+        need: failure.need,
+        against: other,
+        againstValue: colors[other],
+      });
+    }
+    return { colors, kept, reverted, adjusted };
+  };
+
+  // The theme's own colors go first. If that gives up the background or the panel the theme chose, the colors on them
+  // are tried again with their theme colors moved toward the text color, and kept if that saves one.
+  const given = (result: Settled): number =>
+    (["bg", "surface"] as const).filter((name) => result.reverted.has(name)).length;
+  let settled = settle(false);
+  if (given(settled) > 0) {
+    const again = settle(true);
+    if (given(again) < given(settled)) settled = again;
   }
+  const { colors, kept, reverted, adjusted } = settled;
 
   colors.line = mix(colors.bg, colors.text, LINE_SHARE);
 
@@ -244,6 +332,8 @@ export function buildPalette(input: PaletteInput): PaletteResult {
         from: `the background blended ${Math.round(LINE_SHARE * 100)}% of the way toward the text; a theme has no color for lines`,
       };
     }
+    const moved = adjusted.get(name);
+    if (moved) return { name, value: colors[name], source: "derived", from: moved.from };
     const candidate = candidates[name];
     if (candidate && !reverted.has(name))
       return { name, value: colors[name], source: "theme", from: candidate.from };

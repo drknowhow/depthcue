@@ -34,7 +34,7 @@ import {
 import { OfficePackage, PackageError } from "./package.ts";
 import { buildPalette, shownRatio } from "./palette.ts";
 import { svgProblem } from "./svg.ts";
-import { buildTemplate, fillOf, type TemplateContext, type TemplateResult } from "./templates.ts";
+import { buildTemplate, fillOf, fillWords, type TemplateContext, type TemplateResult } from "./templates.ts";
 import { DEFAULT_COLOR_MAP, resolveColor } from "./theme.ts";
 import type { ImportReport, Left } from "./types.ts";
 import { IMPORT_MARKER, WriteError, writeBrand } from "./write.ts";
@@ -256,9 +256,13 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
   const map = master?.map ?? DEFAULT_COLOR_MAP;
   const masterFill = fillOf(master?.background, theme);
   const background = masterFill.color ? resolveColor(masterFill.color, theme, map) : undefined;
+  // A gradient or a picture from the theme's fill list is painted in one color, and that color is what is kept.
+  const reduced = masterFill.themed && masterFill.kind !== "solidFill" && background?.hex && background.plain;
   const backgroundNote =
     masterFill.kind !== undefined && masterFill.kind !== "solidFill"
-      ? `The master's background is a ${masterFill.kind.replace(/Fill$/, "")} fill, which is not a color, so the theme's background color was used.`
+      ? reduced
+        ? `The master's background is the theme's ${fillWords(masterFill.kind)} fill, which is not copied; only its base color ${background.hex} is used as the background.`
+        : `The master's background is a ${fillWords(masterFill.kind)} fill, which is not a color, so the theme's background color was used.`
       : background && !background.plain
         ? "The master's background is a theme color made lighter or darker, which is not worked out, so the theme's own background color was used."
         : undefined;

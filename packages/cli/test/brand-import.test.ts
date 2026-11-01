@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { contrastRatio } from "@depthcue/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImportError, importBrand, ratioLabel, slug } from "../src/brand-import/index.ts";
 import { LIMITS } from "../src/brand-import/package.ts";
@@ -218,8 +219,71 @@ describe("importBrand of a template", () => {
     const done = await importFixture(make, { masterBg: { picture: "logo.png" } });
     expect(done.report.preset.name).toBe("paper");
     expect(done.report.notes).toContain(
-      "The master's background is a blip fill, which is not a color, so the theme's background color was used.",
+      "The master's background is a picture fill, which is not a color, so the theme's background color was used.",
     );
+  });
+
+  describe("when the master's background is a fill style of the theme's", () => {
+    // Teal as the dark theme's second background color, which the master maps to background 2: the look of Office's Ion.
+    const TEAL = { ...DARK, dk1: "000000", lt1: "FFFFFF", dk2: "1E5155", lt2: "C9D1DE", hlink: "58C1BA" };
+
+    it.each([
+      [1001, "solid", undefined],
+      [1002, "gradient", "gradient"],
+      [1003, "picture", "picture"],
+    ] as const)(
+      "is the color it is painted in, through the master's color map (idx %i, a %s fill)",
+      async (ref, _, word) => {
+        const done = await importFixture(make, {
+          dark: true,
+          colors: TEAL,
+          masterBg: { ref, scheme: "bg2" },
+        });
+        const brand = done.json("brand.json");
+        expect(done.report.preset.name).toBe("ink");
+        expect(brand.colors.ink.bg).toBe("#1E5155");
+        expect(done.report.kept.map((kept) => kept.name)).not.toContain("bg");
+        // The link color the theme gives does not read on teal, so it is moved toward the text until it does, and said so.
+        const evidence = done.report.colors.find((color) => color.name === "evidence");
+        expect(evidence).toMatchObject({ source: "derived", from: expect.stringContaining("#58C1BA") });
+        expect(contrastRatio(brand.colors.ink.evidence, "#1E5155")).toBeGreaterThanOrEqual(4.5);
+        const notes = done.report.notes.join("\n");
+        if (word) {
+          expect(notes).toContain(
+            `The master's background is the theme's ${word} fill, which is not copied; only its base color #1E5155 is used as the background.`,
+          );
+        } else {
+          expect(notes).not.toContain("base color");
+        }
+        expect(notes).not.toContain("blip");
+        expect(done.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+      },
+    );
+
+    it("is the panel's color too, and the other background becomes the panel", async () => {
+      const done = await importFixture(make, {
+        dark: true,
+        colors: TEAL,
+        masterBg: { ref: 1003, scheme: "bg2" },
+      });
+      expect(done.json("brand.json").colors.ink.surface).toBe("#000000");
+    });
+
+    it("follows the master's color map, not the file's names for the colors", async () => {
+      // Light map: background 2 is the theme's light 2 color.
+      const done = await importFixture(make, {
+        colors: { ...LIGHT, lt2: "E3EACF" },
+        masterBg: { ref: 1003, scheme: "bg2" },
+      });
+      expect(done.json("brand.json").colors.paper.bg).toBe("#E3EACF");
+      expect(done.json("brand.json").colors.paper.surface).toBe("#FFFFFF");
+    });
+
+    it("is left to the theme's background when the fill style is out of the list or has no color", async () => {
+      const done = await importFixture(make, { masterBg: { ref: 1009 as 1001, scheme: "bg2" } });
+      expect(done.json("brand.json").colors.paper.bg).toBe("#FFFFFF");
+      expect(done.report.notes.join("\n")).not.toContain("base color");
+    });
   });
 
   it("falls back the same way when the master's color is lightened or darkened", async () => {

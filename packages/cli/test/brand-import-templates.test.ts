@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { importBrand } from "../src/brand-import/index.ts";
 import { frameOf, trimmed } from "../src/brand-import/templates.ts";
 import {
+  DARK,
   EMF,
   HOSTILE_SVGS,
   importFixture,
@@ -530,10 +531,17 @@ describe("the templates of an import", () => {
 });
 
 describe("the background of a layout", () => {
-  const backgroundOf = async (bg: LayoutSpec["bg"], spec: PackageSpec = {}) => {
+  const backgroundOf = async (
+    bg: LayoutSpec["bg"],
+    spec: PackageSpec = {},
+    extra: Partial<LayoutSpec> = {},
+  ) => {
     const done = await importFixture(
       make,
-      only([layout("Back", [ph("body", { x: 8, y: 26, w: 84, h: 60 })], bg ? { bg } : {})], spec),
+      only(
+        [layout("Back", [ph("body", { x: 8, y: 26, w: 84, h: 60 })], { ...(bg ? { bg } : {}), ...extra })],
+        spec,
+      ),
     );
     return {
       done,
@@ -572,11 +580,66 @@ describe("the background of a layout", () => {
 
   it("is reported when it is a gradient, or a fill this does not read", async () => {
     expect((await backgroundOf({ gradient: true })).left[0]?.why).toBe(
-      "it is a grad fill, and a template's background is a plain color or a picture",
+      "it is a gradient fill, and a template's background is a plain color or a picture",
     );
     expect((await backgroundOf({ none: true })).left[0]?.why).toBe("it has no fill this reads");
   });
 
+  describe("when it is a fill style of the theme's", () => {
+    // A dark theme with teal as its second background: the master's background is dark 1 (black), and the panel is teal.
+    const TEAL = { ...DARK, dk1: "000000", lt1: "FFFFFF", dk2: "1E5155", lt2: "C9D1DE", hlink: "58C1BA" };
+    const dark: PackageSpec = { dark: true, colors: TEAL };
+
+    it.each([
+      [1001, "solid", undefined],
+      [1002, "gradient", "gradient"],
+      [1003, "picture", "picture"],
+    ] as const)(
+      "is the color it is painted in, as the master's color map reads it (idx %i, a %s fill)",
+      async (ref, _, word) => {
+        const { template, left } = await backgroundOf({ ref, scheme: "bg2" }, dark);
+        expect(template.background).toEqual({ color: "surface" });
+        if (word) {
+          expect(left).toEqual([
+            {
+              what: 'The background of the layout "Back"',
+              why: `it is the theme's ${word} fill, which is not copied; only its base color #1E5155 is kept`,
+            },
+          ]);
+        } else {
+          expect(left).toEqual([]);
+        }
+      },
+    );
+
+    it("is not reported as a picture that is missing from the file", async () => {
+      const { left } = await backgroundOf({ ref: 1003, scheme: "bg2" }, dark);
+      expect(left.map((item) => item.why).join("\n")).not.toContain("not in the file");
+    });
+
+    it("is read through the layout's own color map when it overrides the master's", async () => {
+      // The layout says background 2 is dark 1 (black), which is the slide's own color: no entry, but the gradient is noted.
+      const same = await backgroundOf({ ref: 1002, scheme: "bg2" }, dark, {
+        override: 'bg1="dk1" tx1="lt1" bg2="dk1" tx2="lt2"',
+      });
+      expect(same.template.background).toBeUndefined();
+      expect(same.left[0]?.why).toContain("only its base color #000000 is kept");
+      // And light 1 (white), which is the text.
+      const text = await backgroundOf({ ref: 1003, scheme: "bg2" }, dark, {
+        override: 'bg1="lt1" tx1="dk1" bg2="lt1" tx2="dk2"',
+      });
+      expect(text.template.background).toEqual({ color: "text" });
+      expect(text.left[0]?.why).toContain("only its base color #FFFFFF is kept");
+    });
+
+    it("is reported with the color when that is not one of the brand's colors", async () => {
+      const { template, left } = await backgroundOf({ ref: 1002, scheme: "accent4" }, dark);
+      expect(template.background).toBeUndefined();
+      expect(left[0]?.why).toMatch(
+        /^its color #[0-9A-F]{6} is not one of the brand's colors .*; it is the base color of the theme's gradient fill, which is not copied$/,
+      );
+    });
+  });
   it("is a picture in images/ under a scrim, when the layout paints one", async () => {
     const bytes = jpeg(200, 100);
     const { done, template } = await backgroundOf(
