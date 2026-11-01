@@ -6,7 +6,7 @@ import { loadDeckDir } from "./loader.ts";
 /** The deck on disk changed after it was read, so writing now would overwrite someone else's edit. */
 export class ChangedOnDiskError extends Error {}
 
-function writeAtomic(dir: string, path: string, text: string): void {
+export function writeAtomic(dir: string, path: string, text: string): void {
   const target = join(dir, path);
   mkdirSync(dirname(target), { recursive: true });
   const temporary = `${target}.depthcue-${process.pid}.tmp`;

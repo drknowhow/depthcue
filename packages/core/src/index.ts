@@ -15,6 +15,32 @@ export type { AssetRef } from "./assets.ts";
 export { assetRefs, assetsOf } from "./assets.ts";
 export type { BuildEntry, BuildTarget } from "./build.ts";
 export { buildOf, placeInBuild, revealable, STEPS_MAX } from "./build.ts";
+export type {
+  Anchor,
+  Comment,
+  CommentAuthor,
+  CommentContext,
+  CommentFailure,
+  CommentFailureCode,
+  CommentOp,
+  CommentResult,
+  CommentSuccess,
+  CommentsFile,
+  Message,
+  ReadComments,
+} from "./comments.ts";
+export {
+  applyCommentOps,
+  COMMENTS_FILE,
+  commentsRevision,
+  commentsToText,
+  commentWarnings,
+  emptyComments,
+  isOrphan,
+  openComments,
+  orphansOf,
+  readComments,
+} from "./comments.ts";
 export type { Cue, CueBuild, CueMap } from "./cues.ts";
 export {
   CUE_MAP_FORMAT,
@@ -69,6 +95,12 @@ export {
 export { checkReferences } from "./references.ts";
 export {
   ASSET_PATTERN,
+  COMMENT_AUTHORS,
+  COMMENT_LIMITS,
+  COMMENT_OP_NAMES,
+  COMMENTS_FORMAT,
+  commentOpsSchema,
+  commentsSchema,
   deckSchema,
   ID_PATTERN,
   LAYOUTS,

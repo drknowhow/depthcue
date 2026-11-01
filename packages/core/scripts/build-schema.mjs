@@ -2,7 +2,7 @@
 // Run with `pnpm schema`; CI re-runs it and fails if the committed output differs.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { deckSchema, opsSchema, sceneSchema } from "../src/schema.ts";
+import { commentOpsSchema, commentsSchema, deckSchema, opsSchema, sceneSchema } from "../src/schema.ts";
 
 const require = createRequire(import.meta.url);
 const Ajv = require("ajv").default;
@@ -17,6 +17,8 @@ for (const [name, schema] of [
   ["deck", deckSchema],
   ["scene", sceneSchema],
   ["ops", opsSchema],
+  ["comments", commentsSchema],
+  ["comment-ops", commentOpsSchema],
 ]) {
   writeFileSync(new URL(`schema/${name}.schema.json`, root), `${JSON.stringify(schema, null, 2)}\n`);
 }
@@ -34,11 +36,15 @@ const ajv = new Ajv({
 ajv.addSchema(deckSchema);
 ajv.addSchema(sceneSchema);
 ajv.addSchema(opsSchema);
+ajv.addSchema(commentsSchema);
+ajv.addSchema(commentOpsSchema);
 
 const code = standaloneCode(ajv, {
   validateDeck: deckSchema.$id,
   validateScene: sceneSchema.$id,
   validateOps: opsSchema.$id,
+  validateComments: commentsSchema.$id,
+  validateCommentOps: commentOpsSchema.$id,
 });
 
 writeFileSync(
@@ -62,6 +68,8 @@ interface Validator {
 export const validateDeck: Validator;
 export const validateScene: Validator;
 export const validateOps: Validator;
+export const validateComments: Validator;
+export const validateCommentOps: Validator;
 `,
 );
 console.log("schema: wrote schema/*.schema.json and src/generated/validators.js");
