@@ -1,6 +1,13 @@
+import {
+  applyCommentsToFolder,
+  type CommentSummary,
+  listComments,
+  readCommentsFor,
+  summarize,
+} from "@depthcue/cli/comments-api";
 import { applyToFolder, type Detail, getOutline, getScene, openDeck } from "@depthcue/cli/deck-api";
 import { openRenderer, type Renderer, type SceneRender } from "@depthcue/cli/render";
-import { type Diagnostic, opsSchema } from "@depthcue/core";
+import { commentOpsSchema, type Diagnostic, opsSchema } from "@depthcue/core";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
@@ -17,10 +24,11 @@ const detail = z
 
 const getArgs = z.strictObject({
   view: z
-    .enum(["outline", "scene"])
+    .enum(["outline", "scene", "comments"])
     .default("outline")
-    .describe("outline lists the scenes; scene returns one."),
-  scene: z.string().optional().describe("Scene id. Required when view is scene."),
+    .describe("outline lists the scenes; scene returns one; comments lists the comments."),
+  scene: z.string().optional().describe("Scene id. Required when view is scene; narrows view comments."),
+  resolved: z.boolean().default(false).describe("With view comments, true adds the resolved ones."),
   detail,
 });
 
@@ -50,6 +58,70 @@ const applyArgs = z.strictObject({
 /** The ops schema without its document-level keys, so it can sit inside a tool schema. */
 const { $schema: _dialect, $id: _id, title: _title, ...opsBody } = opsSchema as Record<string, unknown>;
 
+/**
+ * What an agent may do to comments. It reads and answers: add, reply, resolve and reopen. Deleting is for the person
+ * who wrote the comment, and who wrote a message is not the agent's to say, so `author`, `ask` and `comment.delete`
+ * are left out of the schema and refused if sent.
+ */
+const AGENT_COMMENT_OPS = ["comment.add", "comment.reply", "comment.resolve", "comment.reopen"] as const;
+const COMMENT_OPS_LEFT_OUT = ["author", "ask"] as const;
+
+interface OpVariant {
+  required: string[];
+  properties: Record<string, { const?: string }>;
+}
+const commentOpsBody = (() => {
+  const {
+    $schema: _dialect,
+    $id: _id,
+    title: _title,
+    ...body
+  } = JSON.parse(JSON.stringify(commentOpsSchema)) as { items: { oneOf: OpVariant[] } } & Record<
+    string,
+    unknown
+  >;
+  body.items.oneOf = body.items.oneOf
+    .filter((variant) => AGENT_COMMENT_OPS.includes(variant.properties.op?.const as never))
+    .map((variant) => {
+      for (const key of COMMENT_OPS_LEFT_OUT) delete variant.properties[key];
+      variant.required = variant.required.filter(
+        (key) => !(COMMENT_OPS_LEFT_OUT as readonly string[]).includes(key),
+      );
+      return variant;
+    });
+  return body;
+})();
+
+/**
+ * Turns an agent's comment operations into core's: the author is the agent, always. An operation that names an
+ * author or an ask, or deletes, is refused with the reason, because accepting it would put words in a person's mouth
+ * or remove what a person wrote.
+ */
+function asAgent(ops: readonly unknown[]): { ok: true; ops: unknown[] } | { ok: false; message: string } {
+  const out: unknown[] = [];
+  for (const [index, entry] of ops.entries()) {
+    const body = entry !== null && typeof entry === "object" ? (entry as Record<string, unknown>) : undefined;
+    const name = body?.op;
+    if (body === undefined || typeof name !== "string") {
+      out.push(entry);
+      continue;
+    }
+    if (name === "comment.delete")
+      return {
+        ok: false,
+        message: `ops[${index}]: comment.delete is for the person who wrote the comment. Resolve the comment instead.`,
+      };
+    const sent = COMMENT_OPS_LEFT_OUT.filter((key) => key in body);
+    if (sent.length > 0)
+      return {
+        ok: false,
+        message: `ops[${index}]: leave out ${sent.map((key) => `\`${key}\``).join(" and ")}. You write as the agent, and only a person asks you to act.`,
+      };
+    out.push(name === "comment.add" || name === "comment.reply" ? { ...body, author: "agent" } : body);
+  }
+  return { ok: true, ops: out };
+}
+
 function jsonSchema(schema: z.ZodType): Record<string, unknown> {
   const { $schema: _ignored, ...rest } = z.toJSONSchema(schema, { io: "input" }) as Record<string, unknown>;
   return rest;
@@ -59,7 +131,7 @@ const TOOLS = [
   {
     name: "deck_get",
     description:
-      "Read the deck. view 'outline' (default) lists every scene with its id, title, layout, lead, block count and step count, and returns `rev`, the deck revision to pass to deck_apply as base_rev. view 'scene' returns one scene's full JSON. Use detail 'detailed' for block lists, per-scene revisions, and the asset list. A block with a `frame` {x,y,w,h} is pinned: percent of the 16:9 slide, x and y its top-left corner, so x+w and y+h stay within 100. The rest sit in their layout's slots.",
+      "Read the deck. view 'outline' (default) lists every scene with its id, title, layout, lead, block and step counts, and returns `rev`, the deck revision to pass to deck_apply as base_rev, and `comments`: the open count and your tasks. view 'scene' returns one scene's full JSON and its open comments. view 'comments' lists comments, open ones unless resolved is true. Use detail 'detailed' for block lists, per-scene revisions, and the asset list. A block with a `frame` {x,y,w,h} is pinned: percent of the 16:9 slide, x and y its top-left corner, so x+w and y+h stay within 100. The rest sit in their layout's slots.",
     inputSchema: jsonSchema(getArgs),
     annotations: { title: "Read the deck", readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   },
@@ -80,6 +152,30 @@ const TOOLS = [
       title: "Edit the deck",
       readOnlyHint: false,
       destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: "deck_comment",
+    description:
+      "Leave and answer comments on the deck's blocks. They are kept beside the deck, never in it. deck_get returns `comments.rev`, the base_rev to pass here, and `comments.tasks`, which people asked you to act on. Operations apply together or not at all. For a task: reply, make the change with deck_apply, then resolve it. You write as the agent, so leave author out. You cannot delete. `anchor` is where on the block the comment points, as fractions from 0 to 1 from its top left. A stale base_rev is rejected, never merged: read again and redo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        base_rev: {
+          type: "string",
+          description: "The comments revision you read: `comments.rev` from deck_get.",
+        },
+        ops: { ...commentOpsBody, description: "Comment operations, applied in order as one transaction." },
+      },
+      required: ["ops", "base_rev"],
+      additionalProperties: false,
+    },
+    annotations: {
+      title: "Comment on the deck",
+      readOnlyHint: false,
+      destructiveHint: false,
       idempotentHint: false,
       openWorldHint: false,
     },
@@ -115,6 +211,11 @@ export const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = Object.fromEn
 
 const compact = (value: unknown): string => JSON.stringify(value);
 
+/** A summary without an empty task list, so a quiet deck costs a few tokens. */
+function commentsOf({ tasks, ...rest }: CommentSummary) {
+  return { ...rest, ...(tasks.length > 0 ? { tasks } : {}) };
+}
+
 const plain = (d: Diagnostic) => ({
   code: d.code,
   at: `${d.file}${d.path}`,
@@ -142,9 +243,9 @@ export interface DepthcueServer {
 }
 
 /**
- * An MCP server over one deck folder. Four tools, because every tool an agent can see costs it tokens on every
- * turn: deck_get reads, deck_apply edits, deck_render checks the result with a screenshot and measurements,
- * deck_present drives the deck while the presenter has handed over control.
+ * An MCP server over one deck folder. Five tools, because every tool an agent can see costs it tokens on every
+ * turn: deck_get reads, deck_apply edits, deck_comment answers the person's comments, deck_render checks the result
+ * with a screenshot and measurements, deck_present drives the deck while the presenter has handed over control.
  * The browser starts on the first render and is kept until `close()`.
  */
 export function createDepthcueServer(folder: string, version = "0.0.0"): DepthcueServer {
@@ -165,7 +266,7 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
   function get(raw: unknown): CallToolResult {
     const parsed = getArgs.safeParse(raw ?? {});
     if (!parsed.success) return failure(complaint(parsed.error));
-    const { view, scene, detail: level } = parsed.data;
+    const { view, scene, resolved, detail: level } = parsed.data;
     if (view === "scene" && !scene)
       return failure(
         "view 'scene' needs `scene`, the scene id. Call deck_get with view 'outline' to list them.",
@@ -177,12 +278,75 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
         `The deck has errors, so it cannot be read. Fix these in the files, or with deck_apply once it opens: ${compact(opened.diagnostics.filter((d) => d.severity === "error").map(plain))}`,
       );
     }
-    const warnings = opened.diagnostics.filter((d) => d.severity === "warning").map(plain);
+    const deckWarnings = opened.diagnostics.filter((d) => d.severity === "warning").map(plain);
+    const read = readCommentsFor(folder, opened.doc);
+    // A comments file that cannot be read is told as a warning: the deck is still fine to read and edit.
+    const commentWarnings = read.ok
+      ? read.warnings.map(plain)
+      : read.diagnostics.map((d) => ({
+          ...plain(d),
+          message: `${d.message} (comments.json was not changed.)`,
+        }));
+    const warnings = [...deckWarnings, ...(view === "scene" ? [] : commentWarnings)];
     const extra = warnings.length > 0 ? { warnings } : {};
-    if (view === "outline") return text({ ...getOutline(opened.doc, level as Detail), ...extra });
+
+    if (view === "comments") {
+      if (!read.ok)
+        return failure(
+          `comments.json is not valid, so it cannot be read. Fix the file by hand, or ask the person to: ${compact(read.diagnostics.map(plain))}`,
+        );
+      const { comments: items, resolved: closed, ...summary } = listComments(read.file, opened.doc, resolved);
+      const shown = scene === undefined ? items : items.filter((comment) => comment.scene === scene);
+      return text({ comments: { ...commentsOf(summary), resolved: closed, items: shown }, ...extra });
+    }
+    if (view === "outline") {
+      const comments = read.ok ? { comments: commentsOf(summarize(read.file)) } : {};
+      return text({ ...getOutline(opened.doc, level as Detail), ...comments, ...extra });
+    }
 
     const found = getScene(opened.doc, scene as string, level as Detail);
-    return found.ok ? text({ ...found, ...extra }) : failure(found.message);
+    if (!found.ok) return failure(found.message);
+    const here = read.ok
+      ? listComments(read.file, opened.doc).comments.filter((comment) => comment.scene === scene)
+      : [];
+    const comments =
+      read.ok && here.length > 0
+        ? { comments: { rev: summarize(read.file).rev, open: here.length, items: here } }
+        : {};
+    return text({ ...found, ...comments, ...extra });
+  }
+
+  function comment(raw: unknown): CallToolResult {
+    const parsed = applyArgs.safeParse(raw ?? {});
+    if (!parsed.success) return failure(complaint(parsed.error));
+    const agent = asAgent(parsed.data.ops);
+    if (!agent.ok) return failure(agent.message);
+    const outcome = applyCommentsToFolder(folder, agent.ops, parsed.data.base_rev);
+    if (!outcome.ok) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: compact({
+              ok: false,
+              code: outcome.code,
+              ...(outcome.rev === undefined ? {} : { rev: outcome.rev }),
+              hint: outcome.hint,
+              diagnostics: outcome.diagnostics.map(plain),
+            }),
+          },
+        ],
+      };
+    }
+    const warnings = outcome.warnings.map(plain);
+    return text({
+      ok: true,
+      rev: outcome.rev,
+      changed: outcome.changed,
+      removed: outcome.removed,
+      ...(warnings.length > 0 ? { warnings } : {}),
+    });
   }
 
   function apply(raw: unknown): CallToolResult {
@@ -263,6 +427,7 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
     try {
       if (name === "deck_get") return get(args);
       if (name === "deck_apply") return apply(args);
+      if (name === "deck_comment") return comment(args);
       if (name === "deck_render") return await render(args);
       if (name === "deck_present") return await present.run(args);
       return failure(`There is no tool "${name}". The tools are: ${TOOL_NAMES.join(", ")}.`);

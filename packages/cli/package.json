@@ -16,6 +16,10 @@
       "types": "./dist/deck-api.d.ts",
       "default": "./dist/deck-api.js"
     },
+    "./comments-api": {
+      "types": "./dist/comments-api.d.ts",
+      "default": "./dist/comments-api.js"
+    },
     "./render": {
       "types": "./dist/render.d.ts",
       "default": "./dist/render.js"

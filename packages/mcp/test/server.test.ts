@@ -1,12 +1,12 @@
-import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { deckSchema, OP_NAMES, sceneSchema } from "@depthcue/core";
+import { COMMENTS_FILE, commentOpsSchema, deckSchema, OP_NAMES, sceneSchema } from "@depthcue/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDepthcueServer, type DepthcueServer, TOOL_NAMES } from "../src/server.ts";
 
 const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
@@ -64,13 +64,15 @@ async function call(name: string, args: Record<string, unknown> = {}): Promise<R
 const revision = async () => (await call("deck_get")).json.rev as string;
 
 describe("the tool list", () => {
-  it("offers exactly four tools, and keeps their definitions small", async () => {
+  it("offers exactly five tools, and keeps their definitions small", async () => {
     const { tools } = await client.listTools();
-    const names = ["deck_get", "deck_apply", "deck_render", "deck_present"];
+    const names = ["deck_get", "deck_apply", "deck_comment", "deck_render", "deck_present"];
     expect(tools.map((tool) => tool.name)).toEqual(names);
     expect(TOOL_NAMES).toEqual(names);
-    // Every tool definition is in the agent's context on every turn.
-    expect(JSON.stringify(tools).length).toBeLessThan(9000);
+    // Every tool definition is in the agent's context on every turn. The cap was 9000 for four tools; the fifth,
+    // deck_comment, is 2.3 KB (half of it the operations schema) and deck_get's comments sentences are 0.3 KB, which
+    // makes 10.9 KB. Raise it only for a reason of that size.
+    expect(JSON.stringify(tools).length).toBeLessThan(11000);
     for (const tool of tools) expect(tool.description?.length).toBeLessThan(700);
   });
 
@@ -100,15 +102,66 @@ describe("the tool list", () => {
     );
   });
 
-  it("marks reads as read-only, and the edit and presenting as not", async () => {
+  it("marks reads as read-only, and the edit, the comments and presenting as not", async () => {
     const { tools } = await client.listTools();
     const hint = (name: string) => tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint;
-    expect([hint("deck_get"), hint("deck_apply"), hint("deck_render"), hint("deck_present")]).toEqual([
-      true,
-      false,
-      true,
-      false,
+    expect([
+      hint("deck_get"),
+      hint("deck_apply"),
+      hint("deck_comment"),
+      hint("deck_render"),
+      hint("deck_present"),
+    ]).toEqual([true, false, false, true, false]);
+  });
+
+  it("gives deck_comment the comment operations an agent may use, and none it may not", async () => {
+    const tool = (await client.listTools()).tools.find((entry) => entry.name === "deck_comment");
+    const schema = tool?.inputSchema as any;
+    expect(schema.required).toEqual(["ops", "base_rev"]);
+    expect(schema.additionalProperties).toBe(false);
+    const variants = schema.properties.ops.items.oneOf as Array<{
+      required: string[];
+      properties: Record<string, { const?: string }>;
+    }>;
+    expect(variants.map((variant) => variant.properties.op?.const)).toEqual([
+      "comment.add",
+      "comment.reply",
+      "comment.resolve",
+      "comment.reopen",
     ]);
+    // Who writes is the server's to say, so the schema offers neither author nor ask.
+    for (const variant of variants) {
+      expect(Object.keys(variant.properties)).not.toContain("author");
+      expect(Object.keys(variant.properties)).not.toContain("ask");
+      expect(variant.required).not.toContain("author");
+    }
+    // Everything else is core's own schema, so a property added there reaches the agent without an edit here.
+    const core = (
+      commentOpsSchema.items.oneOf as unknown as ReadonlyArray<{ properties: object; required: string[] }>
+    ).filter((variant) =>
+      variants.some((mine) => mine.properties.op?.const === (variant.properties as any).op.const),
+    );
+    for (const [index, variant] of core.entries()) {
+      const mine = variants[index];
+      expect(Object.keys(mine?.properties ?? {}).sort()).toEqual(
+        Object.keys(variant.properties)
+          .filter((key) => key !== "author" && key !== "ask")
+          .sort(),
+      );
+      expect(mine?.required).toEqual(variant.required.filter((key) => key !== "author"));
+    }
+  });
+
+  it("tells the agent where comments are read, what a task is and how to answer one", async () => {
+    const { tools } = await client.listTools();
+    const described = (name: string) => tools.find((tool) => tool.name === name)?.description ?? "";
+    expect(described("deck_get")).toContain("`comments`");
+    expect(described("deck_get")).toContain("view 'comments'");
+    const comment = described("deck_comment");
+    expect(comment).toContain("`comments.rev`");
+    expect(comment).toContain("`comments.tasks`");
+    expect(comment).toMatch(/reply, make the change with deck_apply, then resolve/);
+    expect(comment).toContain("leave author out");
   });
 });
 
@@ -230,6 +283,242 @@ describe("deck_apply", () => {
     expect((await call("deck_apply", { ops: [] })).text).toContain("Invalid arguments");
     expect((await call("deck_apply", { base_rev: "x" })).text).toContain("ops");
     expect((await call("deck_apply", { base_rev: "x", ops: [] })).text).toContain("ops");
+  });
+});
+
+describe("comments", () => {
+  const NOW = "2026-11-01T10:00:00.000Z";
+  const commentsPath = () => join(folder, COMMENTS_FILE);
+  const person = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    scene: "method",
+    block: "method-diagram",
+    anchor: { x: 0.4, y: 0.6 },
+    thread: [{ author: "you", text: "Make this label shorter.", at: NOW }],
+    resolved: false,
+    ...over,
+  });
+  /** The comments file as the person's editor would have left it. */
+  const personWrites = (...comments: unknown[]) =>
+    writeFileSync(commentsPath(), JSON.stringify({ format: "depthcue-comments/1", comments }));
+  const summary = async () =>
+    (await call("deck_get")).json.comments as { rev: string; open: number; tasks?: any[] };
+  const items = async (args: Record<string, unknown> = {}) =>
+    (await call("deck_get", { view: "comments", ...args })).json.comments;
+  const answer = async (ops: unknown[], baseRev?: string) =>
+    call("deck_comment", { base_rev: baseRev ?? (await summary()).rev, ops });
+  const agentAdd = (over: Record<string, unknown> = {}) => ({
+    op: "comment.add",
+    scene: "opening",
+    block: "opening-title",
+    anchor: { x: 0.1, y: 0.9 },
+    text: "The title runs long.",
+    ...over,
+  });
+
+  beforeEach(() => rmSync(commentsPath(), { force: true }));
+  afterAll(() => rmSync(commentsPath(), { force: true }));
+
+  describe("deck_get", () => {
+    it("tells a deck with no comments in a few tokens: the revision to pass and a count of none", async () => {
+      const outline = await call("deck_get");
+      expect(outline.json.comments).toEqual({ rev: expect.stringMatching(/^[0-9a-f]{16}$/), open: 0 });
+      expect(outline.json.comments).not.toHaveProperty("tasks");
+      expect(existsSync(commentsPath())).toBe(false);
+    });
+
+    it("puts a person's Ask-the-agent comment in the outline as a task, with the words and where", async () => {
+      personWrites(person("c1", { ask: true }), person("c2"));
+      expect((await summary()).tasks).toEqual([
+        { id: "c1", scene: "method", block: "method-diagram", text: "Make this label shorter." },
+      ]);
+      expect((await summary()).open).toBe(2);
+    });
+
+    it("lists the open comments by default, the resolved ones on request, and one scene's on request", async () => {
+      personWrites(
+        person("c1"),
+        person("c2", { resolved: true }),
+        person("c3", { scene: "opening", block: "opening-title" }),
+      );
+      const open = await items();
+      expect(open.items.map((item: { id: string }) => item.id)).toEqual(["c1", "c3"]);
+      expect(open).toMatchObject({ open: 2, resolved: 1 });
+      expect(open.rev).toBe((await summary()).rev);
+      expect((await items({ resolved: true })).items.map((item: { id: string }) => item.id)).toEqual([
+        "c1",
+        "c2",
+        "c3",
+      ]);
+      expect((await items({ scene: "opening" })).items.map((item: { id: string }) => item.id)).toEqual([
+        "c3",
+      ]);
+      expect((await items({ scene: "no-such-scene" })).items).toEqual([]);
+    });
+
+    it("adds a scene's open comments to its scene view, and nothing to a scene without any", async () => {
+      personWrites(
+        person("c1"),
+        person("c2", { resolved: true }),
+        person("c3", { scene: "opening", block: "opening-title" }),
+      );
+      const method = await call("deck_get", { view: "scene", scene: "method" });
+      expect(method.json.comments).toMatchObject({ open: 1, items: [{ id: "c1" }] });
+      expect(method.json.comments.items).toHaveLength(1);
+      expect(method.json.comments.rev).toBe((await summary()).rev);
+      const demand = await call("deck_get", { view: "scene", scene: "demand" });
+      expect(demand.json).not.toHaveProperty("comments");
+    });
+
+    it("flags a comment whose block has gone, in the outline and in the list", async () => {
+      personWrites(person("c1", { block: "gone" }));
+      const outline = await call("deck_get");
+      expect(outline.json.warnings.map((w: { code: string }) => w.code)).toContain("orphaned-comment");
+      expect((await items()).items[0]).toMatchObject({ id: "c1", orphaned: true });
+    });
+
+    it("still reads the deck when comments.json is not valid, and says so", async () => {
+      writeFileSync(commentsPath(), "{ nope");
+      const outline = await call("deck_get");
+      expect(outline.isError).toBe(false);
+      expect(outline.json.scenes).toHaveLength(3);
+      expect(outline.json).not.toHaveProperty("comments");
+      expect(outline.json.warnings.at(-1)).toMatchObject({ at: expect.stringMatching(/^comments\.json/) });
+      expect(outline.json.warnings.at(-1).message).toContain("comments.json was not changed");
+      const list = await call("deck_get", { view: "comments" });
+      expect(list.isError).toBe(true);
+      expect(list.text).toContain("comments.json is not valid");
+    });
+  });
+
+  describe("deck_comment", () => {
+    it("adds a comment as the agent, whatever the schema leaves out, and the deck does not move", async () => {
+      const deckRev = await revision();
+      const before = (await summary()).rev;
+      const reply = await answer([agentAdd()]);
+      expect(reply.isError, reply.text).toBe(false);
+      expect(reply.json).toMatchObject({ ok: true, changed: ["c1"], removed: [] });
+      expect(reply.json.rev).not.toBe(before);
+      expect(reply.json.rev).toBe((await summary()).rev);
+      const [added] = (await items()).items;
+      expect(added).toMatchObject({ id: "c1", scene: "opening", block: "opening-title", resolved: false });
+      expect(added.thread).toEqual([
+        { author: "agent", text: "The title runs long.", at: expect.any(String) },
+      ]);
+      expect(added).not.toHaveProperty("ask");
+      expect(await revision()).toBe(deckRev);
+    });
+
+    it("answers a task: reply, then resolve, and the task is gone from the outline at the reply", async () => {
+      personWrites(person("c1", { ask: true }));
+      expect((await summary()).tasks).toHaveLength(1);
+      const replied = await answer([{ op: "comment.reply", id: "c1", text: "Shortened it." }]);
+      expect(replied.json).toMatchObject({ ok: true, changed: ["c1"] });
+      const afterReply = await summary();
+      expect(afterReply).toMatchObject({ open: 1 });
+      expect(afterReply).not.toHaveProperty("tasks");
+      const [thread] = (await items()).items;
+      expect(thread.thread.map((m: { author: string }) => m.author)).toEqual(["you", "agent"]);
+
+      const resolved = await answer([{ op: "comment.resolve", id: "c1" }]);
+      expect(resolved.json.ok).toBe(true);
+      expect(await summary()).toMatchObject({ open: 0 });
+      expect((await items()).items).toEqual([]);
+      expect((await items({ resolved: true })).items[0]).toMatchObject({ id: "c1", resolved: true });
+    });
+
+    it("brings the task back when the person writes again after the agent's reply", async () => {
+      personWrites(person("c1", { ask: true }));
+      await answer([{ op: "comment.reply", id: "c1", text: "Done." }]);
+      expect((await summary()).tasks).toBeUndefined();
+      const written = JSON.parse(readFileSync(commentsPath(), "utf8"));
+      written.comments[0].thread.push({ author: "you", text: "Still too long.", at: NOW });
+      writeFileSync(commentsPath(), JSON.stringify(written));
+      expect((await summary()).tasks).toEqual([
+        expect.objectContaining({ id: "c1", text: "Still too long." }),
+      ]);
+    });
+
+    it("reopens a comment, and applies a list of operations together", async () => {
+      personWrites(person("c1", { resolved: true }));
+      const reply = await answer([
+        { op: "comment.reopen", id: "c1" },
+        { op: "comment.reply", id: "c1", text: "Looking again." },
+        agentAdd({ text: "Second thought." }),
+      ]);
+      expect(reply.json).toMatchObject({ ok: true, changed: ["c1", "c2"] });
+      expect((await items()).items.map((item: { id: string }) => item.id)).toEqual(["c1", "c2"]);
+    });
+
+    it("refuses an author, an ask, or a delete, says why and writes nothing", async () => {
+      personWrites(person("c1"));
+      const text = readFileSync(commentsPath(), "utf8");
+      const refused = async (op: Record<string, unknown>) => {
+        const reply = await answer([op]);
+        expect(reply.isError).toBe(true);
+        expect(readFileSync(commentsPath(), "utf8")).toBe(text);
+        return reply.text;
+      };
+      expect(await refused(agentAdd({ author: "you" }))).toContain("ops[0]: leave out `author`");
+      expect(await refused({ op: "comment.reply", id: "c1", text: "Hi", author: "you" })).toContain(
+        "`author`",
+      );
+      expect(await refused(agentAdd({ ask: true }))).toContain("leave out `ask`");
+      expect(await refused(agentAdd({ author: "agent", ask: true }))).toContain("`author` and `ask`");
+      expect(await refused({ op: "comment.delete", id: "c1" })).toContain(
+        "comment.delete is for the person who wrote the comment. Resolve the comment instead.",
+      );
+    });
+
+    it("names the operation that was refused, by its place in the list", async () => {
+      const reply = await answer([agentAdd(), agentAdd({ author: "you" })]);
+      expect(reply.text).toContain("ops[1]:");
+      expect(existsSync(commentsPath())).toBe(false);
+    });
+
+    it("rejects a stale revision, writes nothing and says which revision to use", async () => {
+      const stale = (await summary()).rev;
+      await answer([agentAdd()], stale);
+      const now = (await summary()).rev;
+      const text = readFileSync(commentsPath(), "utf8");
+      const reply = await answer([agentAdd({ text: "Too late." })], stale);
+      expect(reply.isError).toBe(true);
+      expect(reply.json).toMatchObject({ ok: false, code: "stale-revision", rev: now });
+      expect(reply.json.hint).toContain(`base_rev "${now}"`);
+      expect(readFileSync(commentsPath(), "utf8")).toBe(text);
+    });
+
+    it("takes the deck's revision for a stale one, because the two are separate", async () => {
+      const reply = await answer([agentAdd()], await revision());
+      expect(reply.isError).toBe(true);
+      expect(reply.json.code).toBe("stale-revision");
+      expect(existsSync(commentsPath())).toBe(false);
+    });
+
+    it("rejects a comment that names a block the deck does not have, with where and why", async () => {
+      const reply = await answer([agentAdd({ block: "no-such-block" })]);
+      expect(reply.isError).toBe(true);
+      expect(reply.json.code).toBe("bad-op");
+      expect(reply.json.hint).toContain("Nothing was applied");
+      expect(reply.json.diagnostics[0].at).toMatch(/^ops\/0/);
+      expect(existsSync(commentsPath())).toBe(false);
+    });
+
+    it("rejects an unknown comment, an empty list and a missing revision, naming the field", async () => {
+      expect((await answer([{ op: "comment.resolve", id: "c9" }])).json.code).toBe("bad-op");
+      expect((await call("deck_comment", { base_rev: "x", ops: [] })).text).toContain("ops");
+      expect((await call("deck_comment", { ops: [agentAdd()] })).text).toContain("base_rev");
+      expect((await answer([{ text: "no operation" }])).json.code).toBe("bad-op");
+    });
+
+    it("leaves a comments.json that is not valid exactly as it was, and says to fix it by hand", async () => {
+      writeFileSync(commentsPath(), "{ nope");
+      const reply = await call("deck_comment", { base_rev: "x", ops: [agentAdd()] });
+      expect(reply.isError).toBe(true);
+      expect(reply.json.code).toBe("unreadable-comments");
+      expect(reply.json.hint).toContain("not valid");
+      expect(readFileSync(commentsPath(), "utf8")).toBe("{ nope");
+    });
   });
 });
 
@@ -511,7 +800,7 @@ describe("unknown tools", () => {
   it("lists the tools that exist", async () => {
     const reply = await call("deck_delete");
     expect(reply.isError).toBe(true);
-    expect(reply.text).toContain("deck_get, deck_apply, deck_render");
+    expect(reply.text).toContain("deck_get, deck_apply, deck_comment, deck_render");
   });
 });
 
@@ -526,7 +815,7 @@ describe("the built binary", () => {
     const remote = new Client({ name: "stdio-test", version: "0.0.0" });
     await remote.connect(stdio);
     try {
-      expect((await remote.listTools()).tools).toHaveLength(4);
+      expect((await remote.listTools()).tools).toHaveLength(5);
       const outline = (await remote.callTool({ name: "deck_get", arguments: {} })) as {
         content: Array<{ text: string }>;
       };

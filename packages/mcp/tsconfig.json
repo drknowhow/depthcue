@@ -4,6 +4,7 @@
     "paths": {
       "@depthcue/core": ["../core/src/index.ts"],
       "@depthcue/cli/deck-api": ["../cli/src/deck-api.ts"],
+      "@depthcue/cli/comments-api": ["../cli/src/comments-api.ts"],
       "@depthcue/cli/render": ["../cli/src/render.ts"],
       "@depthcue/cli/link": ["../cli/src/link.ts"]
     }

@@ -17,8 +17,9 @@ by hand, and read afterwards as a document.
   low contrast, with a PNG per scene if you ask.
 - **Edit by hand.** `depthcue edit` opens a browser editor. Its changes go through the same operations an agent
   uses, save only when you ask, and a draft survives a closed tab.
-- **Edit by agent.** `depthcue-mcp` is an MCP server with four tools: `deck_get`, `deck_apply`, `deck_render` and
-  `deck_present`. An edit is one transaction against a revision. A stale revision is rejected, never merged.
+- **Edit by agent.** `depthcue-mcp` is an MCP server with five tools: `deck_get`, `deck_apply`, `deck_comment`,
+  `deck_render` and `deck_present`. An edit is one transaction against a revision. A stale revision is rejected,
+  never merged. A person's comments sit beside the deck, never in it, and an agent can answer them with `deck_comment`.
 - **Present.** Keyboard navigation, a reading view for the audience, and a [presenter window](docs/presenter.md)
   with notes, a timer and a preview of the next move. A person can [hand control to an agent](docs/lease.md) and
   take it back at once.
