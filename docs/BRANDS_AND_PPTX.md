@@ -274,7 +274,7 @@ library, and per-block raw hex colors.
 - **The editor's brand checks load on demand.** The changes above took the editor's script to 92,224 bytes, 64 over
   its limit. What moved: core's `brandcheck.ts`, the checks of brand.json and the template files (`readBrand`,
   `checkBrand`, `checkTemplate`, `checkBrandFile`, `checkTemplateFile`, `looksOf`), is now
-  `dist/brandcheck.js`, 3.1 KB brotli with its own budget row of 6 KB. The editor's build puts
+  `dist/brandcheck.js`, 3.2 KB brotli with its own budget row of 6 KB. The editor's build puts
   `packages/editor/src/brandchecks.ts` where core imports it; that stand-in fetches the chunk the first time a check
   is wanted and, until it is in, answers with the error `brand-checks-loading`, so nothing passes unchecked. The store
   then waits for the chunk and reads the deck again; it does the same for a draft, which is not thrown away for it.
@@ -289,9 +289,9 @@ library, and per-block raw hex colors.
 - **Player.** A template scene draws each slot as a dashed box with its id, its blocks stacked inside, until step 3
   places slots at their frames; the claim comes first, in a box for the `claim` slot, and an overlay sits only at its
   frame. The fixture's chart-and-note scene overflows that stack in `depthcue render`.
-- **Sizes.** Core runtime 45.2 to 39.9 KB gzip (limit 60). Editor script 89.3 to 88.2 KB brotli (90,299 bytes of
+- **Sizes.** Core runtime 45.2 to 40.1 KB gzip (limit 60). Editor script 89.3 to 88.3 KB brotli (90,368 bytes of
   92,160): the review round took it to 92,224 bytes, and moving the brand checks to their chunk took 1.9 KB back out.
-  The chunk is 3.1 KB (3,186 bytes of 6,144). Player script 10.1 to 10.3 KB (the placeholder), core code in the
+  The chunk is 3.2 KB (3,289 bytes of 6,144). Player script 10.1 to 10.3 KB (the placeholder), core code in the
   player 5.1 to 5.0 KB, exported page 13.3 KB.
 
 ### Cod's review
