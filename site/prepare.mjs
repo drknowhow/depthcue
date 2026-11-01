@@ -27,8 +27,11 @@ const docsOut = join(site, "src/content/docs");
 /** Every doc that is on the site: its repository path, and where it goes. */
 const PAGES = {
   "docs/clips.md": "guides/clips",
+  "docs/comments-and-review.md": "guides/comments-and-review",
+  "docs/editor.md": "guides/editor",
   "docs/export.md": "guides/export",
   "docs/lease.md": "guides/lease",
+  "docs/placement.md": "guides/placement",
   "docs/presenter.md": "guides/presenter",
   "docs/PLAN.md": "project/plan",
   "brand/README.md": "project/brand",
@@ -37,7 +40,7 @@ const PAGES = {
 /** Docs that are left off, and why. A link to one of these goes to the file on GitHub. */
 const LEFT_OFF = {
   "docs/EDITOR_REMAKE.md":
-    "It is the working plan for the editor remake. Replace it with user docs when the remake has landed.",
+    "It is the build record of the editor remake, with internals and decisions that the user guides do not need.",
   "docs/RESEARCH.md": "It quotes forum posts by handle. Remove those before it is public.",
   "docs/TRIAL.md":
     "It compares Depthcue with two other projects from single runs. Check the claims for fairness before it is public.",
