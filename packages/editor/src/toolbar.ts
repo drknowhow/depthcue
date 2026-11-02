@@ -15,10 +15,11 @@ import { dataPanel } from "./chartpanel.ts";
 import { buildChip, type Chip, fillChip, fitPopover, hidePopover, showPopover, standBeside } from "./chip.ts";
 import { afterWhenMoving, removeBlock, removeClaim } from "./cleanup.ts";
 import { type CueBook, measureClip, videoOf } from "./cues.ts";
-import { type CueTools, cuesPanel } from "./cuespanel.ts";
+import type { CueTools } from "./cuespanel.ts";
 import { actionButton, type Edits, problemOf } from "./fields.ts";
 import { createFormatBar, type FormatBar } from "./formatbar.ts";
 import { framePanel } from "./framepanel.ts";
+import { notLoaded, PARTS, type Parts, withPart } from "./lazy.ts";
 import {
   chartPanel,
   citePanel,
@@ -105,6 +106,8 @@ export interface ToolbarHooks {
   openSources(): void;
   /** The cues of the clips, which are kept in files beside the videos. */
   cues: CueBook;
+  /** Where the editor of a clip's cues is fetched from, the first time a clip is chosen. */
+  parts?: Pick<Parts, "cues">;
 }
 
 export interface Toolbar {
@@ -209,6 +212,46 @@ export function createToolbar(
       if (video) video.currentTime = seconds;
     },
   };
+
+  /**
+   * The Cues chip, whose popover is a part of its own: the chip is there at once, and what is in it once the part is
+   * in. The first fill fetches it; one that did not arrive says so in the popover, and choosing the clip again retries.
+   */
+  function cuesChip(inScene: string, id: string): Panel {
+    const title = "Places to jump to in this clip";
+    const body = h("div", { class: "ed-part" }, "Loading…");
+    let real: Panel | undefined;
+    let tried = false;
+    return {
+      name: "cues",
+      label: "Cues",
+      title,
+      body,
+      fill(current, typing) {
+        if (!real && !tried) {
+          tried = true;
+          let late = false;
+          withPart(
+            (hooks.parts ?? PARTS).cues,
+            (module) => {
+              real = module.cuesPanel(host, cueTools, inScene, id);
+              body.replaceChildren(real.body);
+              // A part that came late finds the chip's count and the popover drawn without it.
+              const live = scene(sceneId);
+              const target = late && live && shown?.id === id ? resolve(live, id) : undefined;
+              if (target) sync(target, false);
+            },
+            () => {
+              body.textContent = notLoaded("the cue editor");
+            },
+          );
+          late = true;
+        }
+        real?.fill(current, typing);
+      },
+      state: (current) => real?.state?.(current) ?? { badge: "", title },
+    };
+  }
 
   function closePop(giveBack = false) {
     if (!open) return;
@@ -408,7 +451,7 @@ export function createToolbar(
         case "image":
           return [imagePanel(host, sceneId, block.id)];
         case "clip":
-          return [clipPanel(host, sceneId, block.id), cuesPanel(host, cueTools, sceneId, block.id)];
+          return [clipPanel(host, sceneId, block.id), cuesChip(sceneId, block.id)];
         case "text":
           return [stylePanel(host, sceneId, block.id)];
         default:

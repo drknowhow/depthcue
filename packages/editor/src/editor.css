@@ -2111,6 +2111,11 @@ body {
   grid-template-columns: minmax(0, 1fr) 4.5rem auto;
 }
 
+/* A popover whose content is a part of the editor fetched on first use (lazy.ts): it holds the part's own form. */
+.ed-part {
+  display: contents;
+}
+
 /*
  * A chart's data: its title and unit over the grid that edits its rows, and the buttons that add and take away rows and
  * series. The grid scrolls inside the popover when it holds many rows or series, so the buttons stay in reach.

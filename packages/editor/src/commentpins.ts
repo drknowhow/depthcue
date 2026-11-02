@@ -92,6 +92,7 @@ export function createCommentPins(
   overlay: HTMLElement,
   nodeOf: (id: string) => HTMLElement | undefined,
   surface: CommentSurface,
+  at?: Element,
 ): CommentPins {
   const { book } = surface;
   const catcher = h("div", { class: "ed-comment-catch", hidden: true });
@@ -620,7 +621,9 @@ export function createCommentPins(
   }
 
   // The layer goes in over the grips and the build badges, and under the toolbar, which is added to the overlay after.
-  overlay.append(layer);
+  // Made later than the toolbar, it takes the place `at` that was kept for it.
+  if (at) at.replaceWith(layer);
+  else overlay.append(layer);
   const unsubscribe = book.subscribe(() => draw(scene()));
 
   return {

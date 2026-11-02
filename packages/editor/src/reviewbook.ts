@@ -25,6 +25,27 @@ export interface ReviewState {
 
 export type Outcome = { ok: true } | { ok: false; message: string };
 
+export interface Summary {
+  /** Changes the agent made and nobody has answered. */
+  agent: number;
+  /** Changes somebody made by editing the files by hand. */
+  outside: number;
+}
+
+export function summaryOf(changes: readonly Change[]): Summary {
+  const agent = changes.filter((change) => change.by === "agent").length;
+  return { agent, outside: changes.length - agent };
+}
+
+/** How many changes each scene has, for the mark on its thumbnail. A change to the deck itself belongs to no scene. */
+export function countsByScene(changes: readonly Change[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const change of changes) {
+    if (change.scene !== undefined) counts.set(change.scene, (counts.get(change.scene) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export interface ReviewOptions {
   /** Why changes cannot be accepted or reverted right now, if they cannot. */
   blocked?: () => string | undefined;
