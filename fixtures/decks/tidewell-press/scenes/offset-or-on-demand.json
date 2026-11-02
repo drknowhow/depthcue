@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "0.4",
+  "id": "offset-or-on-demand",
+  "title": "Offset run or print on demand",
+  "template": "comparison",
+  "blocks": [
+    {
+      "id": "offset-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Offset run or print on demand?",
+      "slot": "title"
+    },
+    {
+      "id": "offset-left-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Offset run",
+      "slot": "left-title"
+    },
+    {
+      "id": "offset-left-1",
+      "type": "text",
+      "role": "body",
+      "text": "The lowest cost per copy above 1,500.",
+      "slot": "left"
+    },
+    {
+      "id": "offset-left-2",
+      "type": "text",
+      "role": "body",
+      "text": "Needs six weeks and a place to keep the stock.",
+      "slot": "left"
+    },
+    {
+      "id": "offset-right-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Print on demand",
+      "slot": "right-title"
+    },
+    {
+      "id": "offset-right-1",
+      "type": "text",
+      "role": "body",
+      "text": "No stock to keep and no remainders.",
+      "slot": "right"
+    },
+    {
+      "id": "offset-right-2",
+      "type": "text",
+      "role": "body",
+      "text": "Costs more per copy, but a title never runs out.",
+      "slot": "right"
+    }
+  ]
+}

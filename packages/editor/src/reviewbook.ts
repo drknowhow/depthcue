@@ -12,6 +12,7 @@ import {
   type Session,
 } from "@depthcue/core";
 import type { Api } from "./api.ts";
+import { loadBuiltIns } from "./brandchecks.ts";
 import type { History } from "./history.ts";
 
 export interface ReviewState {
@@ -127,6 +128,9 @@ export function createReviewBook(
   async function read(): Promise<void> {
     const seen = epoch;
     const answer = await api.loadReview();
+    // A review holds the deck as it was, which may name a template of Depthcue's that the deck now does not, and an
+    // accept or a revert that brings it back needs them in. They are fetched with the review, before it can be used.
+    if (answer.ok && answer.review) await loadBuiltIns();
     if (disposed || epoch !== seen) return; // a write finished while the file was being read, so this may predate it
     ready = true;
     if (answer.ok) {

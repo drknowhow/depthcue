@@ -900,7 +900,22 @@ describe("a branded deck", () => {
   it("shows the agent its brand, and each template's slots with what goes in them", async () => {
     const outline = await ask("deck_get");
     expect(outline.brand).toEqual({ id: "harbor", name: "Harbor Analytics" });
-    const cover = outline.templates.find((template: { id: string }) => template.id === "cover");
+    // The short answer names the templates and styles to choose from; their slots are in the detailed one.
+    expect(outline.templates.find((template: { id: string }) => template.id === "cover")).toEqual({
+      id: "cover",
+      name: expect.any(String),
+      brand: true,
+    });
+    expect(outline.templates.map((template: { id: string }) => template.id)).toEqual(
+      expect.arrayContaining(["section", "two-column", "cover", "chart-and-note"]),
+    );
+    expect(outline.styles).toEqual(expect.arrayContaining(["callout", "stat"]));
+    expect(JSON.stringify(outline)).not.toContain('"hint"');
+    expect(outline.scenes.find((scene: { id: string }) => scene.id === "welcome")).toMatchObject({
+      template: "cover",
+    });
+    const detailed = await ask("deck_get", { detail: "detailed" });
+    const cover = detailed.templates.find((template: { id: string }) => template.id === "cover");
     expect(cover).toMatchObject({ brand: true });
     for (const slot of cover.slots) {
       expect(slot.role, slot.id).toMatch(/\w/);
@@ -908,23 +923,16 @@ describe("a branded deck", () => {
       expect(slot.hint, slot.id).toMatch(/\w/);
     }
     // A claim slot takes the scene's claim, not blocks, so it lists nothing it accepts.
-    const statement = outline.templates.find((template: { id: string }) => template.id === "statement");
+    const statement = detailed.templates.find((template: { id: string }) => template.id === "statement");
     expect(statement.slots[0]).toEqual({
       id: "claim",
       role: "claim",
       hint: expect.any(String),
       required: true,
     });
-    expect(outline.templates.map((template: { id: string }) => template.id)).toEqual(
-      expect.arrayContaining(["section", "two-column", "cover", "chart-and-note"]),
-    );
-    expect(outline.styles.map((style: { id: string }) => style.id)).toEqual(
+    expect(detailed.styles.map((style: { id: string }) => style.id)).toEqual(
       expect.arrayContaining(["callout", "stat"]),
     );
-    expect(outline.scenes.find((scene: { id: string }) => scene.id === "welcome")).toMatchObject({
-      template: "cover",
-    });
-    const detailed = await ask("deck_get", { detail: "detailed" });
     const welcome = detailed.scenes.find((scene: { id: string }) => scene.id === "welcome");
     for (const block of welcome.blockList) expect(block.slot, block.id).toBeDefined();
   });

@@ -1,7 +1,15 @@
 /**
  * Depthcue's own templates and component styles, which every deck may use, drawn in its brand's colors and fonts. A
  * brand's template or style with the same id replaces one of these, and a brand can hide them (`hideBuiltIn`). The
- * player never imports this file: the server and the export hand it the templates a deck uses (see `lookOf`).
+ * player never imports this file: the server and the export hand it the templates a deck uses (see `lookOf`). The
+ * editor does not carry it in its main script either: its build puts a stand-in where core imports this file and fetches
+ * the real one as a chunk of its own when a deck needs it (packages/editor/src/brandchecks.ts).
+ *
+ * The frames keep clear of a brand's chrome, whatever the brand chose, because a template cannot know it. A logo sits
+ * in a top or bottom corner and is up to 14.4% of the slide's height with its margin; the footer and the slide number
+ * sit along the foot, and the sources of a scene are one to three lines above them. So text and pictures lie between
+ * 15% and 85% of the height, and between 6% and 94% across. A template whose point is a picture or a color that fills the
+ * slide turns the chrome off or down instead (`chrome`), and a slot that is not near an edge is free to use the room.
  */
 import type { BlockKind, BlockStyle, Template } from "./types.ts";
 
@@ -9,6 +17,51 @@ import type { BlockKind, BlockStyle, Template } from "./types.ts";
 const column = (): BlockKind[] => ["body", "quote", "caption", "image", "table", "chart", "clip"];
 
 export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
+  title: {
+    schemaVersion: "0.4",
+    id: "title",
+    name: "Title",
+    description:
+      "The first slide: the deck's title large, with a label above it, a line below it, and who presents it.",
+    chrome: "minimal",
+    slots: [
+      {
+        id: "kicker",
+        role: "body",
+        frame: { x: 8, y: 15, w: 84, h: 6 },
+        accepts: ["caption"],
+        valign: "top",
+        style: "kicker",
+        hint: "A short label above the title, such as the event or the quarter.",
+      },
+      {
+        id: "title",
+        role: "title",
+        frame: { x: 8, y: 28, w: 84, h: 32 },
+        accepts: ["heading"],
+        required: true,
+        valign: "bottom",
+        hint: "The deck's title, in a few words.",
+      },
+      {
+        id: "subtitle",
+        role: "subtitle",
+        frame: { x: 8, y: 62, w: 70, h: 13 },
+        accepts: ["body"],
+        valign: "top",
+        hint: "One sentence on what the deck is about.",
+      },
+      {
+        id: "byline",
+        role: "body",
+        frame: { x: 8, y: 77, w: 70, h: 8 },
+        accepts: ["caption"],
+        valign: "bottom",
+        style: "label",
+        hint: "Who presents, and when.",
+      },
+    ],
+  },
   section: {
     schemaVersion: "0.4",
     id: "section",
@@ -32,6 +85,7 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
         frame: { x: 8, y: 34, w: 84, h: 22 },
         accepts: ["heading"],
         required: true,
+        valign: "top",
         hint: "The name of the section, in a few words.",
       },
       {
@@ -39,7 +93,35 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
         role: "subtitle",
         frame: { x: 8, y: 60, w: 70, h: 16 },
         accepts: ["body"],
+        valign: "top",
         hint: "One sentence on what the section covers.",
+      },
+    ],
+  },
+  agenda: {
+    schemaVersion: "0.4",
+    id: "agenda",
+    name: "Agenda",
+    description: "What the deck covers, in order: a heading over a list of up to eight short items.",
+    slots: [
+      {
+        id: "title",
+        role: "title",
+        frame: { x: 6, y: 15, w: 36, h: 70 },
+        accepts: ["heading"],
+        required: true,
+        valign: "middle",
+        hint: "A heading such as Agenda or Today.",
+      },
+      {
+        id: "items",
+        role: "body",
+        frame: { x: 48, y: 15, w: 46, h: 70 },
+        accepts: ["body"],
+        max: 8,
+        required: true,
+        valign: "middle",
+        hint: "One block per item, in the order they come. A numbered list in one block works too.",
       },
     ],
   },
@@ -52,7 +134,7 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
       {
         id: "claim",
         role: "claim",
-        frame: { x: 6, y: 6, w: 88, h: 26 },
+        frame: { x: 6, y: 15, w: 88, h: 24 },
         required: true,
         valign: "bottom",
         hint: "The claim, as one sentence the evidence below supports.",
@@ -60,11 +142,74 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
       {
         id: "evidence",
         role: "content",
-        frame: { x: 6, y: 38, w: 88, h: 54 },
+        frame: { x: 6, y: 42, w: 88, h: 43 },
         accepts: column(),
         max: 3,
         required: true,
+        valign: "top",
         hint: "What backs the claim: a chart, a table, a picture or a short text, cited by the claim.",
+      },
+    ],
+  },
+  "big-number": {
+    schemaVersion: "0.4",
+    id: "big-number",
+    name: "Big number",
+    description:
+      "One figure the slide is about, drawn huge, under the claim it proves and above what it measures.",
+    slots: [
+      {
+        id: "claim",
+        role: "claim",
+        frame: { x: 6, y: 15, w: 88, h: 16 },
+        required: true,
+        valign: "top",
+        hint: "The claim the number proves, as one sentence.",
+      },
+      {
+        id: "number",
+        role: "title",
+        frame: { x: 6, y: 33, w: 88, h: 33 },
+        accepts: ["heading"],
+        required: true,
+        valign: "middle",
+        style: "stat",
+        hint: "The one number the slide is about, such as 38% or $2.4M.",
+      },
+      {
+        id: "context",
+        role: "body",
+        frame: { x: 6, y: 68, w: 66, h: 17 },
+        accepts: ["body", "caption"],
+        valign: "top",
+        hint: "What the number measures, over what period, and against what.",
+      },
+    ],
+  },
+  quote: {
+    schemaVersion: "0.4",
+    id: "quote",
+    name: "Quote",
+    description: "Someone else's words, set large, with who said them.",
+    slots: [
+      {
+        id: "quote",
+        role: "body",
+        frame: { x: 10, y: 18, w: 80, h: 46 },
+        accepts: ["quote"],
+        required: true,
+        valign: "bottom",
+        style: "pull-quote",
+        hint: "The words, exactly as said, in two or three sentences at most.",
+      },
+      {
+        id: "attribution",
+        role: "body",
+        frame: { x: 10, y: 66, w: 80, h: 8 },
+        accepts: ["caption"],
+        valign: "top",
+        style: "label",
+        hint: "Who said it, and where or when.",
       },
     ],
   },
@@ -78,27 +223,153 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
       {
         id: "title",
         role: "title",
-        frame: { x: 6, y: 6, w: 88, h: 14 },
+        frame: { x: 6, y: 15, w: 88, h: 13 },
         accepts: ["heading"],
         required: true,
+        valign: "top",
         hint: "What the two columns show together.",
       },
       {
         id: "left",
         role: "content",
-        frame: { x: 6, y: 24, w: 42, h: 68 },
+        frame: { x: 6, y: 31, w: 42, h: 54 },
         accepts: column(),
         max: 3,
         required: true,
+        valign: "top",
         hint: "The first column: text, a picture, a table or a chart.",
       },
       {
         id: "right",
         role: "content",
-        frame: { x: 52, y: 24, w: 42, h: 68 },
+        frame: { x: 52, y: 31, w: 42, h: 54 },
         accepts: column(),
         max: 3,
+        valign: "top",
         hint: "The second column, read after the first.",
+      },
+    ],
+  },
+  comparison: {
+    schemaVersion: "0.4",
+    id: "comparison",
+    name: "Comparison",
+    description:
+      "Two options side by side, each under its own heading in a card: before and after, us and them.",
+    slots: [
+      {
+        id: "title",
+        role: "title",
+        frame: { x: 6, y: 15, w: 88, h: 12 },
+        accepts: ["heading"],
+        required: true,
+        valign: "top",
+        hint: "What is being compared, or the verdict.",
+      },
+      {
+        id: "left-title",
+        role: "body",
+        frame: { x: 6, y: 30, w: 42, h: 9 },
+        accepts: ["heading"],
+        required: true,
+        valign: "bottom",
+        hint: "The name of the first option.",
+      },
+      {
+        id: "left",
+        role: "body",
+        frame: { x: 6, y: 41, w: 42, h: 44 },
+        accepts: ["body", "caption", "quote"],
+        max: 3,
+        required: true,
+        valign: "top",
+        style: "card",
+        hint: "What to say about the first option, a short block for each point.",
+      },
+      {
+        id: "right-title",
+        role: "body",
+        frame: { x: 52, y: 30, w: 42, h: 9 },
+        accepts: ["heading"],
+        required: true,
+        valign: "bottom",
+        hint: "The name of the second option.",
+      },
+      {
+        id: "right",
+        role: "body",
+        frame: { x: 52, y: 41, w: 42, h: 44 },
+        accepts: ["body", "caption", "quote"],
+        max: 3,
+        required: true,
+        valign: "top",
+        style: "card",
+        hint: "What to say about the second option, a short block for each point.",
+      },
+    ],
+  },
+  "full-image": {
+    schemaVersion: "0.4",
+    id: "full-image",
+    name: "Full image",
+    description:
+      "A picture across the width of the slide, edge to edge at the top, with its title on a color plate below it. The brand's chrome is off.",
+    chrome: "none",
+    slots: [
+      {
+        id: "picture",
+        role: "picture",
+        frame: { x: 0, y: 0, w: 100, h: 69 },
+        accepts: ["image"],
+        required: true,
+        valign: "top",
+        hint: "The picture, in a wide shape: it fills the width of the slide and 69% of its height, cropped to fit.",
+      },
+      {
+        id: "title",
+        role: "title",
+        frame: { x: 6, y: 72, w: 88, h: 13 },
+        accepts: ["heading"],
+        required: true,
+        valign: "middle",
+        style: "highlight",
+        hint: "What the picture shows or says, in one short line.",
+      },
+    ],
+  },
+  closing: {
+    schemaVersion: "0.4",
+    id: "closing",
+    name: "Closing",
+    description:
+      "The last slide: thanks or the one thing to do next, with how to reach you, on a full color.",
+    background: { color: "text" },
+    chrome: "minimal",
+    slots: [
+      {
+        id: "title",
+        role: "title",
+        frame: { x: 8, y: 26, w: 84, h: 28 },
+        accepts: ["heading"],
+        required: true,
+        valign: "bottom",
+        hint: "Thank you, Questions, or the next step, in a few words.",
+      },
+      {
+        id: "message",
+        role: "subtitle",
+        frame: { x: 8, y: 57, w: 70, h: 14 },
+        accepts: ["body"],
+        valign: "top",
+        hint: "What you want people to do now, in one sentence.",
+      },
+      {
+        id: "contact",
+        role: "body",
+        frame: { x: 8, y: 74, w: 70, h: 10 },
+        accepts: ["caption"],
+        valign: "top",
+        hint: "How to reach you: an address, a link or a name.",
       },
     ],
   },
@@ -120,5 +391,45 @@ export const BUILT_IN_STYLES: Readonly<Record<string, BlockStyle>> = {
     size: "xl",
     weight: "bold",
     tone: "action",
+  },
+  kicker: {
+    name: "Kicker",
+    for: ["caption"],
+    font: "body",
+    size: "s",
+    weight: "bold",
+    case: "upper",
+    tone: "muted",
+  },
+  card: {
+    name: "Card",
+    for: ["body", "quote", "caption", "image", "table", "chart"],
+    fill: "surface",
+    border: "line",
+    radius: "m",
+    pad: "m",
+  },
+  highlight: {
+    name: "Highlight",
+    for: ["heading", "body", "caption", "quote"],
+    fill: "action",
+    weight: "bold",
+    radius: "s",
+    pad: "s",
+  },
+  "pull-quote": {
+    name: "Pull quote",
+    for: ["quote"],
+    font: "display",
+    size: "l",
+    tone: "action",
+  },
+  label: {
+    name: "Label",
+    for: ["caption", "body"],
+    font: "mono",
+    size: "s",
+    case: "upper",
+    tone: "muted",
   },
 };

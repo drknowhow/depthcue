@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "0.4",
+  "id": "where-readers-found-it",
+  "title": "Where readers found it",
+  "template": "two-column",
+  "blocks": [
+    {
+      "id": "where-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Where readers found the autumn list",
+      "slot": "title"
+    },
+    {
+      "id": "where-left",
+      "type": "text",
+      "role": "body",
+      "text": "- Independent bookshops: 62% of copies.\n- Our own web shop: 21%.\n- Libraries and schools: 11%.\n- Events and markets: 6%.",
+      "slot": "left"
+    },
+    {
+      "id": "where-picture",
+      "type": "image",
+      "asset": "assets/tidepool.svg",
+      "alt": "A tide pool seen from above: rings of water around a pale stone.",
+      "caption": "From the web shop's winter catalogue.",
+      "slot": "right"
+    }
+  ]
+}
