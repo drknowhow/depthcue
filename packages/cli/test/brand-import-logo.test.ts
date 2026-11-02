@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   cornerOf,
   formatOf,
   jpegSize,
   nearestSize,
+  SIZE_HEIGHTS,
   svgAroundJpeg,
   touchesEdge,
 } from "../src/brand-import/logo.ts";
@@ -131,6 +133,30 @@ describe("nearestSize, cornerOf, touchesEdge", () => {
     expect(nearestSize(0.08)).toBe("m");
     expect(nearestSize(0.11)).toBe("l");
     expect(nearestSize(0.5)).toBe("l");
+  });
+
+  it("stands each size for the height the player draws it at", () => {
+    const css = readFileSync(new URL("../../player/src/player.css", import.meta.url), "utf8");
+    const rule = (selector: string) => css.slice(css.indexOf(`${selector} {`)).split("}")[0] ?? "";
+    const em = (selector: string) => Number(/\bheight: ([\d.]+)em;/.exec(rule(selector))?.[1]);
+    // A scene's em on a 16:9 stage, where its height is the smaller side of the unit's `min()`.
+    const unit =
+      Number(/--u: clamp\(13px, min\([\d.]+cqw, ([\d.]+)cqh\), 26px\);/.exec(rule(".dc-scene"))?.[1]) / 100;
+    const drawn = {
+      s: em('.dc-logo[data-height="s"]') * unit,
+      m: em(".dc-logo") * unit,
+      l: em('.dc-logo[data-height="l"]') * unit,
+    };
+    for (const size of ["s", "m", "l"] as const) {
+      expect(
+        drawn[size],
+        `the player's ${size} logo, which SIZE_HEIGHTS in brand-import/logo.ts follows`,
+      ).toBeGreaterThan(0);
+      expect(
+        SIZE_HEIGHTS[size],
+        `SIZE_HEIGHTS.${size} in brand-import/logo.ts against player.css`,
+      ).toBeCloseTo(drawn[size], 4);
+    }
   });
 
   it("names the corner by the quadrant the picture's center is in", () => {

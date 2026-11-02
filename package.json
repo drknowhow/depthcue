@@ -23,6 +23,7 @@
     "budgets": "node tools/check-budgets.mjs",
     "smoke": "node packages/cli/dist/main.js check fixtures/decks/demo && node packages/cli/dist/main.js render fixtures/decks/demo",
     "check:generated": "node tools/check-generated.mjs",
+    "check:pptx-pages": "node tools/check-pptx-pages.mjs",
     "verify": "pnpm lint && pnpm typecheck && pnpm check:generated && pnpm build && pnpm test && pnpm budgets && pnpm smoke"
   },
   "devDependencies": {

@@ -1126,8 +1126,9 @@ describe("depthcue export --format pptx, before the browser", () => {
     expect(run([], io)).toBe(2);
     const text = errors.join("\n");
     expect(text).toContain(
-      "depthcue export <deck-folder> --format pptx [--out <file.pptx>] [--no-notes] [--json]",
+      "depthcue export <deck-folder> --format pptx [--out <file.pptx>] [--no-notes] [--pictures] [--steps]",
     );
+    expect(text).toContain("[--posters] [--json]");
     expect(text).toContain("depthcue export <deck-folder> [--out <dir>] [--no-notes] [--json]");
     expect(text).toContain("--format pptx writes one PowerPoint file instead");
     expect(text).toContain("Exit codes: 0 done, 1 the deck has errors, 2 the export could not run.");

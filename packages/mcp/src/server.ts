@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import {
   applyCommentsToFolder,
   type CommentSummary,
@@ -53,6 +54,15 @@ const renderArgs = z.strictObject({
 const applyArgs = z.strictObject({
   ops: z.array(z.unknown()).min(1).max(100),
   base_rev: z.string().min(1),
+});
+
+const exportArgs = z.strictObject({
+  out: z.string().min(1).describe("Absolute path of the .pptx file, or of the folder."),
+  format: z.enum(["pptx", "folder"]).default("pptx"),
+  notes: z.boolean().default(true).describe("false leaves speaker notes out."),
+  pictures: z.boolean().default(false).describe("pptx: each slide one picture."),
+  steps: z.boolean().default(false).describe("pptx: a slide per build step."),
+  posters: z.boolean().default(false).describe("pptx: clips as poster and link."),
 });
 
 /** The ops schema without its document-level keys, so it can sit inside a tool schema. */
@@ -200,6 +210,20 @@ const TOOLS = [
       openWorldHint: false,
     },
   },
+  {
+    name: "deck_export",
+    description:
+      "Write the deck for people: format 'pptx', a PowerPoint file (text, tables, charts editable; a brand's master, layouts and fonts), or 'folder', a page that opens offline. Never replaces what the export did not write or what changed since. A deck with errors writes nothing. Returns what each slide could not carry over.",
+    inputSchema: jsonSchema(exportArgs),
+    annotations: {
+      title: "Export the deck",
+      readOnlyHint: false,
+      // It replaces an earlier export of its own, and the folder export removes the files that one had and this lacks.
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
 ] as const;
 
 export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
@@ -243,10 +267,11 @@ export interface DepthcueServer {
 }
 
 /**
- * An MCP server over one deck folder. Five tools, because every tool an agent can see costs it tokens on every
+ * An MCP server over one deck folder. Six tools, because every tool an agent can see costs it tokens on every
  * turn: deck_get reads, deck_apply edits, deck_comment answers the person's comments, deck_render checks the result
- * with a screenshot and measurements, deck_present drives the deck while the presenter has handed over control.
- * The browser starts on the first render and is kept until `close()`.
+ * with a screenshot and measurements, deck_present drives the deck while the presenter has handed over control, and
+ * deck_export writes the PowerPoint file or the offline page. The browser starts on the first render and is kept
+ * until `close()`; an export starts its own.
  */
 export function createDepthcueServer(folder: string, version = "0.0.0"): DepthcueServer {
   const server = new Server({ name: "depthcue", version }, { capabilities: { tools: {} } });
@@ -421,6 +446,86 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
     return { content };
   }
 
+  /**
+   * Writes the PowerPoint file or the offline page where the caller says, one export at a time, after any render. The
+   * export modules load on the first call, so a server that never exports never loads the PowerPoint writer.
+   */
+  async function exported(raw: unknown): Promise<CallToolResult> {
+    const parsed = exportArgs.safeParse(raw ?? {});
+    if (!parsed.success) return failure(complaint(parsed.error));
+    const { out, format, notes, pictures, steps, posters } = parsed.data;
+    if (!isAbsolute(out)) return failure(`\`out\` must be an absolute path, and ${out} is not.`);
+    // A network share: writing there would also sign in to whatever server the path names. A local device path
+    // (\\?\C:\...) is a path on this machine and is allowed.
+    if (/^[\\/]{2}/.test(out) && !/^[\\/]{2}[?.][\\/][a-z]:[\\/]/i.test(out)) {
+      return failure(
+        `\`out\` is on a network share (${out}). Export to a folder on this machine, and copy the result there.`,
+      );
+    }
+    if (format === "folder" && (pictures || steps || posters)) {
+      return failure(
+        "pictures, steps and posters are for format pptx; the folder export shows the deck as it is.",
+      );
+    }
+    const invalid = (diagnostics: readonly Diagnostic[]) =>
+      failure(
+        `The deck has errors, so nothing was written. Fix them with deck_apply and export again: ${compact(diagnostics.filter((d) => d.severity === "error").map(plain))}`,
+      );
+    const run = queue.then(async (): Promise<CallToolResult> => {
+      if (format === "folder") {
+        const { ExportError, exportDeck } = await import("@depthcue/cli/export");
+        try {
+          const result = exportDeck({ folder, out, notes });
+          if (!result.ok) return invalid(result.diagnostics);
+          const { warnings, ...summary } = result.summary;
+          return text({
+            ok: true,
+            format,
+            ...summary,
+            ...(warnings.length > 0 ? { warnings: warnings.map(plain) } : {}),
+          });
+        } catch (error) {
+          if (error instanceof ExportError)
+            return failure(compact({ ok: false, code: error.code, message: error.message }));
+          throw error;
+        }
+      }
+      const { exportPptx, PptxError } = await import("@depthcue/cli/pptx");
+      try {
+        const result = await exportPptx({ folder, out, notes, pictures, steps, posters });
+        if (!result.ok) return invalid(result.diagnostics);
+        const done = result.summary;
+        return text({
+          ok: true,
+          format,
+          out: done.out,
+          bytes: done.bytes,
+          ...(done.layouts.length > 0 ? { layouts: done.layouts } : {}),
+          slides: done.slides.map((slide) => ({
+            scene: slide.scene,
+            ...(slide.step === undefined ? {} : { step: slide.step }),
+            ...(slide.left.length > 0 ? { left: slide.left } : {}),
+          })),
+          fonts: done.fonts.map((font) => ({
+            family: font.family,
+            ...(font.roles.length > 0 ? { roles: font.roles } : {}),
+            ...(font.as === undefined ? {} : { as: font.as }),
+            embedded: font.embedded,
+            ...(font.notes.length > 0 ? { notes: font.notes } : {}),
+          })),
+          deck: done.deck,
+          ...(done.warnings.length > 0 ? { warnings: done.warnings.map(plain) } : {}),
+        });
+      } catch (error) {
+        if (error instanceof PptxError)
+          return failure(compact({ ok: false, code: error.code, message: error.message }));
+        throw error;
+      }
+    });
+    queue = run.catch(() => undefined);
+    return run;
+  }
+
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [...TOOLS] as never }));
   server.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
     const { name, arguments: args } = request.params;
@@ -430,6 +535,7 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
       if (name === "deck_comment") return comment(args);
       if (name === "deck_render") return await render(args);
       if (name === "deck_present") return await present.run(args);
+      if (name === "deck_export") return await exported(args);
       return failure(`There is no tool "${name}". The tools are: ${TOOL_NAMES.join(", ")}.`);
     } catch (error) {
       return failure(`${name} failed: ${(error as Error).message}`);

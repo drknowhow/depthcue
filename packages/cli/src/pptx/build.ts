@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path, { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { crc32, deflateSync } from "node:zlib";
 import {
   type Block,
   type Cell,
@@ -30,6 +31,7 @@ import type {
   SlideMeasure,
   TextPlace,
 } from "./measure.ts";
+import { cannotEmbed, mp4Tracks } from "./media.ts";
 import { flowRuns, inch, plainRuns, pt, type Run, type RunContext, textFrame } from "./text.ts";
 
 /** What a viewer needs to see the file as drawn: the families it names, and for what. */
@@ -42,8 +44,13 @@ export interface FontUse {
 export interface SlideReport {
   scene: string;
   title: string;
+  /** The step the slide shows, when each step is a slide of its own (`--steps`). */
+  step?: number;
   left: string[];
 }
+
+/** The name of the text box a picture slide carries its title in, which the package step makes a hidden title. */
+export const PICTURE_TITLE = "Depthcue scene title";
 
 export interface BuildInput {
   deck: Deck;
@@ -58,6 +65,14 @@ export interface BuildInput {
   notes: boolean;
   /** How the player writes a number in the deck's language, so a table and a chart's labels read alike. */
   numberText: (value: number, language?: string) => string;
+  /** For each slide, the page as one picture (PNG), which is then all the slide shows (`--pictures`). */
+  pictures?: readonly (Uint8Array | undefined)[];
+  /** For each slide, the step it shows and how many the scene has, when each step is a slide of its own (`--steps`). */
+  steps?: readonly ({ at: number; of: number } | undefined)[];
+  /** Every clip as its poster and a link, never embedded (`--posters`). */
+  posters?: boolean;
+  /** The slide master and layouts draw the background, so the slides leave it out. */
+  master?: boolean;
 }
 
 export interface Built {
@@ -66,6 +81,8 @@ export interface Built {
   slides: SlideReport[];
   /** For each slide, the ids of its tables that have a header row. */
   headers: string[][];
+  /** For each slide, the description of each embedded video by its name, which the writer has no option for. */
+  alts: Array<Record<string, string>>;
   fonts: FontUse[];
 }
 
@@ -92,6 +109,7 @@ interface Page {
   placed: Set<string>;
   /** The tables on this slide whose first row is a header, which the package step marks so PowerPoint knows. */
   headers: string[];
+  alts: Record<string, string>;
 }
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
@@ -102,8 +120,9 @@ const SLIVER = 12;
 /**
  * A box on the slide in inches, held inside the slide when the page drew it past an edge: cut at the edge, as it is in
  * the player. Past the left or top edge the part that hangs over is dropped and the rest stays where the page put it;
- * past the right or bottom edge the box is cut by the slide itself, with a sliver kept so it never vanishes. A picture
- * keeps its proportions instead, because cutting its box would stretch it: it is made to fit, whole.
+ * past the right or bottom edge the box is cut by the slide itself, with a sliver kept so it never vanishes. A video
+ * keeps its proportions instead, because cutting its box would stretch it: it is made to fit, whole. (A picture is
+ * cropped at the edge instead, in `addPicture`.) The report says, per slide, how far the content runs past each edge.
  */
 function frameOf(page: Page, box: Box, keepShape = false): { x: number; y: number; w: number; h: number } {
   const { w: width, h: height } = page.measure.slide;
@@ -188,7 +207,7 @@ function addShape(page: Page, shape: Shape) {
   });
 }
 
-function addText(page: Page, name: string, place: TextPlace, runs: Run[], heading = false) {
+function addText(page: Page, name: string, place: TextPlace, runs: Run[], heading = false, wrap = true) {
   const frame = textFrame(place);
   const { x, y, w, h } = frameOf(page, frame);
   if (w <= 0 || h <= 0 || runs.length === 0) return;
@@ -201,7 +220,7 @@ function addText(page: Page, name: string, place: TextPlace, runs: Run[], headin
     margin: 0,
     valign: "top",
     fit: "none",
-    wrap: true,
+    wrap,
     objectName: name,
   });
 }
@@ -255,9 +274,24 @@ function addPicture(
   link?: string,
 ): boolean {
   const data = pictureData(page, asset, picture);
-  const { x, y, w, h } = frameOf(page, picture.picture, true);
-  if (!data || w <= 0 || h <= 0) {
+  const { w: width, h: height } = page.measure.slide;
+  const whole = picture.picture;
+  // What the page shows of it: all of it, or the frame it fills and is cut to.
+  const shown = picture.clip ?? whole;
+  // The part of the picture that is on the slide; the rest is cropped away with the picture's source rectangle, so the
+  // slide shows what the player shows and the picture keeps its proportions.
+  const seen = {
+    x: clamp(Math.max(whole.x, shown.x), 0, width),
+    y: clamp(Math.max(whole.y, shown.y), 0, height),
+    r: clamp(Math.min(whole.x + whole.w, shown.x + shown.w), 0, width),
+    b: clamp(Math.min(whole.y + whole.h, shown.y + shown.h), 0, height),
+  };
+  if (!data || whole.w <= 0 || whole.h <= 0) {
     page.left.push(`"${block.id}": the picture ${asset} could not be read, so it is not on the slide.`);
+    return false;
+  }
+  if (seen.r - seen.x < 1 || seen.b - seen.y < 1) {
+    page.left.push(`"${block.id}": the picture is drawn wholly off the slide, so it is not on it.`);
     return false;
   }
   if (!MIME[extname(asset).toLowerCase()]) {
@@ -265,17 +299,36 @@ function addPicture(
       `"${block.id}": ${asset} is drawn as a PNG, because PowerPoint does not show every picture type.`,
     );
   }
-  if (picture.picture.x < 0 || picture.picture.y < 0) {
+  const cut =
+    seen.x > whole.x || seen.y > whole.y || seen.r < whole.x + whole.w || seen.b < whole.y + whole.h;
+  // Cut by the slide's edge, not only by its own frame, which the page cuts it to as well.
+  const past =
+    seen.x > Math.max(whole.x, shown.x) ||
+    seen.y > Math.max(whole.y, shown.y) ||
+    seen.r < Math.min(whole.x + whole.w, shown.x + shown.w) ||
+    seen.b < Math.min(whole.y + whole.h, shown.y + shown.h);
+  if (past) {
     page.left.push(
-      `"${block.id}": the picture hangs past the slide's left or top edge, where the player cuts it; here it is shown whole, inside the slide.`,
+      `"${block.id}": the picture runs past the slide's edge; it is cropped there, as the slide shows it, and PowerPoint's Crop gives the rest back.`,
     );
   }
   page.slide.addImage({
     data,
-    x,
-    y,
-    w,
-    h,
+    x: inch(seen.x),
+    y: inch(seen.y),
+    w: inch(whole.w),
+    h: inch(whole.h),
+    ...(cut
+      ? {
+          sizing: {
+            type: "crop" as const,
+            x: inch(seen.x - whole.x),
+            y: inch(seen.y - whole.y),
+            w: inch(seen.r - seen.x),
+            h: inch(seen.b - seen.y),
+          },
+        }
+      : {}),
     altText: alt,
     objectName: block.id,
     ...(link ? { hyperlink: { url: link, tooltip: asset } } : {}),
@@ -645,12 +698,18 @@ function clipBlock(
   block: Extract<Block, { type: "clip" }>,
   item: Extract<Item, { kind: "clip" }>,
 ) {
-  const link = fileLink(page, block.source);
+  const remote = /^[a-z][a-z0-9+.-]*:/i.test(block.source);
+  const link = remote ? block.source : fileLink(page, block.source);
   const poster = item.poster && block.poster ? block.poster : undefined;
   const drawn = poster !== undefined;
+  const why = page.input.posters
+    ? "--posters asks for posters and links"
+    : cannotEmbed(page.input.folder, block.source);
+  if (why === undefined && embedClip(page, block, item, poster)) return;
+  const because = why === undefined ? "" : `, because ${why}`;
   if (poster !== undefined && addPicture(page, block, poster, item.video, block.alt, link)) {
     page.left.push(
-      `"${block.id}": the video is shown as its poster and linked to ${block.source}; it is not embedded.`,
+      `"${block.id}": the video is shown as its poster and linked to ${block.source}; it is not embedded${because}.`,
     );
     return;
   }
@@ -676,21 +735,132 @@ function clipBlock(
   // The picture's own line has said it could not be read; this one says what stands in for it.
   page.left.push(
     drawn
-      ? `"${block.id}": a labeled box links to ${block.source} in its place; the video is not embedded.`
-      : `"${block.id}": the video has no poster, so a labeled box links to ${block.source}; it is not embedded.`,
+      ? `"${block.id}": a labeled box links to ${block.source} in its place; the video is not embedded${because}.`
+      : `"${block.id}": the video has no poster, so a labeled box links to ${block.source}; it is not embedded${because}.`,
   );
 }
 
-function sourcesText(page: Page, label: TextPlace, list: TextPlace) {
+/**
+ * A clip PowerPoint can play, embedded: the file itself, in the box the page draws the video in, with its poster (as
+ * the page drew it) as the picture shown until it plays. False when the file cannot be read after all.
+ */
+function embedClip(
+  page: Page,
+  block: Extract<Block, { type: "clip" }>,
+  item: Extract<Item, { kind: "clip" }>,
+  poster: string | undefined,
+): boolean {
+  let video: Buffer;
+  try {
+    video = readFileSync(join(page.input.folder, block.source));
+  } catch {
+    return false;
+  }
+  // The page fits a poster or first frame in the box; with neither it draws an empty box, and the video, in its own
+  // shape (the MP4's track header), is fitted in that box as the player fits it when it plays. A video the page cuts
+  // to fill its frame is fitted inside the frame instead: a video on a slide cannot be cropped here.
+  const shape = mp4Tracks(new Uint8Array(video))?.size;
+  const clip = item.video.clip;
+  const drawn = clip
+    ? fitted(clip, item.video.natural.w > 0 ? item.video.natural : shape)
+    : item.video.natural.w > 0
+      ? item.video.picture
+      : fitted(item.video.picture, shape);
+  const { x, y, w, h } = frameOf(page, drawn, true);
+  if (w <= 0 || h <= 0) return false;
+  const posterFile = poster === undefined ? undefined : join(page.input.folder, poster);
+  const plain =
+    !item.video.png &&
+    !(posterFile && extname(posterFile).toLowerCase() === ".png" && existsSync(posterFile));
+  const cover = item.video.png
+    ? `image/png;base64,${item.video.png.slice(item.video.png.indexOf(",") + 1)}`
+    : !plain && posterFile
+      ? `image/png;base64,${readFileSync(posterFile).toString("base64")}`
+      : `image/png;base64,${plainCover(drawn.w, drawn.h).toString("base64")}`;
+  page.slide.addMedia({
+    type: "video",
+    data: `video/mp4;base64,${video.toString("base64")}`,
+    extn: "mp4",
+    cover,
+    x,
+    y,
+    w,
+    h,
+    objectName: block.id,
+  } as PptxGenJS.MediaProps);
+  page.alts[block.id] = block.alt;
+  if (clip) {
+    page.left.push(
+      `"${block.id}": the page crops the video to fill its frame; the slide shows all of it, fitted inside the frame.`,
+    );
+  }
+  if (item.firstFrame) {
+    page.left.push(`"${block.id}": the video has no poster, so its first frame shows until it plays.`);
+  } else if (plain) {
+    page.left.push(
+      `"${block.id}": the video has no poster, so a plain picture in its shape shows until it plays.`,
+    );
+  }
+  return true;
+}
+
+/** A box of the given shape, as large as fits in `box` and centred in it; the box itself when the shape is unknown. */
+function fitted(box: Box, shape: { w: number; h: number } | undefined): Box {
+  if (!shape || !(shape.w > 0 && shape.h > 0) || !(box.w > 0 && box.h > 0)) return box;
+  const scale = Math.min(box.w / shape.w, box.h / shape.h);
+  const w = shape.w * scale;
+  const h = shape.h * scale;
+  return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
+}
+
+/** A plain dark picture in a video's shape, the picture PowerPoint shows until a clip with no poster plays. */
+function plainCover(width: number, height: number): Buffer {
+  const scale = 160 / Math.max(width, height, 1);
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  const stride = w * 3 + 1;
+  const raw = Buffer.alloc(stride * h);
+  for (let row = 0; row < h; row++) raw.fill(0x2b, row * stride + 1, (row + 1) * stride);
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(w, 0);
+  header.writeUInt32BE(h, 4);
+  header[8] = 8;
+  header[9] = 2;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(raw, { level: 9 })),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+/** The page set the text on one line, so the slide keeps it on one: a face a hair wider must not break it. */
+const oneLine = (place: TextPlace) =>
+  place.box.h - place.inset.t - place.inset.b <= place.ink.lineHeight * 1.5;
+
+/**
+ * The sources: the label, then the list as one paragraph. The list is numbered as the page numbers it; a template
+ * scene's foot line is not, and its label and list each stay on the one line the page drew.
+ */
+function sourcesText(page: Page, label: TextPlace, list: TextPlace, numbered: boolean) {
   const sources = page.scene.sources ?? [];
-  addText(page, "Sources label", label, plainRuns(label.text, label.ink, page.context));
+  const labelRuns = plainRuns(label.text, label.ink, page.context);
+  addText(page, "Sources label", label, labelRuns, false, numbered || !oneLine(label));
   const runs: Run[] = [];
   const base = plainRuns("x", list.ink, page.context)[0] as Run;
   sources.forEach((source, at) => {
     const target = source.url ?? (source.asset ? fileLink(page, source.asset) : undefined);
     const options = { ...(base.options ?? {}) };
     delete options.lineSpacing;
-    runs.push({ text: `${at + 1}. `, options: { ...options, align: list.ink.align } });
+    if (numbered) runs.push({ text: `${at + 1}. `, options: { ...options, align: list.ink.align } });
     runs.push({
       text: source.title,
       options: {
@@ -714,6 +884,57 @@ function sourcesText(page: Page, label: TextPlace, list: TextPlace) {
     h,
     margin: 0,
     valign: "top",
+    fit: "none",
+    wrap: numbered || !oneLine(list),
+    objectName: "Sources",
+  });
+}
+
+/**
+ * A template scene's foot line, as the page sets it: the label, then each source after a middle dot, as one paragraph
+ * in the box the line takes. It wraps where its width ends and is anchored at its foot, so a line PowerPoint adds in a
+ * slightly wider face grows upward, as the page's does, and not into the footer.
+ */
+function footText(page: Page, label: TextPlace, list: TextPlace, flow: TextPlace) {
+  const sources = page.scene.sources ?? [];
+  if (sources.length === 0) return;
+  const optionsOf = (ink: Ink) => {
+    const options = {
+      ...((plainRuns("x", ink, page.context)[0] as Run).options ?? {}),
+      align: flow.ink.align,
+    };
+    delete options.lineSpacing;
+    return options;
+  };
+  const listOptions = optionsOf(list.ink);
+  const runs: Run[] = plainRuns(label.text, label.ink, page.context).map((run) => {
+    const options = { ...(run.options ?? {}), align: flow.ink.align };
+    delete options.lineSpacing;
+    return { ...run, options };
+  });
+  sources.forEach((source, at) => {
+    const target = source.url ?? (source.asset ? fileLink(page, source.asset) : undefined);
+    runs.push({ text: at === 0 ? " " : " · ", options: { ...listOptions } });
+    runs.push({
+      text: source.title,
+      options: {
+        ...listOptions,
+        ...(target ? { hyperlink: { url: target }, color: page.measure.link } : {}),
+      },
+    });
+  });
+  (runs[0]?.options as NonNullable<Run["options"]>).lineSpacing = pt(flow.ink.lineHeight);
+  const { x, y, w, h } = frameOf(page, textFrame(flow));
+  if (w <= 0 || h <= 0) return;
+  useInk(page, label.ink);
+  useInk(page, list.ink);
+  page.slide.addText(runs, {
+    x,
+    y,
+    w,
+    h,
+    margin: 0,
+    valign: "bottom",
     fit: "none",
     wrap: true,
     objectName: "Sources",
@@ -741,7 +962,8 @@ function item(page: Page, entry: Item) {
       }
       return;
     case "sources":
-      sourcesText(page, entry.label, entry.list);
+      if (entry.flow) footText(page, entry.label, entry.list, entry.flow);
+      else sourcesText(page, entry.label, entry.list, entry.numbered !== false);
       return;
     default:
       break;
@@ -803,10 +1025,13 @@ export async function buildPresentation(input: BuildInput): Promise<Built> {
   const fonts = new Map<string, Set<string>>();
   const slides: SlideReport[] = [];
   const headers: string[][] = [];
+  const alts: Array<Record<string, string>> = [];
   scenes.forEach((scene, at) => {
     const measure = measures[at] as SlideMeasure;
+    const step = input.steps?.[at];
+    const picture = input.pictures?.[at];
     const slide = pptx.addSlide();
-    slide.background = { color: bare(input.style.colors.bg) };
+    if (!input.master) slide.background = { color: bare(input.style.colors.bg) };
     const page: Page = {
       pptx,
       slide,
@@ -819,26 +1044,43 @@ export async function buildPresentation(input: BuildInput): Promise<Built> {
       blocks: new Map(scene.blocks.map((block) => [block.id, block])),
       placed: new Set(),
       headers: [],
+      alts: {},
     };
-    for (const entry of measure.items) item(page, entry);
-    for (const block of scene.blocks) {
-      if (!page.placed.has(block.id))
-        page.left.push(`"${block.id}" is not on the slide: the player did not draw it.`);
+    const report: SlideReport = { scene: scene.id, title: scene.title, left: page.left };
+    if (step) report.step = step.at;
+    if (picture) {
+      pictureSlide(page, picture);
+    } else {
+      for (const entry of measure.items) item(page, entry);
+      const held = new Set(measure.hidden ?? []);
+      for (const block of scene.blocks) {
+        if (!page.placed.has(block.id) && !held.has(block.id))
+          page.left.push(`"${block.id}" is not on the slide: the player did not draw it.`);
+      }
+      for (const lost of measure.lost ?? []) {
+        const split = lost.indexOf(": ");
+        page.left.push(
+          `"${lost.slice(0, split)}" has what a PowerPoint shape here does not draw: ${lost.slice(split + 2)}.`,
+        );
+      }
     }
     const steps = scene.steps?.length ?? 0;
-    if (steps > 0) {
+    // A slide per step shows what that step shows; the report says which step it is (`report.step`).
+    if (!step && steps > 0) {
       page.left.push(
         `build steps: ${steps} step${steps === 1 ? "" : "s"} flattened, so every block shows at once.`,
       );
     }
-    if (measure.beyond.bottom > 1 || measure.beyond.right > 1) {
+    const past = overflow(measure);
+    if (past) {
       page.left.push(
-        `the content runs ${Math.round(Math.max(measure.beyond.bottom, measure.beyond.right))}px past the slide in the player too, where it scrolls or is cut off; boxes are cut at the slide's edge here, and a table keeps every row.`,
+        `the content runs ${past}, where it scrolls or is cut off; ${picture ? "the picture shows what the slide shows" : "boxes are cut at the slide's edge here, pictures are cropped there, and a table keeps every row"}.`,
       );
     }
     if (input.notes && scene.notes) slide.addNotes(scene.notes);
-    slides.push({ scene: scene.id, title: scene.title, left: page.left });
+    slides.push(report);
     headers.push(page.headers);
+    alts.push(page.alts);
   });
 
   const raw = (await pptx.write({ outputType: "nodebuffer", compression: true })) as Uint8Array;
@@ -846,6 +1088,7 @@ export async function buildPresentation(input: BuildInput): Promise<Built> {
     raw,
     slides,
     headers,
+    alts,
     fonts: [...fonts.entries()]
       .map(([family, roles]) => ({ family, roles: [...roles].sort() }))
       .sort((a, b) => (a.family < b.family ? -1 : a.family > b.family ? 1 : 0)),
@@ -854,3 +1097,44 @@ export async function buildPresentation(input: BuildInput): Promise<Built> {
 
 /** A `#rrggbb` color as the writer takes it. */
 const bare = (color: string): string => color.replace("#", "").toUpperCase();
+
+/** How far the content runs past each edge, in words, or nothing when it stays on the slide. */
+export function overflow(measure: SlideMeasure): string | undefined {
+  const { left = 0, top = 0, right, bottom } = measure.beyond;
+  const edges = [
+    ["bottom", bottom],
+    ["right", right],
+    ["left", left],
+    ["top", top],
+  ] as const;
+  const [first, ...rest] = edges.filter(([, by]) => by > 1);
+  if (!first) return undefined;
+  const more = rest.map(([edge, by]) => `, and ${Math.round(by)}px at the ${edge}`).join("");
+  return `${Math.round(first[1])}px past the slide in the player too, at the ${first[0]}${more}`;
+}
+
+/**
+ * The page as one picture filling the slide, with the scene's title as its description and in a text box the package
+ * step makes the slide's hidden title, so PowerPoint's outline and a screen reader list the scene.
+ */
+function pictureSlide(page: Page, png: Uint8Array) {
+  const { w, h } = page.measure.slide;
+  // The title goes first, under the picture, so even an app that shows hidden shapes shows the picture alone.
+  page.slide.addText(page.scene.title, {
+    x: inch(w * 0.05),
+    y: inch(h * 0.04),
+    w: inch(w * 0.9),
+    h: inch(h * 0.14),
+    objectName: PICTURE_TITLE,
+  });
+  page.slide.addImage({
+    data: `image/png;base64,${Buffer.from(png).toString("base64")}`,
+    x: 0,
+    y: 0,
+    w: inch(w),
+    h: inch(h),
+    altText: page.scene.title,
+    objectName: "Scene picture",
+  });
+  for (const block of page.scene.blocks) page.placed.add(block.id);
+}
