@@ -237,6 +237,16 @@ const PPTX_STATUS: Record<string, number> = { "no-browser": 503 };
  */
 export const pptxOutOf = (folder: string) => join(dirname(folder), `${basename(folder)}.pptx`);
 
+/**
+ * A file name as an RFC 8187 `filename*` value: percent-encoded UTF-8, `'`, `(`, `)` and `*` included, which
+ * `encodeURIComponent` leaves as they are and the header's grammar does not allow there.
+ */
+export const extValue = (name: string) =>
+  encodeURIComponent(name).replace(
+    /['()*]/g,
+    (char) => `%${(char.codePointAt(0) as number).toString(16).toUpperCase()}`,
+  );
+
 /** The export's switches from a request body: the CLI's, by the same names, each true or false. */
 function pptxOptions(body: unknown): PptxOptions | string {
   if (!isRecord(body)) return 'Send the options as a JSON object, such as {"notes": false}.';
@@ -267,6 +277,10 @@ async function pptxCall(
     : "Missing or wrong editor token. Reload the editor page.";
   if (refusal) return sendJson(response, 403, { error: "forbidden", message: refusal });
   if (request.method !== "POST") return sendJson(response, 405, { error: "method", message: "Use POST." });
+  // As the other write calls: the options come as JSON, and an empty body is no options.
+  if (!String(request.headers["content-type"]).startsWith("application/json")) {
+    return sendJson(response, 415, { error: "bad-request", message: "Send application/json." });
+  }
   let options: PptxOptions | string;
   try {
     const body = await readBody(request, 4096);
@@ -275,7 +289,7 @@ async function pptxCall(
     if (error instanceof TooLarge) {
       return sendJson(response, 413, { error: "too-large", message: "The options are at most 4 KB." });
     }
-    options = "The body is not JSON.";
+    options = "The body is not valid JSON.";
   }
   if (typeof options === "string") return sendJson(response, 400, { error: "bad-request", message: options });
   const chosen = options;
@@ -298,7 +312,7 @@ async function pptxCall(
     response.writeHead(200, {
       "Content-Type": PPTX_TYPE,
       "Content-Length": String(result.bytes.length),
-      "Content-Disposition": `attachment; filename="${ascii}.pptx"; filename*=UTF-8''${encodeURIComponent(name)}.pptx`,
+      "Content-Disposition": `attachment; filename="${ascii}.pptx"; filename*=UTF-8''${extValue(name)}.pptx`,
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
     });

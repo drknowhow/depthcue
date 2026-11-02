@@ -9,11 +9,11 @@
  * licenses reserve their names), so the file's text is written with the font's own name instead, and the report says so.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { DeckLook } from "@depthcue/core";
-import { eotOf } from "./eot.ts";
-import { FontError, type FontFacts, factsOf, unpackFont, writeSfnt } from "./sfnt.ts";
+import { eotOf, isLatin } from "./eot.ts";
+import { FONT_LIMITS, FontError, type FontFacts, factsOf, readSfnt, unpackFont, writeSfnt } from "./sfnt.ts";
 
 /** One file the page may load for a family. */
 export interface FaceFile {
@@ -56,8 +56,17 @@ export interface FontReport {
 export interface FontParts {
   /** `ppt/fonts/fontN.fntdata`, in order. */
   parts: Array<{ name: string; bytes: Uint8Array }>;
-  /** One entry per PowerPoint family: its name, its PANOSE and the part each face is in. */
-  list: Array<{ typeface: string; panose: string; faces: Array<{ slot: Slot; part: number }> }>;
+  /**
+   * One entry per PowerPoint family: its name, its PANOSE (empty when the font gives none), its pitch and family as
+   * Windows numbers them, its character set, and the part each face is in.
+   */
+  list: Array<{
+    typeface: string;
+    panose: string;
+    pitchFamily: number;
+    charset: number;
+    faces: Array<{ slot: Slot; part: number }>;
+  }>;
   /** Deck family to the name PowerPoint knows it by, where they differ. */
   rename: Map<string, string>;
   /** Families the page draws only in a bold file, so a run in them is bold in the file too. */
@@ -217,6 +226,22 @@ const PREVIEW_AND_PRINT = 0x0004;
 const describe = (code: number) =>
   `${String.fromCodePoint(code)} (U+${code.toString(16).toUpperCase().padStart(4, "0")})`;
 
+/**
+ * The pitch and family Windows gives a font (LOGFONT `lfPitchAndFamily`), which PowerPoint writes beside an embedded
+ * one: fixed or variable pitch in the low bits, and modern, swiss, roman, script or decorative from its PANOSE.
+ */
+export function pitchFamily(facts: Pick<FontFacts, "panose" | "fixedPitch">): number {
+  const [kind = 0, serif = 0, , proportion = 0] = facts.panose;
+  const fixed = facts.fixedPitch || (kind === 2 && proportion === 9);
+  let family = 0;
+  if (fixed) family = 0x30;
+  else if (kind === 2 && serif >= 11 && serif <= 13) family = 0x20;
+  else if (kind === 2 && serif >= 2 && serif <= 10) family = 0x10;
+  else if (kind === 3) family = 0x40;
+  else if (kind === 4) family = 0x50;
+  return family | (fixed ? 1 : 2);
+}
+
 /** The file a face comes from: the right slant, the weight nearest the slot's, the one covering most of `chars`. */
 function pick(
   files: readonly FaceFile[],
@@ -261,8 +286,11 @@ export function planFonts(
     if (known) return known;
     let made: { bytes: Uint8Array; facts: FontFacts } | { error: string };
     try {
-      const font = unpackFont(new Uint8Array(readFileSync(file.file)));
-      made = { bytes: writeSfnt(font), facts: factsOf(font) };
+      if (statSync(file.file).size > FONT_LIMITS.file)
+        throw new FontError("The file is larger than 32 MB, which no font needs.");
+      const bytes = writeSfnt(unpackFont(new Uint8Array(readFileSync(file.file))));
+      // The facts of the font as written, whose whole-font checksum the header repeats.
+      made = { bytes, facts: factsOf(readSfnt(bytes)) };
     } catch (error) {
       // Said inside a sentence of the report: "<file>: the file is not a font ..., so it is not embedded."
       const reason = error instanceof FontError ? error.message.replace(/\.$/, "") : "";
@@ -321,6 +349,12 @@ export function planFonts(
         continue;
       }
       const { facts, bytes } = loaded;
+      if (facts.family.trim() === "") {
+        line.notes.push(
+          `${file.label} has no family name PowerPoint can read, so it is not embedded and the slides keep the deck's name for it.`,
+        );
+        continue;
+      }
       if (facts.outlines === "cff") {
         line.notes.push(
           `${file.label} has CFF outlines, which PowerPoint does not embed, so it is not embedded.`,
@@ -358,10 +392,13 @@ export function planFonts(
       const hash = createHash("sha256").update(bytes).digest("hex");
       const taken = faces.get(slot);
       if (taken && hashes.get(`${base}|${slot}`) !== hash) {
+        // Another family's file holds the slot, so this face is not in the file: it is not counted as embedded.
         line.notes.push(
-          `its ${SLOT_WORDS[slot]} face shares the name "${base}" with another family's file, and PowerPoint keeps one: ${taken.file.label}.`,
+          `its ${SLOT_WORDS[slot]} face shares the name "${base}" with another family's file, and PowerPoint keeps one: ${taken.file.label}, so ${file.label} is not embedded.`,
         );
-      } else if (!taken) {
+        continue;
+      }
+      if (!taken) {
         faces.set(slot, { slot, file, bytes, facts });
         hashes.set(`${base}|${slot}`, hash);
       }
@@ -395,15 +432,21 @@ export function planFonts(
   const list: FontParts["list"] = [];
   for (const typeface of [...families.keys()].sort()) {
     const faces = families.get(typeface) as Map<Slot, Chosen>;
-    const entry: FontParts["list"][number] = { typeface, panose: "", faces: [] };
+    const entry: FontParts["list"][number] = { typeface, panose: "", pitchFamily: 0, charset: 0, faces: [] };
     for (const slot of SLOTS) {
       const chosen = faces.get(slot);
       if (!chosen) continue;
-      if (entry.panose === "")
-        entry.panose = [...chosen.facts.panose]
-          .map((byte) => byte.toString(16).padStart(2, "0"))
-          .join("")
-          .toUpperCase();
+      if (entry.faces.length === 0) {
+        // PowerPoint leaves out a PANOSE the font does not give (all zeros) rather than writing zeros.
+        entry.panose = chosen.facts.panose.some((byte) => byte !== 0)
+          ? [...chosen.facts.panose]
+              .map((byte) => byte.toString(16).padStart(2, "0"))
+              .join("")
+              .toUpperCase()
+          : "";
+        entry.pitchFamily = pitchFamily(chosen.facts);
+        entry.charset = isLatin(chosen.facts) ? 0 : 1;
+      }
       parts.push({
         name: `ppt/fonts/font${parts.length + 1}.fntdata`,
         bytes: eotOf(chosen.bytes, chosen.facts),
@@ -455,7 +498,7 @@ export function listFonts(
     .filter((entry) => entry.faces.length > 0)
     .map(
       (entry) =>
-        `<p:embeddedFont><p:font typeface="${escapeAttribute(entry.typeface)}"${entry.panose ? ` panose="${entry.panose}"` : ""} charset="0"/>${entry.faces
+        `<p:embeddedFont><p:font typeface="${escapeAttribute(entry.typeface)}"${entry.panose ? ` panose="${entry.panose}"` : ""} pitchFamily="${entry.pitchFamily}" charset="${entry.charset}"/>${entry.faces
           .map((face) => `<p:${face.slot} r:id="rIdFont${face.part}"/>`)
           .join("")}</p:embeddedFont>`,
     )

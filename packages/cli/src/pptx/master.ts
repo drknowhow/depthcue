@@ -53,15 +53,21 @@ const rels = (entries: readonly string[]) => `${XML_HEAD}${RELS_OPEN}${entries.j
 const relationship = (id: string, type: string, target: string) =>
   `<Relationship Id="${id}" Type="${REL}/${type}" Target="${target}"/>`;
 
-/** The placeholder type a slot's role is kept as. A layout has one title, so a claim is the title only when no slot is. */
+/**
+ * The placeholder type a slot's role is kept as. A layout has one title, which has no number: the first title slot, or
+ * the first claim slot when no slot is a title. Every other title or claim slot is a numbered body placeholder.
+ */
 export type PlaceholderType = "title" | "body" | "subTitle" | "pic" | "chart" | "tbl" | "obj";
 
 export function placeholderType(slot: TemplateSlot, template: Template): PlaceholderType {
   switch (slot.role) {
     case "title":
-      return "title";
-    case "claim":
-      return template.slots.some((other) => other.role === "title") ? "body" : "title";
+    case "claim": {
+      const title =
+        template.slots.find((other) => other.role === "title") ??
+        template.slots.find((other) => other.role === "claim");
+      return title?.id === slot.id ? "title" : "body";
+    }
     case "subtitle":
       return "subTitle";
     case "body":

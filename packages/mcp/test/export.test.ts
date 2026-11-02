@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,18 +72,58 @@ describe("deck_export", () => {
     expect(again.isError, again.text).toBe(false);
   }, 120_000);
 
-  it("writes the offline page with format folder", async () => {
+  it("writes the offline page with format folder, with the speaker notes only when asked", async () => {
+    // A note only the speaker should see, in a scene of the shared copy.
+    const note = "Speaker only: the board has not seen these figures.";
+    const sceneFile = join(folder, "scenes", "opening.json");
+    writeFileSync(sceneFile, JSON.stringify({ ...JSON.parse(readFileSync(sceneFile, "utf8")), notes: note }));
+    const pages = (dir: string) =>
+      readdirSync(dir, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) => readFileSync(join(entry.parentPath, entry.name), "latin1"))
+        .join("\n");
+
     const out = join(root, "site");
     const reply = await call({ out, format: "folder" });
     expect(reply.isError, reply.text).toBe(false);
-    expect(reply.json).toMatchObject({ ok: true, format: "folder" });
+    expect(reply.json).toMatchObject({ ok: true, format: "folder", notes: true });
     expect(existsSync(join(out, "index.html"))).toBe(true);
+    expect(pages(out)).toContain(note);
+
+    const bare = join(root, "site-without-notes");
+    const without = await call({ out: bare, format: "folder", notes: false });
+    expect(without.isError, without.text).toBe(false);
+    expect(without.json).toMatchObject({ ok: true, format: "folder", notes: false });
+    expect(existsSync(join(bare, "index.html"))).toBe(true);
+    expect(pages(bare)).not.toContain(note);
   }, 60_000);
 
   it("refuses a relative path, before anything runs", async () => {
     const reply = await call({ out: "deck.pptx" });
     expect(reply.isError).toBe(true);
     expect(reply.text).toContain("`out` must be an absolute path, and deck.pptx is not.");
+  });
+
+  it("refuses a network share, which writing to would sign in to the server it names", async () => {
+    const shares = ["//server/share/deck.pptx"];
+    if (process.platform === "win32")
+      shares.push("\\\\server\\share\\deck.pptx", "\\\\?\\UNC\\server\\share\\deck.pptx");
+    for (const out of shares) {
+      const reply = await call({ out });
+      expect(reply.isError, out).toBe(true);
+      expect(reply.text, out).toBe(
+        `\`out\` is on a network share (${out}). Export to a folder on this machine, and copy the result there.`,
+      );
+    }
+  });
+
+  it("refuses a PowerPoint file inside the deck folder, before the browser starts", async () => {
+    for (const out of [join(folder, "deck.pptx"), join(folder, "assets", "deck.pptx")]) {
+      const reply = await call({ out });
+      expect(reply.isError, out).toBe(true);
+      expect(reply.json, out).toMatchObject({ ok: false, code: "out-in-deck" });
+      expect(existsSync(out)).toBe(false);
+    }
   });
 
   it("refuses to replace a file the export did not write, and leaves it as it was", async () => {

@@ -455,6 +455,13 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
     if (!parsed.success) return failure(complaint(parsed.error));
     const { out, format, notes, pictures, steps, posters } = parsed.data;
     if (!isAbsolute(out)) return failure(`\`out\` must be an absolute path, and ${out} is not.`);
+    // A network share: writing there would also sign in to whatever server the path names. A local device path
+    // (\\?\C:\...) is a path on this machine and is allowed.
+    if (/^[\\/]{2}/.test(out) && !/^[\\/]{2}[?.][\\/][a-z]:[\\/]/i.test(out)) {
+      return failure(
+        `\`out\` is on a network share (${out}). Export to a folder on this machine, and copy the result there.`,
+      );
+    }
     if (format === "folder" && (pictures || steps || posters)) {
       return failure(
         "pictures, steps and posters are for format pptx; the folder export shows the deck as it is.",
@@ -499,8 +506,9 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
             ...(slide.step === undefined ? {} : { step: slide.step }),
             ...(slide.left.length > 0 ? { left: slide.left } : {}),
           })),
-          fonts: done.embedded.map((font) => ({
+          fonts: done.fonts.map((font) => ({
             family: font.family,
+            ...(font.roles.length > 0 ? { roles: font.roles } : {}),
             ...(font.as === undefined ? {} : { as: font.as }),
             embedded: font.embedded,
             ...(font.notes.length > 0 ? { notes: font.notes } : {}),

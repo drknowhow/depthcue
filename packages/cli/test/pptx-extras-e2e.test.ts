@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
   cpSync,
@@ -14,7 +13,7 @@ import {
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 import { type Scene, styleOf } from "@depthcue/core";
 import { numberText } from "@depthcue/player";
@@ -33,19 +32,40 @@ import { builtPlayerDir, PPTX_ROUTE, pptxOutOf, startServer } from "../src/serve
  * The PowerPoint extras against the real player in a real browser: a branded deck's master, layouts and placeholders,
  * the embedded fonts, picture mode, an embedded video and its poster form, one slide per step, the live server's
  * export call, and the report's honest parts (content past an edge, a picture cropped there, decorations a shape cannot
- * draw, the deck warnings that change the file, and a player that is not built). Where LibreOffice is installed, the
- * files are also opened there and must give one page per slide.
+ * draw, the deck warnings that change the file, and a player that is not built). LibreOffice's reading of the files is
+ * checked apart from the tests, by `pnpm check:pptx-pages`.
  */
 
 const decks = (name: string) => fileURLToPath(new URL(`../../../fixtures/decks/${name}`, import.meta.url));
 const tinyMp4 = fileURLToPath(new URL("./fixtures/tiny.mp4", import.meta.url));
 
-/** The built player the export draws with, which one test replaces with a folder that has none. */
-const hooks = vi.hoisted(() => ({ playerDir: undefined as string | undefined }));
+/**
+ * The built player the export draws with, which one test replaces with a folder that has none; and when each of the
+ * live server's renders started and ended, for the test that they run one at a time.
+ */
+const hooks = vi.hoisted(() => ({
+  playerDir: undefined as string | undefined,
+  renders: [] as Array<{ start: number; end: number }>,
+}));
 
 vi.mock("../src/serve.ts", async (importOriginal) => {
   const original = await importOriginal<typeof import("../src/serve.ts")>();
   return { ...original, builtPlayerDir: () => hooks.playerDir ?? original.builtPlayerDir() };
+});
+
+vi.mock("../src/pptx/index.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/pptx/index.ts")>();
+  return {
+    ...original,
+    renderPptx: async (...args: Parameters<typeof original.renderPptx>) => {
+      const start = performance.now();
+      try {
+        return await original.renderPptx(...args);
+      } finally {
+        hooks.renders.push({ start, end: performance.now() });
+      }
+    },
+  };
 });
 
 let skipReason: string | undefined;
@@ -88,7 +108,7 @@ interface Summary {
   steps: boolean;
   posters: boolean;
   layouts: string[];
-  embedded: Array<{ family: string; as?: string; embedded: string[]; notes: string[] }>;
+  fonts: Array<{ family: string; roles: string[]; as?: string; embedded: string[]; notes: string[] }>;
   slides: Array<{ scene: string; title: string; step?: number; left: string[] }>;
   deck: string[];
 }
@@ -377,7 +397,8 @@ describe("a branded deck", () => {
         expect(header.magic).toBe(0x504c);
         expect(header.version).toBe(0x00020002);
         expect(header.size).toBe(eot.length);
-        expect(header.family).toBe(typeface);
+        expect(header.family.value).toBe(typeface);
+        expect(header.charset).toBe(0);
         expect(header.fsType & 0x0202).toBe(0);
         expect(readSfnt(header.font).tables.has("glyf")).toBe(true);
       }
@@ -386,36 +407,116 @@ describe("a branded deck", () => {
     for (const name of pptx.names.filter((part) => part.endsWith(".xml"))) {
       expect(await pptx.text(name), name).not.toMatch(/typeface="Harbor (Sans|Display)"/);
     }
-    expect(summary.embedded.find((font) => font.family === "Harbor Sans")).toMatchObject({
+    expect(summary.fonts.find((font) => font.family === "Harbor Sans")).toMatchObject({
+      roles: ["text"],
       as: "Space Grotesk",
       embedded: ["regular", "bold"],
     });
-    expect(summary.embedded.find((font) => font.family === "Harbor Display")).toMatchObject({
+    expect(summary.fonts.find((font) => font.family === "Harbor Display")).toMatchObject({
       as: "Space Grotesk",
       embedded: ["bold"],
     });
+    // One entry per family, however many roles and faces it has.
+    const families = summary.fonts.map((font) => font.family);
+    expect(families).toEqual([...new Set(families)].sort());
   }, 180_000);
 
-  it("says which faces it embedded in the human summary", async () => {
-    const { deck } = await brandFile();
-    const { code, lines } = await command(
-      "export",
-      deck,
-      "--format",
-      "pptx",
-      "--out",
-      join(root, "brand.pptx"),
-    );
+  it("says which faces are in the file, apart from the ones a viewer needs, and nothing about what PowerPoint draws", async () => {
+    const { deck, summary } = await brandFile();
+    const out = join(root, "brand.pptx");
+    const { code, lines } = await command("export", deck, "--format", "pptx", "--out", out);
     expect(code).toBe(0);
     expect(lines).toContain("  slide layouts: Blank, Cover, Chart and note");
-    expect(
-      lines.some((line) =>
-        /^ {6}Harbor Sans \(text\): embedded \(regular, bold\), which PowerPoint uses$/.test(line),
-      ),
-    ).toBe(true);
+    const embeddedAt = lines.indexOf("  fonts embedded in the file:");
+    const neededAt = lines.indexOf("  fonts a viewer needs installed to see it as drawn:");
+    expect(embeddedAt).toBeGreaterThan(0);
+    expect(neededAt).toBeGreaterThan(embeddedAt);
+    expect(lines.slice(embeddedAt)).toContain("      Harbor Sans (text): embedded (regular, bold)");
     expect(lines).toContain(
       '          its file names itself "Space Grotesk", which is the name PowerPoint knows it by, so the slides use that name.',
     );
+    // Every family the brand draws in has a face in the file.
+    expect(lines[neededAt + 1]).toBe("      none besides the embedded ones above");
+    expect(lines.join("\n")).not.toContain("which PowerPoint uses");
+    // Each family is named once.
+    for (const font of summary.fonts) {
+      expect(
+        lines.filter((line) => line.startsWith(`      ${font.family} `)),
+        font.family,
+      ).toHaveLength(1);
+    }
+  }, 180_000);
+
+  it("gives a layout one title, a minimal template no accent bar, and each step slide its scene's number", async () => {
+    const deck = copyDeck("v0-4-brand", "twotitle");
+    // A second title-role slot on the chart template, filled by a heading.
+    const chartFile = join(deck, "brand", "templates", "chart-and-note.json");
+    const chart = readJson(chartFile);
+    chart.slots[0].frame.w = 40;
+    chart.slots.splice(1, 0, {
+      id: "aside",
+      role: "title",
+      frame: { x: 50, y: 6, w: 44, h: 14 },
+      accepts: ["heading"],
+      hint: "A second heading.",
+    });
+    writeJson(chartFile, chart);
+    const growthFile = join(deck, "scenes", "growth.json");
+    const growth = readJson(growthFile);
+    growth.blocks.splice(1, 0, {
+      id: "growth-aside",
+      type: "text",
+      role: "heading",
+      text: "Berths B and C",
+      slot: "aside",
+    });
+    writeJson(growthFile, growth);
+    // The cover shows the minimal chrome: the logo, and no accent bar.
+    const coverFile = join(deck, "brand", "templates", "cover.json");
+    writeJson(coverFile, { ...readJson(coverFile), chrome: "minimal" });
+    // The context scene holds its quote back for a step.
+    const contextFile = join(deck, "scenes", "context.json");
+    writeJson(contextFile, {
+      ...readJson(contextFile),
+      steps: [{ id: "show-quote", reveal: ["context-quote"] }],
+    });
+
+    const out = join(root, "twotitle.pptx");
+    const summary = await exported(deck, out, "--steps");
+    expect(summary.slides.map((slide) => [slide.scene, slide.step ?? null])).toEqual([
+      ["welcome", null],
+      ["context", 0],
+      ["context", 1],
+      ["growth", null],
+    ]);
+    // A block a step holds back is not missing from the slide before that step.
+    for (const slide of summary.slides) expect(slide.left.join(" ")).not.toContain("is not on the slide");
+    const pptx = await unzip(out);
+    expect(await pptx.text("ppt/slides/slide2.xml")).not.toContain('name="context-quote"');
+    expect(await pptx.text("ppt/slides/slide3.xml")).toContain('name="context-quote"');
+
+    const layouts = await layoutsOf(pptx);
+    const chartLayout = layouts.get("Chart and note")?.xml as string;
+    expect(shapeOf(chartLayout, "title")).toContain('<p:ph type="title" hasCustomPrompt="1"/>');
+    expect(shapeOf(chartLayout, "aside")).toContain('<p:ph type="body" idx="14" hasCustomPrompt="1"/>');
+    expect(chartLayout.match(/type="title"/g)).toHaveLength(1);
+    const growthSlide = await pptx.text("ppt/slides/slide4.xml");
+    expect(shapeOf(growthSlide, "growth-title")).toContain('<p:ph type="title"/>');
+    expect(shapeOf(growthSlide, "growth-aside")).toContain('<p:ph type="body" idx="14"/>');
+    expect(growthSlide.match(/type="title"/g)).toHaveLength(1);
+
+    const cover = layouts.get("Cover")?.xml as string;
+    expect(cover).toContain('showMasterSp="0"');
+    expect(cover).toMatch(/name="Logo" descr="Harbor Analytics"/);
+    expect(cover).not.toContain('name="Accent bar"');
+    // The chart template shows all of the chrome, the bar included, on the deck's own ground: the master's.
+    expect(await pptx.text("ppt/slideMasters/slideMaster1.xml")).toContain('name="Accent bar"');
+
+    // Each step slide shows its scene's number, as the player does; PowerPoint renumbers when it shows them.
+    const number = async (slide: number) =>
+      /type="slidenum">[\s\S]*?<a:t>(\d+)<\/a:t>/.exec(await pptx.text(`ppt/slides/slide${slide}.xml`))?.[1];
+    expect([await number(2), await number(3), await number(4)]).toEqual(["2", "2", "3"]);
+    expect(summary.deck.some((line) => line.startsWith("Slide numbers: with one slide per step"))).toBe(true);
   }, 180_000);
 });
 
@@ -462,7 +563,7 @@ describe("the report", () => {
           line.endsWith("(background-unmeasured)."),
       ),
     ).toBe(true);
-    expect(summary.embedded.find((font) => font.family === "Harbor Display")?.notes).toEqual([
+    expect(summary.fonts.find((font) => font.family === "Harbor Display")?.notes).toEqual([
       "no font file, so a viewer needs it installed to see it as drawn.",
     ]);
     // The layout carries the picture with its scrim, as the page drew it.
@@ -529,6 +630,73 @@ describe("the report", () => {
     const y = Number(/<a:off x="\d+" y="(\d+)"\/>/.exec(picture)?.[1]);
     const cy = Number(/<a:ext cx="\d+" cy="(\d+)"\/>/.exec(picture)?.[1]);
     expect(Math.abs(y + cy - 6858000)).toBeLessThanOrEqual(2);
+  }, 180_000);
+
+  it("crops a picture past the left and top edges at the corner, and says how far the content runs there", async () => {
+    const deck = copyDeck("demo", "corner");
+    keepScenes(deck, ["corner"]);
+    writeJson(join(deck, "scenes", "corner.json"), {
+      schemaVersion: "0.3",
+      id: "corner",
+      title: "A picture past the corner",
+      layout: "text-media",
+      blocks: [
+        { id: "corner-heading", type: "text", role: "heading", text: "The picture runs off the top left" },
+        { id: "corner-picture", type: "image", asset: "assets/method.svg", alt: "The method diagram." },
+      ],
+    });
+    const server = await startServer({ folder: deck, playerDir: builtPlayerDir(), port: 0 });
+    const browser = await launchBrowser();
+    let measure: Awaited<ReturnType<typeof measureSlide>>;
+    try {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, bypassCSP: true });
+      await page.goto(`${server.url}#/corner`, { waitUntil: "load" });
+      await page.waitForSelector('.dc-scene[data-scene="corner"]');
+      await page.evaluate(() => (window as { depthcue?: { settled(): Promise<void> } }).depthcue?.settled());
+      // The picture's block moved so its corner is 120px left of the slide and 90px above it.
+      await page.evaluate(() => {
+        const block = document.querySelector<HTMLElement>('.dc-block[data-id="corner-picture"]');
+        if (!block) throw new Error("The picture block is not on the page.");
+        const rect = block.getBoundingClientRect();
+        block.style.setProperty("transform", `translate(${-120 - rect.x}px, ${-90 - rect.y}px)`, "important");
+      });
+      measure = await page.evaluate(measureSlide);
+    } finally {
+      await browser.close();
+      await server.close();
+    }
+    expect(measure.beyond.left).toBeGreaterThanOrEqual(110);
+    expect(measure.beyond.top).toBeGreaterThanOrEqual(80);
+    const opened = openDeck(deck);
+    if (!opened.ok) throw new Error("The deck does not open.");
+    const { doc } = opened;
+    const built = await buildPresentation({
+      deck: doc.deck,
+      style: styleOf(doc.deck, doc.brand),
+      scenes: [doc.scenes.corner as Scene],
+      measures: [measure],
+      folder: deck,
+      out: join(root, "corner.pptx"),
+      notes: true,
+      numberText,
+      master: false,
+    });
+    const left = built.slides[0]?.left ?? [];
+    expect(left).toContain(
+      "\"corner-picture\": the picture runs past the slide's edge; it is cropped there, as the slide shows it, and PowerPoint's Crop gives the rest back.",
+    );
+    expect(left.find((line) => line.startsWith("the content runs "))).toMatch(
+      /^the content runs \d+px past the slide in the player too, at the left, and \d+px at the top, /,
+    );
+    const slide = await (await unzip(built.raw)).text("ppt/slides/slide1.xml");
+    const picture = shapeOf(slide, "corner-picture") as string;
+    // On the slide from its top left corner, with what is past the edges cropped away on those two sides.
+    expect(picture).toContain('<a:off x="0" y="0"/>');
+    const crop = /<a:srcRect l="(\d+)" r="(\d+)" t="(\d+)" b="(\d+)"\/>/.exec(picture);
+    expect(crop, picture).not.toBeNull();
+    expect(Number(crop?.[1])).toBeGreaterThan(0);
+    expect(Number(crop?.[3])).toBeGreaterThan(0);
+    expect([crop?.[2], crop?.[4]]).toEqual(["0", "0"]);
   }, 180_000);
 
   it("names what a panel has that a PowerPoint shape here does not draw", async () => {
@@ -639,7 +807,11 @@ describe("--steps", () => {
       ["trend", null],
       ["method", null],
     ]);
-    for (const slide of summary.slides) expect(slide.left.join(" ")).not.toContain("flattened");
+    for (const slide of summary.slides) {
+      expect(slide.left.join(" ")).not.toContain("flattened");
+      // What a step holds back is not drawn yet, which is not the same as missing.
+      expect(slide.left.join(" ")).not.toContain("is not on the slide");
+    }
     const pptx = await unzip(out);
     // The bar chart is held back until a step shows it, as the player holds it back.
     const charts = async (n: number) =>
@@ -721,6 +893,35 @@ describe("a clip", () => {
     expect(await pptx.text("ppt/slides/_rels/slide1.xml.rels")).toContain(
       'Target="clip-deck/assets/tiny.mp4"',
     );
+  }, 180_000);
+
+  it("with no poster is embedded in the video's own shape, with a picture in that shape until it plays", async () => {
+    const deck = clipDeck();
+    const sceneFile = join(deck, "scenes", "clip-scene.json");
+    const scene = readJson(sceneFile);
+    delete scene.blocks[1].poster;
+    writeJson(sceneFile, scene);
+    const out = join(root, "bare-clip.pptx");
+    const summary = await exported(deck, out);
+    // Its first frame where the browser can decode the video; a plain picture in its shape where it cannot.
+    expect(summary.slides[0]?.left.filter((line) => line.startsWith('"tiny-clip"'))).toEqual([
+      expect.stringMatching(
+        /^"tiny-clip": the video has no poster, so (its first frame|a plain picture in its shape) shows until it plays\.$/,
+      ),
+    ]);
+    const pptx = await unzip(out);
+    const clip = shapeOf(await pptx.text("ppt/slides/slide1.xml"), "tiny-clip") as string;
+    expect(clip).toMatch(/<a:videoFile r:link="rId\d+"\/>/);
+    // tiny.mp4 is 320 by 180: the frame on the slide has that shape, not the box's.
+    const [cx, cy] = (/<a:ext cx="(\d+)" cy="(\d+)"\/>/.exec(clip) ?? []).slice(1).map(Number) as [
+      number,
+      number,
+    ];
+    expect(Math.abs(cx / cy - 320 / 180)).toBeLessThan(0.01);
+    const rels = await pptx.text("ppt/slides/_rels/slide1.xml.rels");
+    const cover = /relationships\/image" Target="\.\.\/(media\/[^"]+\.png)"/.exec(rels)?.[1];
+    const png = await pptx.bytes(`ppt/${cover}`);
+    expect(Math.abs(png.readUInt32BE(16) / png.readUInt32BE(20) - 320 / 180)).toBeLessThan(0.02);
   }, 180_000);
 });
 
@@ -821,6 +1022,43 @@ describe("the export call on the live server", () => {
     expect(basename(beside)).toBe("live-deck.pptx");
   }, 180_000);
 
+  it("runs two calls one after the other, gives both the same bytes, and names the file as RFC 8187 asks", async () => {
+    const deck = copyDeck("v0-1", "it's (a) deck");
+    const editor = join(root, "editor");
+    mkdirSync(editor);
+    const server = await startServer({
+      folder: deck,
+      playerDir: builtPlayerDir(),
+      editorDir: editor,
+      port: 0,
+    });
+    hooks.renders.length = 0;
+    let replies: Reply[];
+    try {
+      const headers = { "X-Depthcue-Token": server.token as string, "Content-Type": "application/json" };
+      replies = await Promise.all([
+        call(server.port, { headers, body: "{}" }),
+        call(server.port, { headers, body: "{}" }),
+      ]);
+    } finally {
+      await server.close();
+    }
+    for (const reply of replies) {
+      expect(reply.status, reply.body.toString("utf8").slice(0, 400)).toBe(200);
+      expect(reply.disposition).toBe(
+        "attachment; filename=\"it_s__a__deck.pptx\"; filename*=UTF-8''it%27s%20%28a%29%20deck.pptx",
+      );
+    }
+    expect((replies[0] as Reply).body.equals((replies[1] as Reply).body)).toBe(true);
+    // The second render starts once the first has ended: one export at a time per server.
+    expect(hooks.renders).toHaveLength(2);
+    const [first, second] = [...hooks.renders].sort((a, b) => a.start - b.start) as [
+      { start: number; end: number },
+      { start: number; end: number },
+    ];
+    expect(second.start).toBeGreaterThanOrEqual(first.end);
+  }, 180_000);
+
   it("is guarded as the other write calls are: the token, the origin, POST and the options", async () => {
     const deck = copyDeck("v0-1", "guarded");
     const editor = join(root, "editor");
@@ -848,27 +1086,29 @@ describe("the export call on the live server", () => {
       expect(
         (await call(server.port, { method: "GET", headers: { "X-Depthcue-Token": token } })).status,
       ).toBe(405);
-      const unknown = await call(server.port, {
-        headers: { "X-Depthcue-Token": token },
-        body: JSON.stringify({ format: "pdf" }),
-      });
+      // The options come as JSON, as the other write calls take theirs: any other body is refused unread.
+      const json = { "X-Depthcue-Token": token, "Content-Type": "application/json" };
+      for (const type of [undefined, "text/plain", "application/x-www-form-urlencoded"]) {
+        const reply = await call(server.port, {
+          headers: { "X-Depthcue-Token": token, ...(type ? { "Content-Type": type } : {}) },
+          body: JSON.stringify({ notes: true }),
+        });
+        expect(reply.status, type).toBe(415);
+        expect(JSON.parse(reply.body.toString("utf8"))).toEqual({
+          error: "bad-request",
+          message: "Send application/json.",
+        });
+      }
+      const unknown = await call(server.port, { headers: json, body: JSON.stringify({ format: "pdf" }) });
       expect(unknown.status).toBe(400);
       expect(JSON.parse(unknown.body.toString("utf8")).message).toContain('There is no option "format"');
-      const notBoolean = await call(server.port, {
-        headers: { "X-Depthcue-Token": token },
-        body: JSON.stringify({ notes: "no" }),
-      });
+      const notBoolean = await call(server.port, { headers: json, body: JSON.stringify({ notes: "no" }) });
       expect(notBoolean.status).toBe(400);
-      expect((await call(server.port, { headers: { "X-Depthcue-Token": token }, body: "{" })).status).toBe(
-        400,
-      );
+      const broken = await call(server.port, { headers: json, body: "{" });
+      expect(broken.status).toBe(400);
+      expect(JSON.parse(broken.body.toString("utf8")).message).toBe("The body is not valid JSON.");
       expect(
-        (
-          await call(server.port, {
-            headers: { "X-Depthcue-Token": token },
-            body: JSON.stringify({ pad: "x".repeat(5000) }),
-          })
-        ).status,
+        (await call(server.port, { headers: json, body: JSON.stringify({ pad: "x".repeat(5000) }) })).status,
       ).toBe(413);
     } finally {
       await server.close();
@@ -881,44 +1121,4 @@ describe("the export call on the live server", () => {
       await plain.close();
     }
   }, 60_000);
-});
-
-// ---------------------------------------------------------------------------------------------------------------------
-// LibreOffice, when asked for with DEPTHCUE_LIBREOFFICE=1 and installed: another reader of the file must find one page
-// per slide. It is not run by default because LibreOffice running beside the editor's real-browser tests on Windows makes
-// edit-e2e's "moves freely while Alt is held" fail (77 conversions beside it failed it; 16 busy processes did not).
-// ---------------------------------------------------------------------------------------------------------------------
-
-const SOFFICE = [
-  "C:/Program Files/LibreOffice/program/soffice.exe",
-  "/usr/bin/soffice",
-  "/usr/bin/libreoffice",
-  "/Applications/LibreOffice.app/Contents/MacOS/soffice",
-].find((path) => existsSync(path));
-
-/** The PDF LibreOffice makes of a PowerPoint file, and its page count. */
-function pdfPages(file: string): number {
-  const dir = join(root, "pdf");
-  mkdirSync(dir, { recursive: true });
-  const profile = pathToFileURL(join(root, "lo-profile")).href;
-  const done = spawnSync(
-    SOFFICE as string,
-    [`-env:UserInstallation=${profile}`, "--headless", "--convert-to", "pdf", "--outdir", dir, file],
-    { timeout: 120_000, encoding: "utf8" },
-  );
-  const pdf = join(dir, `${basename(file, ".pptx")}.pdf`);
-  if (!existsSync(pdf)) throw new Error(`LibreOffice made no PDF: ${done.stderr || done.stdout}`);
-  return (readFileSync(pdf, "latin1").match(/\/Type\s*\/Page(?![s\w])/g) ?? []).length;
-}
-
-describe("in LibreOffice", () => {
-  it("opens the branded file and the stepped file with one page per slide", async ({ skip }) => {
-    if (process.env.DEPTHCUE_LIBREOFFICE !== "1" || !SOFFICE) return skip();
-    const { out } = await brandFile();
-    expect(pdfPages(out)).toBe(3);
-    const deck = copyDeck("demo");
-    const steps = join(root, "steps.pptx");
-    const summary = await exported(deck, steps, "--steps");
-    expect(pdfPages(steps)).toBe(summary.slides.length);
-  }, 300_000);
 });

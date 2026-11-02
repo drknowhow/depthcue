@@ -9,6 +9,12 @@ import { brotliDecompressSync, inflateSync } from "node:zlib";
 /** A font file that cannot be read as a font, with what is wrong with it. */
 export class FontError extends Error {}
 
+/**
+ * The most a font may unpack to: no real font comes near it, and a file built to unpack to gigabytes, or to a glyph of
+ * millions of points, is refused before it can take the process down. A TrueType glyph's point count is 16-bit.
+ */
+export const FONT_LIMITS = { file: 32 * 1024 * 1024, unpacked: 64 * 1024 * 1024, points: 0xffff } as const;
+
 /** The tables of an sfnt, by tag, and its version (TrueType `0x00010000`, or `OTTO` for CFF outlines). */
 export interface Sfnt {
   flavor: number;
@@ -118,6 +124,7 @@ function unwoff(bytes: Uint8Array): Sfnt {
   const flavor = data.getUint32(4);
   const count = data.getUint16(12);
   const tables = new Map<string, Uint8Array>();
+  let unpacked = 0;
   for (let i = 0; i < count; i++) {
     const at = 44 + i * 20;
     if (at + 20 > bytes.length) throw new FontError("The WOFF table list runs past its end.");
@@ -126,8 +133,20 @@ function unwoff(bytes: Uint8Array): Sfnt {
     const length = data.getUint32(at + 12);
     if (offset + compressed > bytes.length)
       throw new FontError("A WOFF table runs past the end of the file.");
+    unpacked += length;
+    if (unpacked > FONT_LIMITS.unpacked)
+      throw new FontError("The WOFF tables would unpack to more than 64 MB, which no font needs.");
     const raw = bytes.subarray(offset, offset + compressed);
-    const table = compressed < length ? new Uint8Array(inflateSync(raw)) : raw;
+    let table: Uint8Array;
+    try {
+      // A table may not inflate past the size it states: anything more is refused, not unpacked.
+      table =
+        compressed < length
+          ? new Uint8Array(inflateSync(raw, { maxOutputLength: Math.max(1, length) }))
+          : raw;
+    } catch {
+      throw new FontError("A WOFF table could not be unpacked to its stated size.");
+    }
     if (table.length !== length) throw new FontError("A WOFF table did not unpack to its stated size.");
     tables.set(tagAt(data, at), table);
   }
@@ -139,13 +158,14 @@ function unwoff(bytes: Uint8Array): Sfnt {
 // turned back into the ordinary one here. The steps follow the W3C WOFF 2.0 recommendation, section 5.
 // ---------------------------------------------------------------------------------------------------------------------
 
+// biome-ignore format: the spec's table, 63 tags in its order
 const KNOWN_TAGS = [
   "cmap", "head", "hhea", "hmtx", "maxp", "name", "OS/2", "post", "cvt ", "fpgm", "glyf", "loca", "prep", "CFF ",
   "VORG", "EBDT", "EBLC", "gasp", "hdmx", "kern", "LTSH", "PCLT", "VDMX", "vhea", "vmtx", "BASE", "GDEF", "GPOS",
   "GSUB", "EBSC", "JSTF", "MATH", "CBDT", "CBLC", "COLR", "CPAL", "SVG ", "sbix", "acnt", "avar", "bdat", "bloc",
   "bsln", "cvar", "fdsc", "feat", "fmtx", "fvar", "gvar", "hsty", "just", "lcar", "mort", "morx", "opbd", "prop",
   "trak", "Zapf", "Silf", "Glat", "Gloc", "Feat", "Sill",
-]; // biome-ignore format: the spec's table, 63 tags in its order
+];
 
 /** Reads a stream of bytes from the front. */
 class Reader {
@@ -408,6 +428,9 @@ function rebuildGlyf(table: Uint8Array): {
       let points = 0;
       for (let c = 0; c < count; c++) {
         points += pointCounts.u255();
+        // Refused before anything is read for it: a glyph's last point number is 16-bit.
+        if (points > FONT_LIMITS.points)
+          throw new FontError("A WOFF2 glyph has more points than a TrueType glyph may have.");
         ends.push(points - 1);
       }
       const flags = flagStream.take(points);
@@ -513,11 +536,18 @@ function unwoff2(bytes: Uint8Array): Sfnt {
     const length = transformed ? read.base128() : origLength;
     entries.push({ tag, origLength, length, transformed });
   }
+  // The stream holds the tables and nothing else, so it may not unpack to more than their lengths add up to.
+  const expected = entries.reduce((sum, entry) => sum + entry.length, 0);
+  if (expected > FONT_LIMITS.unpacked)
+    throw new FontError("The WOFF2 tables would unpack to more than 64 MB, which no font needs.");
   let stream: Uint8Array;
   try {
-    stream = new Uint8Array(brotliDecompressSync(read.take(compressedSize)));
-  } catch {
-    throw new FontError("The WOFF2 data could not be decompressed.");
+    stream = new Uint8Array(
+      brotliDecompressSync(read.take(compressedSize), { maxOutputLength: Math.max(1, expected) }),
+    );
+  } catch (error) {
+    if (error instanceof FontError) throw error;
+    throw new FontError("The WOFF2 data could not be decompressed to the size its tables state.");
   }
   const raw = new Map<string, { entry: Entry; data: Uint8Array }>();
   let at = 0;
@@ -588,6 +618,8 @@ export interface FontFacts {
   bold: boolean;
   italic: boolean;
   panose: Uint8Array;
+  /** Every glyph is as wide as every other (`post` isFixedPitch). */
+  fixedPitch: boolean;
   unicodeRanges: [number, number, number, number];
   codePages: [number, number];
   checkSumAdjustment: number;
@@ -595,12 +627,23 @@ export interface FontFacts {
   covers(code: number): boolean;
 }
 
+/**
+ * A name from the `name` table: the Windows English (US) one, else the Unicode platform's, else another Windows
+ * language's, else the Macintosh Roman one. Empty when the font has none of them.
+ */
 function nameOf(table: Uint8Array | undefined, id: number): string {
   if (!table || table.length < 6) return "";
   const data = view(table);
   const count = data.getUint16(2);
   const strings = data.getUint16(4);
-  let mac = "";
+  const utf16 = (raw: Uint8Array) => {
+    let text = "";
+    for (let k = 0; k + 1 < raw.length; k += 2)
+      text += String.fromCharCode(((raw[k] as number) << 8) | (raw[k + 1] as number));
+    return text;
+  };
+  // Lower is better: Windows English (US), the Unicode platform, any other Windows name, Macintosh Roman.
+  let best = { rank: 4, text: "" };
   for (let i = 0; i < count; i++) {
     const at = 6 + i * 12;
     if (at + 12 > table.length) break;
@@ -612,15 +655,22 @@ function nameOf(table: Uint8Array | undefined, id: number): string {
     const offset = strings + data.getUint16(at + 10);
     if (nameId !== id || offset + length > table.length) continue;
     const raw = table.subarray(offset, offset + length);
-    if (platform === 3 && (encoding === 1 || encoding === 0) && language === 0x409) {
-      let text = "";
-      for (let k = 0; k + 1 < raw.length; k += 2)
-        text += String.fromCharCode(((raw[k] as number) << 8) | (raw[k + 1] as number));
-      return text;
-    }
-    if (platform === 1 && encoding === 0 && mac === "") mac = String.fromCharCode(...raw);
+    const windows = platform === 3 && (encoding === 1 || encoding === 0);
+    const rank =
+      windows && language === 0x409
+        ? 0
+        : platform === 0
+          ? 1
+          : windows
+            ? 2
+            : platform === 1 && encoding === 0
+              ? 3
+              : 4;
+    if (rank >= best.rank) continue;
+    const text = rank === 3 ? String.fromCharCode(...raw) : utf16(raw);
+    if (text.trim() !== "") best = { rank, text };
   }
-  return mac;
+  return best.text;
 }
 
 /** The characters a `cmap` table maps, from its Unicode subtable (format 4 or 12). */
@@ -698,6 +748,7 @@ export function factsOf(font: Sfnt): FontFacts {
   const name = font.tables.get("name");
   const os2 = font.tables.get("OS/2");
   const head = font.tables.get("head");
+  const post = font.tables.get("post");
   const os = os2 && os2.length >= 78 ? view(os2) : undefined;
   const selection = os?.getUint16(62) ?? 0;
   const macStyle = head && head.length >= 46 ? view(head).getUint16(44) : 0;
@@ -713,6 +764,7 @@ export function factsOf(font: Sfnt): FontFacts {
     bold: (selection & 0x20) !== 0 || (macStyle & 1) !== 0,
     italic: (selection & 0x01) !== 0 || (macStyle & 2) !== 0,
     panose: os2 && os2.length >= 42 ? os2.slice(32, 42) : new Uint8Array(10),
+    fixedPitch: post !== undefined && post.length >= 16 && view(post).getUint32(12) !== 0,
     unicodeRanges: os
       ? [os.getUint32(42), os.getUint32(46), os.getUint32(50), os.getUint32(54)]
       : [0, 0, 0, 0],

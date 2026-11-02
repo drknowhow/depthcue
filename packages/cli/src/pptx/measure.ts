@@ -96,7 +96,8 @@ export type Item =
   | { kind: "sources"; label: TextPlace; list: TextPlace; numbered?: boolean }
   | { kind: "text"; id: string; text: TextPlace; cite?: TextPlace }
   | { kind: "image"; id: string; picture: Picture; caption?: TextPlace; cite?: TextPlace }
-  | { kind: "clip"; id: string; video: Picture; poster: boolean; cite?: TextPlace }
+  /** `firstFrame`: the clip has no poster, and `video` is its first frame, fitted in its box as a poster would be. */
+  | { kind: "clip"; id: string; video: Picture; poster: boolean; firstFrame?: boolean; cite?: TextPlace }
   | {
       kind: "table";
       id: string;
@@ -192,16 +193,53 @@ export async function measureSlide(): Promise<SlideMeasure> {
   await Promise.all(pictures.map((picture) => picture.decode().catch(() => undefined)));
   const posters = [...document.querySelectorAll<HTMLVideoElement>(".dc-scene video:not(.dc-ghost video)")];
   const posterImages = new Map<HTMLVideoElement, HTMLImageElement | null>();
+  /**
+   * A clip with no poster, from this server: its first frame, drawn from a copy of the video that loads it (the player's
+   * own loads nothing until it plays), as a picture in the video's shape. Nothing when it cannot be decoded in time.
+   */
+  const firstFrame = async (video: HTMLVideoElement): Promise<HTMLImageElement | null> => {
+    const src = video.currentSrc || video.src;
+    if (!src || new URL(src, location.href).origin !== location.origin) return null;
+    const copy = document.createElement("video");
+    copy.muted = true;
+    copy.preload = "auto";
+    copy.src = src;
+    await new Promise<void>((done) => {
+      copy.addEventListener("loadeddata", () => done(), { once: true });
+      copy.addEventListener("error", () => done(), { once: true });
+      setTimeout(done, 4000);
+    });
+    if (copy.readyState < 2 || copy.videoWidth === 0 || copy.videoHeight === 0) return null;
+    const raster = document.createElement("canvas");
+    raster.width = copy.videoWidth;
+    raster.height = copy.videoHeight;
+    (raster.getContext("2d") as CanvasRenderingContext2D).drawImage(copy, 0, 0);
+    copy.removeAttribute("src");
+    copy.load();
+    const image = new Image();
+    try {
+      image.src = raster.toDataURL("image/png");
+      await image.decode();
+    } catch {
+      return null;
+    }
+    return image.naturalWidth > 0 ? image : null;
+  };
+  const frames = new Set<HTMLVideoElement>();
   await Promise.all(
     posters.map(async (video) => {
-      if (!video.poster) {
-        posterImages.set(video, null);
-        return;
+      if (video.poster) {
+        const image = new Image();
+        image.src = video.poster;
+        await image.decode().catch(() => undefined);
+        if (image.naturalWidth > 0) {
+          posterImages.set(video, image);
+          return;
+        }
       }
-      const image = new Image();
-      image.src = video.poster;
-      await image.decode().catch(() => undefined);
-      posterImages.set(video, image.naturalWidth > 0 ? image : null);
+      const frame = await firstFrame(video);
+      if (frame) frames.add(video);
+      posterImages.set(video, frame);
     }),
   );
   // The video element takes the poster's shape once its own copy of the poster has loaded.
@@ -620,9 +658,19 @@ export async function measureSlide(): Promise<SlideMeasure> {
       const video = block.querySelector<HTMLVideoElement>("video");
       if (!video || !visible(video)) return;
       const poster = posterImages.get(video) ?? null;
+      const frame = frames.has(video);
       panelOf("Video frame", video, video.getBoundingClientRect());
       items.push(
-        withCite({ kind: "clip", id, video: pictureOf(video, poster, true), poster: poster !== null }, block),
+        withCite(
+          {
+            kind: "clip",
+            id,
+            video: pictureOf(video, poster, true),
+            poster: poster !== null && !frame,
+            ...(frame ? { firstFrame: true } : {}),
+          },
+          block,
+        ),
       );
       return;
     }

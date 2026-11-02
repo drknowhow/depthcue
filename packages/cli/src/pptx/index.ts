@@ -10,6 +10,7 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { type Diagnostic, type Doc, lookOf, type Scene } from "@depthcue/core";
 import type { Browser } from "playwright-core";
 import { openDeck } from "../deck-api.ts";
+import { within as inside, realish } from "../export.ts";
 import { launchBrowser } from "../render.ts";
 import { builtPlayerDir, startServer } from "../serve.ts";
 import { buildPresentation, type FontUse, type SlideReport } from "./build.ts";
@@ -29,11 +30,22 @@ import { finishPackage, inspectOutput } from "./package.ts";
 export type { FontUse, SlideReport } from "./build.ts";
 export type { FontReport } from "./fonts.ts";
 
+/** One family the slides are set in: what it is used for, and which of its faces the file carries, once per family. */
+export interface FontEntry extends FontUse {
+  /** The name PowerPoint knows it by, when that is another one. */
+  as?: string;
+  /** The faces whose own files are in the file. Empty when none is. */
+  embedded: string[];
+  /** Why a face the slides draw, or the whole family, is not in the file, and anything else to know. */
+  notes: string[];
+}
+
 export type PptxErrorCode =
   | "player-not-built"
   | "no-browser"
   | "render-failed"
   | "bad-out"
+  | "out-in-deck"
   | "out-not-ours"
   | "out-edited"
   | "write-failed";
@@ -78,10 +90,8 @@ export interface PptxSummary {
   posters: boolean;
   /** The slide layouts, by name, in order: the blank one, then one per template. Empty for a deck with no brand. */
   layouts: string[];
-  /** The families the file names, and what each is used for. */
-  fonts: FontUse[];
-  /** Which of those families are embedded, as which faces, and why the rest are not. */
-  embedded: FontReport[];
+  /** The families the file names, once each: what each is used for, which faces are embedded, why the rest are not. */
+  fonts: FontEntry[];
   /** For each slide, in order, what had no PowerPoint form. */
   slides: SlideReport[];
   /** Things that hold for every slide. */
@@ -313,17 +323,47 @@ function usageOf(parts: Map<string, Uint8Array>): Map<string, Usage> {
   return usage;
 }
 
+/** Each family once, from what the slides use it for and what the fonts step did with it, in name order. */
+function fontEntries(uses: readonly FontUse[], reports: readonly FontReport[]): FontEntry[] {
+  const byFamily = new Map<string, FontEntry>();
+  const entry = (family: string) => {
+    const known = byFamily.get(family);
+    if (known) return known;
+    const made: FontEntry = { family, roles: [], embedded: [], notes: [] };
+    byFamily.set(family, made);
+    return made;
+  };
+  for (const use of uses) {
+    const found = entry(use.family);
+    found.roles = [...new Set([...found.roles, ...use.roles])].sort();
+  }
+  for (const report of reports) {
+    const found = entry(report.family);
+    if (report.as !== undefined) found.as = report.as;
+    found.embedded = [...new Set([...found.embedded, ...report.embedded])];
+    found.notes = [...new Set([...found.notes, ...report.notes])];
+  }
+  return [...byFamily.values()].sort((a, b) => (a.family < b.family ? -1 : a.family > b.family ? 1 : 0));
+}
+
+type Opened = Extract<ReturnType<typeof openDeck>, { ok: true }>;
+
 /**
  * The PowerPoint file for a deck, as bytes, with its report: nothing is written anywhere. `out` is where the file will
  * be, which a link to a file in the deck is written relative to, so the same deck and `out` give the same bytes.
  */
 export async function renderPptx(request: PptxRequest & { out: string }): Promise<PptxBytes> {
+  const opened = openDeck(request.folder);
+  if (!opened.ok) return { ok: false, diagnostics: opened.diagnostics };
+  return render(opened, request);
+}
+
+/** `renderPptx` for a deck already opened. */
+async function render(opened: Opened, request: PptxRequest & { out: string }): Promise<PptxBytes> {
   const notes = request.notes ?? true;
   const pictures = request.pictures === true;
   const steps = request.steps === true;
   const posters = request.posters === true;
-  const opened = openDeck(request.folder);
-  if (!opened.ok) return { ok: false, diagnostics: opened.diagnostics };
   const { doc } = opened;
   const out = outPath(request.out);
   const playerDir = playerOf(request);
@@ -423,8 +463,7 @@ export async function renderPptx(request: PptxRequest & { out: string }): Promis
       steps,
       posters,
       layouts,
-      fonts: built.fonts,
-      embedded,
+      fonts: fontEntries(built.fonts, embedded),
       slides: built.slides,
       deck,
       warnings: opened.diagnostics,
@@ -438,11 +477,19 @@ export async function exportPptx(request: PptxRequest): Promise<PptxResult> {
   const opened = openDeck(request.folder);
   if (!opened.ok) return { ok: false, diagnostics: opened.diagnostics };
   const out = outPath(request.out ?? defaultOut(request.folder));
+  // The file would be one of the deck's own, and a later check or export would find it there: refused, as the folder
+  // export refuses a folder inside the deck.
+  if (inside(realish(request.folder), realish(out))) {
+    throw new PptxError(
+      "out-in-deck",
+      `${out} is inside the deck folder. Pick a place outside it for --out.`,
+    );
+  }
   // Refuse before the browser starts: a refused export should cost nothing.
   await checkOutput(out);
   playerOf(request);
 
-  const result = await renderPptx({ ...request, out });
+  const result = await render(opened, { ...request, out });
   if (!result.ok) return result;
 
   // The folder may have gained a file while the browser ran, so look again before replacing anything.

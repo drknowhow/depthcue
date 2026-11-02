@@ -1,4 +1,16 @@
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +26,7 @@ import {
   listFonts,
   pairFaces,
   parseUnicodeRange,
+  pitchFamily,
   planFonts,
   type Slot,
   scanUsage,
@@ -22,7 +35,16 @@ import {
 import { describeShape, firstInSlots, linkShape, placeholderType } from "../src/pptx/master.ts";
 import type { SlideMeasure } from "../src/pptx/measure.ts";
 import { cannotEmbed, mp4Tracks } from "../src/pptx/media.ts";
-import { factsOf, fontKind, readSfnt, type Sfnt, unpackFont, writeSfnt } from "../src/pptx/sfnt.ts";
+import {
+  FontError,
+  factsOf,
+  fontKind,
+  readSfnt,
+  type Sfnt,
+  unpackFont,
+  writeSfnt,
+} from "../src/pptx/sfnt.ts";
+import { extValue } from "../src/serve.ts";
 
 /**
  * The parts of the PowerPoint extras that need no browser: reading a font and wrapping it as PowerPoint embeds one,
@@ -34,6 +56,14 @@ const brandDeck = fileURLToPath(new URL("../../../fixtures/decks/v0-4-brand", im
 const harborRegular = join(brandDeck, "brand", "fonts", "HarborSans-Regular.woff2");
 const harborBold = join(brandDeck, "brand", "fonts", "HarborSans-Bold.woff2");
 const tinyMp4 = fileURLToPath(new URL("./fixtures/tiny.mp4", import.meta.url));
+/** fontTools' own decoding of the Space Grotesk WOFF2 above, saved as TrueType with nothing recalculated (OFL). */
+const reference = fileURLToPath(new URL("./fixtures/fonts/SpaceGrotesk-Regular.ttf", import.meta.url));
+/**
+ * Hostile WOFF2 files of a few hundred bytes from the step 6 review: two brotli bombs that decompress to hundreds of
+ * megabytes, and two glyphs that ask for millions of points.
+ */
+const hostile = (name: string) => fileURLToPath(new URL(`./fixtures/hostile/${name}`, import.meta.url));
+const playerFonts = fileURLToPath(new URL("../../../brand/fonts", import.meta.url));
 
 let root: string;
 
@@ -71,6 +101,164 @@ const use = (slots: Slot[], text: string): Usage => ({
   chars: new Set([...text].map((character) => character.codePointAt(0) as number)),
 });
 
+const dataOf = (bytes: Uint8Array) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+/** The sum of a file's 32-bit big-endian words, zero-padded to a whole word, as the sfnt checksum is worked out. */
+function sum32(bytes: Uint8Array): number {
+  const padded = new Uint8Array((bytes.length + 3) & ~3);
+  padded.set(bytes);
+  const data = dataOf(padded);
+  let sum = 0;
+  for (let at = 0; at < padded.length; at += 4) sum = (sum + data.getUint32(at)) >>> 0;
+  return sum;
+}
+
+/** A `name` table holding these records, each as UTF-16 (or one byte a character on the Macintosh platform). */
+function nameTable(
+  records: Array<{ platform: number; encoding: number; language: number; id: number; text: string }>,
+): Uint8Array {
+  const strings = records.map(({ platform, text }) =>
+    platform === 1
+      ? Uint8Array.from([...text].map((character) => character.charCodeAt(0)))
+      : Uint8Array.from(
+          [...text].flatMap((character) => [character.charCodeAt(0) >> 8, character.charCodeAt(0) & 0xff]),
+        ),
+  );
+  const head = 6 + records.length * 12;
+  const out = new Uint8Array(head + strings.reduce((sum, bytes) => sum + bytes.length, 0));
+  const data = dataOf(out);
+  data.setUint16(2, records.length);
+  data.setUint16(4, head);
+  let offset = 0;
+  records.forEach((record, i) => {
+    const at = 6 + i * 12;
+    const bytes = strings[i] as Uint8Array;
+    data.setUint16(at, record.platform);
+    data.setUint16(at + 2, record.encoding);
+    data.setUint16(at + 4, record.language);
+    data.setUint16(at + 6, record.id);
+    data.setUint16(at + 8, bytes.length);
+    data.setUint16(at + 10, offset);
+    out.set(bytes, head + offset);
+    offset += bytes.length;
+  });
+  return out;
+}
+
+/** One glyph as a TrueType reader sees it: its box, contours, points, instructions, or its components. */
+interface Outline {
+  contours: number;
+  box?: number[];
+  ends?: number[];
+  points?: Array<[number, number, boolean]>;
+  overlap?: boolean;
+  components?: number[][];
+  instructions?: string;
+}
+
+/**
+ * Every glyph of a TrueType font, read from its `glyf` and `loca` tables the way a rasterizer reads them, so two fonts
+ * whose bytes differ (one packs its flags as fontTools does, the other as this export does) compare by their outlines.
+ */
+function outlines(font: Sfnt): Outline[] {
+  const head = dataOf(font.tables.get("head") as Uint8Array);
+  const count = dataOf(font.tables.get("maxp") as Uint8Array).getUint16(4);
+  const loca = dataOf(font.tables.get("loca") as Uint8Array);
+  const glyf = font.tables.get("glyf") as Uint8Array;
+  const data = dataOf(glyf);
+  const long = head.getInt16(50) === 1;
+  const offset = (i: number) => (long ? loca.getUint32(i * 4) : loca.getUint16(i * 2) * 2);
+  const hex = (bytes: Uint8Array) => Buffer.from(bytes).toString("hex");
+  const out: Outline[] = [];
+  for (let i = 0; i < count; i++) {
+    let at = offset(i);
+    if (offset(i + 1) === at) {
+      out.push({ contours: 0 });
+      continue;
+    }
+    const contours = data.getInt16(at);
+    const box = [1, 2, 3, 4].map((k) => data.getInt16(at + k * 2));
+    at += 10;
+    if (contours >= 0) {
+      const ends = Array.from({ length: contours }, (_, k) => data.getUint16(at + k * 2));
+      at += contours * 2;
+      const length = data.getUint16(at);
+      const instructions = hex(glyf.subarray(at + 2, at + 2 + length));
+      at += 2 + length;
+      const total = contours === 0 ? 0 : (ends[contours - 1] as number) + 1;
+      const flags: number[] = [];
+      while (flags.length < total) {
+        const flag = data.getUint8(at++);
+        flags.push(flag);
+        if (flag & 8) for (let n = data.getUint8(at++); n > 0; n--) flags.push(flag);
+      }
+      const axis = (short: number, same: number) => {
+        let value = 0;
+        return flags.map((flag) => {
+          if (flag & short) {
+            const step = data.getUint8(at++);
+            value += flag & same ? step : -step;
+          } else if (!(flag & same)) {
+            value += data.getInt16(at);
+            at += 2;
+          }
+          return value;
+        });
+      };
+      const xs = axis(0x02, 0x10);
+      const ys = axis(0x04, 0x20);
+      out.push({
+        contours,
+        box,
+        ends,
+        points: flags.map((flag, k) => [xs[k] as number, ys[k] as number, (flag & 1) === 1]),
+        overlap: ((flags[0] ?? 0) & 0x40) !== 0,
+        instructions,
+      });
+      continue;
+    }
+    const components: number[][] = [];
+    let flags = 0x20;
+    let instructed = false;
+    while (flags & 0x20) {
+      flags = data.getUint16(at);
+      if (flags & 0x100) instructed = true;
+      const glyph = data.getUint16(at + 2);
+      at += 4;
+      const words = flags & 1;
+      const dx = words ? data.getInt16(at) : data.getInt8(at);
+      const dy = words ? data.getInt16(at + 2) : data.getInt8(at + 1);
+      at += words ? 4 : 2;
+      const scales = flags & 0x08 ? 1 : flags & 0x40 ? 2 : flags & 0x80 ? 4 : 0;
+      const scale = Array.from({ length: scales }, (_, k) => data.getInt16(at + k * 2));
+      at += scales * 2;
+      // How the arguments are stored is the writer's choice; what they mean is not.
+      components.push([flags & 0x1e06, glyph, dx, dy, ...scale]);
+    }
+    const length = instructed ? data.getUint16(at) : 0;
+    out.push({
+      contours,
+      box,
+      components,
+      instructions: instructed ? hex(glyf.subarray(at + 2, at + 2 + length)) : "",
+    });
+  }
+  return out;
+}
+
+/** Each glyph's advance and left side bearing, from `hmtx` with `hhea`'s count of full records. */
+function metrics(font: Sfnt): Array<[number, number]> {
+  const count = dataOf(font.tables.get("maxp") as Uint8Array).getUint16(4);
+  const full = dataOf(font.tables.get("hhea") as Uint8Array).getUint16(34);
+  const hmtx = dataOf(font.tables.get("hmtx") as Uint8Array);
+  let advance = 0;
+  return Array.from({ length: count }, (_, i) => {
+    if (i < full) advance = hmtx.getUint16(i * 4);
+    const side = i < full ? hmtx.getInt16(i * 4 + 2) : hmtx.getInt16(full * 4 + (i - full) * 2);
+    return [advance, side];
+  });
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Fonts: the file, its facts, and the EOT PowerPoint keeps it in.
 // ---------------------------------------------------------------------------------------------------------------------
@@ -101,24 +289,150 @@ describe("a font file", () => {
     for (const tag of ["glyf", "loca", "cmap", "name"]) {
       expect(again.tables.get(tag), tag).toEqual(font.tables.get(tag));
     }
+    // The whole font sums to the sfnt's magic number, which head's checkSumAdjustment is set to make it do.
+    expect(sum32(written)).toBe(0xb1b0afba);
+    const head = again.tables.get("head") as Uint8Array;
+    expect(dataOf(head).getUint32(8)).not.toBe(0);
   });
 
-  it("is wrapped as an EOT 2.2 with its names in the header and the font after it, unchanged", () => {
-    const font = fontOf(harborRegular);
-    const sfnt = writeSfnt(font);
-    const facts = factsOf(font);
-    const eot = eotOf(sfnt, facts);
-    const header = readEot(eot);
-    expect(header.magic).toBe(0x504c);
-    expect([eot[34], eot[35]]).toEqual([0x4c, 0x50]);
-    expect(header.version).toBe(0x00020002);
-    expect(header.flags).toBe(0);
-    expect(header.size).toBe(eot.length);
-    expect(header.fontSize).toBe(sfnt.length);
-    expect(header.fsType).toBe(facts.fsType);
-    expect(header.family).toBe("Space Grotesk");
-    expect(header.style).toBe("Regular");
-    expect(header.font).toEqual(sfnt);
+  it("is decoded from WOFF2 to the outlines and metrics fontTools decodes, glyph by glyph", () => {
+    const ours = fontOf(harborRegular);
+    const theirs = readSfnt(new Uint8Array(readFileSync(reference)));
+    const mine = outlines(ours);
+    const fontTools = outlines(theirs);
+    expect(mine.length).toBeGreaterThan(800);
+    expect(mine.length).toBe(fontTools.length);
+    // Compared one glyph at a time, so a failure names the glyph rather than printing 800 of them.
+    const differ = mine.flatMap((glyph, i) =>
+      JSON.stringify(glyph) === JSON.stringify(fontTools[i]) ? [] : [i],
+    );
+    expect(differ, `glyph ${differ[0]}: ${JSON.stringify(mine[differ[0] ?? 0])}`).toEqual([]);
+    expect(mine.some((glyph) => (glyph.components?.length ?? 0) > 0)).toBe(true);
+    expect(metrics(ours)).toEqual(metrics(theirs));
+    // The tables WOFF2 stores as they are come out as they went in.
+    for (const tag of ["cmap", "name", "OS/2", "post", "GSUB", "GPOS"]) {
+      expect(
+        Buffer.from(ours.tables.get(tag) as Uint8Array).equals(
+          Buffer.from(theirs.tables.get(tag) as Uint8Array),
+        ),
+        tag,
+      ).toBe(true);
+    }
+  });
+
+  it("is refused, quickly and as a font error, when it would unpack to a bomb or to a glyph no TrueType font may have", () => {
+    for (const name of ["bomb-1.woff2", "bomb-2.woff2", "points-1.woff2", "points-2.woff2"]) {
+      const started = performance.now();
+      expect(() => unpackFont(new Uint8Array(readFileSync(hostile(name)))), name).toThrow(FontError);
+      expect(performance.now() - started, name).toBeLessThan(5_000);
+    }
+    expect(() => unpackFont(new Uint8Array(readFileSync(hostile("bomb-1.woff2"))))).toThrow(
+      "The WOFF2 data could not be decompressed to the size its tables state.",
+    );
+    expect(() => unpackFont(new Uint8Array(readFileSync(hostile("points-1.woff2"))))).toThrow(
+      "A WOFF2 glyph has more points than a TrueType glyph may have.",
+    );
+  });
+
+  it("reads its names from the Unicode platform too, and from a Windows name before any other", () => {
+    const named = (records: Parameters<typeof nameTable>[0]) =>
+      factsOf(
+        readSfnt(
+          readFileSync(
+            variant(harborRegular, `names-${records.length}-${records[0]?.platform}.ttf`, (font) =>
+              font.tables.set("name", nameTable(records)),
+            ),
+          ),
+        ),
+      );
+    const unicode = named([
+      { platform: 0, encoding: 3, language: 0, id: 1, text: "Unicode Sans" },
+      { platform: 0, encoding: 3, language: 0, id: 2, text: "Bold" },
+    ]);
+    expect([unicode.family, unicode.style]).toEqual(["Unicode Sans", "Bold"]);
+    const ranked = named([
+      { platform: 1, encoding: 0, language: 0, id: 1, text: "Mac Sans" },
+      { platform: 3, encoding: 1, language: 0x407, id: 1, text: "German Sans" },
+      { platform: 0, encoding: 4, language: 0, id: 1, text: "Unicode Sans" },
+      { platform: 3, encoding: 1, language: 0x409, id: 1, text: "   " },
+      { platform: 3, encoding: 1, language: 0x409, id: 4, text: "English Sans Regular" },
+    ]);
+    // A blank Windows English name is no name: the Unicode one comes next.
+    expect(ranked.family).toBe("Unicode Sans");
+    expect(ranked.full).toBe("English Sans Regular");
+    expect(named([{ platform: 1, encoding: 0, language: 0, id: 1, text: "Mac Sans" }]).family).toBe(
+      "Mac Sans",
+    );
+    expect(named([{ platform: 3, encoding: 1, language: 0x409, id: 4, text: "No family" }]).family).toBe("");
+  });
+
+  it("is wrapped as an EOT 2.2 whose header says what the written font says, field by field, and PowerPoint's way", () => {
+    for (const file of [harborRegular, harborBold]) {
+      const sfnt = writeSfnt(fontOf(file));
+      const written = readSfnt(sfnt);
+      const facts = factsOf(written);
+      const eot = eotOf(sfnt, facts);
+      const header = readEot(eot);
+      const utf16 = (text: string) => text.length * 2;
+      expect(header).toEqual({
+        size: eot.length,
+        fontSize: sfnt.length,
+        version: 0x00020002,
+        flags: 0,
+        panose: facts.panose,
+        // A Latin font: the ANSI character set, as PowerPoint writes its own.
+        charset: 0,
+        italic: 0,
+        weight: file === harborBold ? 700 : 400,
+        fsType: 0,
+        magic: 0x504c,
+        unicodeRanges: [0xa000007f, 0x4000206a, 0, 0],
+        codePages: [0x193, 0],
+        checkSumAdjustment: dataOf(written.tables.get("head") as Uint8Array).getUint32(8),
+        reserved: [0, 0, 0, 0],
+        padding: [0, 0, 0, 0, 0],
+        // The family and style end in a NUL their sizes count; the version and full name do not.
+        family: { value: "Space Grotesk", bytes: utf16("Space Grotesk\0") },
+        style: { value: facts.style, bytes: utf16(`${facts.style}\0`) },
+        versionName: { value: facts.version, bytes: utf16(facts.version) },
+        full: { value: facts.full, bytes: utf16(facts.full) },
+        rootString: 0,
+        rootChecksum: 0x50475342,
+        eudcCodePage: 1252,
+        padding5: 0,
+        signatureSize: 0,
+        eudcFlags: 0,
+        eudcFontSize: 0,
+        fontAt: eot.length - sfnt.length,
+        font: sfnt,
+      });
+      expect([eot[34], eot[35]]).toEqual([0x4c, 0x50]);
+      expect(Buffer.from(eot.subarray(80, 80 + 4 + header.family.bytes)).toString("utf16le", 4)).toBe(
+        "Space Grotesk\0",
+      );
+      // The header's checksum is the embedded font's own, and the font sums as an sfnt must.
+      expect(header.checkSumAdjustment).toBe(
+        dataOf(readSfnt(header.font).tables.get("head") as Uint8Array).getUint32(8),
+      );
+      expect(sum32(header.font)).toBe(0xb1b0afba);
+    }
+  });
+
+  it("gives PowerPoint's pitch and family numbers for the deck's faces, as PowerPoint writes its own", () => {
+    const facts = (name: string) => factsOf(fontOf(join(playerFonts, name)));
+    // PowerPoint's own file: 49 for IBM Plex Mono (fixed pitch, modern), 2 for Instrument Serif (variable, no family).
+    expect(pitchFamily(facts("IBMPlexMono-Regular-Latin1.woff2"))).toBe(49);
+    expect(pitchFamily(facts("InstrumentSerif-Regular.woff2"))).toBe(2);
+    expect(pitchFamily(facts("IBMPlexSans-Regular-Latin1.woff2"))).toBe(34);
+    expect(pitchFamily({ fixedPitch: false, panose: Uint8Array.from([2, 2, 5, 3, 0, 0, 0, 0, 0, 0]) })).toBe(
+      18,
+    );
+    expect(pitchFamily({ fixedPitch: false, panose: Uint8Array.from([3, 0, 0, 0, 0, 0, 0, 0, 0, 0]) })).toBe(
+      66,
+    );
+    expect(pitchFamily({ fixedPitch: false, panose: Uint8Array.from([4, 0, 0, 0, 0, 0, 0, 0, 0, 0]) })).toBe(
+      82,
+    );
   });
 });
 
@@ -135,7 +449,10 @@ describe("choosing the faces to embed", () => {
     expect(fonts.list).toEqual([
       {
         typeface: "Space Grotesk",
-        panose: expect.stringMatching(/^[0-9A-F]{20}$/),
+        // Its file gives no PANOSE (all zeros), which PowerPoint leaves out rather than writing.
+        panose: "",
+        pitchFamily: 2,
+        charset: 0,
         faces: [
           { slot: "regular", part: 1 },
           { slot: "bold", part: 2 },
@@ -153,7 +470,89 @@ describe("choosing the faces to embed", () => {
         ],
       },
     ]);
-    for (const part of fonts.parts) expect(readEot(part.bytes).family).toBe("Space Grotesk");
+    for (const part of fonts.parts) expect(readEot(part.bytes).family.value).toBe("Space Grotesk");
+  });
+
+  it("leaves out a file that is too large, would unpack to a bomb, or has no family name, and goes on", () => {
+    const big = join(root, "big.woff2");
+    closeSync(openSync(big, "w"));
+    truncateSync(big, 33 * 1024 * 1024);
+    const nameless = variant(harborRegular, "nameless.ttf", (font) =>
+      font.tables.set(
+        "name",
+        nameTable([{ platform: 3, encoding: 1, language: 0x409, id: 2, text: "Regular" }]),
+      ),
+    );
+    const started = performance.now();
+    const fonts = planFonts(
+      new Map([
+        ["Big", use(["regular"], "abc")],
+        ["Bomb", use(["regular"], "abc")],
+        ["Points", use(["regular"], "abc")],
+        ["Nameless", use(["regular"], "abc")],
+        ["Harbor Sans", use(["regular"], "abc")],
+      ]),
+      new Map([
+        ["Big", [face("Big", big)]],
+        ["Bomb", [face("Bomb", hostile("bomb-1.woff2"))]],
+        ["Points", [face("Points", hostile("points-2.woff2"))]],
+        ["Nameless", [face("Nameless", nameless)]],
+        ["Harbor Sans", [face("Harbor Sans", harborRegular)]],
+      ]),
+    );
+    expect(performance.now() - started).toBeLessThan(10_000);
+    const notes = (family: string) => fonts.report.find((line) => line.family === family);
+    expect(notes("Big")).toEqual({
+      family: "Big",
+      embedded: [],
+      notes: ["big.woff2: the file is larger than 32 MB, which no font needs, so it is not embedded."],
+    });
+    expect(notes("Bomb")?.notes).toEqual([
+      "bomb-1.woff2: the WOFF2 data could not be decompressed to the size its tables state, so it is not embedded.",
+    ]);
+    expect(notes("Points")?.notes).toEqual([
+      "points-2.woff2: a WOFF2 glyph has more points than a TrueType glyph may have, so it is not embedded.",
+    ]);
+    expect(notes("Nameless")).toEqual({
+      family: "Nameless",
+      embedded: [],
+      notes: [
+        "nameless.ttf has no family name PowerPoint can read, so it is not embedded and the slides keep the deck's name for it.",
+      ],
+    });
+    expect(fonts.rename.has("Nameless")).toBe(false);
+    // The export goes on: the family whose file is sound is embedded.
+    expect(fonts.list.map((entry) => entry.typeface)).toEqual(["Space Grotesk"]);
+    expect(fonts.parts).toHaveLength(1);
+  });
+
+  it("counts a face as embedded only when its own file is in the file", () => {
+    const other = variant(harborRegular, "other.ttf", (font) => {
+      // The same name inside, a different font: a changed advance width is enough.
+      const hmtx = font.tables.get("hmtx") as Uint8Array;
+      dataOf(hmtx).setUint16(0, dataOf(hmtx).getUint16(0) + 1);
+    });
+    const fonts = planFonts(
+      new Map([
+        ["Harbor Sans", use(["regular"], "a")],
+        ["Lookalike", use(["regular"], "a")],
+        ["Twin", use(["regular"], "a")],
+      ]),
+      new Map([
+        ["Harbor Sans", [face("Harbor Sans", harborRegular)]],
+        ["Lookalike", [face("Lookalike", other)]],
+        // The very same file under another name is the same face, and it is in the file.
+        ["Twin", [face("Twin", harborRegular)]],
+      ]),
+    );
+    expect(fonts.parts).toHaveLength(1);
+    const line = (family: string) => fonts.report.find((entry) => entry.family === family);
+    expect(line("Harbor Sans")?.embedded).toEqual(["regular"]);
+    expect(line("Lookalike")?.embedded).toEqual([]);
+    expect(line("Lookalike")?.notes).toContain(
+      'its regular face shares the name "Space Grotesk" with another family\'s file, and PowerPoint keeps one: HarborSans-Regular.woff2, so other.ttf is not embedded.',
+    );
+    expect(line("Twin")?.embedded).toEqual(["regular"]);
   });
 
   it("leaves out a face whose file may not be embedded, and says so", () => {
@@ -339,8 +738,21 @@ describe("what the slides draw, and the fonts listed in the package", () => {
       fonts,
     );
     expect(listed.presentation).toContain('saveSubsetFonts="1" embedTrueTypeFonts="1">');
-    expect(listed.presentation).toMatch(
-      /<p:notesSz cx="2" cy="2"\/><p:embeddedFontLst><p:embeddedFont><p:font typeface="Space Grotesk" panose="[0-9A-F]{20}" charset="0"\/><p:regular r:id="rIdFont1"\/><p:bold r:id="rIdFont2"\/><\/p:embeddedFont><\/p:embeddedFontLst><p:defaultTextStyle\/>/,
+    // No PANOSE (the file gives none), and the pitch and family PowerPoint writes beside its own embedded fonts.
+    expect(listed.presentation).toContain(
+      '<p:notesSz cx="2" cy="2"/><p:embeddedFontLst><p:embeddedFont><p:font typeface="Space Grotesk" pitchFamily="2" charset="0"/><p:regular r:id="rIdFont1"/><p:bold r:id="rIdFont2"/></p:embeddedFont></p:embeddedFontLst><p:defaultTextStyle/>',
+    );
+    // A font that gives a PANOSE has it written.
+    const plex = planFonts(
+      new Map([["IBM Plex Mono", use(["regular"], "a")]]),
+      new Map([
+        ["IBM Plex Mono", [face("IBM Plex Mono", join(playerFonts, "IBMPlexMono-Regular-Latin1.woff2"))]],
+      ]),
+    );
+    expect(
+      listFonts("<p:presentation><p:notesSz/>", "<Relationships/>", "<Types>", plex).presentation,
+    ).toContain(
+      '<p:font typeface="IBM Plex Mono" panose="020B0509050203000203" pitchFamily="49" charset="0"/>',
     );
     expect(listed.rels).toContain(
       '<Relationship Id="rIdFont1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="fonts/font1.fntdata"/>',
@@ -359,7 +771,23 @@ describe("what the slides draw, and the fonts listed in the package", () => {
 
 describe("whether a clip can be embedded", () => {
   it("reads an MP4's tracks from its boxes", () => {
-    expect(mp4Tracks(new Uint8Array(readFileSync(tinyMp4)))).toEqual({ video: ["avc1"], audio: ["mp4a"] });
+    // The picture's shape is the video track's header's, which a clip with no poster is drawn in.
+    expect(mp4Tracks(new Uint8Array(readFileSync(tinyMp4)))).toEqual({
+      video: ["avc1"],
+      audio: ["mp4a"],
+      size: { w: 320, h: 180 },
+    });
+    // A track turned a quarter by its matrix is shown upright: its width and height change places.
+    const turned = new Uint8Array(readFileSync(tinyMp4));
+    const data = dataOf(turned);
+    const tkhd = Buffer.from(turned).indexOf("tkhd", 0, "latin1") + 4;
+    const matrix = tkhd + (turned[tkhd] === 1 ? 52 : 40);
+    expect(data.getUint32(matrix + 36) / 65536).toBe(320);
+    data.setInt32(matrix, 0);
+    data.setInt32(matrix + 4, 0x10000);
+    data.setInt32(matrix + 12, -0x10000);
+    data.setInt32(matrix + 16, 0);
+    expect(mp4Tracks(turned)?.size).toEqual({ w: 180, h: 320 });
     expect(mp4Tracks(new TextEncoder().encode("not a video at all"))).toBeUndefined();
   });
 
@@ -429,6 +857,22 @@ describe("the placeholder a slot becomes", () => {
     ]);
     const claimOnly = template([{ id: "claim", role: "claim" }]);
     expect(placeholderType(claimOnly.slots[0] as Template["slots"][number], claimOnly)).toBe("title");
+    // A layout has one title: the first title slot, or the first claim slot when no slot is a title.
+    const twoTitles = template([
+      { id: "claim", role: "claim" },
+      { id: "first", role: "title" },
+      { id: "second", role: "title" },
+    ]);
+    expect(twoTitles.slots.map((slot) => placeholderType(slot, twoTitles))).toEqual([
+      "body",
+      "title",
+      "body",
+    ]);
+    const twoClaims = template([
+      { id: "one", role: "claim" },
+      { id: "two", role: "claim" },
+    ]);
+    expect(twoClaims.slots.map((slot) => placeholderType(slot, twoClaims))).toEqual(["title", "body"]);
   });
 
   it("is filled by the first block in its slot, and by the claim in a claim slot", () => {
@@ -524,6 +968,32 @@ describe("content past the slide's edge", () => {
     expect(past({ left: 4, top: 6, right: 8, bottom: 2 })).toBe(
       "2px past the slide in the player too, at the bottom, and 8px at the right, and 4px at the left, and 6px at the top",
     );
+  });
+});
+
+describe("where the PowerPoint file may go", () => {
+  it("is never inside the deck folder: the export refuses with out-in-deck before anything runs", async () => {
+    const deck = join(root, "deck");
+    cpSync(brandDeck, deck, { recursive: true });
+    for (const out of [join(deck, "deck.pptx"), join(deck, "scenes", "deck.pptx")]) {
+      const lines: string[] = [];
+      const code = await run(["export", deck, "--format", "pptx", "--out", out, "--json"], {
+        out: (line) => lines.push(line),
+        err: (line) => lines.push(line),
+      });
+      expect(code).toBe(2);
+      expect(JSON.parse(lines.join("\n"))).toEqual({
+        ok: false,
+        code: "out-in-deck",
+        message: `${out} is inside the deck folder. Pick a place outside it for --out.`,
+      });
+      expect(existsSync(out)).toBe(false);
+    }
+  });
+
+  it("is named in the live server's download as RFC 8187 asks, every reserved character escaped", () => {
+    expect(extValue("it's (a) deck*")).toBe("it%27s%20%28a%29%20deck%2A");
+    expect(extValue("Überblick 2026")).toBe("%C3%9Cberblick%202026");
   });
 });
 

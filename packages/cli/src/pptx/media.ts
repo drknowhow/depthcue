@@ -10,6 +10,8 @@ import { extname, join } from "node:path";
 export interface Mp4Tracks {
   video: string[];
   audio: string[];
+  /** The first video track's picture as it is shown (`tkhd` width and height, turned when the track is turned). */
+  size?: { w: number; h: number };
 }
 
 const CONTAINERS = new Set(["moov", "trak", "mdia", "minf", "stbl"]);
@@ -27,6 +29,18 @@ export function mp4Tracks(bytes: Uint8Array): Mp4Tracks | undefined {
   const tracks: Mp4Tracks = { video: [], audio: [] };
   let typed = false;
   let handler = "";
+  let trackSize: { w: number; h: number } | undefined;
+  /** A track header's width and height (16.16 fixed point after the matrix), swapped when the matrix turns it. */
+  const header = (at: number, end: number) => {
+    const version = bytes[at] as number;
+    const matrix = at + (version === 1 ? 52 : 40);
+    if (matrix + 44 > end) return undefined;
+    const turned = data.getInt32(matrix) === 0 && data.getInt32(matrix + 4) !== 0;
+    const w = data.getUint32(matrix + 36) / 65536;
+    const h = data.getUint32(matrix + 40) / 65536;
+    if (!(w > 0 && h > 0)) return undefined;
+    return turned ? { w: h, h: w } : { w, h };
+  };
   const walk = (start: number, end: number, depth: number): boolean => {
     let at = start;
     while (at + 8 <= end) {
@@ -41,7 +55,11 @@ export function mp4Tracks(bytes: Uint8Array): Mp4Tracks | undefined {
       if (size < head || at + size > end) return false;
       if (depth === 0 && at === start && type !== "ftyp") return false;
       if (type === "ftyp") typed = true;
-      if (type === "trak") handler = "";
+      if (type === "trak") {
+        handler = "";
+        trackSize = undefined;
+      }
+      if (type === "tkhd") trackSize = header(at + head, at + size);
       if (type === "hdlr" && at + head + 12 <= end) handler = tag(at + head + 8);
       if (type === "stsd" && at + head + 8 <= end) {
         const count = data.getUint32(at + head + 4);
@@ -54,6 +72,7 @@ export function mp4Tracks(bytes: Uint8Array): Mp4Tracks | undefined {
         }
       }
       if (CONTAINERS.has(type) && !walk(at + head, at + size, depth + 1)) return false;
+      if (type === "trak" && handler === "vide" && trackSize && !tracks.size) tracks.size = trackSize;
       at += size;
     }
     return true;

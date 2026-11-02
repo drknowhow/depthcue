@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path, { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { crc32, deflateSync } from "node:zlib";
 import {
   type Block,
   type Cell,
@@ -30,7 +31,7 @@ import type {
   SlideMeasure,
   TextPlace,
 } from "./measure.ts";
-import { cannotEmbed } from "./media.ts";
+import { cannotEmbed, mp4Tracks } from "./media.ts";
 import { flowRuns, inch, plainRuns, pt, type Run, type RunContext, textFrame } from "./text.ts";
 
 /** What a viewer needs to see the file as drawn: the families it names, and for what. */
@@ -747,19 +748,26 @@ function embedClip(
   } catch {
     return false;
   }
-  const { x, y, w, h } = frameOf(page, item.video.picture, true);
+  // The page fits a poster or first frame in the box; with neither it draws an empty box, and the video, in its own
+  // shape (the MP4's track header), is fitted in that box as the player fits it when it plays.
+  const shape = mp4Tracks(new Uint8Array(video))?.size;
+  const drawn = item.video.natural.w > 0 ? item.video.picture : fitted(item.video.picture, shape);
+  const { x, y, w, h } = frameOf(page, drawn, true);
   if (w <= 0 || h <= 0) return false;
   const posterFile = poster === undefined ? undefined : join(page.input.folder, poster);
+  const plain =
+    !item.video.png &&
+    !(posterFile && extname(posterFile).toLowerCase() === ".png" && existsSync(posterFile));
   const cover = item.video.png
     ? `image/png;base64,${item.video.png.slice(item.video.png.indexOf(",") + 1)}`
-    : posterFile && extname(posterFile).toLowerCase() === ".png" && existsSync(posterFile)
+    : !plain && posterFile
       ? `image/png;base64,${readFileSync(posterFile).toString("base64")}`
-      : undefined;
+      : `image/png;base64,${plainCover(drawn.w, drawn.h).toString("base64")}`;
   page.slide.addMedia({
     type: "video",
     data: `video/mp4;base64,${video.toString("base64")}`,
     extn: "mp4",
-    ...(cover ? { cover } : {}),
+    cover,
     x,
     y,
     w,
@@ -767,12 +775,52 @@ function embedClip(
     objectName: block.id,
   } as PptxGenJS.MediaProps);
   page.alts[block.id] = block.alt;
-  if (!cover) {
+  if (item.firstFrame) {
+    page.left.push(`"${block.id}": the video has no poster, so its first frame shows until it plays.`);
+  } else if (plain) {
     page.left.push(
-      `"${block.id}": the video has no poster, so PowerPoint shows a play button in its place until it plays.`,
+      `"${block.id}": the video has no poster, so a plain picture in its shape shows until it plays.`,
     );
   }
   return true;
+}
+
+/** A box of the given shape, as large as fits in `box` and centred in it; the box itself when the shape is unknown. */
+function fitted(box: Box, shape: { w: number; h: number } | undefined): Box {
+  if (!shape || !(shape.w > 0 && shape.h > 0) || !(box.w > 0 && box.h > 0)) return box;
+  const scale = Math.min(box.w / shape.w, box.h / shape.h);
+  const w = shape.w * scale;
+  const h = shape.h * scale;
+  return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
+}
+
+/** A plain dark picture in a video's shape, the picture PowerPoint shows until a clip with no poster plays. */
+function plainCover(width: number, height: number): Buffer {
+  const scale = 160 / Math.max(width, height, 1);
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  const stride = w * 3 + 1;
+  const raw = Buffer.alloc(stride * h);
+  for (let row = 0; row < h; row++) raw.fill(0x2b, row * stride + 1, (row + 1) * stride);
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(w, 0);
+  header.writeUInt32BE(h, 4);
+  header[8] = 8;
+  header[9] = 2;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(raw, { level: 9 })),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 /** The page set the text on one line, so the slide keeps it on one: a face a hair wider must not break it. */

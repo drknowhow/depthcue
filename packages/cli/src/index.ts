@@ -129,15 +129,10 @@ const VALUE_FLAGS = [
 ] as const;
 type ValueFlag = (typeof VALUE_FLAGS)[number];
 
-/** The switches only `export --format pptx` takes. */
-const PPTX_FLAGS = ["pictures", "steps", "posters"] as const;
-type PptxFlag = (typeof PPTX_FLAGS)[number];
-
 interface Parsed {
   positional: string[];
   json: boolean;
   noNotes: boolean;
-  pptx: Set<PptxFlag>;
   all: boolean;
   help: boolean;
   values: Partial<Record<ValueFlag, string>>;
@@ -149,7 +144,6 @@ function parse(args: readonly string[]): Parsed {
     positional: [],
     json: false,
     noNotes: false,
-    pptx: new Set(),
     all: false,
     help: false,
     values: {},
@@ -159,11 +153,6 @@ function parse(args: readonly string[]): Parsed {
     const arg = args[i] as string;
     if (arg === "--json") {
       parsed.json = true;
-      continue;
-    }
-    const pptxFlag = PPTX_FLAGS.find((name) => arg === `--${name}`);
-    if (pptxFlag) {
-      parsed.pptx.add(pptxFlag);
       continue;
     }
     if (arg === "--help") {
@@ -509,18 +498,22 @@ async function pptxCommand(
       for (const line of slide.left) io.out(`      ${line}`);
     });
     for (const line of done.deck) io.out(`  every slide: ${line}`);
-    if (done.fonts.length > 0) {
-      // PowerPoint draws an embedded face in place of a missing one; an app that ignores embedded fonts needs them all.
-      io.out("  fonts a viewer needs installed to see it as drawn:");
-      for (const font of done.fonts) {
-        const carried = done.embedded.find((entry) => entry.family === font.family);
-        const faces =
-          carried && carried.embedded.length > 0
-            ? `: embedded (${carried.embedded.join(", ")}), which PowerPoint uses`
-            : "";
-        io.out(`      ${font.family}${font.roles.length > 0 ? ` (${font.roles.join(", ")})` : ""}${faces}`);
-        for (const note of carried?.notes ?? []) io.out(`          ${note}`);
-      }
+    // Each family once: the ones the file carries a face of, then the ones it carries none of. Whether an app draws an
+    // embedded face is the app's to decide, so the report says what is in the file and nothing about what is drawn.
+    const family = (font: (typeof done.fonts)[number]) =>
+      `      ${font.family}${font.roles.length > 0 ? ` (${font.roles.join(", ")})` : ""}`;
+    const carried = done.fonts.filter((font) => font.embedded.length > 0);
+    const missing = done.fonts.filter((font) => font.embedded.length === 0);
+    if (carried.length > 0) io.out("  fonts embedded in the file:");
+    for (const font of carried) {
+      io.out(`${family(font)}: embedded (${font.embedded.join(", ")})`);
+      for (const note of font.notes) io.out(`          ${note}`);
+    }
+    if (done.fonts.length > 0) io.out("  fonts a viewer needs installed to see it as drawn:");
+    if (done.fonts.length > 0 && missing.length === 0) io.out("      none besides the embedded ones above");
+    for (const font of missing) {
+      io.out(family(font));
+      for (const note of font.notes) io.out(`          ${note}`);
     }
     return 0;
   } catch (error) {
@@ -736,7 +729,7 @@ export interface RunOptions {
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, noNotes, pptx, all, help, values, unknown } = parse(rest);
+  const { positional, json, noNotes, all, help, values, unknown } = parse(rest);
   const baseRev = values["base-rev"];
   const portText = values.port;
   const port = portText === undefined ? undefined : Number(portText);
@@ -747,7 +740,13 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
     io.err(message ? `${message}\n\n${USAGE}` : USAGE);
     return 2;
   };
-  if (unknown.length > 0) return usage(`Unknown option ${unknown[0]}.`);
+  // The switches only `export --format pptx` takes are known there and nowhere else.
+  const pptx = new Set(["--pictures", "--steps", "--posters"].filter((flag) => unknown.includes(flag)));
+  const strange = unknown.filter((arg) => !pptx.has(arg));
+  if (strange.length > 0) return usage(`Unknown option ${strange[0]}.`);
+  if (pptx.size > 0 && (command !== "export" || values.format !== "pptx")) {
+    return usage(`${[...pptx][0]} belongs to export --format pptx.`);
+  }
   if (help) {
     if (command !== "export") return usage("Unknown option --help.");
     io.out(`Usage:\n${EXPORT_USAGE}\n\n${EXPORT_TEXT}`);
@@ -757,9 +756,6 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   if (values.format !== undefined && command !== "export") return usage("--format belongs to export.");
   if (values.format !== undefined && values.format !== "pptx") {
     return usage(`--format needs pptx, the one format there is. Without it, export writes a folder.`);
-  }
-  if (pptx.size > 0 && (command !== "export" || values.format !== "pptx")) {
-    return usage(`--${[...pptx][0]} belongs to export --format pptx.`);
   }
   if (all && command !== "comments" && command !== "diff") {
     return usage("--all belongs to comments list, diff accept and diff revert.");
@@ -886,9 +882,9 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
       if (values.format === "pptx") {
         const options = {
           notes: !noNotes,
-          pictures: pptx.has("pictures"),
-          steps: pptx.has("steps"),
-          posters: pptx.has("posters"),
+          pictures: pptx.has("--pictures"),
+          steps: pptx.has("--steps"),
+          posters: pptx.has("--posters"),
         };
         return pptxCommand(folder, values.out, options, json, io).catch((error: Error) => {
           io.err(error.message);
