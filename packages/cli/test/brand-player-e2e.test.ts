@@ -437,11 +437,19 @@ async function serve(
   };
 }
 
+/**
+ * A computed style of the first element that matches, found and read in one turn of the page. The page can draw the scene
+ * again a moment after it settles (a page of the dev server does when a file it watches reports a change), and an element
+ * found before that and read after it is gone from the page, and has no style to give.
+ */
 const style = (page: Page, selector: string, property: string): Promise<string> =>
-  page
-    .locator(selector)
-    .first()
-    .evaluate((element, name) => getComputedStyle(element).getPropertyValue(name), property);
+  page.evaluate(
+    ([where, name]) => {
+      const element = document.querySelector(where as string);
+      return element ? getComputedStyle(element).getPropertyValue(name as string) : "";
+    },
+    [selector, property] as const,
+  );
 
 /** A box as a fraction of the scene it is in, in percent, so it does not depend on the size the page was opened at. */
 async function share(page: Page, selector: string) {
