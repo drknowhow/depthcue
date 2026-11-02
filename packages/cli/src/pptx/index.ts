@@ -25,7 +25,7 @@ import {
 } from "./fonts.ts";
 import { applyMaster, describeShape } from "./master.ts";
 import { measureSlide, type SlideMeasure } from "./measure.ts";
-import { finishPackage, inspectOutput } from "./package.ts";
+import { finishPackage, inspectOutput, ownLabelFace } from "./package.ts";
 
 export type { FontUse, SlideReport } from "./build.ts";
 export type { FontReport } from "./fonts.ts";
@@ -318,7 +318,7 @@ function usageOf(parts: Map<string, Uint8Array>): Map<string, Usage> {
   for (const name of names) {
     if (/^ppt\/slides\/slide\d+\.xml$/.test(name)) scanUsage(decode(parts.get(name) as Uint8Array), usage);
     else if (/^ppt\/charts\/chart\d+\.xml$/.test(name))
-      scanUsage(decode(parts.get(name) as Uint8Array), usage, true);
+      scanUsage(ownLabelFace(decode(parts.get(name) as Uint8Array)), usage, true);
   }
   return usage;
 }

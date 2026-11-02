@@ -92,8 +92,11 @@ export type Item =
   | Shape
   | { kind: "eyebrow"; text: TextPlace }
   | { kind: "claim"; text: TextPlace }
-  /** `numbered` is false when the page does not number the list, as on a template scene's foot line. */
-  | { kind: "sources"; label: TextPlace; list: TextPlace; numbered?: boolean }
+  /**
+   * `numbered` is false when the page does not number the list. `flow` is a template scene's foot line, where the page
+   * sets the label and the sources as one run of text that wraps as a paragraph does: the whole line's place.
+   */
+  | { kind: "sources"; label: TextPlace; list: TextPlace; numbered?: boolean; flow?: TextPlace }
   | { kind: "text"; id: string; text: TextPlace; cite?: TextPlace }
   | { kind: "image"; id: string; picture: Picture; caption?: TextPlace; cite?: TextPlace }
   /** `firstFrame`: the clip has no poster, and `video` is its first frame, fitted in its box as a poster would be. */
@@ -851,8 +854,11 @@ export async function measureSlide(): Promise<SlideMeasure> {
       bordersOf("Sources rule", element);
       const item = list?.querySelector("li");
       const numbered = !item || getComputedStyle(item).listStyleType !== "none";
-      if (label && list)
-        items.push({ kind: "sources", label: placeOf(label), list: placeOf(list), numbered });
+      const flows = !!item && getComputedStyle(item).display === "inline";
+      if (label && list) {
+        const flow = flows ? { flow: placeOf(element) } : {};
+        items.push({ kind: "sources", label: placeOf(label), list: placeOf(list), numbered, ...flow });
+      }
     } else blockItem(element);
   }
 

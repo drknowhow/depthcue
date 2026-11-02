@@ -871,6 +871,57 @@ function sourcesText(page: Page, label: TextPlace, list: TextPlace, numbered: bo
   });
 }
 
+/**
+ * A template scene's foot line, as the page sets it: the label, then each source after a middle dot, as one paragraph
+ * in the box the line takes. It wraps where its width ends and is anchored at its foot, so a line PowerPoint adds in a
+ * slightly wider face grows upward, as the page's does, and not into the footer.
+ */
+function footText(page: Page, label: TextPlace, list: TextPlace, flow: TextPlace) {
+  const sources = page.scene.sources ?? [];
+  if (sources.length === 0) return;
+  const optionsOf = (ink: Ink) => {
+    const options = {
+      ...((plainRuns("x", ink, page.context)[0] as Run).options ?? {}),
+      align: flow.ink.align,
+    };
+    delete options.lineSpacing;
+    return options;
+  };
+  const listOptions = optionsOf(list.ink);
+  const runs: Run[] = plainRuns(label.text, label.ink, page.context).map((run) => {
+    const options = { ...(run.options ?? {}), align: flow.ink.align };
+    delete options.lineSpacing;
+    return { ...run, options };
+  });
+  sources.forEach((source, at) => {
+    const target = source.url ?? (source.asset ? fileLink(page, source.asset) : undefined);
+    runs.push({ text: at === 0 ? " " : " · ", options: { ...listOptions } });
+    runs.push({
+      text: source.title,
+      options: {
+        ...listOptions,
+        ...(target ? { hyperlink: { url: target }, color: page.measure.link } : {}),
+      },
+    });
+  });
+  (runs[0]?.options as NonNullable<Run["options"]>).lineSpacing = pt(flow.ink.lineHeight);
+  const { x, y, w, h } = frameOf(page, textFrame(flow));
+  if (w <= 0 || h <= 0) return;
+  useInk(page, label.ink);
+  useInk(page, list.ink);
+  page.slide.addText(runs, {
+    x,
+    y,
+    w,
+    h,
+    margin: 0,
+    valign: "bottom",
+    fit: "none",
+    wrap: true,
+    objectName: "Sources",
+  });
+}
+
 function item(page: Page, entry: Item) {
   switch (entry.kind) {
     case "shape":
@@ -892,7 +943,8 @@ function item(page: Page, entry: Item) {
       }
       return;
     case "sources":
-      sourcesText(page, entry.label, entry.list, entry.numbered !== false);
+      if (entry.flow) footText(page, entry.label, entry.list, entry.flow);
+      else sourcesText(page, entry.label, entry.list, entry.numbered !== false);
       return;
     default:
       break;

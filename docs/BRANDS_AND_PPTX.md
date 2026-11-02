@@ -690,9 +690,18 @@ Found, not fixed (older than the brand work):
   `slot-empty` goes on its slide; `face-without-files` and `background-unmeasured` go on the deck. A player that is
   not built is `player-not-built`, as JSON under `--json`, exit 2. `measure.ts` skips `.dc-chrome`, and the folder
   export's human summary lists the brand files it copied.
-- **Found on the way.** A template scene's sources are one unnumbered line at the foot (step 3), but the slide wrote
-  them numbered in a box measured to the unnumbered line, so they wrapped into the footer. The measure now says whether
-  the page numbers the list, and the foot line's label and list keep to one line.
+- **Found on the way.** A template scene's sources are a line at the foot (step 3), but the slide wrote them numbered
+  in a box measured to the unnumbered line, so they wrapped into the footer. The measure now says whether the page
+  numbers the list. Since step 3 merged, the page sets the foot line's label and sources as one run of text, a middle
+  dot between sources, as many lines as it takes, growing upward from the foot. The measure gives that line's whole
+  place (`flow`), and the slide draws it as one paragraph in that box, anchored at its foot, so a line PowerPoint adds
+  in a wider face goes up, not into the footer.
+- **Brand import's logo sizes and family names.** `SIZE_HEIGHTS` in `brand-import/logo.ts` is now 5%, 7.5% and 11%
+  of the slide's height for `s`, `m` and `l`: the player draws them 2, 3 and 4.4 em high, and a scene's em is 2.5% of
+  a 16:9 stage's height (a template scene's is 0.014 of its width, 2.49% of the height). Step 4's record gives the
+  old 8% and 12%. A test reads `player.css` and fails, naming the table, when the two part. `brand-import/fonts.ts`
+  checks a theme font's name with core's `FAMILY_PATTERN` instead of a copy, so a name with a control character is not
+  used; the report quotes such a name as JSON, DEL included, so no control character reaches a terminal.
 - **Checked.** Every file was opened in LibreOffice and turned to page images, one page per slide, compared with the
   player's: the brand deck, the demo, the demo in picture mode and with steps, and v0-3. LibreOffice draws the mono
   "Sources" label in another face, so it wraps there, as it did before this step. `pnpm check:pptx-pages`
@@ -709,4 +718,6 @@ Found, not fixed (older than the brand work):
   licence allows it still puts a copy of the font in a file that travels; the report names each one.
 - **Outside the write-set.** `packages/cli/package.json` (the `./export` and `./pptx` exports) and `vitest.config.ts`
   (their aliases), for the MCP tool; `tools/check-pptx-pages.mjs` and its `check:pptx-pages` script in the root
-  `package.json`, which the review asked for. `README.md` still says five MCP tools, for step 9.
+  `package.json`, which the review asked for; `brand-import/fonts.ts`, which the conductor asked for, and the tests
+  of it and of the logo sizes (`brand-import-fonts.test.ts`, `brand-import-logo.test.ts`). `README.md` still says
+  five MCP tools, for step 9.

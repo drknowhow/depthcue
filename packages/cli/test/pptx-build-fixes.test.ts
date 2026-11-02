@@ -342,6 +342,49 @@ describe("a box the page drew past the left or top edge", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
+// A template scene's foot line.
+// ---------------------------------------------------------------------------------------------------------------------
+
+describe("a template scene's foot line", () => {
+  it("is one paragraph: the label in capitals, then each source after a middle dot, anchored at its foot", async () => {
+    const scene = {
+      ...PANEL_SCENE,
+      sources: [
+        { id: "log", title: "Berth log", url: "https://example.com/log" },
+        { id: "survey", title: "Harbor survey" },
+      ],
+    };
+    const deck = writeDeck(root, { folder: "deck", scenes: { panel: scene } });
+    const mono = ink({ family: "IBM Plex Mono", px: 14, lineHeight: 20 });
+    const measure = measureOf([
+      { kind: "text", id: "panel-heading", text: place({ x: 90, y: 60, w: 700, h: 80 }) },
+      {
+        kind: "sources",
+        label: place({ x: 77, y: 640, w: 70, h: 17 }, { text: "Sources", ink: { ...mono, caps: true } }),
+        list: place({ x: 77, y: 640, w: 1126, h: 40 }, { ink: mono }),
+        numbered: false,
+        flow: place({ x: 77, y: 636, w: 1126, h: 52 }, { ink: ink({ px: 18, lineHeight: 26, natural: 26 }) }),
+      },
+    ]);
+    const { parts } = await build(deck, [measure], join(root, "deck.pptx"));
+    const slide = part(parts, "ppt/slides/slide1.xml");
+    expect(slide).not.toContain('name="Sources label"');
+    const foot = /name="Sources"[\s\S]*?<\/p:sp>/.exec(slide)?.[0] as string;
+    expect(foot).toContain('anchor="b"');
+    expect(foot).not.toContain('wrap="none"');
+    expect(foot.match(/<a:p>/g)).toHaveLength(1);
+    expect(wordsIn(foot)).toEqual(["Sources", " ", "Berth log", " · ", "Harbor survey"]);
+    // The label alone is drawn in capitals; the link is the source with a url.
+    expect(foot.match(/cap="all"/g)).toHaveLength(1);
+    expect(foot.match(/<a:hlinkClick /g)).toHaveLength(1);
+    // The paragraph is the line's box, and its lines are the line's spacing.
+    const box = /<a:off x="(\d+)" y="(\d+)"\s*\/>\s*<a:ext cx="(\d+)" cy="(\d+)"/.exec(foot)?.slice(1, 5);
+    expect(box?.map((value) => Number(value) / 9525)).toEqual([77, 636, 1126, 52]);
+    expect(foot).toContain('<a:spcPts val="1950"/>');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
 // A table cell's margins.
 // ---------------------------------------------------------------------------------------------------------------------
 

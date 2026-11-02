@@ -356,12 +356,17 @@ describe("a branded deck", () => {
     expect(shapeOf(growth, "Slide number")).toMatch(
       /<a:fld id="\{[0-9A-F-]+\}" type="slidenum">.*<a:t>3<\/a:t><\/a:fld>/,
     );
-    // A template scene's sources are one line at the foot with no numbers, as the page draws them.
-    for (const name of ["Sources label", "Sources"]) {
-      const shape = shapeOf(growth, name) as string;
-      expect(shape, name).toContain('wrap="none"');
-      expect(shape, name).not.toContain("<a:t>1. </a:t>");
-    }
+    // A template scene's sources are one paragraph at the foot, as the page sets them: the label, then each source
+    // after a middle dot, with no numbers, wrapping at the line's width and anchored at its foot.
+    expect(shapeOf(growth, "Sources label")).toBeUndefined();
+    const foot = shapeOf(growth, "Sources") as string;
+    expect(foot).toContain('anchor="b"');
+    expect(foot).not.toContain('wrap="none"');
+    expect(foot.match(/<a:p>/g)).toHaveLength(1);
+    expect([...foot.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((match) => match[1]).join("")).toMatch(
+      /^Sources \S/,
+    );
+    expect(foot).not.toContain("<a:t>1. </a:t>");
     // The chrome is the master's, not content: the page's footer and logo are not drawn again on the slide.
     expect(growth.split("Harbor Analytics, for internal use")).toHaveLength(2);
     expect(shapeOf(growth, "Logo")).toBeUndefined();

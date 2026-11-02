@@ -264,11 +264,17 @@ function tidyChart(xml: string): { xml: string; empty: string[] } {
       return dropped ? `${open}${range}${mid}${kept}${close}` : whole;
     },
   );
-  const own = /<c:dLbl>[\s\S]*?<a:latin typeface="([^"]*)"\/>/.exec(numbers)?.[1];
-  return {
-    xml: own === undefined ? numbers : numbers.replace(SERIES_LABELS, `$1<a:latin typeface="${own}"/>`),
-    empty,
-  };
+  return { xml: ownLabelFace(numbers), empty };
+}
+
+/**
+ * A chart with its doughnut's series-level labels in the face its parts' labels carry, as the file will have it. The
+ * fonts step reads the charts before they are tidied, and takes the faces they name from this, so it never reports an
+ * Arial the file does not hold.
+ */
+export function ownLabelFace(xml: string): string {
+  const own = /<c:dLbl>[\s\S]*?<a:latin typeface="([^"]*)"\/>/.exec(xml)?.[1];
+  return own === undefined ? xml : xml.replace(SERIES_LABELS, `$1<a:latin typeface="${own}"/>`);
 }
 
 /** What one part's tidying needs from the others. */
