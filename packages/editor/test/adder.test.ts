@@ -1,6 +1,15 @@
-import { type Block, createSession, loadDoc, type NewScene, type Scene, type Session } from "@depthcue/core";
+import {
+  type Block,
+  createSession,
+  loadDoc,
+  type NewScene,
+  type Scene,
+  type Session,
+  type Template,
+  templatesOf,
+} from "@depthcue/core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { type Adder, createAdder, slotFor } from "../src/adder.ts";
+import { type Adder, createAdder, slotFor, templateSlot } from "../src/adder.ts";
 import { FakeServer } from "./helpers.ts";
 
 const text = (id: string): Block => ({ id, type: "text", role: "body", text: id });
@@ -337,5 +346,67 @@ describe("the claim", () => {
     scene = "bare";
     refusing().claim();
     expect(problems.at(-1)).toBe("Too many blocks. Take one out.");
+  });
+});
+
+describe("a scene drawn by a template", () => {
+  // Depthcue's own Two columns: a title, then a left and a right column that each take a text, a picture, a table or a
+  // chart. The scene starts with its title filled.
+  const columns: NewScene = {
+    id: "columns",
+    title: "Columns",
+    template: "two-column",
+    blocks: [{ id: "columns-title", type: "text", role: "heading", text: "Two sides", slot: "title" }],
+  };
+  const template = () => templatesOf(session.doc)["two-column"] as Template;
+  const sceneNow = () => session.doc.scenes.columns as Scene;
+
+  beforeEach(() => {
+    const result = session.apply([{ op: "scene.add", scene: columns }]);
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    scene = "columns";
+  });
+
+  it("puts a new block in the first slot that takes it and has room", () => {
+    expect(templateSlot(template(), sceneNow(), "body")).toBe("left");
+    // The title slot holds one heading, and it has one.
+    expect(templateSlot(template(), sceneNow(), "heading")).toBeUndefined();
+  });
+
+  it("puts it in the chosen block's slot when that one takes it and has room", async () => {
+    await adder.into("right", "body");
+    const there = sceneNow().blocks.at(-1) as Block;
+    expect(there.slot).toBe("right");
+    expect(templateSlot(template(), sceneNow(), "body", there.id)).toBe("right");
+    // The title's block is chosen, but the title takes no body: the first slot that does gets it.
+    expect(templateSlot(template(), sceneNow(), "body", "columns-title")).toBe("left");
+  });
+
+  it("adds into a named slot with block.add and the slot, a text by its role, as one step of Undo", async () => {
+    await adder.into("left", "caption");
+    const there = sceneNow().blocks.at(-1) as Block;
+    expect(there).toMatchObject({ type: "text", role: "caption", slot: "left" });
+    expect(added).toEqual([there.id]);
+    session.undo();
+    expect(sceneNow().blocks.map((block) => block.id)).toEqual(["columns-title"]);
+  });
+
+  it("sends a quick add to a slot of the template, never to an area of a layout", async () => {
+    await adder.quick("text");
+    expect(sceneNow().blocks.at(-1)).toMatchObject({ type: "text", slot: "left" });
+    expect(problems.at(-1)).toBeUndefined();
+  });
+
+  it("says so when every slot that takes the kind is full", async () => {
+    for (const slot of ["left", "right"]) for (let n = 0; n < 3; n++) await adder.into(slot, "body");
+    expect(sceneNow().blocks).toHaveLength(7);
+    await adder.quick("text");
+    expect(sceneNow().blocks).toHaveLength(7);
+    expect(problems.at(-1)).toBe("This slide has no place for that.");
+  });
+
+  it("adds no clip when the deck has no video", async () => {
+    await adder.quick("clip");
+    expect(sceneNow().blocks).toHaveLength(1);
   });
 });

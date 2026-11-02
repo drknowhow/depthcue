@@ -1,6 +1,8 @@
 import {
   type ApplyResult,
   type Block,
+  blockStylesOf,
+  kindOf,
   readsMarkup,
   type Scene,
   type Session,
@@ -9,6 +11,7 @@ import {
   TEXT_ROLES,
 } from "@depthcue/core";
 import { h } from "@depthcue/player";
+import { builtInsLoaded } from "./brandchecks.ts";
 import { type Canvas, SUMMARY_LIMIT } from "./canvas.ts";
 import { addedRow, CHART_ROWS_MAX, sortedRows } from "./chart.ts";
 import { dataPanel } from "./chartpanel.ts";
@@ -19,7 +22,7 @@ import type { CueTools } from "./cuespanel.ts";
 import { actionButton, type Edits, problemOf } from "./fields.ts";
 import { createFormatBar, type FormatBar } from "./formatbar.ts";
 import { framePanel } from "./framepanel.ts";
-import { notLoaded, PARTS, type Parts, withPart } from "./lazy.ts";
+import { notLoaded, PARTS, type Part, type Parts, withPart } from "./lazy.ts";
 import {
   chartPanel,
   citePanel,
@@ -106,8 +109,8 @@ export interface ToolbarHooks {
   openSources(): void;
   /** The cues of the clips, which are kept in files beside the videos. */
   cues: CueBook;
-  /** Where the editor of a clip's cues is fetched from, the first time a clip is chosen. */
-  parts?: Pick<Parts, "cues">;
+  /** Where the editor of a clip's cues and the Style menu are fetched from, the first time they are wanted. */
+  parts?: Pick<Parts, "cues" | "brand">;
 }
 
 export interface Toolbar {
@@ -184,6 +187,7 @@ export function createToolbar(
   let nudgeRun = 0;
 
   const scene = (id: string) => session.doc.scenes[id];
+  const parts = hooks.parts ?? PARTS;
 
   function report(result: ApplyResult) {
     hooks.problem(result.ok ? undefined : problemOf(result));
@@ -214,27 +218,30 @@ export function createToolbar(
   };
 
   /**
-   * The Cues chip, whose popover is a part of its own: the chip is there at once, and what is in it once the part is
-   * in. The first fill fetches it; one that did not arrive says so in the popover, and choosing the clip again retries.
+   * A chip whose popover holds a part of its own: the chip is there at once, and what is in it once the part is in. The
+   * first fill fetches it; one that did not arrive says so in the popover, and choosing the block again retries.
    */
-  function cuesChip(inScene: string, id: string): Panel {
-    const title = "Places to jump to in this clip";
+  function partChip<M>(
+    from: Part<M>,
+    what: string,
+    id: string,
+    shape: Pick<Panel, "name" | "label" | "title">,
+    make: (module: M) => Pick<Panel, "body" | "fill" | "state">,
+  ): Panel {
     const body = h("div", { class: "ed-part" }, "Loading…");
-    let real: Panel | undefined;
+    let real: Pick<Panel, "body" | "fill" | "state"> | undefined;
     let tried = false;
     return {
-      name: "cues",
-      label: "Cues",
-      title,
+      ...shape,
       body,
       fill(current, typing) {
         if (!real && !tried) {
           tried = true;
           let late = false;
           withPart(
-            (hooks.parts ?? PARTS).cues,
+            from,
             (module) => {
-              real = module.cuesPanel(host, cueTools, inScene, id);
+              real = make(module);
               body.replaceChildren(real.body);
               // A part that came late finds the chip's count and the popover drawn without it.
               const live = scene(sceneId);
@@ -242,14 +249,50 @@ export function createToolbar(
               if (target) sync(target, false);
             },
             () => {
-              body.textContent = notLoaded("the cue editor");
+              body.textContent = notLoaded(what);
             },
           );
           late = true;
         }
         real?.fill(current, typing);
       },
-      state: (current) => real?.state?.(current) ?? { badge: "", title },
+      state: (current) => real?.state?.(current) ?? { badge: "", title: shape.title },
+    };
+  }
+
+  /**
+   * The Style chip of a block: what a text has of its own (size, alignment, color), then the deck's styles for the
+   * block's kind, from the part that draws them. A block with neither has no chip.
+   */
+  function styleChip(block: Block, own?: Panel): Panel | undefined {
+    const kind = kindOf(block);
+    // Until Depthcue's own styles are in, a block may have some, so the chip is there and opening it fetches them.
+    const styled =
+      !builtInsLoaded() ||
+      Object.values(blockStylesOf(session.doc)).some((style) =>
+        (style.for as readonly string[]).includes(kind),
+      );
+    const inScene = sceneId;
+    const styles =
+      styled &&
+      partChip(
+        parts.brand,
+        "the styles",
+        block.id,
+        { name: "style", label: "Style", title: "The style of this block" },
+        (module) => {
+          const section = module.styleSection(session, inScene, () => [block.id], host.run);
+          return { body: section.body, fill: section.fill };
+        },
+      );
+    if (!own || !styles) return own || styles || undefined;
+    return {
+      ...own,
+      body: h("div", {}, own.body, styles.body),
+      fill(current, typing) {
+        own.fill(current, typing);
+        styles.fill(current, typing);
+      },
     };
   }
 
@@ -450,15 +493,30 @@ export function createToolbar(
           return [tablePanel(host, sceneId, block.id)];
         case "image":
           return [imagePanel(host, sceneId, block.id)];
-        case "clip":
-          return [clipPanel(host, sceneId, block.id), cuesChip(sceneId, block.id)];
-        case "text":
-          return [stylePanel(host, sceneId, block.id)];
+        case "clip": {
+          const inScene = sceneId;
+          return [
+            clipPanel(host, sceneId, block.id),
+            partChip(
+              parts.cues,
+              "the cue editor",
+              block.id,
+              { name: "cues", label: "Cues", title: "Places to jump to in this clip" },
+              (module) => module.cuesPanel(host, cueTools, inScene, block.id),
+            ),
+          ];
+        }
         default:
           return [];
       }
     };
-    return [...own(), framePanel(host, sceneId, block.id), citePanel(host, sceneId, block.id)];
+    const style = styleChip(block, block.type === "text" ? stylePanel(host, sceneId, block.id) : undefined);
+    return [
+      ...own(),
+      ...(style ? [style] : []),
+      framePanel(host, sceneId, block.id),
+      citePanel(host, sceneId, block.id),
+    ];
   }
 
   function build(target: Target) {

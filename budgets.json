@@ -110,6 +110,12 @@
       "limitBytes": 2560
     },
     {
+      "name": "editor brand use",
+      "file": "packages/editor/dist/branduse.js",
+      "metric": "brotli",
+      "limitBytes": 6144
+    },
+    {
       "name": "editor styles",
       "file": "packages/editor/dist/editor.css",
       "metric": "brotli",

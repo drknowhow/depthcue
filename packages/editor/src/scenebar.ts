@@ -1,4 +1,4 @@
-import { LEADS, type Op, type Session } from "@depthcue/core";
+import { LEADS, type Op, type Session, templatesOf } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { popoverChip } from "./chip.ts";
 import { type Edits, problemOf } from "./fields.ts";
@@ -48,6 +48,11 @@ export interface SceneBarHooks {
   problem(text: string | undefined): void;
   /** Stores a file in the deck and answers with its path. Rejects with a message the person can read. */
   upload(file: File): Promise<string>;
+  /**
+   * Opens Change template, at a layout when one is given. A template scene goes to a layout through it too, so its blocks
+   * leave their slots in the same step and nothing moves unseen.
+   */
+  change?(layout?: Layout): void;
 }
 
 export interface SceneBar {
@@ -77,9 +82,23 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
   let current = session.doc.deck.scenes[0] as string;
 
   function choose(set: { lead: (typeof LEADS)[number] } | { layout: Layout }) {
+    if ("layout" in set && hooks.change && session.doc.scenes[current]?.template !== undefined) {
+      hooks.change(set.layout);
+      return;
+    }
     const result = hooks.edits.act([{ op: "scene.set", id: current, set }]);
     hooks.problem(result.ok ? undefined : problemOf(result));
   }
+  const change = hooks.change;
+  const template =
+    change &&
+    h("button", {
+      type: "button",
+      class: "ed-template",
+      "data-action": "change-template",
+      "aria-haspopup": "dialog",
+    });
+  template?.addEventListener("click", () => change?.());
 
   const leads = LEADS.map((value) => {
     const node = h(
@@ -145,6 +164,7 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
     { class: "ed-scene-tools" },
     h("div", { class: "ed-seg", role: "group", "aria-label": "Who leads this scene" }, ...leads),
     h("div", { class: "ed-seg", role: "group", "aria-label": "Layout of this scene" }, ...layouts),
+    template,
     auto,
     popover.chip.wrap,
   );
@@ -166,6 +186,11 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
       for (const node of leads) node.setAttribute("aria-pressed", String(node.dataset.lead === lead));
       for (const node of layouts)
         node.setAttribute("aria-pressed", String(node.dataset.layout === scene.layout));
+      if (template) {
+        const name = scene.template && (templatesOf(session.doc)[scene.template]?.name ?? scene.template);
+        template.textContent = name ? `Template: ${name}` : "Template";
+        template.title = "Change this scene's template or layout, with a preview first";
+      }
       auto.hidden = !scene.blocks.some((block) => block.frame);
     },
   };

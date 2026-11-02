@@ -1,4 +1,4 @@
-import { type ChartKind, LEADS, readsMarkup, type Session } from "@depthcue/core";
+import { blockStylesOf, type ChartKind, kindOf, LEADS, readsMarkup, type Session } from "@depthcue/core";
 import { chartCommands } from "./chartwire.ts";
 import { afterWhenMoving } from "./cleanup.ts";
 import type { Spot } from "./grid.ts";
@@ -65,6 +65,14 @@ export interface CommandSources {
   showComments(on: boolean): void;
   /** Opens the Style section of the Deck popover: the theme preset, the palette and the font pair. */
   deckStyle?(): void;
+  /** Gives a block one of the deck's styles, or with "" takes its style off. */
+  setBlockStyle?(id: string, style: string): void;
+  /** A small picture of a style, for its item in the menu, once the part that draws it is in. */
+  stylePreview?(style: string): Node | undefined;
+  /** Opens Change template for the scene on show. */
+  changeTemplate?(): void;
+  /** Opens the template picker, which adds a scene after the one on show. */
+  pickTemplate?(): void;
   /** What the buttons of the scene bar do. */
   setLead(lead: (typeof LEADS)[number]): void;
   setLayout(layout: Layout): void;
@@ -351,6 +359,33 @@ export function listCommands(from: CommandSources): Command[] {
     looks("align", "Align", ALIGN_LABEL, block.align, "start");
     looks("tone", "Color", TONE_LABEL, block.tone);
   }
+  // The deck's styles for the chosen block's kind, the brand's and Depthcue's own, with the one it has checked.
+  const setBlockStyle = from.setBlockStyle;
+  if (block && setBlockStyle) {
+    const kind = kindOf(block);
+    const styles = Object.entries(blockStylesOf(session.doc)).filter(([, style]) =>
+      (style.for as readonly string[]).includes(kind),
+    );
+    const choices: Array<[string, string]> =
+      styles.length > 0
+        ? [["", "No style"], ...styles.map(([id, style]): [string, string] => [id, style.name])]
+        : [];
+    for (const [id, name] of choices) {
+      add({
+        id: `block-style-${id || "none"}`,
+        title: `Style: ${name}`,
+        group: "The chosen block",
+        words: "brand look component callout",
+        targets: ["block"],
+        label: name,
+        section: "look",
+        submenu: "Style",
+        checked: (block.style ?? "") === id,
+        icon: id ? () => from.stylePreview?.(id) : undefined,
+        run: () => setBlockStyle(block.id, id),
+      });
+    }
+  }
   if (chosen !== undefined && item) {
     add({
       id: "comment",
@@ -383,6 +418,32 @@ export function listCommands(from: CommandSources): Command[] {
       section: "scene",
       submenu: "Layout",
       run: () => from.setLayout(choice.value),
+    });
+  }
+  const changeTemplate = from.changeTemplate;
+  if (changeTemplate) {
+    add({
+      id: "change-template",
+      title: "Change this scene's template or layout",
+      group: "This scene",
+      words: "template layout brand slots retemplate",
+      targets: ["slide", "scene"],
+      label: "Change template…",
+      section: "scene",
+      run: changeTemplate,
+    });
+  }
+  const pickTemplate = from.pickTemplate;
+  if (pickTemplate) {
+    add({
+      id: "pick-template",
+      title: "Add a scene from a template",
+      group: "Add",
+      words: "new slide brand layout picker",
+      targets: ["scene"],
+      label: "Add scene from a template…",
+      section: "scene-edit",
+      run: pickTemplate,
     });
   }
   const lead = scene.lead ?? "human";

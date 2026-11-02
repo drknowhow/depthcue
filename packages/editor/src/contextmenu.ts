@@ -158,6 +158,7 @@ export function createContextMenu(root: HTMLElement, hooks: ContextMenuHooks): C
         // Focusable and read out, with its reason, but it does nothing: a choice that is greyed says why.
         "aria-disabled": command.disabled === undefined ? undefined : "true",
       },
+      command.icon?.(),
       h("span", { class: "ed-menu-label" }, command.label ?? command.title),
       command.disabled !== undefined && h("span", { class: "ed-menu-why" }, command.disabled),
       // Written for the eye. A screen reader gets the keys from `aria-keyshortcuts`, after the name.

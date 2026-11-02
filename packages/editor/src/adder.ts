@@ -1,15 +1,28 @@
 import {
   type ApplyResult,
   addBlock,
+  type BlockKind,
   type BlockType,
+  kindOf,
   type Op,
+  type Placed,
   type Scene,
   type Session,
   type SlotName,
+  slotMax,
   slotsOf,
+  type Template,
+  templatesOf,
 } from "@depthcue/core";
 import { problemOf } from "./fields.ts";
-import { type NewBlockKind, newBlock, newClaim, VIDEO_FILE } from "./templates.ts";
+import {
+  isNewBlockKind,
+  type NewBlockKind,
+  newBlock,
+  newClaim,
+  type TextRole,
+  VIDEO_FILE,
+} from "./templates.ts";
 
 export interface AdderHooks {
   /** The scene being edited. */
@@ -31,6 +44,8 @@ export interface Adder {
   add(slot: SlotName, kind: NewBlockKind, file?: File): Promise<void>;
   /** Adds a block of `kind` where a person pointing at the slide would expect it: see `slotFor`. */
   quick(kind: NewBlockKind, file?: File): Promise<void>;
+  /** Adds a block of a kind a template's slot takes, a text by its role, into the slot `slot` of a template scene. */
+  into(slot: string, kind: BlockKind, file?: File): Promise<void>;
   /** Gives the slide a claim to fill in. */
   claim(): void;
   /** Whether the deck has a video a clip could play. */
@@ -51,6 +66,23 @@ export function slotFor(scene: Scene, kind: BlockType, anchor?: string): SlotNam
 }
 
 /**
+ * The slot of a template a new block of `kind` goes to in a scene: the chosen block's slot when it takes the kind and has
+ * room, else the first that does. A pinned block in a slot takes room there, as `depthcue check` counts it.
+ */
+export function templateSlot(
+  template: Template,
+  scene: Scene,
+  kind: BlockKind,
+  anchor?: string,
+): string | undefined {
+  const fits = (slot: Template["slots"][number]) =>
+    slot.accepts?.includes(kind) === true &&
+    scene.blocks.filter((block) => block.slot === slot.id).length < slotMax(slot);
+  const near = scene.blocks.find((block) => block.id === anchor)?.slot;
+  return (template.slots.find((slot) => slot.id === near && fits(slot)) ?? template.slots.find(fits))?.id;
+}
+
+/**
  * Adds to a chosen area of the slide, or, for the quick bar, to the area `slotFor` picks. The core decides where the
  * block lands and whether the area takes it, so an empty area drawn on the slide, the quick bar and an agent's
  * `block.add` agree.
@@ -58,10 +90,16 @@ export function slotFor(scene: Scene, kind: BlockType, anchor?: string): SlotNam
 export function createAdder(session: Session, hooks: AdderHooks): Adder {
   const firstVideo = () => [...session.doc.assets].sort().find((path) => VIDEO_FILE.test(path));
 
-  async function put(kind: NewBlockKind, file: File | undefined, slot?: SlotName) {
+  async function put(
+    kind: NewBlockKind,
+    file: File | undefined,
+    slot?: SlotName,
+    into?: string,
+    role?: TextRole,
+  ) {
     hooks.problem(undefined);
     // Read now: the person may choose something else while a file is on its way.
-    const anchor = slot === undefined ? hooks.block() : undefined;
+    const anchor = slot === undefined && into === undefined ? hooks.block() : undefined;
     let asset: string | undefined;
     if (kind === "image") {
       if (!file) return;
@@ -78,13 +116,23 @@ export function createAdder(session: Session, hooks: AdderHooks): Adder {
     // The deck may have changed while the file was on its way, so the scene is read again.
     const target = session.doc.scenes[hooks.scene()];
     if (!target) return;
-    const into = slot ?? slotFor(target, kind, anchor);
-    if (into === undefined) {
-      hooks.problem("This slide has no place for that.");
-      return;
-    }
-    const block = newBlock(target, kind, asset);
-    const placed = addBlock(target, into, block, anchor);
+    const made = newBlock(target, kind, asset);
+    const block = role && made.type === "text" ? { ...made, role } : made;
+    // A template scene puts the block in a slot of its template; a layout scene, in an area of its layout.
+    const templates = templatesOf(session.doc);
+    const template =
+      target.template !== undefined && Object.hasOwn(templates, target.template)
+        ? templates[target.template]
+        : undefined;
+    const at = template
+      ? (into ?? templateSlot(template, target, kindOf(block), anchor))
+      : (slot ?? slotFor(target, kind, anchor));
+    const placed: Placed =
+      at === undefined
+        ? { ok: false, message: "This slide has no place for that." }
+        : template
+          ? { ok: true, ops: [{ op: "block.add", scene: target.id, block: { ...block, slot: at } }] }
+          : addBlock(target, at as SlotName, block, anchor);
     if (!placed.ok) {
       hooks.problem(placed.message);
       return;
@@ -104,5 +152,7 @@ export function createAdder(session: Session, hooks: AdderHooks): Adder {
     },
     add: (slot, kind, file) => put(kind, file, slot),
     quick: (kind, file) => put(kind, file),
+    into: (slot, kind, file) =>
+      isNewBlockKind(kind) ? put(kind, file, undefined, slot) : put("text", file, undefined, slot, kind),
   };
 }

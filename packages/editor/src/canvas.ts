@@ -49,6 +49,8 @@ export interface CanvasHooks {
   cues?: CueBook;
   /** Adds to an area of the slide that holds nothing yet, which the slide draws a place for. */
   ghosts?: GhostHooks;
+  /** Draws the empty slots of a template scene, with their hints, into the slide as it is drawn. */
+  slots?(scene: Scene, view: HTMLElement): void;
   /** The comments beside the deck. With them the slide draws a pin for each comment of the scene. */
   comments?: PinSurface;
   /** What Ctrl+Z and Ctrl+Y do in a field of the slide. Without it the session's own undo and redo. */
@@ -739,7 +741,8 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         changed,
       });
       wireCues(scene, view);
-      if (hooks.ghosts) drawGhosts(scene, view, hooks.ghosts);
+      if (scene.template !== undefined) hooks.slots?.(scene, view);
+      else if (hooks.ghosts) drawGhosts(scene, view, hooks.ghosts);
       // A block that goes into its slot, or out of it, slides there from where it stood. Only a slide with a pin on
       // either side of the change can have one, so any other is drawn without measuring.
       const before =

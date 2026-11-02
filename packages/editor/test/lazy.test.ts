@@ -205,6 +205,90 @@ describe("the comment pins, a part fetched once there is a comment or the Commen
   });
 });
 
+describe("templates and styles, a part fetched when first wanted", () => {
+  const picker = () => host.querySelector<HTMLDialogElement>("dialog[data-dialog='picker']");
+  const slots = () => host.querySelectorAll(".ed-canvas-host .ed-slot");
+  const quoteScene = {
+    id: "said",
+    title: "Said",
+    template: "quote",
+    blocks: [
+      {
+        id: "said-quote",
+        type: "text" as const,
+        role: "quote" as const,
+        text: "Less, but better.",
+        slot: "quote",
+      },
+    ],
+  };
+
+  it("is not fetched for a deck with no template scene until the picker is opened, which opens when it arrives", async () => {
+    const parts = stub(await real("brand"));
+    await mount({ brand: parts.from });
+    expect(parts.fetches).toHaveLength(0);
+    action("pick-template").click();
+    expect(parts.fetches).toHaveLength(1);
+    expect(picker()).toBeNull();
+    stillEdits("Typed while it loads");
+    parts.arrive();
+    await flush();
+    expect(picker()).not.toBeNull();
+  });
+
+  it("says so when it does not arrive, the editor goes on, and the next press tries again", async () => {
+    const parts = stub(await real("brand"));
+    await mount({ brand: parts.from });
+    action("pick-template").click();
+    parts.fail();
+    await flush();
+    expect(hint().textContent).toBe(notLoaded("the templates and styles"));
+    expect(picker()).toBeNull();
+    stillEdits("Still editing");
+    action("pick-template").click();
+    expect(parts.fetches).toHaveLength(2);
+    parts.arrive();
+    await flush();
+    expect(picker()).not.toBeNull();
+  });
+
+  it("draws a template scene's empty slots once it arrives", async () => {
+    const parts = stub(await real("brand"));
+    await mount({ brand: parts.from });
+    expect(store.session.apply([{ op: "scene.add", scene: quoteScene, after: null }]).ok).toBe(true);
+    editor?.select("said");
+    expect(parts.fetches).toHaveLength(1);
+    expect(slots()).toHaveLength(0);
+    parts.arrive();
+    await flush();
+    expect([...slots()].map((slot) => (slot as HTMLElement).dataset.slot)).toEqual(["attribution"]);
+  });
+
+  it("says once when the slots cannot be drawn, and the slide goes on without them", async () => {
+    const parts = stub(await real("brand"));
+    await mount({ brand: parts.from });
+    store.session.apply([{ op: "scene.add", scene: quoteScene, after: null }]);
+    editor?.select("said");
+    parts.fail();
+    await flush();
+    expect(hint().textContent).toBe(notLoaded("the templates and styles"));
+    store.session.apply([retitle("Edited")]);
+    expect(parts.fetches).toHaveLength(1);
+    expect(blockNode("said-quote").textContent).toContain("Less, but better.");
+  });
+
+  it("is fetched quietly once a block is chosen, so the right-click menu can list the styles", async () => {
+    const parts = stub(await real("brand"));
+    await mount({ brand: parts.from });
+    editor?.select("method");
+    blockNode("method-diagram").click();
+    expect(parts.fetches).toHaveLength(1);
+    parts.fail();
+    await flush();
+    expect(hint().hasAttribute("data-problem")).toBe(false);
+  });
+});
+
 describe("the cue editor, a part fetched when a clip's Cues chip is first filled", () => {
   const SOURCE = "assets/talk.mp4";
   const chip = () =>

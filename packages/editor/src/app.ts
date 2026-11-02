@@ -1,4 +1,4 @@
-import { type ApplyOptions, type Op, type SlotName, slotsOf } from "@depthcue/core";
+import { type ApplyOptions, kindOf, type Op, type SlotName, slotsOf } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { createAdder } from "./adder.ts";
 import { createCanvas } from "./canvas.ts";
@@ -25,7 +25,7 @@ import type { DraftNotice, EditorStore } from "./store.ts";
 import type { Storyboard } from "./storyboard.ts";
 import { createStrip } from "./strip.ts";
 import { createTableEditing } from "./tablecells.ts";
-import { IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
+import { IMAGE_ACCEPT, type Layout, type NewBlockKind } from "./templates.ts";
 import { createToolbar } from "./toolbar.ts";
 
 const SAVE_LABEL = {
@@ -96,6 +96,36 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       toolbar.render(selected, selectedBlock);
     },
   });
+  // Templates, styles and the hints of a template's empty slots are a part of their own, fetched when first wanted.
+  const useBrand = (then: (module: NonNullable<Parts["brand"]["ready"]>) => void) =>
+    withPart(parts.brand, then, () => showProblem(notLoaded("the templates and styles")));
+  const applied = (ops: readonly Op[]) => {
+    const result = session.apply(ops);
+    return result.ok ? undefined : problemOf(result);
+  };
+  const openChange = (first?: { layout: Layout }) =>
+    useBrand((brand) =>
+      brand.changeTemplate(
+        session,
+        root,
+        selected,
+        { act: applied, measure: (id) => canvas.measure(id) },
+        first,
+      ),
+    );
+  const openPicker = () =>
+    useBrand((brand) =>
+      brand.pickTemplate(session, root, {
+        add(scene) {
+          const problem = applied([{ op: "scene.add", scene, after: selected }]);
+          if (problem === undefined) select(scene.id);
+          return problem;
+        },
+      }),
+    );
+  // A template scene drawn before the part was in is drawn again when it arrives, with its slots. One that did not
+  // arrive is said once, and the slide goes on without them.
+  let slotsAsked = false;
   const adder = createAdder(session, {
     scene: () => selected,
     block: () => selectedBlock,
@@ -113,6 +143,21 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       add: (slot, kind, file) => void adder.add(slot, kind, file),
       claim: () => adder.claim(),
       hasVideo: () => adder.hasVideo(),
+    },
+    slots(scene, view) {
+      const brand = parts.brand.ready;
+      if (brand) {
+        brand.drawSlots(session.doc, scene, view, {
+          add: (slot, kind, file) => void adder.into(slot, kind, file),
+          claim: () => adder.claim(),
+          hasVideo: () => adder.hasVideo(),
+        });
+      } else if (!slotsAsked) {
+        slotsAsked = true;
+        useBrand(() => {
+          if (!canvas.typing) canvas.render(selected, selectedBlock);
+        });
+      }
     },
     // The count of a field is in the toolbar; this line is for what was refused.
     hint: (text, problem) => showProblem(problem ? text : undefined),
@@ -230,6 +275,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     edits: editsFor("scene"),
     problem: showProblem,
     upload: (file) => store.upload(file),
+    change: (layout) => openChange(layout && { layout }),
   });
   const bar = h(
     "header",
@@ -279,6 +325,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     comments: () => countsOf(store.comments.state.comments, session.doc).byScene,
     changed: () => countsByScene(store.review.changes()),
     storyboard: openBoard,
+    pick: openPicker,
   });
   const quick = createQuickBar(session, {
     edits: editsFor("quick"),
@@ -465,6 +512,22 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
         ]);
         showProblem(result.ok ? undefined : problemOf(result));
       },
+      setBlockStyle(id, style) {
+        showProblem(
+          applied([{ op: "block.set", scene: selected, id, set: { style: style === "" ? null : style } }]),
+        );
+      },
+      // The pictures of the styles come with the part. Until it is in, the menu lists them by name and fetches it.
+      stylePreview(style) {
+        const brand = parts.brand.ready;
+        if (!brand) void parts.brand.load();
+        const block = session.doc.scenes[selected]?.blocks.find(
+          (candidate) => candidate.id === selectedBlock,
+        );
+        return brand?.stylePreview(session.doc, style, block && kindOf(block));
+      },
+      changeTemplate: () => openChange(),
+      pickTemplate: openPicker,
       upgradeScene(id) {
         const result = session.apply([{ op: "scene.upgrade", id }]);
         showProblem(result.ok ? undefined : problemOf(result));
@@ -758,6 +821,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
   function selectBlock(id: string | undefined) {
     const next = id !== undefined && hasItem(selected, id) ? id : undefined;
     canvas.mark(next);
+    // A chosen block is a step toward its Style menu, whose styles come with the brand part: fetched now, quietly,
+    // so the right-click menu can list them. The Style chip says so when the part does not arrive.
+    if (next !== undefined) void parts.brand.load();
     if (next === selectedBlock) return;
     selectedBlock = next;
     toolbar.render(selected, selectedBlock);
