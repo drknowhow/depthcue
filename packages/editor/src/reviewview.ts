@@ -71,23 +71,5 @@ export function rowOf(change: Change, doc: Doc): ChangeRow {
   return { change, where: parts.join(" · "), said: describeChange(change), before: was, after: is };
 }
 
-export interface Summary {
-  /** Changes the agent made and nobody has answered. */
-  agent: number;
-  /** Changes somebody made by editing the files by hand. */
-  outside: number;
-}
-
-export function summaryOf(changes: readonly Change[]): Summary {
-  const agent = changes.filter((change) => change.by === "agent").length;
-  return { agent, outside: changes.length - agent };
-}
-
-/** How many changes each scene has, for the mark on its thumbnail. A change to the deck itself belongs to no scene. */
-export function countsByScene(changes: readonly Change[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const change of changes) {
-    if (change.scene !== undefined) counts.set(change.scene, (counts.get(change.scene) ?? 0) + 1);
-  }
-  return counts;
-}
+// The counts the bar and the strip show live with the book, so this module goes to the drawer's chunk alone.
+export { countsByScene, type Summary, summaryOf } from "./reviewbook.ts";

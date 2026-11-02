@@ -462,4 +462,14 @@ describe("everywhere", () => {
     get("storyboard").run();
     expect(open).toHaveBeenCalledTimes(1);
   });
+
+  it("offers Download PowerPoint when the editor has it, found by the words a person would type", () => {
+    expect(ids()).not.toContain("download-pptx");
+    const open = vi.fn();
+    supplied = { ...supplied, download: open };
+    expect(get("download-pptx").title).toBe("Download PowerPoint…");
+    expect(get("download-pptx").words).toContain("export");
+    get("download-pptx").run();
+    expect(open).toHaveBeenCalledTimes(1);
+  });
 });

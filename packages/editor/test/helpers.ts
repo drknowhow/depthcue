@@ -36,6 +36,11 @@ import type {
   SaveOptions,
   SaveResult,
 } from "../src/api.ts";
+import { loadParts } from "../src/lazy.ts";
+
+// The tests that drive the editor start with every part it fetches on first use already in, as in a session that has
+// used them all, so what they check is what the part does. lazy.test.ts drives the fetch, and what a failed one does.
+await loadParts();
 
 // happy-dom replaces the global URL, so the path is built from dirname rather than from import.meta.url.
 // The old sample deck: three scenes, all schema 0.1. Tests read this copy, so the sample deck in

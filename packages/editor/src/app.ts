@@ -1,4 +1,4 @@
-import { type ApplyOptions, type Op, type SlotName, slotsOf } from "@depthcue/core";
+import { type ApplyOptions, kindOf, type Op, type SlotName, slotsOf } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { createAdder } from "./adder.ts";
 import { createCanvas } from "./canvas.ts";
@@ -12,20 +12,20 @@ import { createContextMenu } from "./contextmenu.ts";
 import { createCueBook } from "./cues.ts";
 import { type Edits, problemOf } from "./fields.ts";
 import { createLayoutWatch, type LayoutWatch } from "./layout-watch.ts";
+import { notLoaded, PARTS, type Parts, withPart } from "./lazy.ts";
 import { createPalette } from "./palette.ts";
 import { deckPanel, panelHost } from "./panels.ts";
 import { createQuickBar } from "./quickbar.ts";
-import { createReviewDrawer } from "./reviewdrawer.ts";
-import { countsByScene, summaryOf } from "./reviewview.ts";
-import { createRibbon, problemsOf } from "./ribbon.ts";
+import { countsByScene, summaryOf } from "./reviewbook.ts";
+import type { ReviewDrawer } from "./reviewdrawer.ts";
+import { checksByScene, createRibbon, problemsOf } from "./ribbon.ts";
 import { createSceneBar } from "./scenebar.ts";
 import { createShortcuts, keyName } from "./shortcuts.ts";
 import type { DraftNotice, EditorStore } from "./store.ts";
-import { createStoryboard } from "./storyboard.ts";
-import { checksByScene } from "./storyboardview.ts";
+import type { Storyboard } from "./storyboard.ts";
 import { createStrip } from "./strip.ts";
 import { createTableEditing } from "./tablecells.ts";
-import { IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
+import { IMAGE_ACCEPT, type Layout, type NewBlockKind } from "./templates.ts";
 import { createToolbar } from "./toolbar.ts";
 
 const SAVE_LABEL = {
@@ -54,9 +54,10 @@ export interface Editor {
  * Mounts the editor into `host`: a slim top bar, the scene strip, the selected scene filling the rest with its
  * text editable in place, and the rest of its properties in a toolbar over the chosen block, a quick bar at the foot
  * of the stage and the popovers of the top bar.
- * All state lives in the store's session; this only reflects it and sends edits back through it.
+ * All state lives in the store's session; this only reflects it and sends edits back through it. The parts most
+ * sessions never open are fetched on first use from `parts`, which a test may replace.
  */
-export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
+export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts = PARTS): Editor {
   const { session } = store;
   let selected = session.doc.deck.scenes[0] as string;
   let selectedBlock: string | undefined;
@@ -95,6 +96,38 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       toolbar.render(selected, selectedBlock);
     },
   });
+  // Templates, styles and the hints of a template's empty slots are a part of their own, fetched when first wanted.
+  const useBrand = (then: (module: NonNullable<Parts["brand"]["ready"]>) => void) =>
+    withPart(parts.brand, then, () => showProblem(notLoaded("the templates and styles")));
+  const applied = (ops: readonly Op[]) => {
+    const result = session.apply(ops);
+    return result.ok ? undefined : problemOf(result);
+  };
+  const openChange = (first?: { layout: Layout }) =>
+    useBrand((brand) =>
+      brand.changeTemplate(
+        session,
+        root,
+        selected,
+        { act: applied, measure: (id) => canvas.measure(id) },
+        first,
+      ),
+    );
+  const openPicker = () =>
+    useBrand((brand) =>
+      brand.pickTemplate(session, root, {
+        add(scene) {
+          const problem = applied([{ op: "scene.add", scene, after: selected }]);
+          if (problem === undefined) select(scene.id);
+          return problem;
+        },
+      }),
+    );
+  // A template scene drawn before the part was in is drawn again when it arrives, with its slots. One that did not
+  // arrive is said once, and the slide goes on without them.
+  let slotsAsked = false;
+  /** The styles a menu was waiting for did not arrive: the next listing says so once, and the one after tries again. */
+  let stylesMissed = false;
   const adder = createAdder(session, {
     scene: () => selected,
     block: () => selectedBlock,
@@ -113,9 +146,24 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       claim: () => adder.claim(),
       hasVideo: () => adder.hasVideo(),
     },
+    slots(scene, view) {
+      const brand = parts.brand.ready;
+      if (brand) {
+        brand.drawSlots(session.doc, scene, view, {
+          add: (slot, kind, file) => void adder.into(slot, kind, file),
+          claim: () => adder.claim(),
+          hasVideo: () => adder.hasVideo(),
+        });
+      } else if (!slotsAsked) {
+        slotsAsked = true;
+        useBrand(() => {
+          if (!canvas.typing) canvas.render(selected, selectedBlock);
+        });
+      }
+    },
     // The count of a field is in the toolbar; this line is for what was refused.
     hint: (text, problem) => showProblem(problem ? text : undefined),
-    comments: { book: store.comments, changed: () => renderComments() },
+    comments: { book: store.comments, changed: () => renderComments(), part: parts.comments },
     history: { undo: undoNow, redo: redoNow },
     select: (id) => selectBlock(id),
     deselect: () => selectBlock(undefined),
@@ -140,6 +188,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     focusBlock: (id) => canvas.focusBlock(id),
     openSources: () => sceneBar.open("sources"),
     cues,
+    parts,
   });
   canvas.overlay.append(toolbar.element);
 
@@ -159,6 +208,20 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     }),
   );
   const deckChip = popoverChip(deckForm);
+  // Download PowerPoint is a part of its own; its button closes the Deck popover, so the dialog gives the keyboard back
+  // to the Deck chip.
+  const openDownload = () =>
+    withPart(
+      parts.pptx,
+      (module) => module.openDownload(root, store),
+      () => showProblem(notLoaded("the PowerPoint download")),
+    );
+  deckForm.body.append(
+    button("pptx", "Download PowerPoint…", () => {
+      deckChip.close(true);
+      openDownload();
+    }),
+  );
   const present = h(
     "a",
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
@@ -201,21 +264,45 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     reviewWords,
     reviewCount,
   );
-  const drawer = createReviewDrawer(session, store.review, {
-    goTo(sceneId, blockId) {
-      select(sceneId);
-      selectBlock(blockId);
-    },
-    closed: () => reviewButton.focus({ preventScroll: true }),
-  });
-  reviewButton.addEventListener("click", () => {
-    drawer.toggle();
-    renderReview();
-  });
+  // The drawer that lists them is a part of its own, made when it is first opened, or at once when it is already in.
+  let drawer: ReviewDrawer | undefined;
+  const makeDrawer = (module: NonNullable<Parts["review"]["ready"]>) => {
+    drawer = module.createReviewDrawer(session, store.review, {
+      goTo(sceneId, blockId) {
+        select(sceneId);
+        selectBlock(blockId);
+      },
+      closed: () => reviewButton.focus({ preventScroll: true }),
+    });
+    floor.append(drawer.element);
+  };
+  // Pressed while the part is on its way, the button shows it is busy, and it opens once when the part comes: a second
+  // press then is the same wish, not a second toggle that would shut it again.
+  const reviewBusy = (on: boolean) =>
+    on ? reviewButton.setAttribute("aria-busy", "true") : reviewButton.removeAttribute("aria-busy");
+  const toggleReview = () => {
+    if (reviewButton.hasAttribute("aria-busy")) return;
+    reviewBusy(!parts.review.ready);
+    withPart(
+      parts.review,
+      (module) => {
+        reviewBusy(false);
+        if (!drawer) makeDrawer(module);
+        drawer?.toggle();
+        renderReview();
+      },
+      () => {
+        reviewBusy(false);
+        showProblem(notLoaded("the list of changes"));
+      },
+    );
+  };
+  reviewButton.addEventListener("click", toggleReview);
   const sceneBar = createSceneBar(session, {
     edits: editsFor("scene"),
     problem: showProblem,
     upload: (file) => store.upload(file),
+    change: (layout) => openChange(layout && { layout }),
   });
   const bar = h(
     "header",
@@ -238,19 +325,34 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   );
   const notices = h("div", { class: "ed-notices" });
   // The strip, full screen. It reads the same counts the strip and the ribbon do, so the numbers on a card are theirs.
-  const storyboard = createStoryboard(session, {
-    open: (id) => select(id),
-    selected: () => selected,
-    comments: () => countsOf(store.comments.state.comments, session.doc).byScene,
-    changed: () => countsByScene(store.review.changes()),
-    checks: () => checksByScene(problemsOf(session, (id) => watch?.of(id) ?? [])),
-  });
+  // Like the drawer it is a part of its own.
+  let board: Storyboard | undefined;
+  const makeBoard = (module: NonNullable<Parts["storyboard"]["ready"]>) => {
+    board = module.createStoryboard(session, {
+      open: (id) => select(id),
+      selected: () => selected,
+      comments: () => countsOf(store.comments.state.comments, session.doc).byScene,
+      changed: () => countsByScene(store.review.changes()),
+      checks: () => checksByScene(problemsOf(session, (id) => watch?.of(id) ?? [])),
+    });
+    palette.element.after(board.element);
+  };
+  const openBoard = () =>
+    withPart(
+      parts.storyboard,
+      (module) => {
+        if (!board) makeBoard(module);
+        board?.open();
+      },
+      () => showProblem(notLoaded("the storyboard")),
+    );
   const strip = createStrip(session, {
     select: (id) => select(id),
     act: (ops, options) => session.apply(ops, options),
     comments: () => countsOf(store.comments.state.comments, session.doc).byScene,
     changed: () => countsByScene(store.review.changes()),
-    storyboard: () => storyboard.open(),
+    storyboard: openBoard,
+    pick: openPicker,
   });
   const quick = createQuickBar(session, {
     edits: editsFor("quick"),
@@ -285,7 +387,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     scene: () => selected,
     changed() {
       ribbon.render();
-      storyboard.render();
+      board?.render();
     },
   });
   watch = layout;
@@ -305,7 +407,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     // Alt+F10 moves the keyboard into the toolbar of the chosen block.
     toolbar: () => toolbar.focus(),
     palette: () => palette.toggle(),
-    storyboard: () => storyboard.open(),
+    storyboard: openBoard,
     // The keys of the chosen block. Copy, cut and paste come as events, which carry the clipboard with them.
     copy: (data, cut) => clip.onCopy(data, cut),
     paste: (data) => clip.onPaste(data),
@@ -437,6 +539,33 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
         ]);
         showProblem(result.ok ? undefined : problemOf(result));
       },
+      setBlockStyle(id, style) {
+        showProblem(
+          applied([{ op: "block.set", scene: selected, id, set: { style: style === "" ? null : style } }]),
+        );
+      },
+      // The styles and their pictures come with the part. A menu opened before it is in says they are coming, and is
+      // listed again when they come, or says once that they did not.
+      stylesComing() {
+        if (parts.brand.ready) return undefined;
+        if (stylesMissed) {
+          stylesMissed = false;
+          return notLoaded("the styles");
+        }
+        void parts.brand.load().then((module) => {
+          stylesMissed = !module;
+          menu.refresh();
+        });
+        return "Loading the styles…";
+      },
+      stylePreview(style) {
+        const block = session.doc.scenes[selected]?.blocks.find(
+          (candidate) => candidate.id === selectedBlock,
+        );
+        return parts.brand.ready?.stylePreview(session.doc, style, block && kindOf(block));
+      },
+      changeTemplate: () => openChange(),
+      pickTemplate: openPicker,
       upgradeScene(id) {
         const result = session.apply([{ op: "scene.upgrade", id }]);
         showProblem(result.ok ? undefined : problemOf(result));
@@ -463,12 +592,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       redo: redoNow,
       canUndo: () => store.history.canUndo,
       canRedo: () => store.history.canRedo,
-      toggleReview: () => {
-        drawer.toggle();
-        renderReview();
-      },
-      reviewOpen: () => drawer.isOpen,
-      storyboard: () => storyboard.open(),
+      toggleReview,
+      reviewOpen: () => drawer?.isOpen === true,
+      storyboard: openBoard,
+      download: openDownload,
       save: () => void store.save(),
       present: () => void window.open(present.href, "_blank", "noopener"),
       showKeys: () => shortcuts.open(),
@@ -483,7 +610,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
   });
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
-  const floor = h("div", { class: "ed-stage" }, stage, quick.element, drawer.element);
+  const floor = h("div", { class: "ed-stage" }, stage, quick.element);
   const root = h(
     "div",
     { class: "ed-app" },
@@ -494,8 +621,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
     floor,
     shortcuts.sheet,
     palette.element,
-    storyboard.element,
   );
+  // A part fetched before the editor was mounted is used at once, as if it had never been apart.
+  if (parts.review.ready) makeDrawer(parts.review.ready);
+  if (parts.storyboard.ready) makeBoard(parts.storyboard.ready);
   // The menu of a right-click: on a block or the claim, on the empty slide, and on a scene of the strip. It chooses what
   // was pointed at first, so what it lists is what the palette would list for that choice.
   const menu = createContextMenu(root, {
@@ -558,7 +687,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
 
   const renderScenes = () => {
     strip.render(selected);
-    storyboard.render();
+    board?.render();
   };
 
   /** The part of the bar that follows the store: the title, undo, redo and how saving is going. */
@@ -633,13 +762,14 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
           : outside > 0
             ? `${plural} made outside the editor to review`
             : "Nothing to review";
+    const open = drawer?.isOpen === true;
     reviewButton.setAttribute(
       "aria-label",
-      `${said}. ${drawer.isOpen ? "Press to close the list." : "Press to open the list."}`,
+      `${said}. ${open ? "Press to close the list." : "Press to open the list."}`,
     );
     reviewButton.title = said;
-    reviewButton.setAttribute("aria-expanded", String(drawer.isOpen));
-    drawer.render();
+    reviewButton.setAttribute("aria-expanded", String(open));
+    drawer?.render();
   }
 
   /** The popovers and buttons of the bar, redrawn from the deck. Saving changes none of it, so a save skips this. */
@@ -803,8 +933,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore): Editor {
       unsubscribeComments();
       unsubscribeReview();
       unsubscribeHistory();
-      drawer.destroy();
-      storyboard.destroy();
+      drawer?.destroy();
+      board?.destroy();
       strip.destroy();
       sceneBar.destroy();
       quick.destroy();

@@ -1,6 +1,5 @@
 import type { Doc } from "@depthcue/core";
 import type { Count } from "./commentview.ts";
-import type { Problem } from "./ribbon.ts";
 import { LEAD_LABEL, type Lead } from "./templates.ts";
 
 /** One scene on the storyboard: where it is in the deck, who leads it and what is waiting on it. */
@@ -50,12 +49,8 @@ export function cardsOf(doc: Doc, marks: Marks = {}): Card[] {
   });
 }
 
-/** How many problems each scene has, from the list the ribbon walks. */
-export function checksByScene(problems: readonly Problem[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const problem of problems) counts.set(problem.scene, (counts.get(problem.scene) ?? 0) + 1);
-  return counts;
-}
+// The ribbon's counts are wanted while the board is closed too, so they live with the ribbon and not in the board's chunk.
+export { checksByScene } from "./ribbon.ts";
 
 export interface Pill {
   kind: "lead" | "changed" | "check" | "comments" | "pinned";

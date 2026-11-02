@@ -1029,8 +1029,449 @@ body {
 }
 
 .ed-ghost-choice:hover:not(:disabled),
-.ed-ghost-menu .ed-button:hover {
+.ed-ghost-menu .ed-button:hover,
+.ed-slot-menu button:hover:not(:disabled) {
   border-color: var(--dc-action);
+}
+
+/*
+ * An empty slot of a template scene: a dashed box at the slot's frame with the template's hint for it, marked when the
+ * scene needs it. Only the editor draws it; a click adds what the slot takes. It lies under every block and pin of the
+ * slide, over its background only, so a block over it (a pinned chart, a title inside a slide-sized picture slot) takes
+ * its own clicks. On a narrow stage it follows the filled slots in the flow, as they do.
+ */
+.dc-scene:has(> .ed-slot) {
+  isolation: isolate;
+}
+
+.ed-slot {
+  z-index: -1;
+  position: absolute;
+  left: calc(var(--x) * 1%);
+  top: calc(var(--y) * 1%);
+  width: calc(var(--w) * 1%);
+  height: calc(var(--h) * 1%);
+  border: 2px dashed var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  color: var(--dc-muted);
+  font-size: 0.8em;
+}
+
+.ed-slot[data-required] {
+  border-color: color-mix(in srgb, var(--dc-action) 55%, var(--dc-line));
+}
+
+.ed-slot,
+.ed-app .ed-slot-add {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 0.4em;
+  min-height: 0;
+  padding: 0.6em 0.9em;
+  overflow: hidden;
+}
+
+/* In the editor the whole box is the button. */
+.ed-slot:has(> .ed-slot-add) {
+  align-content: stretch;
+  justify-items: stretch;
+  padding: 0;
+}
+
+.ed-app .ed-slot-add {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.ed-app .ed-slot-add:hover:not(:disabled),
+.ed-slot-add:focus-visible {
+  background: color-mix(in srgb, var(--dc-action) 7%, transparent);
+  color: var(--dc-text);
+}
+
+.ed-slot-required,
+.ed-slot-do {
+  font: 600 0.85em / 1.2 var(--dc-font-mono);
+  letter-spacing: 0.04em;
+}
+
+.ed-slot-required {
+  color: var(--dc-action);
+  text-transform: uppercase;
+}
+
+.ed-slot-do {
+  color: var(--dc-action);
+}
+
+.ed-slot-menu {
+  position: absolute;
+  inset: auto 0.6em 0.6em;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+
+.ed-slot-menu[hidden] {
+  display: none;
+}
+
+.ed-app .ed-slot-menu button {
+  min-height: 0;
+  padding: 0.4em 0.9em;
+  background: var(--dc-surface);
+  font-size: 1em;
+}
+
+@container (max-width: 640px) {
+  .ed-slot {
+    position: relative;
+    inset: auto;
+    width: auto;
+    height: auto;
+    min-height: 4em;
+  }
+}
+
+/* A slide as a small picture, in the template picker, Change template and the Style menu: the real player, scaled. */
+.ed-mini {
+  --thumb-k: 0.15;
+  position: relative;
+  display: block;
+  flex: none;
+  width: calc(1280px * var(--thumb-k));
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-sm);
+  background: var(--dc-surface);
+}
+
+.ed-retemplate-thumb {
+  --thumb-k: 0.25;
+}
+
+.ed-mini .ed-thumb-frame.dc-player {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 1280px;
+  height: 720px;
+  transform: scale(var(--thumb-k));
+  transform-origin: 0 0;
+}
+
+/*
+ * A style's picture is its sample block on a slide the size of the picture, drawn at its true size and not scaled. The
+ * text is 13 CSS pixels times the style's size and never under 12, whatever the kind, as a heading or a quote would be
+ * far bigger on a slide; the block takes the width, and the slide's color shows round it, so its fill, edge and border do.
+ */
+.ed-style-thumb {
+  width: 112px;
+}
+
+.ed-style-thumb .ed-thumb-frame.dc-player {
+  width: 100%;
+  height: 100%;
+  transform: none;
+}
+
+.ed-style-thumb .dc-view {
+  overflow: hidden;
+}
+
+.ed-style-thumb .dc-player .dc-scene {
+  gap: 0;
+  padding: 0 8px;
+}
+
+.ed-style-thumb .dc-player .dc-scene :is(.dc-heading, .dc-body, .dc-quote, .dc-caption) {
+  max-width: none;
+  font-size: max(12px, calc(13px * var(--dc-k, 1)));
+}
+
+/* A dialog of the brand's: the template picker and Change template. */
+.ed-dialog {
+  width: min(56rem, calc(100vw - 2 * var(--dc-space-4)));
+  max-height: calc(100dvh - 2 * var(--dc-space-4));
+  padding: var(--dc-space-4) var(--dc-space-6);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-lg);
+  background: var(--dc-surface);
+  color: var(--dc-text);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 30%);
+  font-size: 0.875rem;
+}
+
+.ed-dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.ed-dialog[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--dc-space-3);
+}
+
+.ed-dialog-title {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.ed-dialog-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.ed-dialog-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--dc-space-2);
+}
+
+.ed-dialog-foot .ed-problem {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+.ed-dialog-foot .ed-problem:empty {
+  visibility: hidden;
+}
+
+.ed-dialog-foot .ed-problem ul {
+  margin: var(--dc-space-1) 0 0;
+  padding-left: 1.25rem;
+}
+
+/* Download PowerPoint: the options, how long the file has taken, and what the export said about it. */
+.ed-dialog-pptx {
+  width: min(36rem, calc(100vw - 2 * var(--dc-space-4)));
+}
+
+.ed-dialog-pptx .ed-dialog-body {
+  display: grid;
+  gap: var(--dc-space-3);
+  align-content: start;
+}
+
+.ed-pptx-options {
+  display: grid;
+  gap: var(--dc-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ed-pptx-options legend {
+  margin-bottom: var(--dc-space-1);
+  padding: 0;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.ed-pptx-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--dc-space-2);
+  align-items: baseline;
+}
+
+.ed-pptx-option small {
+  grid-column: 2;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.ed-pptx-progress:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-2);
+  font-size: 0.8125rem;
+}
+
+.ed-pptx-progress progress {
+  flex: 1 1 100%;
+  width: 100%;
+  accent-color: var(--dc-action);
+}
+
+.ed-pptx-status:not(:empty) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--dc-space-2);
+}
+
+.ed-pptx-saved {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ed-pptx-report h3 {
+  margin: var(--dc-space-3) 0 var(--dc-space-1);
+  font-size: 0.875rem;
+}
+
+.ed-pptx-report p,
+.ed-pptx-report ul {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.ed-pptx-report ul {
+  padding-left: 1.25rem;
+}
+
+.ed-pptx-report ul ul {
+  color: var(--dc-muted);
+}
+
+.ed-pick-group {
+  margin: var(--dc-space-3) 0 var(--dc-space-2);
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.ed-pick-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+  gap: var(--dc-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ed-app .ed-pick {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: var(--dc-space-1);
+  width: 100%;
+  height: 100%;
+  padding: var(--dc-space-2);
+  text-align: left;
+}
+
+.ed-pick .ed-mini {
+  width: 100%;
+  --thumb-k: 0.15;
+}
+
+.ed-pick-name {
+  font-weight: 600;
+}
+
+.ed-pick-about {
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.ed-retemplate {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  gap: var(--dc-space-4);
+}
+
+.ed-retemplate-list {
+  display: grid;
+  align-content: start;
+  gap: var(--dc-space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ed-retemplate-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--dc-space-2);
+}
+
+.ed-retemplate-choice .ed-hint-text {
+  margin-left: auto;
+}
+
+.ed-retemplate-preview {
+  display: grid;
+  align-content: start;
+  gap: var(--dc-space-2);
+}
+
+.ed-retemplate-preview :is(h3, ul, p) {
+  margin: 0;
+}
+
+.ed-retemplate-preview ul {
+  padding-left: 1.2em;
+}
+
+.ed-retemplate-unplaced li::marker {
+  color: var(--dc-action);
+}
+
+@media (max-width: 40rem) {
+  .ed-retemplate {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The scene's template, in the scene bar: what it is now, and the way to change it. */
+/* In a template scene's bar, where a layout scene has its three layouts, and no wider than they are. */
+.ed-app .ed-template {
+  max-width: 9.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-app .ed-template::before {
+  content: "";
+  display: inline-block;
+  width: 0.85em;
+  height: 0.6em;
+  margin-inline-end: 0.4em;
+  border: 1.5px dashed currentColor;
+  border-radius: 2px;
+}
+
+.ed-scene-tools .ed-seg[hidden] {
+  display: none;
+}
+
+/* A button whose part is on its way: it shows so, and a second press waits with the first. */
+.ed-app button[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+/* The styles a block can take, each with its picture, the one it has checked. */
+.ed-styles {
+  display: grid;
+  gap: var(--dc-space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ed-style-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--dc-space-2);
+}
+
+.ed-menu-item .ed-mini {
+  margin-right: var(--dc-space-2);
 }
 
 /*
@@ -2109,6 +2550,11 @@ body {
 
 .ed-tb-form .ed-chart-row {
   grid-template-columns: minmax(0, 1fr) 4.5rem auto;
+}
+
+/* A popover whose content is a part of the editor fetched on first use (lazy.ts): it holds the part's own form. */
+.ed-part {
+  display: contents;
 }
 
 /*

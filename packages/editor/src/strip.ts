@@ -2,7 +2,7 @@ import type { ApplyOptions, Op, Scene, Session } from "@depthcue/core";
 import { h, lookKey } from "@depthcue/player";
 import { afterWhenMoving } from "./cleanup.ts";
 import type { Count } from "./commentview.ts";
-import { problemOf } from "./fields.ts";
+import { actionButton, problemOf } from "./fields.ts";
 import { sortableItems } from "./sortable.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL, newScene, uniqueId } from "./templates.ts";
 import { createDrawQueue, type Drawn, fitThumbnails, isStale, lookFor, thumbnailFrame } from "./thumbnail.ts";
@@ -20,6 +20,8 @@ export interface StripHooks {
   changed?(): ReadonlyMap<string, number>;
   /** Opens the storyboard. The strip has a button for it only when it is given a way to. */
   storyboard?(): void;
+  /** Opens the template picker, which adds a scene from a template or a layout. A button beside Add scene opens it. */
+  pick?(): void;
 }
 
 export interface Strip {
@@ -136,7 +138,17 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     { class: "ed-scenes", "aria-label": "Scenes" },
     storyboard,
     list,
-    h("div", { class: "ed-add-scene" }, layoutChoice, addScene),
+    h(
+      "div",
+      { class: "ed-add-scene" },
+      layoutChoice,
+      addScene,
+      hooks.pick &&
+        actionButton("From a template…", hooks.pick, {
+          "data-action": "pick-template",
+          "aria-haspopup": "dialog",
+        }),
+    ),
     problem,
   );
 

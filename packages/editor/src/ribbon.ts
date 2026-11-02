@@ -112,6 +112,13 @@ export function problemsOf(session: Session, found?: (sceneId: string) => readon
   return out;
 }
 
+/** How many problems each scene has, from the list the ribbon walks. */
+export function checksByScene(problems: readonly Problem[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const problem of problems) counts.set(problem.scene, (counts.get(problem.scene) ?? 0) + 1);
+  return counts;
+}
+
 const plural = (count: number) => (count === 1 ? "1 thing to check" : `${count} things to check`);
 
 /** Writes only when the text changed, so a screen reader is not told the same thing twice. */

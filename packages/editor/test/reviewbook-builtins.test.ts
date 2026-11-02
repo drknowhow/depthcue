@@ -1,8 +1,15 @@
 import { memoryDraftStore } from "@depthcue/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { builtInsLoaded } from "../src/brandchecks.ts";
 import { openStore } from "../src/store.ts";
 import { FakeServer, retitle } from "./helpers.ts";
+
+// helpers.ts fetches every lazy part before the tests, and the brand part brings Depthcue's own templates with it. This
+// file starts without them, so it keeps the parts out.
+vi.mock("../src/lazy.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lazy.ts")>()),
+  loadParts: async () => undefined,
+}));
 
 // Its own file: the stand-in's records are module state, and a test that ran before this one would have filled them.
 describe("a review and Depthcue's own templates", () => {

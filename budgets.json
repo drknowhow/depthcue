@@ -86,6 +86,42 @@
       "limitBytes": 4096
     },
     {
+      "name": "editor review drawer",
+      "file": "packages/editor/dist/reviewdrawer.js",
+      "metric": "brotli",
+      "limitBytes": 3072
+    },
+    {
+      "name": "editor storyboard",
+      "file": "packages/editor/dist/storyboard.js",
+      "metric": "brotli",
+      "limitBytes": 4096
+    },
+    {
+      "name": "editor comment pins",
+      "file": "packages/editor/dist/commentpins.js",
+      "metric": "brotli",
+      "limitBytes": 5120
+    },
+    {
+      "name": "editor cue editor",
+      "file": "packages/editor/dist/cuespanel.js",
+      "metric": "brotli",
+      "limitBytes": 2560
+    },
+    {
+      "name": "editor brand use",
+      "file": "packages/editor/dist/branduse.js",
+      "metric": "brotli",
+      "limitBytes": 6144
+    },
+    {
+      "name": "editor PowerPoint download",
+      "file": "packages/editor/dist/pptxdownload.js",
+      "metric": "brotli",
+      "limitBytes": 4096
+    },
+    {
       "name": "editor styles",
       "file": "packages/editor/dist/editor.css",
       "metric": "brotli",

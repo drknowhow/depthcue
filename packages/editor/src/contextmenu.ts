@@ -90,6 +90,11 @@ export interface ContextMenu {
   readonly isOpen: boolean;
   /** Opens the menu on the block the keyboard is on, or the scene of the strip. False when it is on neither. */
   openFromKeyboard(): boolean;
+  /**
+   * Lists the open menu again, for items that came after it opened, such as the styles. An open submenu stays open, and
+   * the keyboard stays on its item, or goes to the first of that submenu when its item is gone.
+   */
+  refresh(): void;
   close(): void;
   destroy(): void;
 }
@@ -158,6 +163,7 @@ export function createContextMenu(root: HTMLElement, hooks: ContextMenuHooks): C
         // Focusable and read out, with its reason, but it does nothing: a choice that is greyed says why.
         "aria-disabled": command.disabled === undefined ? undefined : "true",
       },
+      command.icon?.(),
       h("span", { class: "ed-menu-label" }, command.label ?? command.title),
       command.disabled !== undefined && h("span", { class: "ed-menu-why" }, command.disabled),
       // Written for the eye. A screen reader gets the keys from `aria-keyshortcuts`, after the name.
@@ -586,6 +592,24 @@ export function createContextMenu(root: HTMLElement, hooks: ContextMenuHooks): C
       // The browser may follow a key with a context menu event of its own, for the same key.
       if (opened) quietUntil = Date.now() + 500;
       return opened;
+    },
+    refresh() {
+      if (element.hidden || !pointed) return;
+      const was = document.activeElement;
+      const inside = was instanceof HTMLElement && element.contains(was);
+      const keyed = inside ? (was.dataset.command ?? was.dataset.submenu) : undefined;
+      const sub = element.querySelector<HTMLElement>(".ed-menu-parent[aria-expanded='true']")?.dataset
+        .submenu;
+      element.replaceChildren(...rows(menuFor(hooks.commands(pointed), pointed.target)));
+      place(Number.parseFloat(element.style.left), Number.parseFloat(element.style.top));
+      const parent = sub ? element.querySelector<HTMLElement>(`[data-submenu="${sub}"]`) : null;
+      if (parent) openSub(parent, false);
+      const again =
+        (keyed &&
+          element.querySelector<HTMLElement>(`[data-command="${keyed}"], [data-submenu="${keyed}"]`)) ||
+        (parent && keyed && itemsOf(panelOf(parent) as HTMLElement)[0]) ||
+        (inside ? element : undefined);
+      again?.focus({ preventScroll: true });
     },
     close: () => close(),
     destroy() {

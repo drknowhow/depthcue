@@ -14,6 +14,7 @@ import {
   THEMES,
 } from "@depthcue/core";
 import { firstPartyManifests, h } from "@depthcue/player";
+import { checkBrandLock } from "../../core/src/brand.ts";
 import { addedRow, CHART_ROWS_MAX, sortedRows } from "./chart.ts";
 import { removeSource, swapped } from "./cleanup.ts";
 import {
@@ -46,6 +47,8 @@ export interface PanelHost {
   readonly edits: Edits;
   scene(id: string): Scene | undefined;
   deck(): Session["doc"]["deck"];
+  /** The deck's brand, when it has one. */
+  brand?(): Session["doc"]["brand"];
   /** A click or a choice: applied, and a refusal said where the person is looking. True when it was applied. */
   run(ops: readonly Op[]): boolean;
   /** The files in the deck. */
@@ -69,6 +72,7 @@ export function panelHost(
     ...parts,
     scene: (id) => session.doc.scenes[id],
     deck: () => session.doc.deck,
+    brand: () => session.doc.brand,
     run(ops) {
       const result = parts.edits.act(ops);
       parts.problem(result.ok ? undefined : problemOf(result));
@@ -809,57 +813,79 @@ export function deckPanel(host: PanelHost): DeckPanel {
     ],
   );
 
+  // A brand that sets `lock` keeps its colors and fonts: the controls for them are off, with the refusal they would get.
+  const locked = (set: HTMLElement, why: string | undefined) => {
+    if (why) {
+      set.setAttribute("disabled", "");
+      set.append(h("p", { class: "ed-hint-text", "data-locked": "" }, why));
+    }
+    return set;
+  };
   const style = form(
     () => true,
-    () => [
-      selectField(host.edits, {
-        key: "panel:deck:theme",
-        label: "Preset",
-        options: THEMES.map((value) => ({ value, label: THEME_LABEL[value] })),
-        read: () => deck().theme,
-        commit: (value) => ({ op: "deck.set", set: { theme: value as (typeof THEMES)[number] } }),
-      }),
-      h(
-        "fieldset",
-        { class: "ed-colors" },
-        h("legend", { class: "ed-label" }, "Colors"),
-        h(
-          "p",
-          { class: "ed-hint-text" },
-          "A swatch changes one color of the preset. A color that would leave text hard to read is refused: to go dark, choose the Ink preset first.",
+    () => {
+      // The refusals `deck.set` would give a palette and a font pair, in that order, or none while the brand is open.
+      const [colors, fonts] = checkBrandLock(
+        { ...deck(), palette: {}, fonts: "modern" },
+        host.brand?.(),
+        "",
+      ).map((diagnostic) => diagnostic.message);
+      return [
+        selectField(host.edits, {
+          key: "panel:deck:theme",
+          label: "Preset",
+          options: THEMES.map((value) => ({ value, label: THEME_LABEL[value] })),
+          read: () => deck().theme,
+          commit: (value) => ({ op: "deck.set", set: { theme: value as (typeof THEMES)[number] } }),
+        }),
+        locked(
+          h(
+            "fieldset",
+            { class: "ed-colors" },
+            h("legend", { class: "ed-label" }, "Colors"),
+            h(
+              "p",
+              { class: "ed-hint-text" },
+              "A swatch changes one color of the preset. A color that would leave text hard to read is refused: to go dark, choose the Ink preset first.",
+            ),
+            ...PALETTE_COLORS.map((color) =>
+              colorField(host.edits, {
+                key: `panel:deck:palette:${color}`,
+                label: COLOR_LABEL[color],
+                read: () => styleOf(deck()).colors[color],
+                commit: (value) => setPalette({ ...palette(), [color]: value }),
+                changed: () => Object.hasOwn(palette(), color),
+                reset: () => setPalette(unpainted(color)),
+                problem: host.problem,
+              }),
+            ),
+            actionButton(
+              "Reset all colors",
+              () => {
+                if (Object.keys(palette()).length > 0) host.run([setPalette({})]);
+              },
+              { "data-field": "panel:deck:palette:reset" },
+            ),
+          ),
+          colors,
         ),
-        ...PALETTE_COLORS.map((color) =>
-          colorField(host.edits, {
-            key: `panel:deck:palette:${color}`,
-            label: COLOR_LABEL[color],
-            read: () => styleOf(deck()).colors[color],
-            commit: (value) => setPalette({ ...palette(), [color]: value }),
-            changed: () => Object.hasOwn(palette(), color),
-            reset: () => setPalette(unpainted(color)),
-            problem: host.problem,
+        locked(
+          choiceField(host.edits, {
+            key: "panel:deck:fonts",
+            label: "Fonts",
+            choices: FONT_PAIRS.map((pair) => ({
+              value: pair,
+              label: FONT_LABEL[pair].label,
+              detail: FONT_LABEL[pair].detail,
+              attributes: { "data-fonts": pair },
+            })),
+            read: () => styleOf(deck()).fonts,
+            commit: (value) => ({ op: "deck.set", set: { fonts: value as FontPair } }),
           }),
+          fonts,
         ),
-        actionButton(
-          "Reset all colors",
-          () => {
-            if (Object.keys(palette()).length > 0) host.run([setPalette({})]);
-          },
-          { "data-field": "panel:deck:palette:reset" },
-        ),
-      ),
-      choiceField(host.edits, {
-        key: "panel:deck:fonts",
-        label: "Fonts",
-        choices: FONT_PAIRS.map((pair) => ({
-          value: pair,
-          label: FONT_LABEL[pair].label,
-          detail: FONT_LABEL[pair].detail,
-          attributes: { "data-fonts": pair },
-        })),
-        read: () => styleOf(deck()).fonts,
-        commit: (value) => ({ op: "deck.set", set: { fonts: value as FontPair } }),
-      }),
-    ],
+      ];
+    },
   );
 
   const moduleSettings = form(
