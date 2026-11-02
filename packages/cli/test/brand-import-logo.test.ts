@@ -9,7 +9,7 @@ import {
   svgAroundJpeg,
   touchesEdge,
 } from "../src/brand-import/logo.ts";
-import { svgProblem } from "../src/brand-import/svg.ts";
+import { cssUrls, MAX_STYLE_LENGTH, svgProblem } from "../src/brand-import/svg.ts";
 import {
   DARK,
   EMF,
@@ -93,6 +93,67 @@ describe("svgProblem", () => {
   it("refuses an SVG that is not text it can read, instead of passing it", () => {
     expect(svgProblem("<svg")).toMatch(/not valid XML/);
     expect(svgProblem("")).toMatch(/not valid XML/);
+  });
+
+  // A pattern that backtracks took seconds over 64 KB of "url(" and minutes over a megabyte, holding the server.
+  it.each([
+    [
+      "a style sheet of unclosed url( near the limit",
+      `<style>${"url(".repeat(15_000)}</style>`,
+      /url\(\) this cannot read/,
+    ],
+    [
+      "a fill of a megabyte of unclosed url(",
+      `<rect fill="${"url(".repeat(262_144)}"/>`,
+      /url\(\) this cannot read/,
+    ],
+    [
+      "a fill of a megabyte of url (",
+      `<rect fill="${"url (".repeat(200_000)}"/>`,
+      /url\(\) this cannot read/,
+    ],
+    ["a style sheet of a megabyte", `<style>${"url(".repeat(262_144)}</style>`, /a style longer than 64 KB/],
+    [
+      "a style attribute of a megabyte",
+      `<rect style="${"url(".repeat(262_144)}"/>`,
+      /a style longer than 64 KB/,
+    ],
+  ])("refuses %s at once", (_, inside, problem) => {
+    const text = `<svg ${SVG_NS}>${inside}</svg>`;
+    const started = performance.now();
+    expect(svgProblem(text)).toMatch(problem);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it("refuses a megabyte of unclosed DOCTYPEs at once", () => {
+    const started = performance.now();
+    expect(svgProblem(`<svg ${SVG_NS}>${"<!DOCTYPE ".repeat(100_000)}`)).toMatch(/DOCTYPE/);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it("reads a style up to its limit, and not past it", () => {
+    const fill = (length: number) => `<svg ${SVG_NS}><style>${"a".repeat(length)}</style></svg>`;
+    expect(svgProblem(fill(MAX_STYLE_LENGTH))).toBeUndefined();
+    expect(svgProblem(fill(MAX_STYLE_LENGTH + 1))).toMatch(/longer than 64 KB/);
+    const attribute = `<svg ${SVG_NS}><rect style="${"a".repeat(MAX_STYLE_LENGTH + 1)}" d="M0 0"/></svg>`;
+    expect(svgProblem(attribute)).toMatch(/longer than 64 KB/);
+    // A path's data is not a style, and is as long as the drawing needs.
+    expect(svgProblem(`<svg ${SVG_NS}><path d="M0 0${" l1 1".repeat(40_000)}"/></svg>`)).toBeUndefined();
+  });
+});
+
+describe("cssUrls", () => {
+  it("finds each url() target, in any case, with its quotes and white space taken off", () => {
+    expect(cssUrls(`fill:url(#a); stroke: URL( "#b" ) ; x: Url ('#c')`)).toEqual(["#a", "#b", "#c"]);
+    expect(cssUrls("no links here, not even curl or url-ish")).toEqual([]);
+    expect(cssUrls("url()")).toEqual([""]);
+  });
+
+  it("cannot read a url( that never closes, or a quote that does not close", () => {
+    expect(cssUrls("fill:url(#a")).toBeUndefined();
+    expect(cssUrls(`fill:url("#a)`)).toBeUndefined();
+    expect(cssUrls(`fill:url("a)b")`)).toBeUndefined();
+    expect(cssUrls(`fill:url(a'b)`)).toBeUndefined();
   });
 });
 
