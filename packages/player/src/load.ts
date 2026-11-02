@@ -1,4 +1,4 @@
-import type { Deck, DeckLook, Scene } from "@depthcue/core";
+import type { Deck, PageLook, Scene } from "@depthcue/core";
 import { assetUrl } from "./safe.ts";
 
 /** A deck as the player reads it: the manifest, its scenes in listed order, and where assets resolve from. */
@@ -10,7 +10,7 @@ export interface PlayerSource {
    * How the deck looks, worked out beside the deck from its brand. Without it the deck is drawn in its theme, palette
    * and font pair alone, as a deck before schema 0.4 always is.
    */
-  look?: DeckLook;
+  look?: PageLook;
   /** JSON files the page already holds, by deck-relative path. An export embeds the cue maps this way. */
   files?: Readonly<Record<string, unknown>>;
 }
@@ -38,12 +38,12 @@ async function getJson(url: string, signal: AbortSignal | undefined): Promise<un
  * The deck's look from `look.json` beside it, or undefined when the server has none: a folder served as plain files, or
  * a deck with errors. Any other failure throws, so a reload that meets one keeps showing the last good deck.
  */
-async function getLook(url: string, signal: AbortSignal | undefined): Promise<DeckLook | undefined> {
+async function getLook(url: string, signal: AbortSignal | undefined): Promise<PageLook | undefined> {
   const response = await fetch(url, { cache: "no-cache", ...(signal ? { signal } : {}) });
   if (response.status === 404) return undefined;
   if (!response.ok) throw new Error(`${url} answered ${response.status}.`);
   try {
-    const look = (await response.json()) as DeckLook;
+    const look = (await response.json()) as PageLook;
     return typeof look === "object" && look !== null && "colors" in look ? look : undefined;
   } catch {
     // A static host that answers every address with its home page is not a server with a look to give.

@@ -1,4 +1,4 @@
-import type { Block, BlockStyle, DeckLook, Scene, Template, TemplateSlot } from "@depthcue/core";
+import type { Block, PageLook, PageSlot, PageStyle, PageTemplate, Scene } from "@depthcue/core";
 import { renderChart } from "./charts/draw.ts";
 import { h } from "./dom.ts";
 import { gatedIds } from "./model.ts";
@@ -15,7 +15,7 @@ export interface RenderContext {
    * How the deck looks: its templates, styles and chrome. Without it a scene is drawn from its layout alone, and a
    * template scene as a plain stack, so a deck read from plain files still shows everything it says.
    */
-  look?: DeckLook;
+  look?: PageLook;
   /** The scene's place in the deck, from 1, for the slide number the brand draws. */
   number?: number;
 }
@@ -38,8 +38,8 @@ const isStrong = (color?: string): boolean =>
 /** The template a scene names, from the look. */
 export const templateOf = (
   scene: Pick<Scene, "template">,
-  look: DeckLook | undefined,
-): Template | undefined =>
+  look: PageLook | undefined,
+): PageTemplate | undefined =>
   scene.template === undefined ? undefined : ownOf(look?.templates, scene.template);
 
 /**
@@ -203,7 +203,7 @@ interface Entry {
  * edge, radius and padding, and for text its tone, size and alignment. The block's own tone, size and align win. A fill
  * that is not one of the slide's own colors reverses the text on it, as a template's strong background does.
  */
-function dress(node: HTMLElement, style: BlockStyle, mine?: Partial<TextBlock>): void {
+function dress(node: HTMLElement, style: PageStyle, mine?: Partial<TextBlock>): void {
   const strong = isStrong(style.fill);
   if (mine) {
     const tone = mine.tone ?? style.tone ?? (strong ? "bg" : undefined);
@@ -221,7 +221,7 @@ function dress(node: HTMLElement, style: BlockStyle, mine?: Partial<TextBlock>):
 }
 
 /** The box a slot is, at its frame on the 16 by 9 slide, holding the nodes its blocks drew in block order. */
-function slotBox(slot: TemplateSlot, nodes: HTMLElement[]): HTMLElement {
+function slotBox(slot: PageSlot, nodes: HTMLElement[]): HTMLElement {
   return h(
     "div",
     {
@@ -244,7 +244,11 @@ function slotBox(slot: TemplateSlot, nodes: HTMLElement[]): HTMLElement {
  * own frame; one pinned with no slot floats over the template and is in no slot. A slot with nothing in it draws
  * nothing. What has no slot to go to, because the deck is not valid, follows in a plain stack rather than vanish.
  */
-function slotted(template: Template, entries: readonly Entry[], claim: HTMLElement | null): HTMLElement[] {
+function slotted(
+  template: PageTemplate,
+  entries: readonly Entry[],
+  claim: HTMLElement | null,
+): HTMLElement[] {
   // What no slot takes is held under "", which no slot is called, and follows in a plain stack.
   const held = new Map<string, HTMLElement[]>();
   const put = (id: string, node: HTMLElement | null) => node && held.set(id, [...(held.get(id) ?? []), node]);
@@ -267,7 +271,7 @@ function slotted(template: Template, entries: readonly Entry[], claim: HTMLEleme
  * the accent bar. A template says how much shows: all, the logo alone, or none. Only the logo is for a screen reader,
  * once, with the brand's words for it; the rest is decoration the reader is spared.
  */
-function renderChrome(look: DeckLook | undefined, template: Template | undefined, ctx: RenderContext) {
+function renderChrome(look: PageLook | undefined, template: PageTemplate | undefined, ctx: RenderContext) {
   const chrome = look?.chrome;
   const mode = template?.chrome;
   if (!chrome || mode === "none") return null;

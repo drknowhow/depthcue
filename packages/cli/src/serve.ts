@@ -4,11 +4,12 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { dirname, extname, join, resolve, sep } from "node:path";
-import { COMMENTS_FILE, lookOf, REVIEW_FILE } from "@depthcue/core";
-import { openDeck } from "./deck-api.ts";
+import { COMMENTS_FILE, pageLook, REVIEW_FILE } from "@depthcue/core";
 import { type EditContext, handleEditApi } from "./edit-api.ts";
 import { createLayoutChecker, type LayoutChecker } from "./edit-layout.ts";
 import { createLeaseRelay, RELAY_PREFIX } from "./lease-relay.ts";
+import { loadDeckDir } from "./loader.ts";
+import { lookOfFiles } from "./look.ts";
 
 export interface ServeOptions {
   /** The deck folder: deck.json, scenes/, assets/. */
@@ -90,8 +91,23 @@ const TYPES: Record<string, string> = {
  * The brand files a page may read, by path under brand/: its fonts, its logos and its images. The server answers only
  * these, and the export copies only these, so the two cannot disagree about what a page can reach.
  */
-export const BRAND_FILES =
+const BRAND_FILES =
   /^(fonts\/.+\.(woff2|woff|ttf|otf)|logos\/.+\.(svg|png)|images\/.+\.(jpg|jpeg|png|webp|svg))$/i;
+
+/**
+ * Whether a path under brand/ (decoded, as the server sees it, or as brand.json names it) is a file a page may read:
+ * one of the kinds above, in its own subfolder, with no way up or sideways in it. A path is decoded before it gets here,
+ * so "images/..%2fnotes.png" arrives as "images/../notes.png" and would stay inside brand/ yet leave the subfolder the
+ * kinds are tied to; a `.` or `..` part, an empty part, a backslash (a separator on Windows) or a NUL refuses it.
+ */
+export function isBrandFile(relative: string): boolean {
+  return (
+    BRAND_FILES.test(relative) &&
+    !relative.includes("\\") &&
+    !relative.includes("\0") &&
+    !relative.split("/").some((part) => part === "" || part === "." || part === "..")
+  );
+}
 
 const FAVICON =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='%23FF633F'/%3E%3C/svg%3E";
@@ -242,6 +258,8 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   /** The editor pages again, for the review. A page opened with `?comments=1` and `?review=1` is in both. */
   const reviewListeners = new Set<ServerResponse>();
   let boundPort = 0;
+  /** The last look.json that could be built, as text, for the moments when the folder's own cannot be. */
+  let lastLook: string | undefined;
 
   const origins = () =>
     LOOPBACK_NAMES.map((name) => `http://${name === "::1" ? "[::1]" : name}:${boundPort}`);
@@ -329,12 +347,20 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     }
 
     // How the deck looks, worked out here from its brand so the page needs no brand file and knows no built-in
-    // template. A deck with errors has no look: the page draws it from deck.json alone, as before.
+    // template, and cut to what the page reads. A scene with an error does not take it away: the look is built from a
+    // sound deck.json and brand alone. While either is broken, as in the middle of an edit, the last look that was
+    // good is served, so the cover and section slides keep their brand. A deck that never had one has none: the page
+    // draws it from deck.json alone, as before.
     if (path === "/look.json") {
-      const opened = openDeck(folder);
-      return opened.ok
-        ? send(response, 200, JSON.stringify(lookOf(opened.doc)), TYPES[".json"])
-        : send(response, 404, "Not found.");
+      try {
+        const look = lookOfFiles(loadDeckDir(folder));
+        if (look) lastLook = JSON.stringify(pageLook(look));
+      } catch {
+        // The folder could not be read just now; the last good look stands.
+      }
+      return lastLook === undefined
+        ? send(response, 404, "Not found.")
+        : send(response, 200, lastLook, TYPES[".json"]);
     }
 
     // Each kind of file is resolved inside its own root, so "/assets/../notes.txt" cannot reach a sibling file.
@@ -345,7 +371,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     else if (path.startsWith("/assets/"))
       file = inside(join(folder, "assets"), path.slice("/assets/".length));
     // Only the brand's fonts, logos and images; never brand.json or its templates, which are for the tools.
-    else if (path.startsWith("/brand/") && BRAND_FILES.test(path.slice("/brand/".length)))
+    else if (path.startsWith("/brand/") && isBrandFile(path.slice("/brand/".length)))
       file = inside(join(folder, "brand"), path.slice("/brand/".length));
     return file ? sendFile(request, response, file, FILE_POLICY) : send(response, 404, "Not found.");
   };

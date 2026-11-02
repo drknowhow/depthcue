@@ -4,7 +4,7 @@
  * what it returns, so the built-in registry never reaches the player's bundle.
  */
 import { type BrandPart, blockStylesOf, brandFilePath, templatesOf } from "./brand.ts";
-import type { DeckLook, LookFace } from "./exported.ts";
+import type { DeckLook, LookFace, PageLook } from "./exported.ts";
 import { own } from "./own.ts";
 import { styleOf } from "./style.ts";
 import type { BlockStyle, Brand, BrandFace, Deck, Scene, Template } from "./types.ts";
@@ -87,4 +87,33 @@ export function lookOf(source: LookSource): DeckLook {
     styles,
     templates,
   };
+}
+
+/** What a template, a slot or a style says that the player does not read: it is for the tools that fill a template. */
+const UNREAD = {
+  template: ["schemaVersion", "id", "name", "description"],
+  slot: ["accepts", "hint", "max", "required"],
+  style: ["name", "for"],
+} as const;
+
+const without = (value: object, keys: readonly string[]): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
+
+/**
+ * A look as the page carries it: the templates without their names, descriptions, hints, accepted kinds, limits and
+ * required marks, and the styles without their names and kinds, so a page holds what it draws with and no more. The
+ * list is of what is left out, so a field added later still reaches the page; `PageLook` is the type the player reads,
+ * and a test draws the same scenes from both.
+ */
+export function pageLook(look: DeckLook): PageLook {
+  const entries = <T>(set: Record<string, T>, keep: (value: T) => unknown) =>
+    Object.fromEntries(Object.entries(set).map(([id, value]) => [id, keep(value)]));
+  return {
+    ...look,
+    styles: entries(look.styles, (style) => without(style, UNREAD.style)),
+    templates: entries(look.templates, (template) => ({
+      ...without(template, UNREAD.template),
+      slots: template.slots.map((slot) => without(slot, UNREAD.slot)),
+    })),
+  } as PageLook;
 }
