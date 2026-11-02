@@ -41,20 +41,32 @@ function posix(dir: string, full: string): string {
 const hashes = new Map<string, { seen: string; hash: string }>();
 /** Far more brand files than a server opens at once; past it the cache starts again rather than grow. */
 const MAX_HASHES = 4096;
+/** Longer than the coarsest tick a file's times move in: FAT's two seconds. */
+const SETTLED_MS = 3000;
 
 /**
  * The sha256 of a file, as 64 hex characters. It is read again only when its size, its modified or changed time, or its
- * inode is not what they were at the last read, so a deck's fonts are hashed once per change, not once per request. A
- * file replaced by a rename, as every write here is, has a new inode and change time even within the same millisecond.
+ * inode is not what they were at the last read, so a deck's fonts are hashed once per change, not once per request.
+ *
+ * The key must hold all four. Size and modified time alone miss a file rewritten in place with other bytes of the same
+ * length and its modified time set back, as a copy that keeps times does: only its change time differs. A file
+ * replaced by a rename, as every write here is, has a new inode.
+ *
+ * Even all four miss a second change within the same tick of the file system's clock, which on Windows is up to 16 ms
+ * (two seconds for a modified time on FAT). So, as git does for a file it calls racily clean, the hash of a file whose
+ * times are that recent is not kept: it is read again on each call until the file has settled. `now` is when the file
+ * is read, a parameter only so a test can read as if later.
  */
-export function fileHash(full: string, stat: Stats = statSync(full)): string {
+export function fileHash(full: string, stat: Stats = statSync(full), now = Date.now()): string {
   const path = resolve(full);
   const seen = `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.ino}`;
   const known = hashes.get(path);
   if (known?.seen === seen) return known.hash;
   const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
-  if (hashes.size >= MAX_HASHES) hashes.clear();
-  hashes.set(path, { seen, hash });
+  if (now - Math.max(stat.mtimeMs, stat.ctimeMs) > SETTLED_MS) {
+    if (hashes.size >= MAX_HASHES) hashes.clear();
+    hashes.set(path, { seen, hash });
+  } else hashes.delete(path);
   return hash;
 }
 

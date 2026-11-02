@@ -176,7 +176,7 @@ export async function brandCommand(
       return unreadable(`${second} is not a folder.`);
     // The size is known before the file is read, so a file far past the limit is never read.
     if (file.size > brandFileLimit(flags.kind)) return printBrandFile(tooLarge(flags.kind), flags.json, io);
-    const outcome = addBrandFile(
+    const outcome = await addBrandFile(
       second,
       {
         kind: flags.kind,
@@ -202,7 +202,7 @@ export async function brandCommand(
       return 2;
     }
     return printBrandFile(
-      removeBrandFile(second, { path: first, baseRev: flags.baseRev }, "agent"),
+      await removeBrandFile(second, { path: first, baseRev: flags.baseRev }, "agent"),
       flags.json,
       io,
     );

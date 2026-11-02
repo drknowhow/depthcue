@@ -283,7 +283,7 @@ async function uploadBrandFile(
     return send(response, 400, { ok: false, error: "bad-request", message: "The upload was interrupted." });
   }
   const baseRev = url.searchParams.get("baseRev");
-  const outcome = addBrandFile(
+  const outcome = await addBrandFile(
     ctx.folder,
     {
       kind,
@@ -315,7 +315,7 @@ async function removeBrandFileRoute(request: IncomingMessage, response: ServerRe
       message: 'Send { path: "fonts/<name>", baseRev: string }.',
     });
   }
-  const outcome = removeBrandFile(ctx.folder, { path: body.path, baseRev: body.baseRev }, "person");
+  const outcome = await removeBrandFile(ctx.folder, { path: body.path, baseRev: body.baseRev }, "person");
   return send(response, outcome.ok ? 200 : outcome.status, brandFileBody(outcome));
 }
 

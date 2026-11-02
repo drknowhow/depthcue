@@ -26,6 +26,9 @@ const decks = fileURLToPath(new URL("../../../fixtures/decks", import.meta.url))
 const hostile = (name: string) => fileURLToPath(new URL(`./fixtures/hostile/${name}`, import.meta.url));
 const TIDEWELL_BOLD = readFileSync(join(decks, "tidewell-press/brand/fonts/TidewellText-Bold.woff2"));
 const HARBOR_LOGO = readFileSync(join(decks, "v0-4-brand/brand/logos/harbor.svg"));
+const SPACE_GROTESK = readFileSync(
+  fileURLToPath(new URL("./fixtures/fonts/SpaceGrotesk-Regular.ttf", import.meta.url)),
+);
 const PNG = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   Buffer.alloc(64, 7),
@@ -162,6 +165,8 @@ describe("the brand file upload", () => {
     expect(answer.json).toMatchObject({
       ok: true,
       path: "fonts/TidewellText-Bold.woff2",
+      file: "brand/fonts/TidewellText-Bold.woff2",
+      hash: loadDeckDir(folder).text["brand/fonts/TidewellText-Bold.woff2"],
       kind: "font",
       sniffed: { format: "woff2", weight: 700, italic: false },
       written: true,
@@ -380,6 +385,54 @@ describe("the brand file upload", () => {
     expect(readdirSync(join(folder, "brand/logos"))).toEqual(["harbor.svg"]);
   });
 
+  it("never writes over a file brand.json cannot name that differs only in letter case", async () => {
+    // As Windows names its fonts. brand.json cannot name it, so it is no file of the brand's to replace.
+    writeFileSync(join(folder, "brand/fonts/ARIAL.TTF"), Buffer.concat([SPACE_GROTESK, Buffer.alloc(4)]));
+    const before = snapshot(folder);
+    const rev = revOf(folder);
+    for (const query of [
+      { kind: "font", name: "arial.ttf" },
+      { kind: "font", name: "Arial.ttf", replace: "1", baseRev: rev },
+    ]) {
+      const answer = await upload(SPACE_GROTESK, query);
+      expect(answer.status, JSON.stringify(answer.json)).toBe(409);
+      expect(answer.json).toMatchObject({ error: "exists", existing: "fonts/ARIAL.TTF" });
+      expect(answer.json.message).toContain("Rename or remove it first.");
+    }
+    const file = join(root, "arial.ttf");
+    writeFileSync(file, SPACE_GROTESK);
+    const added = await cli("brand", "add", file, folder, "--kind", "font", "--json");
+    expect(added.code).toBe(1);
+    expect(JSON.parse(added.out)).toMatchObject({ error: "exists", existing: "fonts/ARIAL.TTF" });
+    // Nor is it removed by a spelling brand.json can name.
+    expect((await removal({ path: "fonts/arial.ttf", baseRev: rev })).json.error).toBe("bad-request");
+    expect(snapshot(folder)).toEqual(before);
+    expect(revOf(folder)).toBe(rev);
+  });
+
+  it("checks the bytes of a file there under another case, not what the deck's listing says of it", async () => {
+    // Fonts/HarborSans-Bold.woff2 in other letters, with other bytes: refused until replace names the revision.
+    const answer = await upload(TIDEWELL_BOLD, { kind: "font", name: "harborsans-bold.woff2" });
+    expect(answer).toMatchObject({
+      status: 409,
+      json: { error: "exists", existing: "fonts/HarborSans-Bold.woff2" },
+    });
+    const same = await upload(readFileSync(join(folder, "brand/fonts/HarborSans-Bold.woff2")), {
+      kind: "font",
+      name: "HARBORSANS-BOLD.woff2",
+    });
+    expect(same.json).toMatchObject({ ok: true, written: false, path: "fonts/HarborSans-Bold.woff2" });
+    const replaced = await upload(TIDEWELL_BOLD, {
+      kind: "font",
+      name: "harborsans-bold.woff2",
+      replace: "1",
+      baseRev: revOf(folder),
+    });
+    expect(replaced.json).toMatchObject({ ok: true, replaced: true, path: "fonts/HarborSans-Bold.woff2" });
+    // The revision it gives is the deck's as read again from disk.
+    expect(replaced.json.rev).toBe(revOf(folder));
+  });
+
   it("refuses an upload without the editor's token", async () => {
     const answer = await call("/_depthcue/api/brand-file?kind=logo&name=x.png", "POST", PNG, {
       "X-Depthcue-Token": "wrong",
@@ -402,6 +455,24 @@ describe("the brand file upload", () => {
     const answer = await upload(PNG, { kind: "logo", name: "x.png" });
     expect(answer.json.error).toBe("linked-brand-folder");
     expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it("refuses to write through a brand folder that is a link, even to a folder inside the deck", async () => {
+    const inside = join(folder, "assets", "logos-elsewhere");
+    mkdirSync(inside, { recursive: true });
+    rmSync(join(folder, "brand/logos"), { recursive: true });
+    try {
+      symlinkSync(inside, join(folder, "brand/logos"), "junction");
+    } catch (error) {
+      if (process.platform === "win32") throw error;
+      return;
+    }
+    const answer = await upload(PNG, { kind: "logo", name: "x.png" });
+    expect(answer.json).toMatchObject({ error: "linked-brand-folder" });
+    expect(answer.json.message).toContain("brand/logos/ is a link to another folder");
+    expect(readdirSync(inside)).toEqual([]);
+    const removed = await removal({ path: "logos/x.png", baseRev: "0000000000000000" });
+    expect(removed.json.error).toBe("linked-brand-folder");
   });
 });
 
@@ -445,6 +516,8 @@ describe("removing a brand file", () => {
     expect(removed.json).toMatchObject({
       ok: true,
       path: "images/sea.png",
+      file: "brand/images/sea.png",
+      hash: null,
       removed: true,
       prevRev: added.json.rev,
     });

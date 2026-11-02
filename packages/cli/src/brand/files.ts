@@ -25,7 +25,7 @@ import {
 import { cssUrls, MAX_STYLE_LENGTH, svgProblem } from "../brand-import/svg.ts";
 import { parseXmlCounted, XmlError, type XmlNode, XmlTooLarge } from "../brand-import/xml.ts";
 import { MAX_ASSET_BYTES, sniffImage } from "../edit-api.ts";
-import { isNameableBrandFile, loadDeckDir } from "../loader.ts";
+import { fileHash, isNameableBrandFile, loadDeckDir } from "../loader.ts";
 import { FONT_LIMITS, FontError, factsOf, fontKind, unpackFont } from "../pptx/sfnt.ts";
 import { recordAgentWrite, recordPersonWrite } from "../review-file.ts";
 import { sha256 } from "./record.ts";
@@ -45,12 +45,20 @@ const FORMATS: Readonly<Record<BrandFileKind, readonly string[]>> = {
 export const MAX_SVG_BYTES = 1024 * 1024;
 export const MAX_SVG_ELEMENTS = 20_000;
 /**
- * Real WOFF2 fonts state tables about three times the size of their compressed data. One that states a hundred times
- * more, and over a megabyte, is refused before it is decompressed, so a bomb costs nothing to turn away.
+ * Real WOFF and WOFF2 fonts state tables two to four times the size of the file. One that states more than twenty times
+ * its file's length, and over a megabyte, is refused before anything is decompressed, so a bomb costs nothing to turn
+ * away. The measure is the file's own length: the compressed size a WOFF2 header gives is only a claim.
  */
-const MAX_WOFF2_RATIO = 100;
+export const MAX_FONT_RATIO = 20;
+/** What a font needs to be one a slide can use: its names, header, character map, glyph count and line metrics. */
+const FONT_TABLES = ["name", "head", "cmap", "maxp", "hhea"] as const;
 /** Longer than any font or logo name; the whole path stays under brand.json's limit of 200. */
 const MAX_STEM = 100;
+/** Longer than any file name a file system keeps; a longer one is refused before it is cleaned. */
+const MAX_NAME = 255;
+/** A temporary file older than this is left from a write that never finished: none takes more than seconds. */
+const STALE_TEMPORARY_MS = 10 * 60 * 1000;
+const TEMPORARY = /^\.depthcue-brand-.*\.tmp$/;
 
 /** The byte limit of an upload of this kind. */
 export const brandFileLimit = (kind: BrandFileKind): number =>
@@ -102,9 +110,27 @@ const STATUS: Readonly<Record<BrandFileCode, number>> = {
   "write-failed": 500,
 };
 
-/** The exit code of a refusal from the command line: 3 when the deck moved on, so a caller reads it again and retries. */
-export const brandFileExit = (code: BrandFileCode): number =>
-  code === "stale" ? 3 : STATUS[code] >= 422 && code !== "in-use" && code !== "unsafe-svg" ? 2 : 1;
+/**
+ * The exit code of a refusal from the command line, as `brand use` gives the same failures: 3 when the deck moved on, so
+ * a caller reads it again and retries; 2 when the deck or its folder is what stops it (errors in the deck, a linked
+ * brand folder, a failed write); 1 for anything wrong with the file or the request.
+ */
+const EXIT: Readonly<Record<BrandFileCode, number>> = {
+  "bad-request": 1,
+  "bad-name": 1,
+  "too-large": 1,
+  "not-a-font": 1,
+  unsupported: 1,
+  "unsafe-svg": 1,
+  "unreadable-deck": 2,
+  "linked-brand-folder": 2,
+  exists: 1,
+  stale: 3,
+  "not-found": 1,
+  "in-use": 1,
+  "write-failed": 2,
+};
+export const brandFileExit = (code: BrandFileCode): number => EXIT[code];
 
 /** Where a brand.json or a template names a file. */
 export interface Naming {
@@ -130,6 +156,12 @@ export interface BrandFileAdded {
   ok: true;
   /** The file's path in brand/, which is how brand.json names it. */
   path: string;
+  /**
+   * The file's path in the deck and its sha256, as the deck's files carry them: what an open editor passes to its
+   * session's `brandFile` so its document and revision count the file as the disk now does.
+   */
+  file: string;
+  hash: string;
   kind: BrandFileKind;
   sniffed: Sniffed;
   bytes: number;
@@ -148,6 +180,9 @@ export interface BrandFileAdded {
 export interface BrandFileRemoved {
   ok: true;
   path: string;
+  /** As for an upload, with no hash: the file is gone. */
+  file: string;
+  hash: null;
   removed: true;
   prevRev: string;
   rev: string;
@@ -165,7 +200,10 @@ const refuse = (
 
 /** The refusal of a file past its kind's limit, which the route also gives when the body runs past it. */
 export const tooLarge = (kind: BrandFileKind): BrandFileRefusal =>
-  refuse("too-large", `A ${kind} can be up to ${brandFileLimit(kind) / 1024 / 1024} MB. Nothing was added.`);
+  refuse(
+    "too-large",
+    `${kind === "image" ? "An" : "A"} ${kind} can be up to ${brandFileLimit(kind) / 1024 / 1024} MB. Nothing was added.`,
+  );
 
 /** An outcome as the route sends it and `depthcue brand add/remove --json` prints it: the HTTP status left out. */
 export const brandFileBody = (
@@ -184,7 +222,10 @@ export const brandFileBody = (
  * the name is one Windows keeps for a device.
  */
 export function storedName(original: string, format: string): { name: string } | { problem: string } {
-  const base = original.split(/[\\/]/).pop() ?? "";
+  const base = original.slice(Math.max(original.lastIndexOf("/"), original.lastIndexOf("\\")) + 1);
+  if (base.length > MAX_NAME) {
+    return { problem: `The name is ${base.length} characters long; a file's name can be up to ${MAX_NAME}.` };
+  }
   const stem = base
     .replace(/\.[^.]*$/, "")
     .replace(/[^A-Za-z0-9._-]+/g, "-")
@@ -212,12 +253,26 @@ const shown = (value: string): string => {
 
 // ---------------------------------------------------------------------------------------------------------- sniffing
 
-/** The tables a WOFF2 file states, added up, and its compressed data's size, read without decompressing anything. */
-function woff2Stated(bytes: Uint8Array): { stated: number; compressed: number } | undefined {
-  if (bytes.length < 48) return undefined;
+/**
+ * What a WOFF or WOFF2 file says its tables unpack to, added up, read from its table list without decompressing
+ * anything: what the unpacking would make. Undefined for a TrueType or OpenType file, whose tables are parts of the file
+ * itself, and for a list that cannot be read, which the unpacking then refuses.
+ */
+export function statedSize(bytes: Uint8Array): number | undefined {
   const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const kind = fontKind(bytes);
+  if (kind === "woff") {
+    if (bytes.length < 44) return undefined;
+    let stated = 0;
+    for (let i = 0, count = data.getUint16(12); i < count; i++) {
+      const at = 44 + i * 20;
+      if (at + 20 > bytes.length) return undefined;
+      stated += data.getUint32(at + 12);
+    }
+    return stated;
+  }
+  if (kind !== "woff2" || bytes.length < 48) return undefined;
   const count = data.getUint16(12);
-  const compressed = data.getUint32(20);
   let at = 48;
   const base128 = (): number | undefined => {
     let value = 0;
@@ -244,24 +299,32 @@ function woff2Stated(bytes: Uint8Array): { stated: number; compressed: number } 
     if (length === undefined) return undefined;
     stated += length;
   }
-  return { stated, compressed };
+  return stated;
 }
 
+/**
+ * What the bytes are as a font, or why they are not one. A WOFF or WOFF2 that states tables far larger than the file is
+ * refused before it is unpacked. Once unpacked, a font must have the tables a slide needs and name its family: a
+ * TrueType header with no tables after it is twelve bytes, not a font.
+ */
 function sniffFont(bytes: Uint8Array): Sniffed | string {
   const format = fontKind(bytes);
   if (format === "unknown") return "The file is not a font (TrueType, OpenType, WOFF or WOFF2).";
-  if (format === "woff2") {
-    const stated = woff2Stated(bytes);
-    if (
-      stated &&
-      stated.stated > 1024 * 1024 &&
-      stated.stated > MAX_WOFF2_RATIO * Math.max(1, stated.compressed)
-    ) {
-      return "The WOFF2 file states tables far larger than its data could hold, which no font does.";
-    }
+  const stated = statedSize(bytes);
+  if (stated !== undefined && stated > 1024 * 1024 && stated > MAX_FONT_RATIO * bytes.length) {
+    return `The ${format.toUpperCase()} file states tables ${Math.floor(stated / bytes.length)} times its own size, which no font does.`;
   }
   try {
-    const facts = factsOf(unpackFont(bytes));
+    const font = unpackFont(bytes);
+    const missing: string[] = FONT_TABLES.filter((tag) => !font.tables.has(tag));
+    const has = (tag: string) => font.tables.has(tag);
+    if (!((has("glyf") && has("loca")) || has("CFF ") || has("CFF2")))
+      missing.push("outlines (glyf and loca, or CFF)");
+    if (missing.length > 0) {
+      return `The font has no ${missing.join(", ")} table${missing.length > 1 ? "s" : ""}, which every font a slide can use has.`;
+    }
+    const facts = factsOf(font);
+    if (facts.family.trim() === "") return "The font names no family, so a brand could not name it.";
     return { format, family: facts.family, style: facts.style, weight: facts.weight, italic: facts.italic };
   } catch (error) {
     // The guard's own words for a font it refuses; anything else it threw is a font it could not read.
@@ -324,7 +387,9 @@ export function strictSvg(bytes: Uint8Array): { elements: number } | { problem: 
     }
     for (const [attribute, value] of Object.entries(node.attrs)) {
       const local = attribute.slice(attribute.lastIndexOf(":") + 1).toLowerCase();
-      if (local.startsWith("on")) return { problem: `an event handler ("${shown(attribute)}")` };
+      if (local.startsWith("on")) {
+        return { problem: `an event handler attribute ("${shown(attribute)}"), which runs script` };
+      }
       if (local === "href" && !value.trim().startsWith("#")) {
         return { problem: `a link to "${shown(value)}", which is not a place in the file` };
       }
@@ -343,7 +408,8 @@ export function strictSvg(bytes: Uint8Array): { elements: number } | { problem: 
 const looksLikeMarkup = (bytes: Uint8Array): boolean =>
   /^(﻿)?\s*</.test(Buffer.from(bytes.subarray(0, 64)).toString("utf8"));
 
-function sniff(kind: BrandFileKind, bytes: Uint8Array): Sniffed | BrandFileRefusal {
+/** What the bytes are as a file of this kind, or the refusal of them. */
+export function sniff(kind: BrandFileKind, bytes: Uint8Array): Sniffed | BrandFileRefusal {
   if (kind === "font") {
     const found = sniffFont(bytes);
     return typeof found === "string" ? refuse("not-a-font", `${found} Nothing was added.`) : found;
@@ -383,7 +449,7 @@ function folderProblem(deck: string, folder: string): string | undefined {
     const found = lstatSync(full, { throwIfNoEntry: false });
     if (found === undefined) return undefined;
     if (found.isSymbolicLink() || !realpathSync(full).startsWith(root + sep)) {
-      return `${part}/ is a link to a folder outside the deck, so writing there would change files elsewhere. Replace the link with a copy of the folder.`;
+      return `${part}/ is a link to another folder, so writing there would change files that are not the brand's. Replace the link with a copy of the folder.`;
     }
     if (!found.isDirectory()) return `${part} is not a folder.`;
   }
@@ -420,12 +486,13 @@ export function namings(doc: Doc, path: string): Naming[] {
   return out;
 }
 
-const sleep = (ms: number): void => {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-};
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Retries a step a reader of the file can block on Windows for a moment: a rename over it, or its removal. */
-function retried(step: () => void): void {
+/**
+ * Retries a step a reader of the file can block on Windows for a moment: a rename over it, or its removal. It waits
+ * between tries with a timer, so the server goes on answering meanwhile.
+ */
+async function retried(step: () => void): Promise<void> {
   for (let tries = 0; ; tries++) {
     try {
       step();
@@ -433,20 +500,39 @@ function retried(step: () => void): void {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (tries >= 5 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) throw error;
-      sleep(20 * (tries + 1));
+      await pause(20 * (tries + 1));
     }
   }
 }
 
 /**
- * Writes the file whole or not at all: into a temporary file at the deck's top, outside brand/ so that nothing reads it
- * half written as a font or a logo, then renamed into place.
+ * Removes the temporary files at the deck's top that a write left when its process ended between writing and renaming:
+ * named `.depthcue-brand-*.tmp` and older than any write takes, so one being written now is left alone.
  */
-function writeWhole(deck: string, target: string, bytes: Uint8Array): void {
+export function sweepTemporaries(deck: string, now = Date.now()): void {
+  let names: string[];
+  try {
+    names = readdirSync(deck);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!TEMPORARY.test(name)) continue;
+    const full = join(deck, name);
+    const found = lstatSync(full, { throwIfNoEntry: false });
+    if (found?.isFile() && now - found.mtimeMs > STALE_TEMPORARY_MS) rmSync(full, { force: true });
+  }
+}
+
+/**
+ * Writes the file whole or not at all: into a temporary file at the deck's top, outside brand/ so that nothing reads it
+ * half written as a font or a logo, then renamed into place. One a crash leaves behind, sweepTemporaries removes.
+ */
+async function writeWhole(deck: string, target: string, bytes: Uint8Array): Promise<void> {
   const temporary = join(deck, `.depthcue-brand-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
   try {
     writeFileSync(temporary, bytes, { flag: "wx" });
-    retried(() => renameSync(temporary, target));
+    await retried(() => renameSync(temporary, target));
   } catch (error) {
     rmSync(temporary, { force: true });
     throw error;
@@ -465,6 +551,9 @@ function withFile(files: DeckFiles, path: string, hash: string | undefined): Dec
   return listed.length > 0 ? { ...files, text, brandFiles: listed } : { text, assets: files.assets };
 }
 
+/** The deck as it is on disk now, read again after a write: its revision is the one the next save or apply names. */
+const reread = (deck: string, expected: Doc): Doc => loadDoc(loadDeckDir(deck)).doc ?? expected;
+
 const record = (writer: Writer, deck: string, before: Doc, after: Doc): Diagnostic[] => {
   if (writer === "agent") return recordAgentWrite(deck, before, after);
   recordPersonWrite(deck, before, after);
@@ -472,6 +561,19 @@ const record = (writer: Writer, deck: string, before: Doc, after: Doc): Diagnost
 };
 
 const errors = (diagnostics: readonly Diagnostic[]) => diagnostics.filter((d) => d.severity === "error");
+
+let queue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Runs `step` once every step queued before it has finished, after giving the event loop a turn. Every add and removal
+ * in this process goes through it, so two uploads never interleave their reads and writes of the deck, and fonts sent
+ * together are unpacked one at a time, with the server answering other requests between them.
+ */
+export function oneAtATime<T>(step: () => T | Promise<T>): Promise<T> {
+  const turn = queue.then(() => new Promise<void>((resolve) => setImmediate(resolve))).then(step);
+  queue = turn.catch(() => undefined);
+  return turn;
+}
 
 export interface AddRequest {
   kind: BrandFileKind;
@@ -489,7 +591,15 @@ export function addBrandFile(
   deck: string,
   request: AddRequest,
   writer: Writer,
-): BrandFileAdded | BrandFileRefusal {
+): Promise<BrandFileAdded | BrandFileRefusal> {
+  return oneAtATime(() => add(deck, request, writer));
+}
+
+async function add(
+  deck: string,
+  request: AddRequest,
+  writer: Writer,
+): Promise<BrandFileAdded | BrandFileRefusal> {
   const { kind, bytes } = request;
   if (bytes.length === 0) return refuse("bad-request", "The file is empty. Nothing was added.");
   if (bytes.length > brandFileLimit(kind)) return tooLarge(kind);
@@ -500,22 +610,33 @@ export function addBrandFile(
   const folder = FOLDER[kind];
   const blocked = folderProblem(deck, folder);
   if (blocked !== undefined) return refuse("linked-brand-folder", `${blocked} Nothing was added.`);
+  sweepTemporaries(deck);
 
-  // A file there under the same name in other letters is the same file where case does not count, and is kept by its name.
+  // A file there under the same name in other letters is the same file where case does not count, and is kept by its
+  // name. One under a name brand.json cannot name (ARIAL.TTF, as Windows names its fonts) is no file of the brand's:
+  // nothing is written over it, and the answer never names a path brand.json cannot.
   const there = sameName(deck, folder, named.name);
+  if (there !== undefined && !isNameableBrandFile(`${folder}/${there}`)) {
+    return refuse(
+      "exists",
+      `${BRAND_DIR}/${folder}/${there} is in the deck under a name brand.json cannot name, and differs from "${named.name}" only in letter case. Rename or remove it first. Nothing was added.`,
+      { existing: `${folder}/${there}` },
+    );
+  }
   const name = there ?? named.name;
   const relative = `${folder}/${name}`;
   const path = `${BRAND_DIR}/${relative}`;
   const target = join(deck, BRAND_DIR, folder, name);
   const hash = sha256(bytes);
-  const files = loadDeckDir(deck);
-  const before = loadDoc(files);
-  const prevRev = before.doc ? revisionOf(before.doc) : null;
   const found = there === undefined ? undefined : lstatSync(target);
   if (found !== undefined && !found.isFile()) {
     return refuse("bad-name", `${path} is in the deck and is not a plain file, so it was left alone.`);
   }
-  const current = found === undefined ? undefined : files.text[path];
+  // The bytes there now, hashed from the file itself.
+  const current = found === undefined ? undefined : fileHash(target, found);
+  const files = loadDeckDir(deck);
+  const before = loadDoc(files);
+  const prevRev = before.doc ? revisionOf(before.doc) : null;
   const added = (
     written: boolean,
     replaced: boolean,
@@ -524,6 +645,8 @@ export function addBrandFile(
   ): BrandFileAdded => ({
     ok: true,
     path: relative,
+    file: path,
+    hash,
     kind,
     sniffed,
     bytes: bytes.length,
@@ -576,15 +699,16 @@ export function addBrandFile(
   }
   try {
     mkdirSync(join(deck, BRAND_DIR, folder), { recursive: true });
-    writeWhole(deck, target, bytes);
+    await writeWhole(deck, target, bytes);
   } catch (error) {
     return refuse(
       "write-failed",
       `${path} could not be written: ${(error as Error).message} Nothing was added.`,
     );
   }
-  const diagnostics = before.doc === null ? [] : record(writer, deck, before.doc, after.doc);
-  return added(true, current !== undefined, revisionOf(after.doc), diagnostics);
+  const now = reread(deck, after.doc);
+  const diagnostics = before.doc === null ? [] : record(writer, deck, before.doc, now);
+  return added(true, current !== undefined, revisionOf(now), diagnostics);
 }
 
 export interface RemoveRequest {
@@ -598,7 +722,15 @@ export function removeBrandFile(
   deck: string,
   request: RemoveRequest,
   writer: Writer,
-): BrandFileRemoved | BrandFileRefusal {
+): Promise<BrandFileRemoved | BrandFileRefusal> {
+  return oneAtATime(() => remove(deck, request, writer));
+}
+
+async function remove(
+  deck: string,
+  request: RemoveRequest,
+  writer: Writer,
+): Promise<BrandFileRemoved | BrandFileRefusal> {
   const given = request.path.startsWith(`${BRAND_DIR}/`)
     ? request.path.slice(BRAND_DIR.length + 1)
     : request.path;
@@ -617,8 +749,8 @@ export function removeBrandFile(
   const relative = `${folder}/${name}`;
   const path = `${BRAND_DIR}/${relative}`;
   const target = join(deck, BRAND_DIR, folder, name);
-  if (!lstatSync(target).isFile()) {
-    return refuse("bad-request", `${path} is not a plain file, so it was left alone.`);
+  if (!isNameableBrandFile(relative) || !lstatSync(target).isFile()) {
+    return refuse("bad-request", `${path} is not a brand file brand.json can name, so it was left alone.`);
   }
   const files = loadDeckDir(deck);
   const before = loadDoc(files);
@@ -652,16 +784,19 @@ export function removeBrandFile(
     });
   }
   try {
-    retried(() => rmSync(target));
+    await retried(() => rmSync(target));
   } catch (error) {
     return refuse("write-failed", `${path} could not be removed: ${(error as Error).message}`);
   }
+  const now = reread(deck, after.doc);
   return {
     ok: true,
     path: relative,
+    file: path,
+    hash: null,
     removed: true,
     prevRev,
-    rev: revisionOf(after.doc),
-    diagnostics: record(writer, deck, before.doc, after.doc),
+    rev: revisionOf(now),
+    diagnostics: record(writer, deck, before.doc, now),
   };
 }
