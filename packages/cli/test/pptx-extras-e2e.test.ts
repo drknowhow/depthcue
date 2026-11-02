@@ -884,7 +884,9 @@ describe("the export call on the live server", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
-// LibreOffice, where it is installed: another reader of the file must find one page per slide.
+// LibreOffice, when asked for with DEPTHCUE_LIBREOFFICE=1 and installed: another reader of the file must find one page
+// per slide. It is not run by default because LibreOffice running beside the editor's real-browser tests on Windows makes
+// edit-e2e's "moves freely while Alt is held" fail (77 conversions beside it failed it; 16 busy processes did not).
 // ---------------------------------------------------------------------------------------------------------------------
 
 const SOFFICE = [
@@ -911,7 +913,7 @@ function pdfPages(file: string): number {
 
 describe("in LibreOffice", () => {
   it("opens the branded file and the stepped file with one page per slide", async ({ skip }) => {
-    if (!SOFFICE) return skip();
+    if (process.env.DEPTHCUE_LIBREOFFICE !== "1" || !SOFFICE) return skip();
     const { out } = await brandFile();
     expect(pdfPages(out)).toBe(3);
     const deck = copyDeck("demo");

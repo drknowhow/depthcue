@@ -468,8 +468,10 @@ Found, not fixed (older than the brand work):
   the page numbers the list, and the foot line's label and list keep to one line.
 - **Checked.** Every file was opened in LibreOffice and turned to page images, one page per slide, compared with the
   player's: the brand deck, the demo, the demo in picture mode and with steps, and v0-3. LibreOffice draws the mono
-  "Sources" label in another face, so it wraps there, as it did before this step. The e2e file converts the brand and
-  stepped files where LibreOffice is installed and counts the pages. PowerPoint itself is the conductor's check.
+  "Sources" label in another face, so it wraps there, as it did before this step. With `DEPTHCUE_LIBREOFFICE=1` the e2e
+  file converts the brand and stepped files and counts the pages. It is off by default: LibreOffice running beside the
+  editor's real-browser tests on Windows fails edit-e2e's Alt-drag test, which plain CPU load does not. PowerPoint itself
+  is the conductor's check.
 - **Sizes.** No budget row moved: the work is in the CLI and the MCP server.
 - **Risks.** The video goes in through pptxgenjs `addMedia`, whose shape ids the package step renumbers, and
   LibreOffice cannot say whether PowerPoint plays it. The fonts are embedded whole, not subset. Embedding a face whose
