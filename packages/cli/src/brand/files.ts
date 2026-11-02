@@ -22,7 +22,7 @@ import {
   revisionOf,
   templatePath,
 } from "@depthcue/core";
-import { svgProblem } from "../brand-import/svg.ts";
+import { cssUrls, MAX_STYLE_LENGTH, svgProblem } from "../brand-import/svg.ts";
 import { parseXmlCounted, XmlError, type XmlNode, XmlTooLarge } from "../brand-import/xml.ts";
 import { MAX_ASSET_BYTES, sniffImage } from "../edit-api.ts";
 import { isNameableBrandFile, loadDeckDir } from "../loader.ts";
@@ -269,17 +269,20 @@ function sniffFont(bytes: Uint8Array): Sniffed | string {
   }
 }
 
-const CSS_URL = /url\(\s*(["']?)([^"')]*)\1\s*\)/gi;
-
-/** What a piece of CSS loads that is not a place in the file, as a phrase, or undefined. */
+/**
+ * What a piece of CSS loads that is not a place in the file, as a phrase, or undefined. The url() targets are found by
+ * index in one pass (see cssUrls), since a pattern for them backtracks over a run of unclosed `url(`.
+ */
 function cssProblem(css: string): string | undefined {
-  for (const match of css.matchAll(CSS_URL)) {
-    const target = (match[2] ?? "").trim();
+  const targets = cssUrls(css);
+  if (targets === undefined) return "a url() that cannot be read";
+  for (const target of targets) {
     if (!target.startsWith("#")) return `a url() to "${shown(target)}", which is not a place in the file`;
   }
-  if (/url\s*\(/i.test(css.replace(CSS_URL, ""))) return "a url() that cannot be read";
   return undefined;
 }
+
+const TOO_LONG_STYLE = `a style longer than ${MAX_STYLE_LENGTH / 1024} KB, which no drawing needs`;
 
 /**
  * What is wrong with an SVG for a brand, as a phrase that follows "The SVG has", or the number of its elements. Read
@@ -313,6 +316,8 @@ export function strictSvg(bytes: Uint8Array): { elements: number } | { problem: 
     const name = node.name.toLowerCase();
     if (name === "script" || name === "foreignobject") return { problem: `a "${shown(node.name)}" element` };
     if (name === "style") {
+      // The length first, so nothing searches a style made to be long.
+      if (node.text.length > MAX_STYLE_LENGTH) return { problem: TOO_LONG_STYLE };
       if (/@import/i.test(node.text)) return { problem: "an @import in a style element" };
       const problem = cssProblem(node.text);
       if (problem) return { problem };
@@ -323,6 +328,8 @@ export function strictSvg(bytes: Uint8Array): { elements: number } | { problem: 
       if (local === "href" && !value.trim().startsWith("#")) {
         return { problem: `a link to "${shown(value)}", which is not a place in the file` };
       }
+      // A path's data is as long as the drawing needs, so only a style attribute has a length limit.
+      if (local === "style" && value.length > MAX_STYLE_LENGTH) return { problem: TOO_LONG_STYLE };
       const problem = cssProblem(value);
       if (problem) return { problem };
     }

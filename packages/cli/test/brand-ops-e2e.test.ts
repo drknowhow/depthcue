@@ -254,6 +254,26 @@ describe("the brand file upload", () => {
     });
   });
 
+  it("refuses a megabyte of unclosed url( at once, and answers the editor meanwhile", async () => {
+    const before = snapshot(folder);
+    for (const [wrapper, problem] of [
+      [`<svg ${SVG_NS}><rect fill="{}"/></svg>`, /a url\(\) that cannot be read/],
+      [`<svg ${SVG_NS}><style>{}</style></svg>`, /a style longer than 64 KB/],
+    ] as const) {
+      const run = "url(".repeat(Math.floor((1024 * 1024 - wrapper.length + 2) / 4));
+      const uploading = upload(Buffer.from(wrapper.replace("{}", run)), { kind: "logo", name: "slow.svg" });
+      const meanwhile = call("/_depthcue/api/deck");
+      const [answer, deck] = await Promise.all([uploading, meanwhile]);
+      expect(answer.status, JSON.stringify(answer.json)).toBe(422);
+      expect(answer.json.message).toMatch(problem);
+      // A megabyte crosses the loopback in a few milliseconds; the check itself is timed in brand-files.test.ts.
+      expect(answer.ms).toBeLessThan(1000);
+      expect(deck.status).toBe(200);
+      expect(deck.ms).toBeLessThan(1000);
+    }
+    expect(snapshot(folder)).toEqual(before);
+  });
+
   it("refuses a body past its kind's limit, and an empty one, whichever way it comes", async () => {
     const big = Buffer.concat([PNG, Buffer.alloc(15 * 1024 * 1024)]);
     expect(await upload(big, { kind: "logo", name: "big.png" })).toMatchObject({
