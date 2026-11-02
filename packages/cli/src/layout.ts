@@ -72,6 +72,12 @@ export interface LayoutMeasure {
   slots?: Array<{ id: string; template: string; block: string; x: number; y: number }>;
   /** Parts of the brand's chrome that lie over a block, by how many pixels. */
   chrome?: Array<{ part: string; id: string; width: number; height: number }>;
+  /**
+   * What the sources along the foot of a template scene lie over, by how many pixels: a block's content, or when `part`
+   * is there the brand's footer line or slide number. A scene whose sources are in the flow has none, since no block
+   * can reach them.
+   */
+  sources?: Array<{ id: string; part?: string; width: number; height: number }>;
   /** The lines of text on a brand picture, to be measured on the rendered pixels. Empty without a picture. */
   lines?: PictureLine[];
   /** Filled in by the renderer from `lines`, once the text is taken away and the page photographed. */
@@ -276,6 +282,53 @@ export async function measureLayout(): Promise<LayoutMeasure> {
     }
   }
 
+  // A template scene's sources are set out of the flow along the foot and grow upward, so a slot's content that comes down
+  // to them is covered. Their own lines are judged against the lines and pictures of each block and against the footer.
+  const crowded: NonNullable<LayoutMeasure["sources"]> = [];
+  const band = scene.querySelector<HTMLElement>(".dc-sources");
+  if (band && visible(band) && getComputedStyle(band).position === "absolute") {
+    const foot = textRects(band);
+    const reach = (box: DOMRect) => {
+      let width = 0;
+      let height = 0;
+      for (const line of foot) {
+        const across = Math.min(line.right, box.right) - Math.max(line.left, box.left);
+        const down = Math.min(line.bottom, box.bottom) - Math.max(line.top, box.top);
+        // A text line's box is its font's full height, which is more than its letters fill: about a third of it is
+        // clear above the capitals and below the descenders. Two lines set one under the other, as a citation and the
+        // sources below it are, can share that much box without a letter touching a letter, so a reach of less than
+        // a third of the line is not one thing drawn over another.
+        const least = Math.max(2, 0.3 * Math.min(line.height, box.height));
+        if (across > 2 && down > least && across * down > width * height) [width, height] = [across, down];
+      }
+      return width > 0 ? { width: round(width), height: round(height) } : undefined;
+    };
+    // What a block draws: a panel or a table is its whole box; a picture or a chart is the picture or the chart, and its
+    // text its lines. A figure's own box runs to the foot of its frame whatever is drawn in it, so the box alone would
+    // report a chart that stops well above the sources for the empty end of its frame.
+    const inkRects = (block: HTMLElement): DOMRect[] =>
+      block.matches("[data-fill], [data-border], table")
+        ? [block.getBoundingClientRect()]
+        : [
+            ...[...block.querySelectorAll<HTMLElement>("img, video, svg, canvas, table")]
+              .filter((drawn) => visible(drawn))
+              .map((drawn) => drawn.getBoundingClientRect()),
+            ...textRects(block),
+          ];
+    for (const block of blocks) {
+      for (const box of inkRects(block)) {
+        const hit = reach(box);
+        if (!hit) continue;
+        crowded.push({ id: block.dataset.id ?? "", ...hit });
+        break;
+      }
+    }
+    for (const part of parts) {
+      const hit = reach(part.getBoundingClientRect());
+      if (hit) crowded.push({ id: "", part: part.dataset.part ?? "", ...hit });
+    }
+  }
+
   const clipped: LayoutMeasure["clipped"] = [];
   for (const element of scene.querySelectorAll<HTMLElement>("*")) {
     if (!visible(element)) continue;
@@ -361,6 +414,7 @@ export async function measureLayout(): Promise<LayoutMeasure> {
     words,
     ...(slots.length > 0 ? { slots } : {}),
     ...(chrome.length > 0 ? { chrome } : {}),
+    ...(crowded.length > 0 ? { sources: crowded } : {}),
     ...(lines.length > 0 ? { lines } : {}),
   };
 }
@@ -574,6 +628,20 @@ export function layoutDiagnostics(
       hit.id,
       `The brand's ${PART[hit.part] ?? hit.part} overlaps "${hit.id}" by ${hit.width}x${hit.height}px.`,
       'Move or shrink the slot or frame that holds it, pick a template that leaves that edge free, or set the template\'s chrome to "minimal" or "none".',
+    );
+  }
+
+  for (const hit of measure.sources ?? []) {
+    const over = hit.part ? `the brand's ${PART[hit.part] ?? hit.part}` : `"${hit.id}"`;
+    error(
+      "sources-overlap",
+      hit.id,
+      `The sources along the foot of the slide overlap ${over} by ${hit.width}x${hit.height}px.`,
+      hit.part === "logo"
+        ? "Cite fewer or shorter sources, make the logo smaller (chrome.logo.size in brand.json), or move it to a top corner. The sources run the width of the slide along the foot, so the logo has to give way."
+        : hit.part
+          ? "Cite fewer or shorter sources, or move the brand's footer and slide number off the foot. The sources run the width of the slide along the foot."
+          : "Cite fewer or shorter sources, shorten what is above them, or pick a template whose slots end above the foot. The sources keep to the foot and the slots keep to the template's frames, so the content has to give way.",
     );
   }
 

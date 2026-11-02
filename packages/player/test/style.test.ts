@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { type DeckLook, PALETTE_COLORS } from "@depthcue/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountPlayer, type Player } from "../src/player.ts";
 import { mountPresenterView } from "../src/presenter.ts";
 import { applyLook, faceCss, lookKey } from "../src/style.ts";
@@ -197,50 +197,110 @@ describe("faceCss", () => {
 });
 
 describe("a look's faces in a document", () => {
-  const faced = (path: string) =>
+  /**
+   * A stand-in for the browser's constructed stylesheet that keeps its rules as text, in a document of its own, so what
+   * a look put in it can be read back whatever the test DOM does with `@font-face`.
+   */
+  class Sheet {
+    static refused = "";
+    static inserts = 0;
+    rules: string[] = [];
+    get cssRules() {
+      return this.rules;
+    }
+    replaceSync() {
+      this.rules = [];
+    }
+    // As the browser's: the rule goes in at the index, which is the front when none is given, and a rule that is not one
+    // (an empty text) or that it does not take is refused.
+    insertRule(rule: string, at = 0) {
+      Sheet.inserts++;
+      if (rule.trim() === "") throw new SyntaxError("not a rule");
+      if (Sheet.refused && rule.includes(Sheet.refused)) throw new SyntaxError("refused");
+      this.rules.splice(at, 0, rule);
+      return at;
+    }
+  }
+  const fresh = () => {
+    vi.stubGlobal("CSSStyleSheet", Sheet);
+    Sheet.refused = "";
+    Sheet.inserts = 0;
+    const doc = document.implementation.createHTMLDocument("faces");
+    Object.defineProperty(doc, "adoptedStyleSheets", { value: [], writable: true, configurable: true });
+    const held = () => (doc as unknown as { adoptedStyleSheets: Sheet[] }).adoptedStyleSheets;
+    return { element: doc.createElement("div"), held };
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  const faced = (path: string, family = "Doc Face") =>
     lookWith({
       faces: {
-        display: { family: "Doc Face", files: [{ path, weight: 700, style: "normal" as const }] },
-        body: { family: "Doc Face", files: [] },
+        display: { family, files: [{ path, weight: 700, style: "normal" as const }] },
+        body: { family, files: [] },
       },
     });
 
   it("go into one stylesheet the document holds, which a changed look replaces rather than adds to", () => {
-    const element = document.createElement("div");
-    document.body.append(element);
-    const held = () => (document as unknown as { adoptedStyleSheets: CSSStyleSheet[] }).adoptedStyleSheets;
-    if (!("adoptedStyleSheets" in document) || typeof CSSStyleSheet !== "function") {
-      // The page keeps the built-in pair where the browser cannot hold the faces; nothing to check but that it is quiet.
-      expect(() => applyLook(element, faced("brand/fonts/A.woff2"))).not.toThrow();
-      element.remove();
-      return;
-    }
-    const written: string[] = [];
-    const replace = CSSStyleSheet.prototype.replaceSync;
-    CSSStyleSheet.prototype.replaceSync = function (css: string) {
-      written.push(css);
-      return replace.call(this, css);
-    };
-    try {
-      applyLook(element, faced("brand/fonts/A.woff2"));
-      const sheets = held().length;
-      expect(sheets).toBeGreaterThan(0);
-      // The same look again writes nothing: a thumbnail strip draws the look once per slide.
-      const count = written.length;
-      applyLook(element, faced("brand/fonts/A.woff2"));
-      expect(written).toHaveLength(count);
-      // A changed look replaces the one sheet.
-      applyLook(element, faced("brand/fonts/B.woff2"));
-      expect(held()).toHaveLength(sheets);
-      expect(written.at(-1)).toContain("B.woff2");
-      expect(written.at(-1)).not.toContain("A.woff2");
-      // The brand goes: the faces go with it.
-      applyLook(element, lookWith());
-      expect(held()).toHaveLength(sheets);
-      expect(written.at(-1)).toBe("");
-    } finally {
-      CSSStyleSheet.prototype.replaceSync = replace;
-      element.remove();
+    const { element, held } = fresh();
+    applyLook(element, faced("brand/fonts/A.woff2"));
+    expect(held()).toHaveLength(1);
+    expect(held()[0]?.rules.join("\n")).toContain("A.woff2");
+    // The same look again writes nothing: a thumbnail strip draws the look once per slide.
+    const count = Sheet.inserts;
+    applyLook(element, faced("brand/fonts/A.woff2"));
+    expect(Sheet.inserts).toBe(count);
+    // A changed look replaces the one sheet's rules.
+    applyLook(element, faced("brand/fonts/B.woff2"));
+    expect(held()).toHaveLength(1);
+    expect(held()[0]?.rules.join("\n")).toContain("B.woff2");
+    expect(held()[0]?.rules.join("\n")).not.toContain("A.woff2");
+    // The brand goes: the faces go with it.
+    applyLook(element, lookWith());
+    expect(held()).toHaveLength(1);
+    expect(held()[0]?.rules).toEqual([]);
+  });
+
+  it("go in one rule at a time, so a rule the browser refuses costs its own face and no other", () => {
+    const { element, held } = fresh();
+    Sheet.refused = '"Refused"';
+    const look = lookWith({
+      faces: {
+        display: {
+          family: "Refused",
+          files: [{ path: "brand/fonts/R.woff2", weight: 700, style: "normal" as const }],
+        },
+        body: {
+          family: "Kept",
+          files: [{ path: "brand/fonts/K.woff2", weight: 400, style: "normal" as const }],
+        },
+      },
+    });
+    expect(() => applyLook(element, look)).not.toThrow();
+    const rules = held()[0]?.rules ?? [];
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toContain('"Kept"');
+  });
+
+  it("leave out a family name with a control character in it, whichever one", () => {
+    for (const bad of ["Tab\tFace", "New\nline", "Nul\u0000Face", "Del\u007fFace", "Esc\u001bFace"]) {
+      const { element, held } = fresh();
+      const look = lookWith({
+        faces: {
+          display: {
+            family: bad,
+            files: [{ path: "brand/fonts/X.woff2", weight: 700, style: "normal" as const }],
+          },
+          body: {
+            family: "Fine",
+            files: [{ path: "brand/fonts/F.woff2", weight: 400, style: "normal" as const }],
+          },
+        },
+      });
+      applyLook(element, look);
+      expect(element.style.getPropertyValue("--dc-face-display"), JSON.stringify(bad)).toBe("");
+      expect(faceCss(look, "."), JSON.stringify(bad)).not.toContain(bad);
+      // The other face is still loaded.
+      expect(held()[0]?.rules.join("\n"), JSON.stringify(bad)).toContain('"Fine"');
     }
   });
 });

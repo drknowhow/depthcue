@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { DeckLook, Scene } from "@depthcue/core";
+import { type DeckLook, type PageLook, pageLook, type Scene } from "@depthcue/core";
 import { describe, expect, it } from "vitest";
 import { ownOf, renderScene } from "../src/scene.ts";
 import { sceneWith } from "./helpers.ts";
@@ -19,7 +19,7 @@ function scene(more: Record<string, unknown>): Scene {
   return sceneWith({ schemaVersion: "0.4", layout: undefined, template: "split", ...more });
 }
 
-const draw = (s: Scene, look: DeckLook | undefined, extra: { number?: number; assetBase?: string } = {}) =>
+const draw = (s: Scene, look: PageLook | undefined, extra: { number?: number; assetBase?: string } = {}) =>
   renderScene(s, { assetBase: ".", ...(look ? { look } : {}), ...extra });
 
 const withSplit = (more: Partial<DeckLook> = {}) => lookWith({ templates: { split: SPLIT }, ...more });
@@ -177,6 +177,26 @@ describe("a block's style", () => {
     expect(find(section, "a")?.hasAttribute("data-case")).toBe(false);
     expect(find(section, "b")?.dataset.case).toBe("upper");
     expect(find(section, "b")?.hasAttribute("data-fill")).toBe(false);
+  });
+
+  it("keeps the slot's style on a block pinned in its slot, where the block's own style still wins", () => {
+    const section = draw(
+      scene({
+        blocks: [text("a", { slot: "left", frame }), text("b", { slot: "left", frame, style: "quote" })],
+      }),
+      look,
+    );
+    // A pinned block is drawn at its own frame, in the layer over the slide, and a block with a frame is not a block
+    // with no style: the slot's card fills it, borders it and pads it all the same.
+    const pinned = (id: string) => section.querySelector<HTMLElement>(`.dc-pins [data-id='${id}']`);
+    expect(pinned("a")).not.toBeNull();
+    expect(
+      ["fill", "border", "edge", "radius", "pad"].map((name) => pinned("a")?.getAttribute(`data-${name}`)),
+    ).toEqual(["surface", "line", "start", "m", "l"]);
+    expect(pinned("b")?.dataset.case).toBe("upper");
+    expect(pinned("b")?.hasAttribute("data-fill")).toBe(false);
+    // The room it keeps in the slot is a ghost of the dressed block, so the neighbours do not move.
+    expect(section.querySelectorAll(".dc-ghost[data-fill='surface']")).toHaveLength(1);
   });
 
   it("gives fill, border, accent edge, radius and padding as attributes", () => {
@@ -368,5 +388,93 @@ describe("the brand's chrome", () => {
   it("is nothing when the brand draws none of it", () => {
     const empty = lookWith({ chrome: { accent: "none" }, templates: { split: SPLIT } });
     expect(draw(body, empty, { number: 1 }).querySelector(".dc-chrome")).toBeNull();
+  });
+});
+
+describe("the look a page carries", () => {
+  // The look the server and an export send is `pageLook` of the whole one: the same colors, faces, chrome, styles and
+  // templates without the names, descriptions, hints, accepted kinds, limits and required marks the player never reads.
+  const full = lookWith({
+    chrome: {
+      accent: "top",
+      footer: { text: "Harbor", place: "start" },
+      number: { place: "end" },
+      logo: { path: "brand/logos/harbor.svg", alt: "Harbor", corner: "top-end", size: "s" },
+    },
+    styles: {
+      card: style({ fill: "surface", border: "line", edge: "start", radius: "m", pad: "l" }),
+      banner: style({ fill: "action", pad: "m", tone: "bg" }),
+      lead: style({ size: "xl", weight: "bold", font: "display", align: "center" }),
+    },
+    templates: {
+      split: template(
+        "split",
+        [
+          slot("claim", "claim", { x: 6, y: 8, w: 88, h: 20 }, { style: "lead", required: true }),
+          slot("left", "body", { x: 6, y: 34, w: 42, h: 50 }, { style: "card", valign: "middle", max: 3 }),
+          slot("right", "content", { x: 52, y: 34, w: 42, h: 50 }),
+        ],
+        { background: { color: "action" }, chrome: "minimal" },
+      ),
+    },
+  });
+  const scenes: Scene[] = [
+    scene({
+      summary: { id: "claim-1", text: "Demand doubled.", evidenceIds: ["l"] },
+      blocks: [text("l", { slot: "left" }), text("r", { slot: "right", style: "banner" })],
+    }),
+    scene({
+      blocks: [text("a", { slot: "left", frame }), text("b", { slot: "right" }), { ...image, frame }],
+    }),
+    scene({ template: "nowhere", blocks: [text("a")] }),
+  ];
+
+  it("draws every scene exactly as the whole look does", () => {
+    const cut = pageLook(full);
+    for (const one of scenes) {
+      expect(draw(one, cut, { number: 3 }).outerHTML, one.id).toBe(draw(one, full, { number: 3 }).outerHTML);
+    }
+  });
+
+  it("drops what the player does not read from the templates and the styles, and keeps everything it does", () => {
+    const cut = pageLook(full);
+    const split = cut.templates.split;
+    expect(split).toEqual({
+      slots: [
+        { id: "claim", role: "claim", frame: { x: 6, y: 8, w: 88, h: 20 }, style: "lead" },
+        { id: "left", role: "body", frame: { x: 6, y: 34, w: 42, h: 50 }, style: "card", valign: "middle" },
+        { id: "right", role: "content", frame: { x: 52, y: 34, w: 42, h: 50 } },
+      ],
+      background: { color: "action" },
+      chrome: "minimal",
+    });
+    expect(cut.styles.card).toEqual({
+      fill: "surface",
+      border: "line",
+      edge: "start",
+      radius: "m",
+      pad: "l",
+    });
+    expect(cut.styles.lead).toEqual({ size: "xl", weight: "bold", font: "display", align: "center" });
+    // Everything else of the look is as it was, and the whole look is not changed by being cut.
+    expect({ ...cut, templates: {}, styles: {} }).toEqual({ ...full, templates: {}, styles: {} });
+    expect(full.templates.split?.slots[0]?.required).toBe(true);
+    expect(JSON.stringify(cut).length).toBeLessThan(JSON.stringify(full).length);
+  });
+
+  it("lets a field it does not know yet through, since the cut names what is left out and not what is kept", () => {
+    const future = lookWith({
+      templates: {
+        split: { ...SPLIT, future: 1, slots: SPLIT.slots.map((one) => ({ ...one, later: "x" })) },
+      } as unknown as DeckLook["templates"],
+      styles: { odd: { ...style({ fill: "surface" }), shiny: true } as never },
+    });
+    const cut = pageLook(future) as unknown as {
+      templates: { split: { future: number; slots: Array<{ later: string }> } };
+      styles: { odd: { shiny: boolean } };
+    };
+    expect(cut.templates.split.future).toBe(1);
+    expect(cut.templates.split.slots.every((one) => one.later === "x")).toBe(true);
+    expect(cut.styles.odd.shiny).toBe(true);
   });
 });

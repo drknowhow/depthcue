@@ -25,8 +25,11 @@ export const FONT_FILE_PATTERN = "^fonts/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*
 export const LOGO_FILE_PATTERN = "^logos/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*\\.(svg|png)$";
 export const IMAGE_FILE_PATTERN =
   "^images/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*\\.(jpg|jpeg|png|webp|svg)$";
-/** A font family name: no quote, backslash, semicolon, brace or angle bracket, so it is safe inside CSS. */
-export const FAMILY_PATTERN = "^[^\"'\\\\;{}<>]+$";
+/**
+ * A font family name: no quote, backslash, semicolon, brace, angle bracket or control character (a line break ends a
+ * CSS string and takes the rest of the rule with it), so it is safe inside CSS.
+ */
+export const FAMILY_PATTERN = "^[^\"'\\\\;{}<>\\x00-\\x1f\\x7f]+$";
 export const LANGUAGE_PATTERN = "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$";
 export const URL_PATTERN = "^https?://[^\\s]+$";
 /** What a deck says about a module: `off`, or the version it needs, such as `1` or `1.2`. */

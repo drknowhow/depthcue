@@ -328,58 +328,135 @@ Found, not fixed (older than the brand work):
   `base.scenes[id]` and get Object's constructor, then throw. Location: `packages/core/src/review.ts`, the scene
   lookups at lines 222, 237, 349, 394 and 397. Fix: the `own()` lookup this step added for kits.
 
+## Step 2 record: PowerPoint export
+
+- **Command.** `depthcue export <deck> --format pptx [--out <file.pptx>] [--no-notes] [--json]`; the file is
+  `<deck folder name>.pptx` in the current directory unless `--out` names it. Exit codes: 0 done, 1 the deck has
+  errors, 2 the export could not run. The errors that stop it are `no-browser`, `render-failed`, `bad-out`,
+  `out-not-ours`, `out-edited` and `write-failed`, and `--json` prints each as `{ "ok": false, "code", "message" }`.
+  `PptxErrorCode` also lists `player-not-built`, which nothing raises. An unbuilt player is not caught: the server's
+  `realpathSync` throws a bare `ENOENT: no such file or directory, lstat '.../packages/player/dist'`, the exit code is
+  2, and `--json` prints no JSON. Found while reviewing step 4, recorded as found and not fixed. `--json` prints the
+  summary below as data.
+- **How it is made.** The player draws each scene at full reveal in a headless Chromium at 1280 by 720, with
+  animation off and the controls hidden. The browser is the executable in `DEPTHCUE_BROWSER` when that is set, else
+  Chrome, Edge, or Playwright's own Chromium, whichever starts first. `measure.ts` reads what the page laid out (the
+  box of each block, panel and picture; the face, size, color, line height and alignment of each text; a chart's
+  series colors) and `build.ts` draws it with pptxgenjs, a dependency of the CLI only. 1 px is 9525 EMU, so the stage
+  is PowerPoint's 13.333 by 7.5 inch widescreen slide. Words, marks, links and numbers come from the deck; where and
+  how they sit comes from the page. A slide per scene, in deck order.
+- **What is PowerPoint's own.** Text runs with their marks, links, colors and lists; tables; charts of all six kinds
+  (`bar`, `stacked-bar`, `line`, `area`, `scatter`, `donut`) and the old `bar-chart`, each with its workbook; pictures
+  with their alt text, drawn as PNG when PowerPoint would not show the type; speaker notes (one paragraph per line;
+  `--no-notes` leaves them out, as anyone with the file can read them); the sources as one paragraph of numbered runs
+  (`1. Title   2. Title`), of which only a source with a `url` or an `asset` is a link; panels, rules and dots as
+  shapes. A clip is its poster picture linked to its source, or a labeled box linking to it when there is no poster;
+  it is never embedded.
+- **The report.** The summary has the file, the number of scenes and bytes, the fonts the file names with what each is
+  used for (a viewer needs them installed to see the file as drawn), and for each slide a list of what had no
+  PowerPoint form: the chart explorer, a series told apart by marker shape (color only here), a video that is not
+  embedded, build steps (flattened, so every block shows at once), a picture hanging past the left or top edge (shown
+  whole, inside the slide), a picture that could not be read (left off the slide), content that runs past the right
+  or bottom edge of the slide, a block the player did not draw. One note holds for every slide: scenes change with no
+  transition. Warnings the deck has are carried; errors stop the export. A box that is not a picture and hangs past
+  the left or top edge is cut at the edge without a word in the report (`frameOf` in `build.ts`).
+- **Overwriting.** The file carries a custom document property `DepthcueExport`, `v1:` and a sha256 digest of its
+  parts, all but `[Content_Types].xml`, `_rels/.rels` and `docProps/custom.xml`, which the mark itself changes. At
+  the output path there is nothing, a file Depthcue wrote and nobody changed, one it wrote and someone has edited
+  since (usually in PowerPoint), or something else. Only the first two are written over; the other two are
+  `out-edited` and `out-not-ours`, and nothing is touched.
+- **Same bytes.** Every date in the file is 2000-01-01, parts are written in one fixed order, each slide's shapes are
+  numbered again from 2, and charts are numbered from 1. Nothing is done about random numbers: the bytes are the same
+  because pptxgenjs's random paths are not reached by anything an export draws. The same deck gives the same bytes.
+- **Gaps found in real PowerPoint.** Headings fall back to an installed font when the deck's faces are not installed.
+  Font embedding was moved into step 6 by the conductor; step 6 updates the plan's "Not in this plan" line, which
+  still lists it. PowerPoint refuses a stacked bar chart whose data labels sit outside the bar end, so stacked bars
+  label at `inEnd`. The report warns of content that runs past the slide only where the player's own page does, and
+  only past the right or bottom edge. `panelOf` reads an element's top border alone and draws it as one outline on
+  all four sides, so a panel with a border on one side gets a frame all round; it draws no gradients or shadows, and
+  a dashed border comes out solid.
+
 ## Step 3 record: the brand in the player
 
-- **One path to the page.** The server answers `/look.json` with `lookOf(doc)` (404 while the deck has errors, and the
-  page then draws from `deck.json` alone, as before). The export works the look out once and puts it in
-  `ExportData.look` (the only field `exported.ts` gained). The player never imports `lookOf` or the registry; it is
-  given a `DeckLook`. `applyLook(element, look, base)` sets the theme and font pair as attributes and every color,
-  the six chart colors and the brand's faces as custom properties, and takes off what an earlier look set that this one
-  does not. A `Look` is a deck's theme, palette and fonts, or a `DeckLook`; a deck before 0.4 is drawn exactly as
-  before. `legacy.test.ts` compares the DOM of five old decks with and without a look, and the e2e file compares
-  pixels of the v0-1, v0-2, v0-3, demo and charts decks with and without one. The pictures are byte-identical on
-  Windows, and 38 of 38 renders of the five decks match main's. On the Linux runner two pages of one deck differ by a
-  few pixels (22 at most, by 14 levels at most, in a different scene each run), so the e2e comparison allows a step of
-  24 and 1% of the picture, says what it found, and a second test checks it still tells two different slides apart.
-  The cause is not known: whether two pages drawn without a look differ in the same way was not checked.
+- **One path to the page.** The server answers `/look.json` with `pageLook(lookOf(doc))`, built whenever `deck.json` and the
+  brand parse (`lookOfFiles` in `cli/src/look.ts`), so a scene with an error does not take the brand off the page. While
+  the brand or `deck.json` is broken the last good look is served, and the answer is 404 only before there has been one
+  (the page then draws from `deck.json` alone, as before). The export works the look out once and puts it in
+  `ExportData.look`. `pageLook` cuts the look to what the player reads: a template loses `schemaVersion`, `id`, `name`
+  and `description`, a slot `accepts`, `hint`, `max` and `required`, a style `name` and `for`. It is a list of what is left
+  out, so a field added later still reaches the page; a test draws the same scenes from the whole look and from the cut
+  one. The player never imports `lookOf` or the registry; it is given a `PageLook`. `applyLook(element, look, base)` sets
+  the theme and font pair as attributes and every color, the six chart colors and the brand's faces as custom
+  properties, and takes off what an earlier look set that this one does not. A `Look` is a deck's theme, palette and
+  fonts, or a `PageLook`; a deck before 0.4 is drawn exactly as before. `legacy.test.ts` compares the DOM of five old
+  decks with and without a look, and the e2e file compares pictures of the v0-1, v0-2, v0-3, demo and charts decks with
+  and without one. Pictures drawn by this branch are byte-identical to main at 225d8cd on Windows (the reviewer's 19
+  old-deck renders; 38 of 38 of mine); that is a local check, and CI does not make it. The check CI makes allows at most
+  64 pixels to differ, and none by a larger step than two drawings of the same page differ by (a control page is drawn
+  the same way and photographed beside the pair), after up to three retakes; a test shows that a muted text color 16
+  steps lighter in each channel fails it. Each scene is opened by a fresh load of each page. After an in-page change of
+  scene, Chrome on Linux drew the donut of `v0-3` (19 pixels, at most 4 steps) and one text edge differently on the page
+  with the look than on two pages without it, and now and then between two pages without it, though the DOM, computed
+  styles and every box were the same and the difference did not change in 1.5 seconds; opened fresh, 60 of 60 pairs
+  were equal. That is the drawing history of a page, not the look.
 - **Faces.** `@font-face` rules go in a constructed stylesheet (`adoptedStyleSheets`), because the page's policy
-  (`style-src 'self'`) refuses a `<style>` element. A face is a safe family name and a file inside `brand/`
-  (`brandUrl`); a family name with a quote, backslash, semicolon, brace or angle bracket is left out. The heading
-  weight is the file weight nearest 700 (a tie takes the lighter), set as `--dc-display-weight`. Without constructed
-  stylesheets the built-in pair stays. `faceCss`, `brandUrl` and `lookKey` are exported for the editor and the tests.
+  (`style-src 'self'`) refuses a `<style>` element, and are inserted one at a time, so a rule the browser refuses costs
+  its own face and no other. A face is a safe family name and a file inside `brand/` (`brandUrl`). The player builds its
+  family check from core's `FAMILY_PATTERN` (now exported), which leaves out a quote, backslash, semicolon, brace, angle
+  bracket and any control character: a line break in a family name used to end the CSS string and empty the whole
+  sheet. The heading weight is the file weight nearest 700 (a tie takes the lighter), set as `--dc-display-weight`.
+  Without constructed stylesheets the built-in pair stays. `faceCss`, `brandUrl` and `lookKey` are exported for the
+  editor and the tests.
 - **Template scenes.** Each slot sits at its frame (percent of the stage), its blocks stacked by `valign`; a claim slot
   draws the scene's claim as one heading with its evidence linked by `data-evidence`; an overlay sits at its frame
   over the template. A slot's `style` and a block's own `style` give fill, border, edge, radius, case and weight, with
-  reversed text (the theme's background color) on a strong fill. Brand and block styles go through the CSSOM, never an
-  inline `style` attribute. A template's background (a color, or an image under a scrim) and its chrome (`minimal` or
-  `none`) are drawn too. Chrome is the logo, footer, slide number and accent bar in the corners and edges the brand
-  names; it is never drawn over content on the three layouts, which grow their padding by `--room` (4.3, 5.3 or 6.7 em)
-  when the logo is in a top corner. On a strong background the logo is drawn on a plate of the theme's background color
-  instead of a second logo file: a brand's logo for the other theme is not chosen by the player.
-- **Sources on template scenes** are one line at the foot, above the footer, instead of the block under the content;
-  under 640 px of container width it falls back to a block with a rule above.
-- **Export.** `index.html` carries the look; `fonts/<pair>.css` goes for the look's pair (a brand's faces load over it)
-  and the files under `brand/` are copied only when the look uses them: its faces, the logo for the deck's theme and
-  the images of the templates in use. `BRAND_FILES` in `serve.ts` is the one whitelist for the server and the copy
-  (fonts, logos, images; never `brand.json` or templates). `--json` lists `brandFiles`. An export opened in a real
-  browser with every request that is not a file blocked loads the faces.
+  reversed text (the theme's background color) on a strong fill. A panel drawn in the slide's own surface inside a
+  strong background (a callout in a section, a quiet panel on a cover) is drawn in the slide's own ink: `.dc-player`
+  keeps the slide's colors as `--dc-ink`, `--dc-ink-muted` and `--dc-ink-line`, the panel takes them back, and a block that
+  names its own `tone` keeps it. Brand and block styles go through the CSSOM, never an inline `style` attribute. A
+  template's background (a color, or an image under a scrim) and its chrome (`minimal` or `none`) are drawn too. Chrome
+  is the logo, footer, slide number and accent bar in the corners and edges the brand names; it is never drawn over
+  content on the three layouts. They grow their padding by `--room` when the logo is in a top corner: 3.5, 4.5 or 5.9 em
+  for a small, medium or large logo. Every slide already has a 3.5 em margin, so a small logo adds nothing and the
+  others add only what they reach past it. On a strong background the logo is drawn on a plate of the theme's
+  background color instead of a second logo file: a brand's logo for the other theme is not chosen by the player.
+- **Sources on template scenes** are one flowing line along the foot, above the footer, instead of the block under the
+  content: the label and each source after it, a middle dot between them, as many lines as they take at the slide's
+  width, growing upward from the foot. Under 640 px of container width they fall back to a block with a rule above.
+  The line is out of the flow, so content that comes down to it is covered, and `depthcue render` says so with
+  `sources-overlap` (the lines of the sources over a block's text, picture, chart or panel, or over the brand's logo,
+  footer or slide number, with the overlap in pixels and a fix; a logo in a bottom corner is the usual one). A text
+  line's box is taller than its letters, so a reach of less than a third of a line, as a citation and the sources
+  set one under the other have, is not reported.
+- **Export.** `index.html` carries the `PageLook`; `fonts/<pair>.css` goes for the look's pair (a brand's faces load over
+  it) and the files under `brand/` are copied only when the look uses them: its faces, the logo for the deck's theme and
+  the images of the templates in use. The `.txt` license text beside a copied font file is copied with it, and the
+  built-in faces bring their own `<family>-OFL.txt` (`licenses.json`, written by `build-fonts.mjs`, says which); none of
+  them is served. `isBrandFile` in `serve.ts` is the one rule for the server and the copy: the `BRAND_FILES` whitelist
+  (fonts, logos, images; never `brand.json` or templates) and a path with no backslash, NUL, empty, `.` or `..` part
+  once it is decoded, so `..%2f` and `%5c` get no further than `..` did. A brand file the look names that cannot be
+  copied (a link to a file outside the brand folder, not a file, not a path a page may read) is a `brand-file-not-copied`
+  warning that names the file, and the export goes on. `--json` lists `brandFiles` and `licenses`. An export opened in a
+  real browser with every request that is not a file blocked loads the faces.
 - **Render.** `depthcue render` draws the brand and `layout.ts` measures it: `slot-overflow` (a block outside its
   slot, measured on the block's own rectangle), `chrome-overlap` (the brand's logo, footer, number or accent over a
-  block, with the overlap in pixels) and `background-low-contrast`. For the last, the page is photographed a second time with its text made transparent, and
-  each line's contrast is measured on the pixels under it (`measurePicture`), so text on a template's picture is
-  judged on what is behind it; with scrim 0 a bright picture fails, with scrim 90 or a dark picture it passes.
-  `brandcheck.ts` now says in `background-unmeasured` what render does (wording only).
+  block, with the overlap in pixels), `sources-overlap` (above) and `background-low-contrast`. For the last, the page is
+  photographed a second time with its text made transparent, and each line's contrast is measured on the pixels under
+  it (`measurePicture`), so text on a template's picture is judged on what is behind it; with scrim 0 a bright picture
+  fails, with scrim 90 or a dark picture it passes. `brandcheck.ts` now says in `background-unmeasured` what render does
+  (wording only).
 - **Editor.** The canvas, the strip and the storyboard all draw from `lookFor(doc)` (one `DeckLook` per version of the
   document), so they show the brand the person will present. The frame now carries every color as an inline custom
   property and `data-fonts` always, where it used to carry only the palette's and the deck's pair; the slide is the
   same and the four Style tests that read those attributes now read the preset's value instead of nothing. Thumbnails
   draw logo, footer and accent but not the slide number (the budget below).
-- **Sizes (brotli bytes, main to now).** Player script 10,539 to 12,009; player styles 4,862 to 5,802; exported page
-  script 13,641 to 15,018 (limit 14,336 raised to 16,384, as approved); core code in the player 5,080 (limit 6,144);
-  editor script 90,368 to 92,106 (limit 92,160: 54 bytes of room); editor brand checks 3,328; core runtime gzip
-  41,084 (no change). The editor is what is tight: Brotli moves 40 to 60 bytes on a change of one name, so the next
-  step to touch it should look for room first. What bought room: no `data-st` attribute on styled blocks, no slide
-  number on a thumbnail, and no `format("woff2")` hint in `@font-face`.
+- **Sizes (brotli bytes, main to now).** Player script 10,539 to 11,977; player styles 4,862 to 5,864; exported page
+  script 13,641 to 15,067 (limit 14,336 raised to 16,384, as approved); core code in the player 5,080 to 5,119 (limit
+  6,144); editor script 90,368 to 92,153 (limit 92,160: 7 bytes of room); editor brand checks 3,328; core runtime gzip
+  41,084 to 41,271 (limit 61,440; `pageLook` and the exported pattern). The editor is what is tight: Brotli moves 40 to
+  60 bytes on a change of one name (a change that takes bytes out can add some), so the next step to touch it should
+  look for room first. What bought room: no `data-st` attribute on styled blocks, no slide number on a thumbnail, no
+  `format("woff2")` hint in `@font-face`.
 - **Fixture.** `v0-4-brand` (Harbor Analytics) has two faces (Harbor Display, Harbor Sans) in two real woff2 files
   with their OFL text, a logo, two templates (cover, chart-and-note), two styles and three scenes. The cover template has chrome `none`
   (its light logo was unreadable on teal), the chart-and-note title is 76 wide so it clears the logo, and the logo is
@@ -390,23 +467,152 @@ Found, not fixed (older than the brand work):
   presenter has no scene preview, so its colors and faces come through `applyLook` like the page's; the logo plate
   instead of a logo variant (see Risks); sources as a foot line; thumbnails without the number.
 - **Risks for later steps.**
-  - A logo in a top corner adds top padding on a layout scene, so a claim-evidence slide with a chart and sources that
-    just fit before can overflow by about 14 px; render says `overflow`. The fix is a smaller logo or a shorter slide,
-    not a different padding.
   - The plate is not a design answer for a brand whose logo only works on one background: a logo for dark backgrounds
     (`logos` per theme) is not read for a template's strong fill. Step 8's brand panel should say which logo goes where.
-  - A font's licence text (the fixture's `brand/fonts/OFL.txt`) is not copied into an export, because `BRAND_FILES`
-    lists only font, logo and image files. Decide before a brand ships a font whose licence asks for its text to go
-    with every copy.
+  - A logo in a top corner still pads the top of a layout scene by what it reaches past the margin (a large one, 2.4
+    em), so a slide that just fits can overflow; render says `overflow`. The fix is a smaller logo or a shorter slide.
+  - Step 4's `brand-import/fonts.ts` keeps its own copy of the family pattern, without the control characters. Core now
+    exports `FAMILY_PATTERN`; step 4 should import it.
   - `packages/cli/src/pptx/measure.ts` counts the logo `<img>` as a picture; step 5 should skip `.dc-chrome img`.
-  - The human summary of `depthcue export` in `cli/src/index.ts` does not list the brand files (`--json` does); it is
-    outside this step's files. `docs/export.md` still gives the old exported-page budget in its table.
-  - The editor has 54 bytes of room under its limit.
+  - The human summary of `depthcue export` in `cli/src/index.ts` does not list the brand files or licenses (`--json` does);
+    it is outside this step's files. `docs/export.md` still gives the old exported-page budget in its table.
+  - The editor has 7 bytes of room under its limit.
 - **Outside the write-set.** `packages/editor/src/storyboard.ts` (the staleness key and the look, as `strip.ts`);
   `packages/core/test/brand.test.ts` and `packages/editor/test/brandchecks.test.ts` (the `background-unmeasured`
   wording); `packages/editor/test/deckpanel.test.ts` and `packages/cli/test/edit-style-e2e.test.ts` (the inline colors
   and `data-fonts` above); `packages/cli/test/layout.test.ts`, `export-brand.test.ts` and `serve-brand.test.ts` (the
-  new checks, the export and the server).
+  new checks, the export and the server); `packages/cli/test/export-command.test.ts` and `edit-style-e2e.test.ts` (an
+  export now carries each family's license text); `packages/core/src/schema.ts` (`FAMILY_PATTERN` without control
+  characters), `schema/brand.schema.json` (generated from it) and `index.ts` (exports `FAMILY_PATTERN` and the
+  `PageLook` types).
+
+## Step 4 record: brand import
+
+- **Command.** `depthcue brand import <file.potx|.pptx|.thmx> [--out <dir>] [--json]`. The default folder is
+  `<file name>-brand` in the current directory. It takes no other option. Exit codes: 0 done; 1 the file has no theme
+  with a color scheme, no layout that can be a template, or slides that are portrait (or, a fault in the import, the
+  brand it made failed the brand checks, and nothing was written); 2 the file could not be read, or the folder could
+  not be written, which includes a folder that was refused. The refusals that exit 2 are `bad-file`, `unreadable`,
+  `out-is-file`, `out-not-ours`, `out-edited`, `out-in-source` and `write-failed`. `--json` prints the report as data;
+  without it the report is printed as lines.
+- **Reading.** A `.potx`, `.pptx` or `.thmx` is a zip of XML parts, read with jszip (already a dependency, none added)
+  and a small XML reader of its own that refuses a DOCTYPE and nesting past 100. The limits are `LIMITS` in
+  `package.ts`: 4000 parts, 16 MB for an XML part, 32 MB for any other part, 128 MB unpacked in all, 300,000 elements
+  in one XML part and 800,000 in all. They are counted as each part is unpacked, not read from the zip's directory,
+  which a file can lie about, so a part that unpacks larger than it says is stopped when it passes the limit. A file
+  over 256 MB is refused before it is read. The old `.ppt`, `.pot` and `.thm` are not zips and are refused with a
+  word about that. A `.pptx` takes the master its first slide uses (the first listed when it has no slide); a
+  `.thmx` takes the theme and, when it has them, the master and layouts under `theme/`. A `.thmx` with no layouts
+  imports as a theme alone: colors and fonts, no templates. Slides, other masters and theme variants are counted in
+  the report and not imported.
+- **Colors.** The master's background says the preset: a dark one is `ink`, any other `paper`, and only that preset's
+  palette is written, which is why the report says to set `"theme"` in deck.json to it. Each name takes the theme
+  color that does the same job: `bg` the master's background when it is a plain color, else the theme's background;
+  `surface` the second background (the first, when the master already uses the second); `text` and `muted` the two
+  text colors; `evidence` the hyperlink color; `action` the first of accent 1 to 6 that reaches 3:1 on both `bg` and
+  `surface` (accent 1 when none does); `line` is worked out, 14% of the way from `bg` to `text`. The chart colors are
+  the accents in order that reach 3:1 on `bg`, no repeats, up to six, and none when no accent does. A background that
+  is lightened or darkened is not worked out: the theme's own background color is used and the report says so. A
+  gradient or a picture the master points at in the theme's fill list (`bgRef` 1002 and 1003) is painted in one
+  color, the one the reference names, and that color is the background; the report says the fill was reduced to its
+  base color. A gradient or picture the master holds itself is not a color, and the theme's background is used.
+- **Colors that fail.** A theme color that would fail a contrast rule is not written. The text side of the failing
+  pair goes back to the preset's color first, so a background the theme chose stays when the preset's text reads on
+  it; each pass sends one color back; then every color sent back is tried again with the theme's value, and kept if
+  the palette passes. If that gave up the background or the panel, the colors on it are tried once more, moved: where
+  the preset's own color would fail too, the theme's link, muted or accent color is mixed toward the text color in
+  steps of 5%, at most half way, until it reads (4.5:1, or 3:1 for the accent) on both the background and the panel;
+  where the theme's cannot be moved that far, the preset's is moved the same way, at most three quarters of the way.
+  That palette is used only if it gives up fewer. A moved color is `derived` in the report, with the share it moved.
+  The report gives each color sent back: the theme color and where it came from, the ratio it had, the ratio it
+  needed, the preset color used, and the partner it fails against in the palette as it ended, which can differ from
+  the one it was tried on. The rules are the pairs of core's `checkBrandColors`, and a test compares the two on 400
+  random palettes. In the 43 local themes 8 have a color moved and 25 keep a preset color for a failing theme color.
+- **Fonts.** The theme's heading and body Latin fonts become the display and body faces by family name, with no
+  files, so no `license`. The fallback is `classic` when the display face is a serif and `modern` otherwise; a face is
+  a serif or a sans by its PANOSE number when that says, else by its name, else a sans is assumed, and the report
+  names the rule for each. A name a brand cannot carry (a quote, brace or semicolon, or over 64 characters) is not used.
+  Font files embedded in the file (`.fntdata`, Embedded OpenType, often licensed for that one file) are named in the
+  report and never copied.
+- **Logo.** The candidates are the pictures on the master, or else those on the title layout. A logo is not rotated
+  or flipped, and neither is a group around it (a turned group turns what is inside it, so the picture is not upright
+  either), not over 20% of the slide, not within 0.5% of a slide edge (artwork bleeds off the edge, as Ion's ribbons
+  do; a logo is set in), and has its center in the outer 35% of the slide across and down; of those the smallest is
+  the logo, and another is never put in its place. Its size is the nearest of `s`, `m` and `l`, which stand for 5%, 8%
+  and 12% of the slide's height (`SIZE_HEIGHTS` in `logo.ts`, the one place to change if the player's sizes differ).
+  A PNG or SVG is kept as it is, in `logos/logo.png` or `logos/logo.svg`, under `logos.light` for paper and
+  `logos.dark` for ink. An SVG is read as XML (`svg.ts`) and refused for a script, `foreignObject`, animation or
+  embedding element under any prefix, an event handler, a link to anything but a place in the file or a picture held
+  in the link, a style that loads anything outside the file, `@import` or an escape, or a DOCTYPE with declarations;
+  the report says which. A background picture that is an SVG goes through the same check. A JPEG goes unchanged inside
+  an SVG, because a brand's logo is an SVG or a PNG and nothing here decodes a JPEG. EMF, WMF, GIF and unknown formats
+  are refused, with the reason and what to do. The alt text is the picture's own, else its name when that says "logo",
+  else "<brand> logo".
+- **Chrome.** The logo's corner and size; the footer's words and place, from the master's footer placeholder or else
+  the first layout's that has words, or else, for a `.pptx`, the first of its first 20 slides that has some (the
+  report says when the words came from a slide; a template or a theme has none to read), cut at 120 characters; the
+  place is the third of the slide it sits in; the slide number's place when the placeholder is a number field or
+  empty. The date placeholder is reported and not taken. There is no accent bar.
+- **Templates.** Each layout is a template, with the id its name makes (a slug; `-2`, `-3` when taken) and the
+  placeholders as slots: `title` and `ctrTitle` a title slot taking a heading, `subTitle` a subtitle and `body` a body
+  (text), `pic` a picture, `chart` a chart, `tbl` a table, and `obj` and any other type a `content` slot, which takes
+  any block. Date, footer, slide number, header and slide image placeholders are chrome, not slots. A slot's frame is
+  in percent of the slide, from the layout or else from the master's placeholder of the same family and index; its
+  `valign` is the placeholder's anchor; its hint is the placeholder's prompt text unless that is PowerPoint's stock
+  "Click to edit"; the title slot is required. A slot that passes a slide edge by 0.5% or less is trimmed to the edge
+  and reported (Office's own picture layouts run to 100.13%). A layout's background is `bg`, `surface`, `text`,
+  `action` or `evidence` when its solid color is exactly one of the brand's, a picture (copied to `images/`, with a
+  scrim of 65), or reported and left out; one that points at the theme's gradient or picture fill is reduced to its
+  base color, read through the layout's own color map when it overrides the master's, and matched the same way, and
+  the report says it was reduced. A picture's file name in `images/` is its part's name made safe: runs of dots become
+  one dot, it is cut at 100 characters, and two names that differ only in case get `-2` on the second, because a
+  folder may sit on a disk that does not tell them apart. A layout that hides the master's shapes is
+  `chrome: "none"`. No imported template has a claim slot, because PowerPoint has no placeholder for one; the report
+  says so.
+- **Layouts that are not templates.** Each is listed with its reason, and none is bent to fit: a placeholder with
+  vertical text (Depthcue does not draw it), no placeholder, more than 12, a slot lying off the slide, or two slots
+  that share more than 1% of the slide across and down. Slots sharing 1% or less are touching, and are kept at their
+  frames, so core's `slots-overlap` warning still shows for them (Office's Comparison layout). A file where no layout
+  can be a template exits 1 with the reasons. Everything else that is not taken is listed too: shapes and pictures on
+  the master and layouts, the master's text styles, the date, embedded fonts, slides, other masters, theme variants.
+- **Slides that are not 16:9.** A 4:3 or other landscape file, a `.thmx` too (it carries its own slide size), is
+  imported with each frame kept as its share of the slide, which stretches the slide to 16:9 with it; the report says
+  so. A portrait file exits 1 and says how to fix it.
+- **Checked before written.** The brand and every template are checked as a deck would check them (`checkBrandFile`,
+  `checkTemplateFile`, `checkBrand` with the brand's files) before any file is written. An error means nothing is
+  written and the result is `brand-invalid`. The warnings are the report's: a face with no files (always, since fonts
+  are by name), overlapping slots, and the like.
+- **The folder.** The brand is `brand.json`, `templates/<id>.json`, `logos/` and `images/`, and
+  `.depthcue-brand-import`, a marker `{ "format": "depthcue-brand-import/1", "files": { "<path>": "<sha256>" } }`
+  that lists each file written with its hash. Importing again into a folder that has the marker replaces the listed
+  files whose bytes still hash as written, and removes the listed ones the new import does not make; the report lists
+  what it removed. A listed file that was changed since (a deck's apply edits `brand.json`) or is no longer a file
+  is refused as `out-edited`, with nothing touched. A file the marker does not list is never replaced or removed: an
+  import that would write over one is `out-not-ours`. While it writes, the marker holds both the old and the new hash
+  of a path, so an import that stopped half way can be run again. A folder with other files in it, or one that holds
+  the source file, is refused with nothing touched, and a file that cannot be imported leaves the earlier import
+  alone. The report's `files` includes the marker. Copied into a deck as `brand/`, the marker is harmless:
+  `depthcue check` ignores it, and a test holds that. Each of the earlier test decks is also given an imported brand in
+  its `brand/` folder by the real command: nothing else in the deck changes, `rev` is the same, and `check` gives only
+  the unused-brand warning; a deck with a brand of its own refuses the import.
+- **Decisions the brief left open.** The 1% touching tolerance and the 0.5% edge trim above, which came from Office's
+  own layouts; skipping vertical text; the logo's edge and size rules; the JPEG in an SVG; refusing EMF and WMF rather
+  than converting them; the restoring pass over colors sent back; moving a color toward the text color, half way for
+  the theme's and three quarters for the preset's, before giving up a background the theme chose; reducing a theme's
+  gradient or picture to its base color; taking a `.thmx` with no layouts as a theme alone; the marker listing itself
+  in `files`; never making a claim slot; scaling a 4:3 file rather than refusing it.
+- **Checked by hand.** All 43 `.thmx` files in PowerPoint's `Document Themes 16` import with no failure and no
+  `brand-invalid`, 802 templates in all. Six have a gradient or picture fill as the master's background, and after
+  the review each keeps its color: Ion and Ion-new `#1E5155`, Slice `#146194`, Mesh-new `#363D46`, Gallery `#DFDBD5`,
+  Wisp `#E3EACF`. Office Theme, Retrospect and Ion were imported into a scratch folder, built into decks and checked,
+  and a contact sheet of each brand's slot frames was looked at. The player does not draw template frames, fonts or
+  chrome until step 3, so the rendered slides show the labeled slot boxes, and the look of an imported brand on a
+  slide is still to be checked after that step.
+- **Known limits.** No stock Office theme has a logo, so the logo path is tested with generated files only. The Ion-style
+  rule can still take artwork for a logo, or miss a logo set against the edge. The 34 layouts with East Asian
+  vertical text in the 43 local themes are skipped. Theme fonts are names only: a viewer without them sees the fallback
+  pair. A moved color is arithmetic, not a designer's choice: Slice keeps its blue because its link, muted and accent
+  colors were mixed toward white, and its link comes out `#CBD7FF`, nearly white.
 
 ## Step 6 record: the PowerPoint extras
 

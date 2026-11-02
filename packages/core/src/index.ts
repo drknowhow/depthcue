@@ -104,7 +104,15 @@ export type { Doc, LoadResult } from "./doc.ts";
 export { brandPartOf, checkDoc, docToFiles, loadDoc, revisionOf, sceneRevision } from "./doc.ts";
 export type { Autosave, AutosaveOptions, DraftStore, Recovery, Timers } from "./draft.ts";
 export { attachAutosave, DRAFT_FORMAT, memoryDraftStore, recoverDraft, serializeDraft } from "./draft.ts";
-export type { DeckLook, ExportData, LookFace } from "./exported.ts";
+export type {
+  DeckLook,
+  ExportData,
+  LookFace,
+  PageLook,
+  PageSlot,
+  PageStyle,
+  PageTemplate,
+} from "./exported.ts";
 export { EXPORT_FORMAT } from "./exported.ts";
 export type { Frame } from "./frames.ts";
 export { checkFrames, FRAME_MIN, frameOf, hasFrames, SAFE_MARGIN } from "./frames.ts";
@@ -143,7 +151,7 @@ export {
   REVOKE_TEXT,
 } from "./lease.ts";
 export type { LookSource } from "./look.ts";
-export { lookOf } from "./look.ts";
+export { lookOf, pageLook } from "./look.ts";
 export { checkReferences } from "./references.ts";
 export type { Layout, Retemplated } from "./retemplate.ts";
 export { retemplate } from "./retemplate.ts";
@@ -195,6 +203,7 @@ export {
   commentsSchema,
   DATA_LIMITS,
   deckSchema,
+  FAMILY_PATTERN,
   FONT_PAIRS,
   ID_PATTERN,
   LAYOUTS,
