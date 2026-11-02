@@ -1227,11 +1227,20 @@ describe("depthcue render, on a deck with a brand", () => {
       // A blank page first: going to the same address with only its hash unchanged would not load the page again.
       await served.page.goto("about:blank");
       const page = await served.go("lay-title");
-      await frames(page);
-      return page.locator(".dc-scene").evaluate((scene) => {
-        const computed = getComputedStyle(scene);
-        return Number.parseFloat(computed.paddingTop) / Number.parseFloat(computed.fontSize);
-      });
+      // The scene is found and read in one turn of the page: the page can draw it again a moment after it settles (the
+      // dev server does when a file it watches reports a change), and a scene found before that and read after it is
+      // no longer in the page, and has no style to give. A turn that finds no scene is tried again.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await frames(page);
+        const em = await page.evaluate(() => {
+          const scene = document.querySelector(".dc-scene");
+          if (!scene?.isConnected) return Number.NaN;
+          const computed = getComputedStyle(scene);
+          return Number.parseFloat(computed.paddingTop) / Number.parseFloat(computed.fontSize);
+        });
+        if (!Number.isNaN(em)) return em;
+      }
+      throw new Error("the scene has no padding to read");
     };
     const logoOf = (size?: string) =>
       editJson(join(deck, "brand", "brand.json"), (brand) => {
