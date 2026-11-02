@@ -109,6 +109,8 @@ export const CHECKS_FAILED = "Could not load part of the editor; reload the page
 /** True when what a read of the deck said may change once a chunk the editor fetches on demand is in. */
 const waitedForChunk = (diagnostics: readonly Diagnostic[]): boolean =>
   waitedForBrandChecks(diagnostics) || waitedForBuiltIns(diagnostics);
+/** How many chunks a read can wait for: the brand checks and Depthcue's own templates and styles. */
+const CHUNKS = 2;
 
 /** Fetches what a read of the deck waited for, rejecting with `CHECKS_FAILED` when a chunk does not arrive. */
 async function chunksIn(diagnostics: readonly Diagnostic[]): Promise<void> {
@@ -130,7 +132,9 @@ async function chunksIn(diagnostics: readonly Diagnostic[]): Promise<void> {
 async function docOf(payload: DeckPayload): Promise<Doc | undefined> {
   const files = { text: payload.text, assets: payload.assets, brandFiles: payload.brandFiles ?? [] };
   let loaded = loadDoc(files);
-  if (waitedForChunk(loaded.diagnostics)) {
+  // A deck with a brand can wait twice: for the brand checks, then, once they have read it, for a template or style of
+  // Depthcue's own that it names.
+  for (let pass = 0; pass < CHUNKS && waitedForChunk(loaded.diagnostics); pass++) {
     await chunksIn(loaded.diagnostics);
     loaded = loadDoc(files);
   }
@@ -211,7 +215,11 @@ export async function openStore(
   let recovery = recover();
   // A draft with a brand on a deck that has none on disk waits for the brand checks; it is not thrown away for that,
   // nor when they cannot be fetched: the deck does not open, and the draft is there for the next try.
-  if (recovery.status === "unusable" && waitedForChunk(recovery.diagnostics)) {
+  for (
+    let pass = 0;
+    pass < CHUNKS && recovery.status === "unusable" && waitedForChunk(recovery.diagnostics);
+    pass++
+  ) {
     await chunksIn(recovery.diagnostics);
     recovery = recover();
   }
