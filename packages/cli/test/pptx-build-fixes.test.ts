@@ -283,7 +283,7 @@ describe("a clip", () => {
     expect(left.some((line) => line.includes("assets/intro.png could not be read"))).toBe(true);
     expect(left.some((line) => line.includes("shown as its poster"))).toBe(false);
     expect(left).toContain(
-      '"intro-clip": a labeled box links to assets/intro.mp4 in its place; the video is not embedded.',
+      '"intro-clip": a labeled box links to assets/intro.mp4 in its place; the video is not embedded, because the file is not a readable MP4.',
     );
     const slide = part(parts, "ppt/slides/slide1.xml");
     expect(wordsIn(slide)).toContain("Video: The opening animation.");

@@ -32,6 +32,14 @@
       "types": "./dist/layout.d.ts",
       "default": "./dist/layout.js"
     },
+    "./export": {
+      "types": "./dist/export.d.ts",
+      "default": "./dist/export.js"
+    },
+    "./pptx": {
+      "types": "./dist/pptx/index.d.ts",
+      "default": "./dist/pptx/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

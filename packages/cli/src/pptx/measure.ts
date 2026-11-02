@@ -92,7 +92,8 @@ export type Item =
   | Shape
   | { kind: "eyebrow"; text: TextPlace }
   | { kind: "claim"; text: TextPlace }
-  | { kind: "sources"; label: TextPlace; list: TextPlace }
+  /** `numbered` is false when the page does not number the list, as on a template scene's foot line. */
+  | { kind: "sources"; label: TextPlace; list: TextPlace; numbered?: boolean }
   | { kind: "text"; id: string; text: TextPlace; cite?: TextPlace }
   | { kind: "image"; id: string; picture: Picture; caption?: TextPlace; cite?: TextPlace }
   | { kind: "clip"; id: string; video: Picture; poster: boolean; cite?: TextPlace }
@@ -139,12 +140,38 @@ export type Item =
       cite?: TextPlace;
     };
 
+/**
+ * The brand's chrome as the page draws it on this scene (`.dc-chrome`): the logo, drawn to a PNG, the footer line and
+ * the slide number, and the accent bar. It is not content: the slide master carries it.
+ */
+export interface ChromeMeasure {
+  logo?: {
+    box: Box;
+    /** The logo drawn at three times its size on the slide, as a PNG data URL. */
+    png?: string;
+    alt: string;
+    /** The plate the page puts behind it on a strong background. */
+    plate?: { box: Box; color: string; radius: number };
+  };
+  footer?: TextPlace;
+  number?: TextPlace;
+  accent?: { box: Box; color: string };
+}
+
 /** Raw measurements of one scene at full reveal. */
 export interface SlideMeasure {
   /** The slide, 1280 by 720 unless the caller asked for another stage. */
   slide: { w: number; h: number };
-  /** How far the scene's content runs past the slide, when it does. */
-  beyond: { right: number; bottom: number };
+  /** How far the scene's content runs past each edge of the slide, when it does. */
+  beyond: { left?: number; top?: number; right: number; bottom: number };
+  /** The slide's own background color, and its picture with the scrim laid over it when it has one. */
+  ground?: string;
+  backdrop?: string;
+  chrome?: ChromeMeasure;
+  /** What the page draws on a panel that a PowerPoint shape here does not: a gradient, a shadow, a dashed border. */
+  lost?: string[];
+  /** Blocks the scene holds back at this step. */
+  hidden?: string[];
   /** The face the page uses for headings, for text and for data, which is what a viewer needs installed. */
   fonts: { display: string; body: string; mono: string };
   /** The color of each tone, and of a link, as the page draws them. */
@@ -160,6 +187,7 @@ export interface SlideMeasure {
 export async function measureSlide(): Promise<SlideMeasure> {
   void document.body.offsetWidth;
   await document.fonts.ready;
+  // The chrome's logo is waited for too: it is drawn for the slide master, not as a picture on the slide.
   const pictures = [...document.querySelectorAll<HTMLImageElement>(".dc-scene img:not(.dc-ghost img)")];
   await Promise.all(pictures.map((picture) => picture.decode().catch(() => undefined)));
   const posters = [...document.querySelectorAll<HTMLVideoElement>(".dc-scene video:not(.dc-ghost video)")];
@@ -349,22 +377,88 @@ export async function measureSlide(): Promise<SlideMeasure> {
     ellipse = false,
   ) => items.push({ kind: "shape", name, box, fill, line, lineWidth, radius, ellipse });
 
-  /** The panel an element draws for itself: a fill, a border all round, rounded corners. Nothing when it draws none. */
+  const lost: string[] = [];
+  const SIDES = ["Top", "Right", "Bottom", "Left"] as const;
+  /**
+   * The panel an element draws for itself: a fill, a border, rounded corners. A border the same all round is the
+   * shape's outline; one that differs by side is a thin rectangle per side. What a shape here cannot be (a gradient or
+   * a picture behind, a shadow, an outline outside the border, see-through, a dashed, dotted or double border, corners
+   * rounded unlike each other) is written down for the report. Nothing when it draws none.
+   */
   const panelOf = (name: string, element: Element, rect: DOMRect): boolean => {
     const style = getComputedStyle(element);
     const fill = parse(style.backgroundColor);
-    const edge = parse(style.borderTopColor);
-    const hasLine = px(style.borderTopWidth) > 0 && edge.a > 0 && style.borderTopStyle !== "none";
+    const under = backdrop(element.parentElement ?? element);
+    const sides = SIDES.map((side) => {
+      const width = px(style[`border${side}Width`]);
+      const color = parse(style[`border${side}Color`]);
+      const kind = style[`border${side}Style`];
+      return {
+        side,
+        width,
+        color,
+        kind,
+        on: width > 0 && color.a > 0 && kind !== "none" && kind !== "hidden",
+      };
+    });
+    const drawn = sides.filter((side) => side.on);
+    const first = drawn[0];
+    const even =
+      drawn.length === 4 &&
+      drawn.every(
+        (side) =>
+          side.width === first?.width &&
+          side.kind === first?.kind &&
+          hex(side.color) === hex(first.color) &&
+          side.color.a === first.color.a,
+      );
     const hasFill = fill.a > 0;
-    if (!hasFill && !hasLine) return false;
-    shape(
-      name,
-      boxOf(rect),
-      hasFill ? hex(over(fill, backdrop(element.parentElement ?? element))) : null,
-      hasLine ? hex(over(edge, backdrop(element.parentElement ?? element))) : null,
-      hasLine ? px(style.borderTopWidth) : 0,
-      px(style.borderTopLeftRadius),
-    );
+    const image = style.backgroundImage;
+    const missing: string[] = [];
+    if (image && image !== "none")
+      missing.push(image.includes("gradient(") ? "a gradient" : "a background picture");
+    if (style.boxShadow && style.boxShadow !== "none") missing.push("a shadow");
+    if (style.outlineStyle !== "none" && px(style.outlineWidth) > 0) missing.push("an outline");
+    if (Number(style.opacity) < 1) missing.push("see-through (opacity)");
+    for (const kind of new Set(drawn.map((side) => side.kind))) {
+      if (kind === "dashed" || kind === "dotted" || kind === "double")
+        missing.push(`a ${kind} border, drawn solid`);
+    }
+    const radii = [
+      style.borderTopLeftRadius,
+      style.borderTopRightRadius,
+      style.borderBottomRightRadius,
+      style.borderBottomLeftRadius,
+    ];
+    if (new Set(radii).size > 1) missing.push("corners rounded unlike each other, drawn alike");
+    if (!hasFill && drawn.length === 0 && missing.length === 0) return false;
+    if (missing.length > 0) lost.push(`${name}: ${missing.join(", ")}`);
+    if (!hasFill && drawn.length === 0) return false;
+    if (hasFill || even) {
+      shape(
+        name,
+        boxOf(rect),
+        hasFill ? hex(over(fill, under)) : null,
+        even && first ? hex(over(first.color, under)) : null,
+        even && first ? first.width : 0,
+        px(style.borderTopLeftRadius),
+      );
+    }
+    if (!even) {
+      const box = boxOf(rect);
+      for (const side of drawn) {
+        const w = side.width;
+        const strip =
+          side.side === "Top"
+            ? { x: box.x, y: box.y, w: box.w, h: w }
+            : side.side === "Bottom"
+              ? { x: box.x, y: box.y + box.h - w, w: box.w, h: w }
+              : side.side === "Left"
+                ? { x: box.x, y: box.y, w, h: box.h }
+                : { x: box.x + box.w - w, y: box.y, w, h: box.h };
+        shape(`${name} ${side.side.toLowerCase()} edge`, strip, hex(over(side.color, under)), null, 0, 0);
+      }
+    }
     return true;
   };
 
@@ -420,6 +514,8 @@ export async function measureSlide(): Promise<SlideMeasure> {
   const pictureOf = (
     element: HTMLImageElement | HTMLVideoElement,
     source: HTMLImageElement | null,
+    /** Draw it as a PNG whatever its type: a video's poster is the picture PowerPoint shows until it plays. */
+    asPng = false,
   ): Picture => {
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
@@ -447,7 +543,7 @@ export async function measureSlide(): Promise<SlideMeasure> {
     const place: Picture = { box: boxOf(rect), picture: boxOf(drawn), natural, src };
     // PowerPoint shows PNG, JPEG and GIF everywhere. Anything else is drawn here, at twice the size it has on the slide.
     const plain = /\.(png|jpe?g|gif)(\?.*)?$/i.test(src);
-    if (source && !plain && natural.w > 0) {
+    if (source && (asPng || !plain) && natural.w > 0) {
       const scale = 2;
       const width = Math.min(4096, Math.max(1, Math.round(drawn.width * scale)));
       const height = Math.min(4096, Math.max(1, Math.round(drawn.height * scale)));
@@ -489,8 +585,12 @@ export async function measureSlide(): Promise<SlideMeasure> {
 
   const blockItem = (block: HTMLElement) => {
     const id = block.dataset.id ?? "";
+    // A block a style gives a panel (a fill, a border, an accent edge) draws it behind its content, as a quote draws its bar.
+    const styled = block.matches("[data-fill], [data-border], [data-edge]");
+    if (styled || block.matches(".dc-quote")) {
+      panelOf(styled ? `${id} panel` : "Quote bar", block, block.getBoundingClientRect());
+    }
     if (block.matches(".dc-heading, .dc-quote, .dc-caption, .dc-body")) {
-      if (block.matches(".dc-quote")) bordersOf("Quote bar", block);
       let place = placeOf(block, block.matches(".dc-heading"));
       // The dot on a title slide is drawn by the heading, above its words.
       const dot = getComputedStyle(block, "::before");
@@ -522,7 +622,7 @@ export async function measureSlide(): Promise<SlideMeasure> {
       const poster = posterImages.get(video) ?? null;
       panelOf("Video frame", video, video.getBoundingClientRect());
       items.push(
-        withCite({ kind: "clip", id, video: pictureOf(video, poster), poster: poster !== null }, block),
+        withCite({ kind: "clip", id, video: pictureOf(video, poster, true), poster: poster !== null }, block),
       );
       return;
     }
@@ -690,7 +790,7 @@ export async function measureSlide(): Promise<SlideMeasure> {
 
   const selector = ".dc-eyebrow, .dc-claim, .dc-evidence-region, .dc-block, .dc-sources";
   for (const element of scene.querySelectorAll<HTMLElement>(selector)) {
-    if (!visible(element)) continue;
+    if (!visible(element) || element.closest(".dc-chrome")) continue;
     // A block nested in another block's subtree is part of that block; none is today, and a ghost has no `dc-block`.
     if (element.matches(".dc-eyebrow")) items.push({ kind: "eyebrow", text: placeOf(element) });
     else if (element.matches(".dc-claim")) {
@@ -701,26 +801,155 @@ export async function measureSlide(): Promise<SlideMeasure> {
       const label = element.querySelector(".dc-label");
       const list = element.querySelector("ol");
       bordersOf("Sources rule", element);
-      if (label && list) items.push({ kind: "sources", label: placeOf(label), list: placeOf(list) });
+      const item = list?.querySelector("li");
+      const numbered = !item || getComputedStyle(item).listStyleType !== "none";
+      if (label && list)
+        items.push({ kind: "sources", label: placeOf(label), list: placeOf(list), numbered });
     } else blockItem(element);
   }
 
   // How far the content runs past the slide, which the render check reports as overflow.
+  let left = 0;
+  let top = 0;
   let right = 0;
   let bottom = 0;
   const slide = { w: view.clientWidth, h: view.clientHeight };
-  for (const element of scene.querySelectorAll<HTMLElement>(".dc-block, .dc-claim, .dc-sources")) {
-    if (!visible(element)) continue;
+  for (const element of scene.querySelectorAll<HTMLElement>(
+    ".dc-eyebrow, .dc-block, .dc-claim, .dc-sources",
+  )) {
+    if (!visible(element) || element.closest(".dc-chrome")) continue;
     const rect = boxOf(element.getBoundingClientRect());
+    left = Math.max(left, -rect.x);
+    top = Math.max(top, -rect.y);
     right = Math.max(right, rect.x + rect.w - slide.w);
     bottom = Math.max(bottom, rect.y + rect.h - slide.h);
   }
+
+  /** A picture drawn into a canvas at `scale` times its box, as a data URL; nothing when the canvas cannot be read. */
+  const raster = (
+    source: CanvasImageSource,
+    box: Box,
+    scale: number,
+    type = "image/png",
+    quality?: number,
+  ) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.min(4096, Math.max(1, Math.round(box.w * scale)));
+    canvas.height = Math.min(4096, Math.max(1, Math.round(box.h * scale)));
+    (canvas.getContext("2d") as CanvasRenderingContext2D).drawImage(
+      source,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    try {
+      return canvas.toDataURL(type, quality);
+    } catch {
+      return undefined;
+    }
+  };
+
+  // The brand's chrome, which the slide master carries.
+  const chromeNode = scene.querySelector<HTMLElement>(":scope > .dc-chrome");
+  let chrome: ChromeMeasure | undefined;
+  if (chromeNode) {
+    chrome = {};
+    const logo = chromeNode.querySelector<HTMLImageElement>(".dc-logo");
+    if (logo && visible(logo) && logo.naturalWidth > 0) {
+      const picture = pictureOf(logo, logo);
+      const png = raster(logo, picture.picture, 3);
+      const style = getComputedStyle(logo);
+      const plateColor = parse(style.backgroundColor);
+      const spread = /(-?[\d.]+)px\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+(-?[\d.]+)px/.exec(style.boxShadow);
+      const grow = spread ? px(`${spread[4]}px`) : 0;
+      const box = picture.box;
+      chrome.logo = {
+        box: picture.picture,
+        alt: logo.alt,
+        ...(png ? { png } : {}),
+        ...(plateColor.a > 0
+          ? {
+              plate: {
+                box: {
+                  x: round(box.x - grow),
+                  y: round(box.y - grow),
+                  w: round(box.w + 2 * grow),
+                  h: round(box.h + 2 * grow),
+                },
+                color: hex(over(plateColor, backdrop(scene))),
+                radius: round(px(style.borderTopLeftRadius) + grow),
+              },
+            }
+          : {}),
+      };
+    }
+    const footer = chromeNode.querySelector(".dc-footer");
+    if (footer && visible(footer)) chrome.footer = placeOf(footer);
+    const number = chromeNode.querySelector(".dc-number");
+    if (number && visible(number)) chrome.number = placeOf(number);
+    const accent = chromeNode.querySelector(".dc-accent");
+    if (accent && visible(accent)) {
+      chrome.accent = {
+        box: boxOf(accent.getBoundingClientRect()),
+        color: hex(over(parse(getComputedStyle(accent).backgroundColor), backdrop(scene))),
+      };
+    }
+  }
+
+  // The slide's ground, and its picture under the scrim, composed as the page shows them.
+  const ground = hex(backdrop(scene));
+  let backdropPicture: string | undefined;
+  const behind = scene.querySelector<HTMLElement>(":scope > .dc-backdrop");
+  if (behind) {
+    const url = /url\("?(.*?)"?\)/.exec(getComputedStyle(behind).backgroundImage)?.[1];
+    if (url) {
+      const image = new Image();
+      image.src = url;
+      await image.decode().catch(() => undefined);
+      if (image.naturalWidth > 0) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1920;
+        canvas.height = 1080;
+        const drawing = canvas.getContext("2d") as CanvasRenderingContext2D;
+        const fit = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+        const w = image.naturalWidth * fit;
+        const h = image.naturalHeight * fit;
+        drawing.drawImage(image, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+        const scrim = getComputedStyle(behind, "::after");
+        drawing.globalAlpha = Number(scrim.opacity) || 0;
+        drawing.fillStyle = scrim.backgroundColor;
+        drawing.fillRect(0, 0, canvas.width, canvas.height);
+        try {
+          backdropPicture = canvas.toDataURL("image/jpeg", 0.9);
+        } catch {
+          // A picture from elsewhere taints the canvas; the slide then has its ground color alone, and the report says so.
+          lost.push("Background picture: it could not be read, so the slide has its color alone");
+        }
+      }
+    }
+  }
+
+  const hidden = [...scene.querySelectorAll<HTMLElement>('[data-gated][data-revealed="false"]')]
+    .map((element) => element.dataset.id ?? "")
+    .filter((id) => id !== "");
+
   const sceneStyle = getComputedStyle(scene);
   const family = (name: string) =>
     (sceneStyle.getPropertyValue(name).split(",")[0] ?? "").trim().replace(/^["']|["']$/g, "");
   return {
     slide,
-    beyond: { right: round(Math.max(0, right)), bottom: round(Math.max(0, bottom)) },
+    beyond: {
+      left: round(Math.max(0, left)),
+      top: round(Math.max(0, top)),
+      right: round(Math.max(0, right)),
+      bottom: round(Math.max(0, bottom)),
+    },
+    ground,
+    ...(backdropPicture ? { backdrop: backdropPicture } : {}),
+    ...(chrome ? { chrome } : {}),
+    lost,
+    hidden,
     fonts: {
       display: family("--dc-font-display"),
       body: family("--dc-font-ui"),

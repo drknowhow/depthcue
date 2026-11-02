@@ -167,6 +167,11 @@ function tidyNotes(xml: string): string {
 export interface Hints {
   /** For each slide, the names of its tables that have a header row. */
   headers: readonly (readonly string[])[];
+  /**
+   * Changes to the parts the writer cannot make (the slide master and layouts, embedded fonts), made after the charts
+   * are numbered again and before the parts are tidied, so a shape added here is numbered with the rest.
+   */
+  edit?: (parts: Map<string, Uint8Array>) => void | Promise<void>;
 }
 
 const CHART_PART = /^ppt\/charts\/chart(\d+)\.xml$/;
@@ -306,6 +311,7 @@ const markerXml = (digest: string) =>
 /** The file the writer made, tidied so the same deck gives the same bytes, and marked as Depthcue's. */
 export async function finishPackage(raw: Uint8Array, hints: Hints = { headers: [] }): Promise<Buffer> {
   const parts = renumbered(await readParts(raw));
+  await hints.edit?.(parts);
   const whole: Whole = { hints, parts, empty: new Map() };
   // The workbooks come last: what each chart leaves empty is known only once the charts are tidied.
   const names = [...parts.keys()].sort((a, b) => Number(a.endsWith(".xlsx")) - Number(b.endsWith(".xlsx")));

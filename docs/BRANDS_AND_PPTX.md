@@ -75,7 +75,7 @@ editor and agents alike. A block that fits no slot is reported, never dropped.
 | Sources                           | A small line of links at the foot of the slide                               |
 | Build steps                       | All shown on one slide; `--steps` writes one slide per click step            |
 | Brand chrome and templates        | The slide master, and one PowerPoint layout per template                     |
-| Fonts                             | Named; PowerPoint cannot carry font files, so the export lists the families  |
+| Fonts                             | Embedded, each face whose file allows it; the report says why any is not     |
 
 `--pictures` writes each slide as one exact image with its notes, for when the look matters more than editing.
 Interactive charts, the control lease, the presenter window and transitions have no PowerPoint form; the export says
@@ -148,9 +148,9 @@ on this PC and exporting the slides to images, because CI can only read the file
 
 ## Not in this plan
 
-Embedding font files inside the `.pptx`, PowerPoint animations for build steps, importing a whole `.pptx` deck as
-scenes (0.3 in `docs/PLAN.md`), a shared brand folder that decks point to, uploading a brand from the editor to a
-library, and per-block raw hex colors.
+PowerPoint animations for build steps, converting a font with CFF outlines to TrueType so PowerPoint can embed it,
+importing a whole `.pptx` deck as scenes (0.3 in `docs/PLAN.md`), a shared brand folder that decks point to,
+uploading a brand from the editor to a library, and per-block raw hex colors.
 
 ## Step 1 record: what the contracts fixed
 
@@ -406,3 +406,73 @@ Found, not fixed (older than the brand work):
   wording); `packages/editor/test/deckpanel.test.ts` and `packages/cli/test/edit-style-e2e.test.ts` (the inline colors
   and `data-fonts` above); `packages/cli/test/layout.test.ts`, `export-brand.test.ts` and `serve-brand.test.ts` (the
   new checks, the export and the server).
+
+## Step 6 record: the PowerPoint extras
+
+- **Master and layouts.** pptxgenjs has one master and no placeholder types or fields, so `pptx/master.ts` writes the
+  master, the layouts and the slides' ties to them as XML in the package step, after the writer, the same way every
+  time. A deck with a brand (or `--pictures`) gets one master: the deck's ground, the accent bar, the logo (the PNG the
+  page drew, at three times its size), a footer placeholder with the brand's words and a slide-number placeholder with
+  PowerPoint's own `slidenum` field; dates and headers are off. The theme's colors are the look's. The layouts are
+  `Blank` (scenes on the built-in layouts) and one per template in order of first use, named by the template's
+  `name`. Each slot is a placeholder at its frame: title is `title`, claim is `title` when the template has no title
+  slot and `body` when it has, subtitle `subTitle`, body `body`, picture `pic`, chart `chart`, table `tbl`, content
+  `obj`. The slot's hint is the prompt, its `valign` the anchor, and the text style is the first slide's measured
+  ink. Numbers: master body 1, footer 3, number 4; a layout's footer 11, number 12, slot n is 13 + n. A template with
+  chrome `none` or `minimal`, or a ground that is not the deck's, turns the master's shapes off and draws its own copy
+  of what it shows (the logo on its plate on a strong ground), as the page does; its background (a color, or the
+  picture with its scrim as one JPEG) is the layout's. A slide uses its scene's layout, and the first block in each
+  slot (the claim in a claim slot) is that slot's placeholder, so PowerPoint's Reset puts it back. A deck with no brand
+  keeps the file it had: one layout and no placeholders.
+- **Fonts.** Every family the slides and charts draw that has files (the brand's faces, and the faces of the
+  built-in pair the player ships) is embedded as PowerPoint embeds fonts: an EOT 2.2 part per face with no compression
+  (`pptx/eot.ts`), listed in `<p:embeddedFontLst>` with `embedTrueTypeFonts`. WOFF2 and WOFF are decoded here
+  (`pptx/sfnt.ts`, the `glyf` transform included, brotli from `node:zlib`): no new dependency. A face is left out and
+  named when its `fsType` forbids embedding (restricted or bitmap only), when it has CFF outlines, when the file is
+  not the face it stands for (IBM Plex Mono SemiBold calls itself "IBM Plex Mono SmBld" Regular, so it is no bold), or
+  when its file cannot be read. Preview-and-print embedding is kept with a note that PowerPoint may open the file
+  read-only. PowerPoint finds an embedded font by the name inside it, so the slides are written with that name and the
+  report says so ("Harbor Sans" is "Space Grotesk" in its file). A family the page draws only from a bold file is bold
+  in the slides. For a family split by `unicode-range`, the file covering the most of the slide's characters is
+  embedded and the report lists the characters that come from another face. A brand face with no files is said once
+  for the deck (`face-without-files`).
+- **`--pictures`.** Each slide is the page drawn at 1.5 times (1920 by 1080, PNG), with the notes, the scene's title
+  as the picture's description, and the title in a hidden title placeholder for PowerPoint's outline, under the
+  picture (LibreOffice draws hidden shapes). The layout is `Picture`.
+- **Videos.** A clip that is an MP4 in the deck with H.264 video and AAC sound, read from its own boxes
+  (`pptx/media.ts`), is embedded in the box the page draws it in, with the poster the page drew as its cover and its
+  alt text as the description. Anything else, and every clip under `--posters`, is the poster with a link, and the
+  report says why. The test video `packages/cli/test/fixtures/tiny.mp4` is 40 KB (2 s, 320 by 180).
+- **`--steps`.** One slide per step of a scene with build steps, from the scene as it opens (`#/<scene>/<k>`), with
+  the step in the report. Blocks the scene holds back are left off. PowerPoint numbers every slide, which the report
+  says when the brand shows a number.
+- **Export endpoint.** `POST /_depthcue/api/export.pptx` on an editing server, with the token and origin checks of
+  the other write calls (403), POST only (405), the CLI's switches as JSON (`notes`, `pictures`, `steps`, `posters`;
+  400 for anything else, 413 over 4 KB), one export at a time, and the file in the response (422 for a deck with
+  errors, 503 without a browser). Nothing is written: links to deck files are made relative to
+  `<deck folder>.pptx` beside the deck, so the bytes equal `depthcue export <deck> --format pptx --out` that path.
+- **MCP.** `deck_export` writes the PowerPoint file or the offline page to an absolute `out`, one at a time after any
+  render, with the same refusals as the CLI, and returns the per-slide report and the fonts. Six tools now; the
+  tool-list limit is 13,200 characters (was 12,000, which the five tools filled to 11,999; `deck_export` is 1.1 KB).
+  `@depthcue/cli` exports `./export` and `./pptx` for it.
+- **Report.** Content past the slide is said for every edge it crosses, in pixels past that edge. That is not
+  `depthcue render`'s number, which is how much taller the scene is than the stage, padding included: v0-3's `data`
+  is "258px taller" in render and 195 px past the bottom here. A picture past an edge is cropped there with its source
+  rectangle, so PowerPoint's Crop gives the rest back. What a panel has that a shape here does not draw (a gradient or
+  picture, a shadow, an outline, see-through, a dashed, dotted or double border, unequal corners) is named per slide.
+  `slot-empty` goes on its slide; `face-without-files` and `background-unmeasured` go on the deck. A player that is
+  not built is `player-not-built`, as JSON under `--json`, exit 2. `measure.ts` skips `.dc-chrome`, and the folder
+  export's human summary lists the brand files it copied.
+- **Found on the way.** A template scene's sources are one unnumbered line at the foot (step 3), but the slide wrote
+  them numbered in a box measured to the unnumbered line, so they wrapped into the footer. The measure now says whether
+  the page numbers the list, and the foot line's label and list keep to one line.
+- **Checked.** Every file was opened in LibreOffice and turned to page images, one page per slide, compared with the
+  player's: the brand deck, the demo, the demo in picture mode and with steps, and v0-3. LibreOffice draws the mono
+  "Sources" label in another face, so it wraps there, as it did before this step. The e2e file converts the brand and
+  stepped files where LibreOffice is installed and counts the pages. PowerPoint itself is the conductor's check.
+- **Sizes.** No budget row moved: the work is in the CLI and the MCP server.
+- **Risks.** The video goes in through pptxgenjs `addMedia`, whose shape ids the package step renumbers, and
+  LibreOffice cannot say whether PowerPoint plays it. The fonts are embedded whole, not subset. Embedding a face whose
+  licence allows it still puts a copy of the font in a file that travels; the report names each one.
+- **Outside the write-set.** `packages/cli/package.json` (the `./export` and `./pptx` exports) and `vitest.config.ts`
+  (their aliases), for the MCP tool. `README.md` still says five MCP tools.

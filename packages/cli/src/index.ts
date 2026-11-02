@@ -24,7 +24,8 @@ export interface Io {
 
 /** The two forms of export, which `depthcue export --help` prints on their own. */
 const EXPORT_USAGE = `  depthcue export <deck-folder> [--out <dir>] [--no-notes] [--json]
-  depthcue export <deck-folder> --format pptx [--out <file.pptx>] [--no-notes] [--json]`;
+  depthcue export <deck-folder> --format pptx [--out <file.pptx>] [--no-notes] [--pictures] [--steps]
+                  [--posters] [--json]`;
 
 const EXPORT_TEXT = `export Writes a folder that opens by double-click: index.html with the deck inside it, the player beside it
        and only the assets a scene names. It needs no server and no network, so it works from a USB stick.
@@ -33,10 +34,15 @@ const EXPORT_TEXT = `export Writes a folder that opens by double-click: index.ht
        A deck with errors writes nothing. Exports have no presenter view yet.
        --format pptx writes one PowerPoint file instead, <deck-folder name>.pptx here or the --out file. Each
        scene is a slide with all its steps showing. Text, tables and charts are PowerPoint's own and can be edited
-       there; panels are shapes and pictures are pictures. It needs Chrome or Edge, as render does. It reports,
-       per slide, what has no PowerPoint form (the chart explorer, a clip's playback, build steps, transitions)
-       and the font families a viewer needs installed. A file Depthcue did not write, or one that has been
-       changed since, is never replaced. Exit codes: 0 done, 1 the deck has errors, 2 the export could not run.`;
+       there; panels are shapes and pictures are pictures. A branded deck gets its brand as the slide master
+       and one layout per template, with a placeholder per slot. The faces the slides draw in are embedded when
+       their files allow it. A clip that is an MP4 in the deck is embedded; --posters shows every clip as its
+       poster with a link instead. --steps makes one slide per build step. --pictures makes each slide one
+       picture of the scene, 1920x1080, with its notes and its title for PowerPoint's outline. It needs Chrome
+       or Edge, as render does. It reports, per slide, what has no PowerPoint form (the chart explorer,
+       content past the slide's edge, build steps, transitions) and which fonts are embedded. A file Depthcue
+       did not write, or one that has been changed since, is never replaced.
+       Exit codes: 0 done, 1 the deck has errors, 2 the export could not run.`;
 
 const USAGE = `Usage:
   depthcue check <deck-folder> [--json]
@@ -123,10 +129,15 @@ const VALUE_FLAGS = [
 ] as const;
 type ValueFlag = (typeof VALUE_FLAGS)[number];
 
+/** The switches only `export --format pptx` takes. */
+const PPTX_FLAGS = ["pictures", "steps", "posters"] as const;
+type PptxFlag = (typeof PPTX_FLAGS)[number];
+
 interface Parsed {
   positional: string[];
   json: boolean;
   noNotes: boolean;
+  pptx: Set<PptxFlag>;
   all: boolean;
   help: boolean;
   values: Partial<Record<ValueFlag, string>>;
@@ -138,6 +149,7 @@ function parse(args: readonly string[]): Parsed {
     positional: [],
     json: false,
     noNotes: false,
+    pptx: new Set(),
     all: false,
     help: false,
     values: {},
@@ -147,6 +159,11 @@ function parse(args: readonly string[]): Parsed {
     const arg = args[i] as string;
     if (arg === "--json") {
       parsed.json = true;
+      continue;
+    }
+    const pptxFlag = PPTX_FLAGS.find((name) => arg === `--${name}`);
+    if (pptxFlag) {
+      parsed.pptx.add(pptxFlag);
       continue;
     }
     if (arg === "--help") {
@@ -443,6 +460,7 @@ function exportCommand(
     if (done.skipped.length > 0) {
       io.out(`  left out because no scene names them: ${done.skipped.join(", ")}`);
     }
+    if (done.brandFiles.length > 0) io.out(`  brand files: ${done.brandFiles.join(", ")}`);
     return 0;
   } catch (error) {
     if (!(error instanceof ExportError)) throw error;
@@ -456,13 +474,13 @@ function exportCommand(
 async function pptxCommand(
   folder: string,
   out: string | undefined,
-  notes: boolean,
+  options: { notes: boolean; pictures: boolean; steps: boolean; posters: boolean },
   json: boolean,
   io: Io,
 ): Promise<number> {
   try {
     const { exportPptx } = await import("./pptx/index.ts");
-    const result = await exportPptx({ folder, notes, ...(out === undefined ? {} : { out }) });
+    const result = await exportPptx({ folder, ...options, ...(out === undefined ? {} : { out }) });
     if (!result.ok) {
       report(io, result.diagnostics, json, { code: "deck-invalid" });
       if (!json) {
@@ -478,21 +496,30 @@ async function pptxCommand(
       return 0;
     }
     for (const diagnostic of done.warnings) for (const line of format(diagnostic)) io.out(line);
-    io.out(`Exported ${plural(done.scenes, "slide")} to ${done.out}`);
+    io.out(`Exported ${plural(done.slides.length, "slide")} to ${done.out}`);
     io.out(`  ${kilobytes(done.bytes)}, notes ${done.notes ? "kept" : "left out"}`);
+    if (done.layouts.length > 0) io.out(`  slide layouts: ${done.layouts.join(", ")}`);
     done.slides.forEach((slide, at) => {
+      const name = `${slide.scene}${slide.step === undefined ? "" : ` step ${slide.step}`}`;
       if (slide.left.length === 0) {
-        io.out(`  ${at + 1} ${slide.scene}: everything has a PowerPoint form`);
+        io.out(`  ${at + 1} ${name}: everything has a PowerPoint form`);
         return;
       }
-      io.out(`  ${at + 1} ${slide.scene}: no PowerPoint form for`);
+      io.out(`  ${at + 1} ${name}: no PowerPoint form for`);
       for (const line of slide.left) io.out(`      ${line}`);
     });
     for (const line of done.deck) io.out(`  every slide: ${line}`);
     if (done.fonts.length > 0) {
+      // PowerPoint draws an embedded face in place of a missing one; an app that ignores embedded fonts needs them all.
       io.out("  fonts a viewer needs installed to see it as drawn:");
       for (const font of done.fonts) {
-        io.out(`      ${font.family}${font.roles.length > 0 ? ` (${font.roles.join(", ")})` : ""}`);
+        const carried = done.embedded.find((entry) => entry.family === font.family);
+        const faces =
+          carried && carried.embedded.length > 0
+            ? `: embedded (${carried.embedded.join(", ")}), which PowerPoint uses`
+            : "";
+        io.out(`      ${font.family}${font.roles.length > 0 ? ` (${font.roles.join(", ")})` : ""}${faces}`);
+        for (const note of carried?.notes ?? []) io.out(`          ${note}`);
       }
     }
     return 0;
@@ -709,7 +736,7 @@ export interface RunOptions {
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, noNotes, all, help, values, unknown } = parse(rest);
+  const { positional, json, noNotes, pptx, all, help, values, unknown } = parse(rest);
   const baseRev = values["base-rev"];
   const portText = values.port;
   const port = portText === undefined ? undefined : Number(portText);
@@ -730,6 +757,9 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   if (values.format !== undefined && command !== "export") return usage("--format belongs to export.");
   if (values.format !== undefined && values.format !== "pptx") {
     return usage(`--format needs pptx, the one format there is. Without it, export writes a folder.`);
+  }
+  if (pptx.size > 0 && (command !== "export" || values.format !== "pptx")) {
+    return usage(`--${[...pptx][0]} belongs to export --format pptx.`);
   }
   if (all && command !== "comments" && command !== "diff") {
     return usage("--all belongs to comments list, diff accept and diff revert.");
@@ -854,7 +884,13 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
       values.height === undefined
     ) {
       if (values.format === "pptx") {
-        return pptxCommand(folder, values.out, !noNotes, json, io).catch((error: Error) => {
+        const options = {
+          notes: !noNotes,
+          pictures: pptx.has("pictures"),
+          steps: pptx.has("steps"),
+          posters: pptx.has("posters"),
+        };
+        return pptxCommand(folder, values.out, options, json, io).catch((error: Error) => {
           io.err(error.message);
           return 2;
         });
