@@ -11,13 +11,20 @@ import type { EditorStore } from "./store.ts";
 /** The live server's call. */
 export const PPTX_CALL = "/_depthcue/api/export.pptx";
 
-/** What the export says about the file: `depthcue export --format pptx --json` without the path, sent as a header. */
+/**
+ * What the export says about the file, as the call's `X-Depthcue-Report` header sends it: the summary of
+ * `depthcue export --format pptx --json` without the path. One too long for a header is `shortened`: the lines that fit.
+ */
 export interface ExportReport {
   fonts: Array<{ family: string; roles: string[]; as?: string; embedded: string[]; notes: string[] }>;
   slides: Array<{ scene: string; title: string; step?: number; left: string[] }>;
   deck: string[];
   warnings: Array<{ message: string }>;
+  shortened?: boolean;
 }
+
+/** What the dialog says over a shortened report. */
+export const SHORTENED = "The full report is longer; run depthcue export --json to see all of it.";
 
 /** Where the file comes from and goes to. A test stands in for both. */
 export interface DownloadIO {
@@ -114,7 +121,8 @@ function reportView(report: ExportReport | undefined): HTMLElement[] {
   const slides = report.slides
     .map((slide, at) => ({ slide, at }))
     .filter(({ slide }) => slide.left.length > 0);
-  const out: HTMLElement[] = [h("h3", {}, "What has no PowerPoint form")];
+  const out: HTMLElement[] = report.shortened ? [h("p", { class: "ed-hint-text" }, SHORTENED)] : [];
+  out.push(h("h3", {}, "What has no PowerPoint form"));
   out.push(
     slides.length === 0 && report.deck.length === 0
       ? h("p", {}, "Nothing: everything on every slide is in the file.")

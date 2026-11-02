@@ -1167,16 +1167,32 @@ body {
 }
 
 /*
- * A style's picture is its sample block alone: the part of the slide round it, 30% to 70% each way (512 by 288 of the
- * slide's 1280 by 720), scaled to fill 80 pixels across.
+ * A style's picture is its sample block on a slide the size of the picture, drawn at its true size and not scaled. The
+ * text is 13 CSS pixels times the style's size and never under 12, whatever the kind, as a heading or a quote would be
+ * far bigger on a slide; the block takes the width, and the slide's color shows round it, so its fill, edge and border do.
  */
 .ed-style-thumb {
-  --thumb-k: 0.15625;
-  width: 80px;
+  width: 112px;
 }
 
 .ed-style-thumb .ed-thumb-frame.dc-player {
-  transform: scale(var(--thumb-k)) translate(-384px, -216px);
+  width: 100%;
+  height: 100%;
+  transform: none;
+}
+
+.ed-style-thumb .dc-view {
+  overflow: hidden;
+}
+
+.ed-style-thumb .dc-player .dc-scene {
+  gap: 0;
+  padding: 0 8px;
+}
+
+.ed-style-thumb .dc-player .dc-scene :is(.dc-heading, .dc-body, .dc-quote, .dc-caption) {
+  max-width: none;
+  font-size: max(12px, calc(13px * var(--dc-k, 1)));
 }
 
 /* A dialog of the brand's: the template picker and Change template. */

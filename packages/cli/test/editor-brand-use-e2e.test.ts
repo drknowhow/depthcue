@@ -588,6 +588,46 @@ describe("the Style menu in a real browser", () => {
     expect(await page.locator(".ed-toolbar .ed-styles .ed-style-choice .ed-mini .dc-scene").count()).toBe(
       forQuote.length + 1,
     );
+    // And it can be read: the sample is drawn at 12 CSS px or more, not as a whole slide scaled down, its block takes
+    // most of the picture and stays inside it, and the styles' fill, edge, border and tone tell them apart.
+    const pictures = await page.locator(".ed-toolbar .ed-styles .ed-style-thumb").evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        const sample = node.querySelector("[data-id='sample']") as HTMLElement;
+        const block = sample.getBoundingClientRect();
+        const text = document.createRange();
+        text.selectNodeContents(sample);
+        const glyphs = text.getBoundingClientRect();
+        const style = getComputedStyle(sample);
+        return {
+          style: node.closest("label")?.querySelector("input")?.dataset.style,
+          size: Number.parseFloat(style.fontSize),
+          glyphs: glyphs.height,
+          wide: block.width / box.width,
+          inside:
+            block.left >= box.left &&
+            block.right <= box.right &&
+            block.top >= box.top &&
+            block.bottom <= box.bottom,
+          look: [
+            style.backgroundColor,
+            style.borderInlineStartWidth,
+            style.borderTopWidth,
+            style.color,
+            style.fontFamily,
+          ].join(" "),
+        };
+      }),
+    );
+    expect(pictures.map((picture) => picture.style)).toEqual(offered);
+    for (const picture of pictures) {
+      expect(picture.size, picture.style).toBeGreaterThanOrEqual(12);
+      expect(picture.glyphs, picture.style).toBeGreaterThanOrEqual(12);
+      expect(picture.wide, picture.style).toBeGreaterThan(0.8);
+      expect(picture.inside, picture.style).toBe(true);
+    }
+    const lookOf = (id: string) => pictures.find((picture) => picture.style === id)?.look;
+    expect(new Set(["none", "callout", "quiet-panel", "pull-quote"].map(lookOf)).size).toBe(4);
     await page.locator(".ed-toolbar .ed-style-choice:has(input[data-style='quiet-panel'])").click();
     await expect.poll(() => blockOn(mine, "context", "context-quote")?.style).toBe("quiet-panel");
     await saved();
@@ -760,33 +800,18 @@ async function downloadPptx(options: { pictures?: boolean } = {}) {
   return { name: file.suggestedFilename(), bytes: readFileSync(await file.path()) };
 }
 
-/**
- * Sends the export's report with the file, as the export call would if it sent one: `depthcue export --json`'s summary
- * of the same deck (its fonts, slides, deck lines and warnings), as the `X-Depthcue-Report` header the dialog reads.
- */
-async function reportWith(dir: string) {
+/** What `depthcue export --json` says about the same deck: the report the dialog should list. */
+async function cliReport(dir: string) {
   const done = capture();
   const code = await run(
     ["export", dir, "--format", "pptx", "--out", join(root, "report.pptx"), "--json"],
     done.io,
   );
   expect(code, done.errors.join("\n")).toBe(0);
-  const summary = JSON.parse(done.lines.join("\n")) as Record<string, unknown>;
-  const header = encodeURIComponent(
-    JSON.stringify({
-      fonts: summary.fonts,
-      slides: summary.slides,
-      deck: summary.deck,
-      warnings: summary.diagnostics,
-    }),
-  );
-  await page.route("**/_depthcue/api/export.pptx", async (route) => {
-    const response = await route.fetch();
-    await route.fulfill({ response, headers: { ...response.headers(), "x-depthcue-report": header } });
-  });
-  return summary as {
+  return JSON.parse(done.lines.join("\n")) as {
     fonts: Array<{ family: string; embedded: string[] }>;
     slides: Array<{ title: string; left: string[] }>;
+    deck: string[];
   };
 }
 
@@ -865,12 +890,15 @@ describe("Download PowerPoint in a real browser", () => {
     expect(problems).toEqual([]);
   }, 300_000);
 
-  it("lists the export's own report after the download when the call sends one", async () => {
+  it("lists the report the export call sends with the file: what `depthcue export --json` says", async () => {
     const mine = copy(harborDeck, "harbor");
     await open(mine, "growth");
-    const summary = await reportWith(mine);
     await downloadPptx();
+    const summary = await cliReport(mine);
     const report = dialog("pptx").locator(".ed-pptx-report");
+    expect(await report.textContent()).not.toContain("sent no report");
+    expect(await report.textContent()).not.toContain("The full report is longer");
+    for (const line of summary.deck) expect(await report.textContent()).toContain(line);
     const carried = summary.fonts.filter((font) => font.embedded.length > 0);
     expect(carried.length).toBeGreaterThan(0);
     expect(await report.locator("h3").allTextContents()).toContain("Fonts in the file");
@@ -1006,16 +1034,10 @@ describe.skipIf(!SHOTS)("screenshots of a brand in use", () => {
       await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
 
-      // Download PowerPoint, after the file is in: as the export call is today, with no report, then with the CLI's
-      // report of the same deck sent as the dialog would read it.
+      // Download PowerPoint, after the file is in, with the report the export call sent with it.
       await downloadPptx();
       await page.waitForTimeout(300);
       await shot("download");
-      await dialog("pptx").locator("[data-dialog-action='cancel']").click();
-      await reportWith(mine);
-      await downloadPptx();
-      await page.waitForTimeout(300);
-      await shot("download-report");
       expect(problems).toEqual([]);
     }, 240_000);
   }

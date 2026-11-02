@@ -408,11 +408,12 @@ describe("Change template", () => {
     const doc = harbor();
     const plan = planOf(doc, "growth", { template: "cover" }, measure);
     expect(plan.problem).toBeUndefined();
+    // A block no slot takes is said once, under "Fits no slot", not also among the blocks that have a place.
     expect(plan.placed).toEqual([
       expect.stringMatching(/→ title slot$/),
-      expect.stringMatching(/→ pinned over the slide$/),
       expect.stringMatching(/→ byline slot$/),
     ]);
+    expect(plan.placed.join("\n")).not.toMatch(/Chart/);
     expect(plan.unplaced).toHaveLength(1);
     expect(plan.unplaced[0]).toMatch(
       /^Chart.*No slot here takes a chart, so it stays on the slide, pinned where it is now/,
@@ -515,7 +516,11 @@ describe("Change template", () => {
     const preview = dialog.querySelector(".ed-retemplate-preview") as HTMLElement;
     expect(preview.getAttribute("aria-live")).toBe("polite");
     expect(preview.querySelector(".ed-mini .dc-scene")).not.toBeNull();
-    expect(preview.querySelectorAll(".ed-retemplate-placed li")).toHaveLength(3);
+    // The chart fits no slot, so it is listed there and only there, not also as pinned over the slide.
+    const placed = [...preview.querySelectorAll(".ed-retemplate-placed li")].map((li) => li.textContent);
+    expect(placed).toHaveLength(2);
+    expect(placed.some((line) => /^Chart/.test(line ?? ""))).toBe(false);
+    expect(preview.querySelectorAll(".ed-retemplate-unplaced li")).toHaveLength(1);
     expect(preview.querySelector(".ed-retemplate-unplaced li")?.textContent).toMatch(/^Chart/);
     // The template the scene has now is marked, and choosing it offers nothing to apply.
     const now = dialog.querySelector<HTMLInputElement>(
@@ -590,9 +595,17 @@ describe("the styles of a block", () => {
     expect(preview.classList.contains("ed-style-thumb")).toBe(true);
     const sample = preview.querySelector<HTMLElement>(".dc-scene [data-id='sample']");
     expect(sample?.textContent).toBe("Aa");
+    expect(sample?.dataset).toMatchObject({ fill: "surface", border: "line", radius: "m", pad: "m" });
     // The footer, the logo and the accent would be all a picture this small showed of the slide round the block.
     expect(preview.querySelector(".dc-chrome")).toBeNull();
     expect(preview.textContent).not.toContain("Harbor");
+    // Drawn on a slide the size of the picture, not pinned on a whole one and scaled down, which left the text a few
+    // pixels high; and with no size of its own, so a style's size shows.
+    expect(preview.querySelector(".dc-scene")).not.toBeNull();
+    expect(preview.querySelector(".dc-scene[data-framed]")).toBeNull();
+    expect(sample?.dataset.size).toBeUndefined();
+    const stat = stylePreview(harbor(), "stat", "heading").querySelector<HTMLElement>("[data-id='sample']");
+    expect(stat?.dataset).toMatchObject({ size: "xl", tone: "action", font: "display" });
   });
 
   it("checks a new choice in place, so the keyboard stays on it, and draws the pictures again only for a new look", () => {

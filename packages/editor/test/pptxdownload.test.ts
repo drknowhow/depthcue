@@ -7,6 +7,7 @@ import {
   openDownload,
   PPTX_CALL,
   reportOf,
+  SHORTENED,
 } from "../src/pptxdownload.ts";
 import type { EditorStatus } from "../src/store.ts";
 
@@ -263,6 +264,28 @@ describe("Download PowerPoint", () => {
     expect(inDialog(".ed-pptx-report").textContent).toBe(
       "This server sent no report with the file. depthcue export with --format pptx prints one.",
     );
+  });
+
+  it("says when the report was shortened to fit, over the lines that came", async () => {
+    openDownload(root, store, io);
+    press("download");
+    await flush();
+    const short = {
+      ...REPORT,
+      shortened: true,
+      slides: REPORT.slides.slice(0, 2),
+      deck: [],
+      fonts: [],
+      warnings: [],
+    };
+    (sent[0] as Sent).answer(fileAnswer({ "X-Depthcue-Report": encodeURIComponent(JSON.stringify(short)) }));
+    await flush();
+    await flush();
+    const report = inDialog<HTMLElement>(".ed-pptx-report");
+    expect(report.firstElementChild?.textContent).toBe(SHORTENED);
+    expect(SHORTENED).toBe("The full report is longer; run depthcue export --json to see all of it.");
+    expect(report.textContent).toContain('"growth-chart": the chart explorer has no PowerPoint form.');
+    expect(report.textContent).not.toContain("growth-table");
   });
 
   it("says in plain words what went wrong, and keeps the dialog open to try again", async () => {

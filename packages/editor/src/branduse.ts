@@ -501,15 +501,19 @@ export function planOf(
   if (!result.ok) return { ops, placed: [], unplaced, empty: [], problem: refusal(result, scene) };
   const after = result.doc.scenes[sceneId] as Scene;
   const areas = "layout" in to ? slotsOf(after) : [];
-  const placed = after.blocks.map((block) => {
-    const where =
-      block.slot !== undefined
-        ? `${block.slot} slot`
-        : block.frame !== undefined
-          ? "pinned over the slide"
-          : (areas.find((area) => area.blocks.includes(block.id))?.label ?? "slide");
-    return `${describeBlock(block, 40, after)} → ${where.toLowerCase()}`;
-  });
+  // A block no slot takes is said once, under "Fits no slot", with what happens to it.
+  const unfit = new Set(moved.unplaced);
+  const placed = after.blocks
+    .filter((block) => !unfit.has(block.id))
+    .map((block) => {
+      const where =
+        block.slot !== undefined
+          ? `${block.slot} slot`
+          : block.frame !== undefined
+            ? "pinned over the slide"
+            : (areas.find((area) => area.blocks.includes(block.id))?.label ?? "slide");
+      return `${describeBlock(block, 40, after)} → ${where.toLowerCase()}`;
+    });
   const empty = (templateOf(result.doc, after.template)?.slots ?? [])
     .filter((slot) => slot.required && !filled(after, slot))
     .map((slot) => `${slot.id} (required)`);
@@ -585,8 +589,8 @@ export function changeTemplate(
         ? [h("p", { class: "ed-problem", role: "alert" }, plan.problem)]
         : [
             plan?.after && picture(plan.after.doc, plan.after.scene, look, "ed-retemplate-thumb"),
-            h("h3", { class: "ed-label" }, "Where each block goes"),
-            rows(plan?.placed ?? [], "placed"),
+            (plan?.placed.length ?? 0) > 0 && h("h3", { class: "ed-label" }, "Where each block goes"),
+            (plan?.placed.length ?? 0) > 0 && rows(plan?.placed ?? [], "placed"),
             unplaced.length > 0 && h("h3", { class: "ed-label" }, "Fits no slot"),
             unplaced.length > 0 && rows(unplaced, "unplaced"),
             (plan?.empty.length ?? 0) > 0 &&
@@ -651,10 +655,12 @@ export function styleOps(
 }
 
 /**
- * A style as a small picture: one block in the style, drawn by the player in the deck's look but with no chrome, and
- * cropped to the block and a little round it (editor.css shows 30% to 70% of the slide each way, scaled up), so the fill,
- * edge, border, face and color of Callout, Card or Quiet panel can be told apart. With "" it is the block with no style,
- * for No style.
+ * A style as a small picture: a sample block in the style, drawn by the player in the deck's look but with no chrome,
+ * on a slide the size of the picture. It is drawn at its true size, not a whole slide scaled down: editor.css sets the
+ * sample at 13 CSS px times the style's own size, never under 12, with the slide's color a little way round it, so the
+ * fill, edge, border, face and tone of Callout, Card or Pull quote can be told apart. The block is not pinned and has no
+ * size of its own, so the style's size shows, and the layout is the plainest one, where text is in the deck's own color.
+ * With "" it is the block with no style, for No style.
  */
 export function stylePreview(doc: Doc, styleId: string, kind: BlockKind = "body"): HTMLElement {
   const role = (TEXT_KINDS as readonly string[]).includes(kind)
@@ -664,18 +670,8 @@ export function stylePreview(doc: Doc, styleId: string, kind: BlockKind = "body"
     schemaVersion: "0.4",
     id: "style-preview",
     title: "Style",
-    layout: "title",
-    blocks: [
-      {
-        id: "sample",
-        type: "text",
-        role,
-        text: "Aa",
-        size: "xl",
-        ...(styleId === "" ? {} : { style: styleId }),
-        frame: { x: 32, y: 32, w: 36, h: 36 },
-      },
-    ],
+    layout: "text-media",
+    blocks: [{ id: "sample", type: "text", role, text: "Aa", ...(styleId === "" ? {} : { style: styleId }) }],
   };
   const { chrome: _chrome, ...look } = lookWithAll(doc);
   return h("span", { class: "ed-mini ed-style-thumb", "aria-hidden": "true" }, thumbnailFrame(scene, look));

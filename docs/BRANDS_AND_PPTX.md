@@ -908,7 +908,7 @@ Found, not fixed (older than the brand work):
   88,664 with all of step 7, which leaves 3,496 bytes, and 424 above the 3 KB step 8 needs.
   `retemplate.ts` stays in the script: core's index exports it, and a chunk group that pulled it out pulled its
   imports with it.
-- **The brand part.** Everything below is `branduse.js` (4,830 of 6,144), fetched with Depthcue's own templates and
+- **The brand part.** Everything below is `branduse.js` (4,827 of 6,144), fetched with Depthcue's own templates and
   styles, since the picker, the slots and the styles list them; the part fails when they do not arrive. The script
   keeps only the hooks. It is fetched the first time a template scene is drawn (for its slots), a block's toolbar
   draws its Style chip, a right-click menu offers Style, or the picker or Change template is opened. A deck with no
@@ -932,9 +932,10 @@ Found, not fixed (older than the brand work):
   layout…" in the Scene popover. It is also "Change template…" on the slide's and the scene's right-click menus and in
   the palette, and a layout chosen for a template scene from the right-click menu or the palette opens the dialog at
   that layout instead of moving blocks unseen. The dialog lists every template and layout, the current one marked
-  "Now". Choosing one shows the slide as it will be, drawn by the player, a line per block saying where it goes, and,
-  under "Fits no slot", each block that fits none by name, with what happens to it: a block stays on the slide, pinned
-  where it is now (its measured frame), to move or delete. The claim goes as core moves it, never as a block: it stays
+  "Now". Choosing one shows the slide as it will be, drawn by the player, under "Where each block goes" a line per
+  block that a slot takes, and, under "Fits no slot", each block that fits none by name, with what happens to it: a
+  block stays on the slide, pinned where it is now (its measured frame), to move or delete. A block is listed under
+  one of the two, never both. The claim goes as core moves it, never as a block: it stays
   the scene's claim with its evidence links in a template with a claim slot; a layout that does not draw it leaves it
   in the scene, and the dialog says it will not show; a template with no claim slot is refused by core
   (`claim-without-slot`), so the change takes the claim off as the editor's own Remove does (out of the build order
@@ -954,8 +955,12 @@ Found, not fixed (older than the brand work):
 - **Style menu.** The Style chip of a block's toolbar has the deck's styles for the block's kind after the text's own
   size, alignment and color, so the late list never moves a control the person is aiming at. The block's right-click
   menu has a Style submenu. Both list No style and each style for the kind (a brand override once; no Kicker on a
-  quote), each drawn by the player as a block in that style, without the brand's chrome, cut to the block and scaled up
-  so its fill, border and edge show, the current one checked, and write `block.set` with `style`. After a choice the
+  quote), each drawn by the player as a sample "Aa" in that style, without the brand's chrome, the current one
+  checked, and write `block.set` with `style`. A picture is 112 px wide, and its slide is that size too, so the sample
+  is drawn at its true size and not as a whole slide scaled down: 13 CSS px times the style's own size, never under 12,
+  the same for every kind, with the block across the picture and the slide's color round it, so the fill, edge,
+  border, radius, face and tone show. In Chrome each picture's sample is measured at 12 px or more, its block at more
+  than 80% of the picture's width and inside it, and No style, Callout, Quiet panel and Pull quote draw differently. After a choice the
   checks move in place, so focus stays on the item chosen; the pictures are drawn again only when the kind, the
   block's own color or the look they are drawn from changes, never while the person types. Once Depthcue's own are in,
   a block whose kind has no style gets no list. Given several blocks, `styleOps` styles each one the style is for and
@@ -980,7 +985,7 @@ Found, not fixed (older than the brand work):
   the built-ins chunk are each refused once (the message shows, the editor goes on, the next try opens the picker),
   and so is the storyboard.
 - **Download PowerPoint.** "Download PowerPoint…" at the foot of the Deck popover and in the palette opens a dialog
-  from `pptxdownload.js` (2,679 of 4,096), a part of its own; the main script holds the button, the command and the
+  from `pptxdownload.js` (2,738 of 4,096), a part of its own; the main script holds the button, the command and the
   part's hook (185 bytes). The dialog offers "Each slide as one picture" (picture mode, off) and "Speaker notes" (on,
   "Anyone with the file can read them."), and calls step 6's `POST /_depthcue/api/export.pptx` with the editor's
   token and those two switches. The file is made from the deck on disk, so edits the autosave has not written yet are
@@ -996,12 +1001,19 @@ Found, not fixed (older than the brand work):
   the Harbor deck's download equals `depthcue export --format pptx` beside the deck byte for byte, with the deck
   folder unchanged, file times included; picture mode with an edit typed just before it equals `--pictures` part for
   part (see Risks); and a refusal stays readable in the open dialog.
-- **The report needs the export call to send it.** Step 6's call sends the file and nothing else, and the summary
-  `renderPptx` returns stops in `serve.ts`, outside this step's files. The dialog reads it from an
-  `X-Depthcue-Report` header, the summary without `out` as percent-encoded JSON, and says "This server sent no report
-  with the file." until the call sends one. A real-browser test sends `depthcue export --json`'s summary of the same
-  deck that way and checks that every embedded family, every slide with something left out, and each of its lines
-  are listed; the screenshot `download-report` is that.
+- **The report comes in a header.** Step 6's call sent the file and nothing else, so the export call in `serve.ts`
+  (outside this step's files; the coordinator approved the change) now sends the summary `renderPptx` returns in an
+  `X-Depthcue-Report` header: percent-encoded JSON, without `out`, and with no folder of this computer in it. The
+  deck's folder is written `<deck>`, the player's `<player>`, the folder beside the deck `<beside the deck>` and the
+  home folder `~`, in either slash, as a file URL and, on Windows, in any case. A report over 32 KB encoded keeps the
+  counts and as many lines as fit, in the order the dialog lists them, with `shortened: true`, and the dialog then says
+  "The full report is longer; run depthcue export --json to see all of it." The call stays same-origin: no CORS header
+  is added, and it still needs the editor's token. A server without the header gets "This server sent no report with
+  the file." `editor-brand-use-report.test.ts` checks the header against the summary, the labels (a font error that
+  quotes a file's full path, a file URL, a path in upper case), a report of 400 slides cut to the limit and filled to
+  within one line, and the live call: the header, no `access-control-*` header and no path. In Chrome the dialog lists
+  every embedded family, every slide with something left out and each of its lines, as `depthcue export --json` gives
+  them; the screenshot `download` is that.
 - **Decisions.** The new scene goes after the scene on show; its first block is the template's heading slot's; the
   template's name takes the layout buttons' place in the scene bar, so the top bar keeps its width at 1024 (beside
   them it left the deck title 14 px wide); a layout chosen for a template scene opens Change template; the
@@ -1016,10 +1028,13 @@ Found, not fixed (older than the brand work):
   after a choice, no redraw while typing, the right-click loading state, two presses on Review, the replaced dialog's
   return, the picker's names, and the four changes a mutation pass found unguarded (Hide pins before the part, the
   claim filling its slot, Kicker on a quote, the late cue count).
-- **Not done.** The export call does not send its report yet (above), so today the dialog says so after the file.
-- **Risks.** The style pictures are 80 px wide: Callout and Pull quote differ by the sample text's color only, since
-  both draw an edge bar. Harbor has only a light logo, so on ink its word mark is dark on dark (the player's, from
+- **Second review fixes.** The style pictures were a whole slide scaled to 80 px with the text about 5 px high, so
+  Callout, Card, Pull quote and Quiet panel could not be told apart; they are now drawn at their true size (Style menu,
+  above). Change template listed a block that fits no slot twice, once as pinned over the slide; it is now under
+  "Fits no slot" only. The report is sent (above).
+- **Risks.** Harbor's Quiet panel has Card's values, so their pictures are the same. Harbor has only a light logo, so on ink its word mark is dark on dark (the player's, from
   step 3). Step 8 has 424 bytes of the main script beyond its 3 KB. Picture mode is not byte-stable: two exports of
   `v0-3` with `--pictures`, one from the editor while its own Chrome ran, gave different PNGs for the chart slide
-  (same parts otherwise, the pictures alike to the eye); three CLI runs alone gave the same bytes. `edit-e2e`'s
-  Alt-drag test failed once in a full run and passed alone and in its file, as step 6's record describes.
+  (same parts otherwise, the pictures alike to the eye); three CLI runs alone gave the same bytes. Two tests this step
+  does not change fail now and then in a full run: `edit-e2e`'s "moves freely while Alt is held", as step 6's record
+  describes, and `chart-module-e2e`'s "does not move the page when it hydrates" (2 px, about one run in five alone).
