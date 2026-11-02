@@ -53,6 +53,8 @@ export interface SceneBarHooks {
    * leave their slots in the same step and nothing moves unseen.
    */
   change?(layout?: Layout): void;
+  /** Opens Save as template for the scene on show. */
+  save?(): void;
 }
 
 export interface SceneBar {
@@ -156,18 +158,18 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
   });
   const panel = scenePanel(host, () => current);
   const popover = popoverChip(panel);
-  if (change) {
-    const again = h(
-      "button",
-      { type: "button", "data-field": "panel:change-template", "aria-haspopup": "dialog" },
-      "Change template or layout…",
-    );
-    again.addEventListener("click", () => {
+  // Change template and Save as template open dialogs of their own, so the popover closes first.
+  const opener = (field: string, label: string, run: (() => void) | undefined) => {
+    if (!run) return;
+    const node = h("button", { type: "button", "data-field": field, "aria-haspopup": "dialog" }, label);
+    node.addEventListener("click", () => {
       popover.close();
-      change();
+      run();
     });
-    panel.body.append(again);
-  }
+    panel.body.append(node);
+  };
+  opener("panel:change-template", "Change template or layout…", change && (() => change()));
+  opener("panel:save-template", "Save as template…", hooks.save);
 
   function open(section?: "steps" | "sources") {
     popover.open();

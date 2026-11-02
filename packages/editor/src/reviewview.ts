@@ -57,17 +57,69 @@ function sceneLabel(change: Change, doc: Doc): string {
   return at >= 0 ? `Scene ${at + 1} · ${title}` : `Scene · ${title}`;
 }
 
+/** The brand's properties by name, as a row of the drawer says them. A property this leaves out is said by its key. */
+const BRAND_KEY: Record<string, string> = {
+  name: "Brand name",
+  colors: "Brand colors",
+  fonts: "Brand fonts",
+  logos: "Brand logos",
+  chrome: "Brand chrome",
+  lock: "Brand lock",
+  hideBuiltIn: "Built-ins the brand hides",
+};
+
+/** A change to the brand's files is one of the deck's: these name its parts, as `rowOf` says them. */
+export const BRAND_CHANGE = /^deck\/(brand|style:|template:)/;
+
+/** The name of a style or a template, from the value it had or has. */
+const nameIn = (change: Change, id: string): string => {
+  const value = isRecord(change.after) ? change.after : isRecord(change.before) ? change.before : {};
+  return typeof value.name === "string" ? value.name : id;
+};
+
+/**
+ * A part of the brand as a short line. Changed, it is only what differs from the other side, so a style that changed
+ * its size says `size: "l"` and not the whole style; added or removed, a template is its name and how many slots it has.
+ */
+function brandExcerpt(value: unknown, other: unknown): string {
+  if (!isRecord(value)) return excerpt(value);
+  if (!isRecord(other)) {
+    const slots = Array.isArray(value.slots) ? value.slots.length : undefined;
+    return slots === undefined
+      ? excerpt(value)
+      : clip(`${value.name} (${slots} ${slots === 1 ? "slot" : "slots"})`);
+  }
+  const text = (part: unknown) => (part === undefined ? "none" : JSON.stringify(part));
+  const keys = Object.keys({ ...other, ...value }).filter((key) => text(value[key]) !== text(other[key]));
+  return clip(keys.map((key) => `${key}: ${text(value[key])}`).join("; "));
+}
+
+/** Where a change of the brand's files is, in plain words: "Brand colors", "Style: Callout", "Template: Cover". */
+function brandWhere(change: Change): string | undefined {
+  const field = change.field ?? "";
+  if (field === "brand") return "Brand";
+  if (field.startsWith("brand/")) return BRAND_KEY[field.slice(6)] ?? `Brand ${field.slice(6)}`;
+  if (field.startsWith("style:")) return `Style: ${nameIn(change, field.slice(6))}`;
+  if (field.startsWith("template:")) return `Template: ${nameIn(change, field.slice(9))}`;
+  return undefined;
+}
+
 export function rowOf(change: Change, doc: Doc): ChangeRow {
   const parts: string[] = [];
-  if (change.scope === "deck") {
+  const brand = change.scope === "deck" ? brandWhere(change) : undefined;
+  if (brand !== undefined) {
+    parts.push(brand);
+  } else if (change.scope === "deck") {
     parts.push("Deck", change.field === "scenes" ? "Scene order" : (change.field as string));
   } else {
     parts.push(sceneLabel(change, doc));
     if (change.scope === "block") parts.push(`Block ${change.block}`);
     if (change.field !== undefined) parts.push(change.field === "blocks" ? "Block order" : change.field);
   }
-  const was = change.kind === "added" ? undefined : excerpt(change.before);
-  const is = change.kind === "removed" ? undefined : excerpt(change.after);
+  const shown = (value: unknown, other: unknown) =>
+    brand === undefined ? excerpt(value) : brandExcerpt(value, other);
+  const was = change.kind === "added" ? undefined : shown(change.before, change.after);
+  const is = change.kind === "removed" ? undefined : shown(change.after, change.before);
   return { change, where: parts.join(" · "), said: describeChange(change), before: was, after: is };
 }
 

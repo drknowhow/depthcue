@@ -2617,9 +2617,12 @@ body {
   gap: 2px;
 }
 
-/* The scene popover sits in the top bar, which the strip and the slide are drawn under. */
+/*
+ * The scene popover sits in the top bar, which the strip and the slide are drawn under. It opens over the panels down
+ * the right of the stage too (changes, brand, a template being edited), as the bar's button that opened it is.
+ */
 .ed-bar .ed-tb-pop {
-  z-index: 5;
+  z-index: 10;
 }
 
 /*
@@ -3444,5 +3447,657 @@ body {
 
   .ed-canvas-host {
     width: 100%;
+  }
+}
+
+/*
+ * The Brand panel sits down the right of the stage, and the slide moves over so it stays in sight beside the panel and
+ * every change shows on it at once. Its sections are tabs; each lists the brand's own things before Depthcue's. The
+ * panel gives up width before the slide does: a slide under 640px wide stops being drawn as a slide (player.css), so the
+ * panel leaves it about 41rem where the stage has that much, from a 1280px window up.
+ */
+.ed-stage {
+  --ed-side: clamp(20rem, 100% - 43.5rem, 30rem);
+}
+
+.ed-brand {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--ed-side), 100%);
+  border-left: 1px solid var(--dc-line);
+  background: var(--dc-surface);
+  box-shadow: -0.75rem 0 1.5rem -1rem color-mix(in srgb, var(--dc-text) 45%, transparent);
+  font-size: 0.875rem;
+}
+
+.ed-brand:focus-visible {
+  outline-offset: -3px;
+}
+
+.ed-stage[data-side] .ed-main {
+  padding-right: calc(var(--ed-side) + var(--dc-space-4));
+}
+
+/* The quick bar keeps to the part of the stage the panel leaves, so it covers none of the panel. */
+.ed-stage[data-side] .ed-quick {
+  right: var(--ed-side);
+  max-width: calc(100% - var(--ed-side) - 2 * var(--dc-space-4));
+}
+
+.ed-brand-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--dc-space-2);
+  padding: var(--dc-space-3) var(--dc-space-4);
+}
+
+.ed-brand-head h2 {
+  margin: 0;
+  font-family: var(--dc-font-display);
+  font-size: 1.125rem;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.ed-brand-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dc-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-brand-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  gap: 0 var(--dc-space-1);
+  padding: 0 var(--dc-space-3);
+  border-bottom: 1px solid var(--dc-line);
+}
+
+.ed-brand-tabs[hidden] {
+  display: none;
+}
+
+.ed-app .ed-brand-tabs [role="tab"] {
+  min-height: 2.25rem;
+  padding: 0 var(--dc-space-2);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.ed-app .ed-brand-tabs [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--dc-action);
+  color: var(--dc-text);
+  font-weight: 600;
+}
+
+.ed-app .ed-brand-head button[data-action="close-brand"] {
+  padding-inline: var(--dc-space-2);
+}
+
+.ed-app .ed-brand-said {
+  margin: var(--dc-space-2) var(--dc-space-4) 0;
+}
+
+.ed-brand-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--dc-space-3) var(--dc-space-4) var(--dc-space-6);
+}
+
+.ed-brand-section,
+.ed-brand-part {
+  display: grid;
+  gap: var(--dc-space-3);
+  align-content: start;
+}
+
+.ed-brand-section {
+  gap: var(--dc-space-4);
+}
+
+.ed-brand-part > h3 {
+  margin: 0;
+}
+
+/* A button of a section is as wide as its words. Each has a `data-field`, and a field's own controls are wrapped. */
+.ed-brand-section > [data-field],
+.ed-brand-part > [data-field],
+.ed-tpl-side > [data-field] {
+  justify-self: start;
+}
+
+/* Colors: a row for each color of the palette, with its paper swatch and its ink swatch side by side. */
+.ed-brand-colors {
+  display: grid;
+  gap: var(--dc-space-2);
+}
+
+.ed-brand-color {
+  display: grid;
+  grid-template-columns: 6rem repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: var(--dc-space-1) var(--dc-space-2);
+}
+
+.ed-brand-color-head > :first-child {
+  grid-column: 2;
+}
+
+.ed-brand-color .ed-color-name,
+.ed-brand-chart .ed-color-name {
+  display: none;
+}
+
+.ed-brand-color .ed-color-row,
+.ed-brand-chart .ed-color-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.ed-brand-lines {
+  grid-column: 1 / -1;
+}
+
+.ed-brand-lines:not(:has(.ed-problem:not([hidden]))) {
+  display: none;
+}
+
+.ed-brand-chart {
+  display: grid;
+  gap: var(--dc-space-2);
+  justify-items: start;
+}
+
+.ed-brand-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--dc-space-2);
+  justify-self: stretch;
+}
+
+/* Fonts: each face is set in itself. */
+.ed-brand-face-role {
+  display: grid;
+  gap: var(--dc-space-1);
+}
+
+.ed-brand-faces {
+  display: grid;
+  gap: var(--dc-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ed-brand-face {
+  display: grid;
+  gap: var(--dc-space-2);
+  padding: var(--dc-space-2) var(--dc-space-3);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-bg);
+}
+
+.ed-face-sample {
+  font-size: 1.375rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* Logos: where each shows, in sentences, and each logo on the ground it is drawn for. */
+.ed-brand-statement {
+  display: grid;
+  gap: var(--dc-space-1);
+  margin: 0;
+  padding-left: 1.1rem;
+  line-height: 1.45;
+}
+
+.ed-brand-statement [data-warn] {
+  color: var(--dc-action);
+  font-weight: 600;
+}
+
+.ed-brand-logo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dc-space-2);
+}
+
+.ed-brand-logo > :is(.ed-label, .ed-brand-logo-shown, .ed-hint-text) {
+  grid-column: 1 / -1;
+}
+
+.ed-brand-logo-shown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 4.5rem;
+  padding: var(--dc-space-2);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--ground, var(--dc-bg));
+}
+
+.ed-brand-logo-shown img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Styles and templates: a list of entries, each with its picture, what it is, and what can be done to it. */
+.ed-brand-list {
+  display: grid;
+  gap: var(--dc-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ed-brand-entry {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: var(--dc-space-2) var(--dc-space-3);
+  align-items: start;
+  padding: var(--dc-space-2) var(--dc-space-3);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-bg);
+}
+
+.ed-brand-entry[data-own] {
+  box-shadow: inset 3px 0 var(--dc-action);
+}
+
+.ed-brand-entry > .ed-mini {
+  --thumb-k: calc(112 / 1280);
+  width: 7rem;
+}
+
+.ed-brand-entry-text {
+  display: grid;
+  gap: var(--dc-space-1);
+  min-width: 0;
+}
+
+.ed-brand-entry-name {
+  font-weight: 600;
+}
+
+/* A template's description is a few lines, so all of a usual one is in sight. */
+.ed-brand-entry textarea {
+  min-height: 6.5rem;
+}
+
+.ed-brand-entry > .ed-acts {
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+}
+
+.ed-brand-entry > .ed-brand-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--dc-space-3);
+  padding-top: var(--dc-space-2);
+  border-top: 1px solid var(--dc-line);
+}
+
+.ed-brand-preview {
+  display: grid;
+  gap: var(--dc-space-2);
+}
+
+.ed-brand-preview-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-2);
+}
+
+.ed-brand-preview-row > .ed-label {
+  flex: 0 0 3rem;
+}
+
+.ed-brand-figure {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  color: var(--dc-muted);
+  font-size: 0.75rem;
+}
+
+.ed-brand-props,
+.ed-brand-editor .ed-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dc-space-2);
+}
+
+/* The drawer's offer to answer a change with the brand changes it may be waiting for. */
+.ed-review-together {
+  display: grid;
+  gap: var(--dc-space-2);
+  justify-items: start;
+  margin: var(--dc-space-2) var(--dc-space-4) 0;
+  font-size: 0.8125rem;
+}
+
+.ed-review-together[hidden] {
+  display: none;
+}
+
+.ed-review-together p {
+  margin: 0;
+}
+
+/* Save as template: the name and the picture on one side, a row for each slot on the other. */
+.ed-save {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) minmax(0, 1.4fr);
+  gap: var(--dc-space-4);
+}
+
+.ed-save-words {
+  display: grid;
+  gap: var(--dc-space-3);
+  align-content: start;
+}
+
+.ed-save-preview .ed-mini {
+  --thumb-k: 0.2;
+  width: 100%;
+}
+
+.ed-save-slots {
+  display: grid;
+  gap: var(--dc-space-2);
+  align-content: start;
+  min-width: 0;
+}
+
+.ed-save-slots ol {
+  display: grid;
+  gap: var(--dc-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ed-save-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dc-space-1) var(--dc-space-2);
+  padding: var(--dc-space-2) var(--dc-space-3);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+}
+
+.ed-save-slot-name {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Edit template: the stage given over to one template. Its slots are boxes over the template's own background and
+ * chrome; the side panel edits the chosen one, and the scenes on the template are drawn again under the slide.
+ */
+.ed-tpl {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: grid;
+  grid-template:
+    "head head" auto
+    "said said" auto
+    "stage panel" minmax(0, 1fr)
+    "strip panel" auto
+    / minmax(0, 1fr) min(21rem, 40%);
+  background: var(--dc-bg);
+  font-size: 0.875rem;
+}
+
+.ed-tpl-head {
+  grid-area: head;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-2) var(--dc-space-3);
+  padding: var(--dc-space-2) var(--dc-space-4);
+  border-bottom: 1px solid var(--dc-line);
+}
+
+.ed-tpl-head h2 {
+  margin: 0;
+  font-family: var(--dc-font-display);
+  font-size: 1.125rem;
+  font-weight: 400;
+}
+
+.ed-tpl-head .ed-hint-text {
+  flex: 1 1 14rem;
+}
+
+.ed-app .ed-tpl > .ed-problem {
+  grid-area: said;
+  margin: var(--dc-space-2) var(--dc-space-4) 0;
+}
+
+.ed-tpl-stage {
+  grid-area: stage;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: var(--dc-space-4);
+  container-type: size;
+}
+
+.ed-tpl-slide {
+  position: relative;
+  width: min(100cqw, 100cqh * 16 / 9);
+  aspect-ratio: 16 / 9;
+}
+
+.ed-tpl-art.ed-mini {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ed-tpl-boxes {
+  position: absolute;
+  inset: 0;
+}
+
+.ed-app .ed-tpl-slot {
+  position: absolute;
+  top: calc(var(--y) * 1%);
+  left: calc(var(--x) * 1%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: calc(var(--w) * 1%);
+  height: calc(var(--h) * 1%);
+  min-height: 0;
+  padding: 4px;
+  border: 1.5px dashed color-mix(in srgb, var(--dc-evidence) 80%, transparent);
+  border-radius: var(--dc-radius-sm);
+  background: color-mix(in srgb, var(--dc-evidence) 10%, transparent);
+  color: var(--dc-text);
+  text-align: left;
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+
+.ed-app .ed-tpl-slot[aria-pressed="true"] {
+  z-index: 1;
+  border-style: solid;
+  border-color: var(--dc-action);
+  background: color-mix(in srgb, var(--dc-action) 12%, transparent);
+}
+
+.ed-app .ed-tpl-slot:focus-visible {
+  outline: 3px solid var(--dc-evidence);
+  outline-offset: 2px;
+}
+
+.ed-tpl-slot-name,
+.ed-tpl-slot-role {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--dc-bg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-tpl-slot-name {
+  font: 600 0.75rem / 1.3 var(--dc-font-mono);
+}
+
+.ed-tpl-slot-role {
+  color: var(--dc-muted);
+  font-size: 0.6875rem;
+}
+
+.ed-tpl-slot .ed-handle[data-handle="nw"] {
+  top: -6px;
+  left: -6px;
+}
+
+.ed-tpl-slot .ed-handle[data-handle="ne"] {
+  top: -6px;
+  right: -6px;
+}
+
+.ed-tpl-slot .ed-handle[data-handle="se"] {
+  right: -6px;
+  bottom: -6px;
+}
+
+.ed-tpl-slot .ed-handle[data-handle="sw"] {
+  bottom: -6px;
+  left: -6px;
+}
+
+.ed-tpl-slide[data-framing] .ed-tpl-slot {
+  cursor: grabbing;
+}
+
+.ed-tpl-slide .ed-guides {
+  z-index: 2;
+}
+
+.ed-tpl-panel {
+  grid-area: panel;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--dc-space-3) var(--dc-space-4) var(--dc-space-6);
+  border-left: 1px solid var(--dc-line);
+  background: var(--dc-surface);
+}
+
+.ed-tpl-side {
+  display: grid;
+  gap: var(--dc-space-3);
+  align-content: start;
+}
+
+.ed-tpl-side > h3 {
+  margin: var(--dc-space-2) 0 0;
+}
+
+.ed-tpl-frame {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dc-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ed-tpl-strip {
+  grid-area: strip;
+  display: grid;
+  gap: var(--dc-space-2);
+  padding: var(--dc-space-2) var(--dc-space-4) var(--dc-space-3);
+  border-top: 1px solid var(--dc-line);
+}
+
+.ed-tpl-strip h3 {
+  margin: 0;
+}
+
+.ed-tpl-scenes {
+  display: flex;
+  gap: var(--dc-space-3);
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+}
+
+.ed-tpl-scenes > li {
+  display: grid;
+  flex: none;
+  gap: var(--dc-space-1);
+  width: 10rem;
+}
+
+.ed-tpl-scenes .ed-mini {
+  --thumb-k: 0.125;
+}
+
+@media (max-width: 760px) {
+  .ed-stage[data-side] .ed-main {
+    padding-right: var(--dc-space-4);
+  }
+
+  .ed-stage[data-side] .ed-quick {
+    right: 0;
+    max-width: calc(100% - 2 * var(--dc-space-4));
+  }
+
+  .ed-brand {
+    position: fixed;
+    inset: auto 0 0;
+    width: auto;
+    max-height: 75dvh;
+    border-top: 1px solid var(--dc-line);
+    border-left: 0;
+  }
+
+  .ed-tpl {
+    position: fixed;
+    grid-template:
+      "head" auto
+      "said" auto
+      "stage" minmax(10rem, 40%)
+      "panel" minmax(0, 1fr)
+      "strip" auto
+      / minmax(0, 1fr);
+  }
+
+  .ed-save,
+  .ed-brand-props {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

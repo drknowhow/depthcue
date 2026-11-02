@@ -52,7 +52,7 @@ const LAYOUT_ABOUT: Record<Layout, string> = {
 };
 
 /** What each kind of block is called in a slot's menu. A `Record` over the core's kinds, so a new one needs a name. */
-const KIND_LABEL: Record<BlockKind, string> = {
+export const KIND_LABEL: Record<BlockKind, string> = {
   heading: "Heading",
   body: "Text",
   caption: "Caption",
@@ -278,17 +278,17 @@ function emptySlot(slot: TemplateSlot, hooks: SlotHooks | undefined): HTMLElemen
 // Pictures
 
 /** A slide as a small picture: the real player's drawing of it, with its empty slots and their hints. */
-function picture(doc: Doc, scene: Scene, look: DeckLook, className: string): HTMLElement {
+export function picture(doc: Doc, scene: Scene, look: DeckLook, className: string): HTMLElement {
   const frame = thumbnailFrame(scene, look);
   drawSlots(doc, scene, frame);
   return h("span", { class: `ed-mini ${className}`, "aria-hidden": "true" }, frame);
 }
 
-const asScene = (scene: NewScene): Scene => ({ schemaVersion: "0.4", ...scene }) as Scene;
+export const asScene = (scene: NewScene): Scene => ({ schemaVersion: "0.4", ...scene }) as Scene;
 
 // Dialogs
 
-interface Modal {
+export interface Modal {
   element: HTMLDialogElement;
   body: HTMLElement;
   foot: HTMLElement;
@@ -305,7 +305,7 @@ const backs = new WeakMap<Element, HTMLElement | undefined>();
  * the editor's own keys stay off, so a key pressed in it does only what the dialog says. One opened over another of the
  * same name replaces it and gives the keyboard back to where that one would have.
  */
-function modal(root: HTMLElement, title: string, name: string): Modal {
+export function modal(root: HTMLElement, title: string, name: string): Modal {
   const replaced = root.querySelector(`dialog[data-dialog="${name}"]`);
   const back = replaced
     ? backs.get(replaced)
@@ -354,7 +354,7 @@ function modal(root: HTMLElement, title: string, name: string): Modal {
 }
 
 /** Arrow keys move between the buttons of a grid, as Tab does, so a long list is quick to go through. */
-function arrows(holder: HTMLElement, buttons: readonly HTMLElement[]): void {
+export function arrows(holder: HTMLElement, buttons: readonly HTMLElement[]): void {
   holder.addEventListener("keydown", (event) => {
     const at = buttons.indexOf(event.target as HTMLElement);
     if (at < 0) return;

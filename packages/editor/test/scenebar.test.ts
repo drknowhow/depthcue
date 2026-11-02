@@ -224,6 +224,31 @@ describe("Auto layout in the top bar", () => {
   });
 });
 
+describe("Save as template in the scene's popover", () => {
+  it("is there only when the editor can save one, and opens it", () => {
+    const edits = { act: store.session.apply, type: store.session.apply };
+    const plain = createSceneBar(store.session, { edits, problem: () => {}, upload: async () => "" });
+    plain.render("opening");
+    expect(plain.element.querySelector("[data-field='panel:save-template']")).toBeNull();
+    plain.destroy();
+
+    let saved = 0;
+    const bar = createSceneBar(store.session, {
+      edits,
+      problem: () => {},
+      upload: async () => "",
+      save: () => saved++,
+    });
+    bar.render("opening");
+    const button = bar.element.querySelector<HTMLButtonElement>("[data-field='panel:save-template']");
+    expect(button?.textContent).toBe("Save as template…");
+    expect(button?.getAttribute("aria-haspopup")).toBe("dialog");
+    button?.click();
+    expect(saved).toBe(1);
+    bar.destroy();
+  });
+});
+
 describe("a change the core refuses", () => {
   it("is reported through the hook with the core's message, and cleared by the next one that works", () => {
     const messages: Array<string | undefined> = [];

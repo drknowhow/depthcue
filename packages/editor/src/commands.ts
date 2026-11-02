@@ -75,6 +75,10 @@ export interface CommandSources {
   changeTemplate?(): void;
   /** Opens the template picker, which adds a scene after the one on show. */
   pickTemplate?(): void;
+  /** Opens the Brand panel. */
+  brand?(): void;
+  /** Opens Save as template for the scene on show. */
+  saveTemplate?(): void;
   /** What the buttons of the scene bar do. */
   setLead(lead: (typeof LEADS)[number]): void;
   setLayout(layout: Layout): void;
@@ -452,6 +456,19 @@ export function listCommands(from: CommandSources): Command[] {
       run: changeTemplate,
     });
   }
+  const saveTemplate = from.saveTemplate;
+  if (saveTemplate) {
+    add({
+      id: "save-template",
+      title: "Save this scene as a template of the brand",
+      group: "This scene",
+      words: "template brand slots reuse save new",
+      targets: ["slide", "scene"],
+      label: "Save as template…",
+      section: "scene",
+      run: saveTemplate,
+    });
+  }
   const pickTemplate = from.pickTemplate;
   if (pickTemplate) {
     add({
@@ -512,6 +529,19 @@ export function listCommands(from: CommandSources): Command[] {
       label: "Deck style",
       section: "view",
       run: deckStyle,
+    });
+  }
+  const brand = from.brand;
+  if (brand) {
+    add({
+      id: "brand",
+      title: "Open the Brand panel: logos, colors, fonts, chrome, styles and templates",
+      group: "Deck",
+      words: "brand logo colors fonts chrome styles templates identity house look",
+      targets: ["slide"],
+      label: "Brand…",
+      section: "view",
+      run: brand,
     });
   }
   // The scene in the strip. Right-clicking a scene chooses it, so these act on the scene on show, like the rest.

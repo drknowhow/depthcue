@@ -113,6 +113,25 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
         first,
       ),
     );
+  // Defining the brand is a part of its own: the Brand panel, Save as template and the template editor.
+  const define = (then: (module: NonNullable<Parts["define"]["ready"]>) => void) =>
+    withPart(parts.define, then, () => showProblem(notLoaded("the brand")));
+  const brandHost = () => ({
+    session,
+    store,
+    root,
+    floor,
+    scene: () => selected,
+    measure: (id: string) => canvas.measure(id),
+    select,
+    problem: showProblem,
+  });
+  // The panel and the list of changes both take the right of the stage, so opening one closes the other.
+  const openBrand = () => {
+    drawer?.close();
+    define((module) => module.openBrand(brandHost()));
+  };
+  const saveTemplate = () => define((module) => module.saveTemplate(brandHost()));
   const openPicker = () =>
     useBrand((brand) =>
       brand.pickTemplate(session, root, {
@@ -217,6 +236,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       () => showProblem(notLoaded("the PowerPoint download")),
     );
   deckForm.body.append(
+    button("brand", "Brand…", () => {
+      deckChip.close(true);
+      openBrand();
+    }),
     button("pptx", "Download PowerPoint…", () => {
       deckChip.close(true);
       openDownload();
@@ -288,6 +311,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       (module) => {
         reviewBusy(false);
         if (!drawer) makeDrawer(module);
+        if (!drawer?.isOpen) parts.define.ready?.closeBrand(floor);
         drawer?.toggle();
         renderReview();
       },
@@ -303,6 +327,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     problem: showProblem,
     upload: (file) => store.upload(file),
     change: (layout) => openChange(layout && { layout }),
+    save: saveTemplate,
   });
   const bar = h(
     "header",
@@ -566,6 +591,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       },
       changeTemplate: () => openChange(),
       pickTemplate: openPicker,
+      brand: openBrand,
+      saveTemplate,
       upgradeScene(id) {
         const result = session.apply([{ op: "scene.upgrade", id }]);
         showProblem(result.ok ? undefined : problemOf(result));

@@ -101,6 +101,26 @@ describe("what the palette lists", () => {
     expect(new Set(ids()).size).toBe(ids().length);
   });
 
+  it("lists the Brand panel and Save as template only when the editor can open them, and each opens its own", () => {
+    expect(ids()).not.toContain("brand");
+    expect(ids()).not.toContain("save-template");
+    const brand = vi.fn();
+    const saveTemplate = vi.fn();
+    supplied = { ...sources(), brand, saveTemplate };
+    expect([get("brand").label, get("brand").section, get("brand").targets]).toEqual([
+      "Brand…",
+      "view",
+      ["slide"],
+    ]);
+    expect([get("save-template").label, get("save-template").targets]).toEqual([
+      "Save as template…",
+      ["slide", "scene"],
+    ]);
+    get("brand").run();
+    get("save-template").run();
+    expect([brand.mock.calls.length, saveTemplate.mock.calls.length]).toEqual([1, 1]);
+  });
+
   it("lists the ways to add, and each does what the quick bar does", () => {
     get("add-text").run();
     expect(calls.add).toHaveBeenLastCalledWith("text");
