@@ -3,13 +3,15 @@ import { createReadStream, existsSync, realpathSync, statSync, watch } from "nod
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
-import { dirname, extname, join, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { COMMENTS_FILE, pageLook, REVIEW_FILE } from "@depthcue/core";
 import { type EditContext, handleEditApi } from "./edit-api.ts";
 import { createLayoutChecker, type LayoutChecker } from "./edit-layout.ts";
+import { crossOrigin, isRecord, readBody, sameToken, send as sendJson, TooLarge } from "./http.ts";
 import { createLeaseRelay, RELAY_PREFIX } from "./lease-relay.ts";
 import { loadDeckDir } from "./loader.ts";
 import { lookOfFiles } from "./look.ts";
+import type { PptxOptions } from "./pptx/index.ts";
 
 export interface ServeOptions {
   /** The deck folder: deck.json, scenes/, assets/. */
@@ -240,6 +242,109 @@ function sendFile(request: IncomingMessage, response: ServerResponse, path: stri
   stream.pipe(response);
 }
 
+/** The live server's PowerPoint export: the open deck's file, as `depthcue export --format pptx` makes it. */
+export const PPTX_ROUTE = "/_depthcue/api/export.pptx";
+const PPTX_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const PPTX_STATUS: Record<string, number> = { "no-browser": 503 };
+
+/**
+ * Where the endpoint's file is said to be, which the links to the deck's files are written relative to: beside the
+ * deck folder, as `depthcue export <deck> --format pptx --out <that path>` would put it, so both give the same bytes.
+ */
+export const pptxOutOf = (folder: string) => join(dirname(folder), `${basename(folder)}.pptx`);
+
+/**
+ * A file name as an RFC 8187 `filename*` value: percent-encoded UTF-8, `'`, `(`, `)` and `*` included, which
+ * `encodeURIComponent` leaves as they are and the header's grammar does not allow there.
+ */
+export const extValue = (name: string) =>
+  encodeURIComponent(name).replace(
+    /['()*]/g,
+    (char) => `%${(char.codePointAt(0) as number).toString(16).toUpperCase()}`,
+  );
+
+/** The export's switches from a request body: the CLI's, by the same names, each true or false. */
+function pptxOptions(body: unknown): PptxOptions | string {
+  if (!isRecord(body)) return 'Send the options as a JSON object, such as {"notes": false}.';
+  const options: PptxOptions = {};
+  for (const [key, value] of Object.entries(body)) {
+    if (key !== "notes" && key !== "pictures" && key !== "steps" && key !== "posters") {
+      return `There is no option "${key}". The options are notes, pictures, steps and posters.`;
+    }
+    if (typeof value !== "boolean") return `"${key}" takes true or false.`;
+    options[key] = value;
+  }
+  return options;
+}
+
+/**
+ * Answers the PowerPoint export call: the same token and origin checks as the editor's other calls, a POST with the
+ * options as JSON, and the file in the response. Nothing is written anywhere. One export runs at a time per server.
+ */
+async function pptxCall(
+  request: IncomingMessage,
+  response: ServerResponse,
+  ctx: EditContext,
+  playerDir: string,
+  queue: { last: Promise<unknown> },
+): Promise<void> {
+  const refusal = sameToken(request.headers["x-depthcue-token"] as string | undefined, ctx.token)
+    ? crossOrigin(request, ctx.origins())
+    : "Missing or wrong editor token. Reload the editor page.";
+  if (refusal) return sendJson(response, 403, { error: "forbidden", message: refusal });
+  if (request.method !== "POST") return sendJson(response, 405, { error: "method", message: "Use POST." });
+  // As the other write calls: the options come as JSON, and an empty body is no options.
+  if (!String(request.headers["content-type"]).startsWith("application/json")) {
+    return sendJson(response, 415, { error: "bad-request", message: "Send application/json." });
+  }
+  let options: PptxOptions | string;
+  try {
+    const body = await readBody(request, 4096);
+    options = pptxOptions(body.length === 0 ? {} : JSON.parse(body.toString("utf8")));
+  } catch (error) {
+    if (error instanceof TooLarge) {
+      return sendJson(response, 413, { error: "too-large", message: "The options are at most 4 KB." });
+    }
+    options = "The body is not valid JSON.";
+  }
+  if (typeof options === "string") return sendJson(response, 400, { error: "bad-request", message: options });
+  const chosen = options;
+  const job = queue.last.then(async () => {
+    const { renderPptx } = await import("./pptx/index.ts");
+    return renderPptx({ folder: ctx.folder, out: pptxOutOf(ctx.folder), playerDir, ...chosen });
+  });
+  queue.last = job.catch(() => undefined);
+  try {
+    const result = await job;
+    if (!result.ok) {
+      return sendJson(response, 422, {
+        error: "deck-invalid",
+        message: "The deck has errors, so there is no file. Fix them and export again.",
+        diagnostics: result.diagnostics,
+      });
+    }
+    const name = basename(ctx.folder);
+    const ascii = name.replace(/[^A-Za-z0-9._-]/g, "_");
+    response.writeHead(200, {
+      "Content-Type": PPTX_TYPE,
+      "Content-Length": String(result.bytes.length),
+      "Content-Disposition": `attachment; filename="${ascii}.pptx"; filename*=UTF-8''${extValue(name)}.pptx`,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    response.end(result.bytes);
+  } catch (error) {
+    const { PptxError } = await import("./pptx/index.ts");
+    if (error instanceof PptxError) {
+      return sendJson(response, PPTX_STATUS[error.code] ?? 500, {
+        error: error.code,
+        message: error.message,
+      });
+    }
+    return sendJson(response, 500, { error: "server", message: (error as Error).message });
+  }
+}
+
 /**
  * Serves a deck folder and the built player on a loopback port. Only deck.json, scenes/*.json and assets/ are
  * reachable, never anything else in the folder. The Host header must name the loopback address, which stops a
@@ -266,6 +371,8 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   const layout = token === undefined ? undefined : (options.layout ?? createLayoutChecker(folder));
   const edit: EditContext | undefined =
     token === undefined ? undefined : { folder, token, origins, ...(layout ? { layout } : {}) };
+  /** The PowerPoint exports, one after another: each starts a browser. */
+  const exports = { last: Promise.resolve() as Promise<unknown> };
   const relay = createLeaseRelay({
     token: agentToken,
     origins,
@@ -295,6 +402,11 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       return send(response, 400, "Bad path.");
     }
 
+    // The PowerPoint file of the open deck, sent and never written: guarded as the write calls are.
+    if (edit && url.pathname === PPTX_ROUTE) {
+      void pptxCall(request, response, edit, playerDir, exports);
+      return undefined;
+    }
     // The write calls check their own methods, token and origin; everything else stays read-only. The route is
     // taken from the normalised path, so "/_depthcue/api/../x" is never mistaken for an API call.
     if (edit && url.pathname.startsWith("/_depthcue/api/")) {
@@ -433,7 +545,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
             watcher.close();
             for (const client of listeners) client.end();
             // A render under way finishes first, so the browser it holds is not left running.
-            const rendering = layout?.close() ?? Promise.resolve();
+            const rendering = Promise.all([layout?.close(), exports.last]);
             server.close(() => void rendering.finally(done));
             // A call that is waiting gets its answer first ("the server is shutting down"), not a reset.
             setImmediate(() => server.closeAllConnections());

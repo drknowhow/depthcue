@@ -244,7 +244,7 @@ function brandLicensesOf(folder: string, copied: readonly string[]): { files: st
 }
 
 /** The path as the file system sees it, even when its last parts do not exist yet. */
-function realish(path: string): string {
+export function realish(path: string): string {
   const absolute = resolve(path);
   const missing: string[] = [];
   let here = absolute;
@@ -255,7 +255,8 @@ function realish(path: string): string {
   return join(realpathSync.native(here), ...missing);
 }
 
-const within = (parent: string, child: string) => {
+/** Whether `child` is `parent` or inside it, by path: both should have been through `realish`. */
+export const within = (parent: string, child: string) => {
   const way = relative(parent, child);
   return way !== ".." && !way.startsWith(`..${sep}`) && !isAbsolute(way);
 };

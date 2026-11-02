@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path, { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { styleOf } from "@depthcue/core";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -283,7 +284,7 @@ describe("a clip", () => {
     expect(left.some((line) => line.includes("assets/intro.png could not be read"))).toBe(true);
     expect(left.some((line) => line.includes("shown as its poster"))).toBe(false);
     expect(left).toContain(
-      '"intro-clip": a labeled box links to assets/intro.mp4 in its place; the video is not embedded.',
+      '"intro-clip": a labeled box links to assets/intro.mp4 in its place; the video is not embedded, because the file is not a readable MP4.',
     );
     const slide = part(parts, "ppt/slides/slide1.xml");
     expect(wordsIn(slide)).toContain("Video: The opening animation.");
@@ -338,6 +339,113 @@ describe("a box the page drew past the left or top edge", () => {
     expect(placeOf("Over both")).toEqual([0, 0, 100, 100]);
     // Nothing of it is on the slide.
     expect(placeOf("Wholly past the left")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// A picture that fills its frame.
+// ---------------------------------------------------------------------------------------------------------------------
+
+describe("a picture the page cuts to fill its frame", () => {
+  it("sits in the frame, cut there with its source rectangle, and is not said to run past the slide", async () => {
+    const scene = {
+      ...PANEL_SCENE,
+      blocks: [
+        ...PANEL_SCENE.blocks,
+        { id: "panel-picture", type: "image", asset: "assets/intro.png", alt: "A square picture." },
+      ],
+    };
+    const deck = writeDeck(root, { folder: "deck", scenes: { panel: scene }, assets: CLIP_ASSETS });
+    // A square picture filling a 2:1 frame: 400 by 400, centered, so 100 is cut off above and below.
+    const frame = { x: 100, y: 100, w: 400, h: 200 };
+    const measure = measureOf([
+      { kind: "text", id: "panel-heading", text: place({ x: 90, y: 20, w: 700, h: 60 }) },
+      {
+        kind: "image",
+        id: "panel-picture",
+        picture: picture(frame, { picture: { x: 100, y: 0, w: 400, h: 400 }, clip: frame }),
+      },
+    ]);
+    const { built, parts } = await build(deck, [measure], join(root, "deck.pptx"));
+    const slide = part(parts, "ppt/slides/slide1.xml");
+    const pic = /<p:pic>[\s\S]*?<\/p:pic>/.exec(slide)?.[0] as string;
+    const at = /<a:off x="(\d+)" y="(\d+)"\s*\/>\s*<a:ext cx="(\d+)" cy="(\d+)"/.exec(pic)?.slice(1, 5);
+    expect(at?.map((value) => Number(value) / 9525)).toEqual([100, 100, 400, 200]);
+    const rect = /<a:srcRect([^/]*)\/>/.exec(pic)?.[1] ?? "";
+    const share = (side: string) => Number(new RegExp(`\\b${side}="(-?\\d+)"`).exec(rect)?.[1] ?? 0);
+    expect([share("l"), share("t"), share("r"), share("b")]).toEqual([0, 25000, 0, 25000]);
+    expect(built.slides[0]?.left.join("\n") ?? "").not.toContain("runs past the slide's edge");
+  });
+
+  it("is a video fitted inside the frame instead, since a video on a slide is not cut here, and says so", async () => {
+    const tiny = readFileSync(fileURLToPath(new URL("./fixtures/tiny.mp4", import.meta.url)));
+    const deck = writeDeck(root, {
+      folder: "deck",
+      scenes: { "clip-scene": CLIP_SCENE },
+      assets: { ...CLIP_ASSETS, "assets/intro.mp4": tiny },
+    });
+    // A 16:9 poster filling a square frame: 711 by 400, its sides cut off by the frame.
+    const frame = { x: 100, y: 100, w: 400, h: 400 };
+    const video = picture(frame, {
+      picture: { x: 100 - 311 / 2, y: 100, w: 711, h: 400 },
+      natural: { w: 320, h: 180 },
+      clip: frame,
+    });
+    const measure = measureOf([
+      { kind: "text", id: "clip-heading", text: place({ x: 90, y: 20, w: 700, h: 60 }) },
+      { kind: "clip", id: "intro-clip", video, poster: true },
+    ]);
+    const { built, parts } = await build(deck, [measure], join(root, "deck.pptx"));
+    const slide = part(parts, "ppt/slides/slide1.xml");
+    const media = /<p:pic>(?:(?!<\/p:pic>)[\s\S])*?<a:videoFile [\s\S]*?<\/p:pic>/.exec(slide)?.[0] as string;
+    const at = /<a:off x="(\d+)" y="(\d+)"\s*\/>\s*<a:ext cx="(\d+)" cy="(\d+)"/.exec(media)?.slice(1, 5);
+    expect(at?.map((value) => Math.round(Number(value) / 9525))).toEqual([100, 188, 400, 225]);
+    expect(built.slides[0]?.left).toContain(
+      '"intro-clip": the page crops the video to fill its frame; the slide shows all of it, fitted inside the frame.',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// A template scene's foot line.
+// ---------------------------------------------------------------------------------------------------------------------
+
+describe("a template scene's foot line", () => {
+  it("is one paragraph: the label in capitals, then each source after a middle dot, anchored at its foot", async () => {
+    const scene = {
+      ...PANEL_SCENE,
+      sources: [
+        { id: "log", title: "Berth log", url: "https://example.com/log" },
+        { id: "survey", title: "Harbor survey" },
+      ],
+    };
+    const deck = writeDeck(root, { folder: "deck", scenes: { panel: scene } });
+    const mono = ink({ family: "IBM Plex Mono", px: 14, lineHeight: 20 });
+    const measure = measureOf([
+      { kind: "text", id: "panel-heading", text: place({ x: 90, y: 60, w: 700, h: 80 }) },
+      {
+        kind: "sources",
+        label: place({ x: 77, y: 640, w: 70, h: 17 }, { text: "Sources", ink: { ...mono, caps: true } }),
+        list: place({ x: 77, y: 640, w: 1126, h: 40 }, { ink: mono }),
+        numbered: false,
+        flow: place({ x: 77, y: 636, w: 1126, h: 52 }, { ink: ink({ px: 18, lineHeight: 26, natural: 26 }) }),
+      },
+    ]);
+    const { parts } = await build(deck, [measure], join(root, "deck.pptx"));
+    const slide = part(parts, "ppt/slides/slide1.xml");
+    expect(slide).not.toContain('name="Sources label"');
+    const foot = /name="Sources"[\s\S]*?<\/p:sp>/.exec(slide)?.[0] as string;
+    expect(foot).toContain('anchor="b"');
+    expect(foot).not.toContain('wrap="none"');
+    expect(foot.match(/<a:p>/g)).toHaveLength(1);
+    expect(wordsIn(foot)).toEqual(["Sources", " ", "Berth log", " · ", "Harbor survey"]);
+    // The label alone is drawn in capitals; the link is the source with a url.
+    expect(foot.match(/cap="all"/g)).toHaveLength(1);
+    expect(foot.match(/<a:hlinkClick /g)).toHaveLength(1);
+    // The paragraph is the line's box, and its lines are the line's spacing.
+    const box = /<a:off x="(\d+)" y="(\d+)"\s*\/>\s*<a:ext cx="(\d+)" cy="(\d+)"/.exec(foot)?.slice(1, 5);
+    expect(box?.map((value) => Number(value) / 9525)).toEqual([77, 636, 1126, 52]);
+    expect(foot).toContain('<a:spcPts val="1950"/>');
   });
 });
 

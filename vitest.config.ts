@@ -11,6 +11,8 @@ export default defineConfig({
       "@depthcue/cli/deck-api": root("packages/cli/src/deck-api.ts"),
       "@depthcue/cli/comments-api": root("packages/cli/src/comments-api.ts"),
       "@depthcue/cli/render": root("packages/cli/src/render.ts"),
+      "@depthcue/cli/export": root("packages/cli/src/export.ts"),
+      "@depthcue/cli/pptx": root("packages/cli/src/pptx/index.ts"),
     },
   },
   test: {

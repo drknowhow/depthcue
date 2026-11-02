@@ -3,14 +3,11 @@
  * by family name, with no files, and a built-in pair stands in until a viewer has them. Which pair depends on whether
  * each face is a serif or a sans, which the theme's PANOSE number says, or else the font's name.
  */
-import type { FontPair } from "@depthcue/core";
+import { FAMILY_PATTERN, type FontPair } from "@depthcue/core";
 import type { ThemeFont } from "./theme.ts";
 
-/**
- * A family name a brand can carry: core's `FAMILY_PATTERN` and its 64 characters, which core does not export. If they
- * drift apart, the import's own check of the finished brand refuses the name loudly and says which file.
- */
-const FAMILY = /^[^"'\\;{}<>]+$/;
+/** A family name a brand can carry: core's own pattern, and the 64 characters its schema allows. */
+const FAMILY = new RegExp(FAMILY_PATTERN);
 
 export type Serifness = "serif" | "sans";
 
@@ -77,8 +74,11 @@ export interface Fonts {
 const usable = (font: ThemeFont | undefined, what: string, notes: string[]): ThemeFont | undefined => {
   if (!font) return undefined;
   if (font.typeface.length > 64 || !FAMILY.test(font.typeface)) {
+    // Quoted as JSON, and DEL too, which JSON leaves alone: a control character in the name is shown as an escape and
+    // never reaches a terminal as it is.
+    const shown = JSON.stringify(font.typeface).replaceAll("\u007f", "\\u007f");
     notes.push(
-      `The theme's ${what} font "${font.typeface}" has a name a brand cannot carry (a quote, brace or semicolon, or more than 64 characters), so it was not used.`,
+      `The theme's ${what} font ${shown} has a name a brand cannot carry (a quote, brace, semicolon or control character, or more than 64 characters), so it was not used.`,
     );
     return undefined;
   }
