@@ -38,13 +38,26 @@ const blockSummary = (block: Block) => ({
 
 /**
  * The templates and component styles a scene of the deck may name, its brand's and Depthcue's own, as an agent needs
- * them to choose: each template with its slots, what each is for, what it takes and what goes there. A brand's own are
- * marked `brand`. A claim slot takes no blocks, so it lists no `accepts`: the scene's `summary` goes there.
+ * them to choose. The concise answer is the templates by id and name and the styles by id, which is what a read to decide
+ * what to do next needs: with Depthcue's own, the slots and hints alone are several thousand characters.
+ * The detailed answer has each template with its slots, what each is for, what it takes and what goes there, and each
+ * style with its name and the kinds of block it is for. A brand's own are marked `brand`. A claim slot takes no blocks,
+ * so it lists no `accepts`: the scene's `summary` goes there.
  */
-function kitSummary(doc: Doc) {
+function kitSummary(doc: Doc, detail: Detail) {
   const kit = kitOf(brandPartOf(doc));
   const own = (set: object | undefined, id: string) =>
     set !== undefined && Object.hasOwn(set, id) ? { brand: true } : {};
+  if (detail === "concise") {
+    return {
+      templates: Object.entries(kit.templates).map(([id, template]) => ({
+        id,
+        name: template.name,
+        ...own(doc.templates, id),
+      })),
+      styles: Object.keys(kit.styles),
+    };
+  }
   return {
     templates: Object.entries(kit.templates).map(([id, template]) => ({
       id,
@@ -80,7 +93,7 @@ export function getOutline(doc: Doc, detail: Detail = "concise") {
     ...(doc.brand === undefined
       ? {}
       : { brand: { id: doc.brand.id, name: doc.brand.name, ...(doc.brand.lock ? { locked: true } : {}) } }),
-    ...kitSummary(doc),
+    ...kitSummary(doc, detail),
     scenes: doc.deck.scenes.map((id) => {
       const scene = doc.scenes[id] as Scene;
       const pinned = scene.blocks.filter((block) => block.frame !== undefined).length;

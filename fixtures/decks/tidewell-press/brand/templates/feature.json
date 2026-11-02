@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "0.4",
+  "id": "feature",
+  "name": "Feature",
+  "description": "One book or idea in depth: a dateline, a title and a short text on the left, a picture with its caption on the right.",
+  "slots": [
+    {
+      "id": "dateline",
+      "role": "body",
+      "frame": { "x": 6, "y": 15, "w": 40, "h": 6 },
+      "accepts": ["caption"],
+      "valign": "top",
+      "style": "dateline",
+      "hint": "The series or the date, in a few words above the title."
+    },
+    {
+      "id": "title",
+      "role": "title",
+      "frame": { "x": 6, "y": 23, "w": 40, "h": 26 },
+      "accepts": ["heading"],
+      "required": true,
+      "valign": "top",
+      "hint": "The title of the book or the idea, in a few words."
+    },
+    {
+      "id": "body",
+      "role": "body",
+      "frame": { "x": 6, "y": 52, "w": 40, "h": 33 },
+      "accepts": ["body"],
+      "max": 2,
+      "required": true,
+      "valign": "top",
+      "hint": "Two or three sentences on it. A second block takes a note for the margin."
+    },
+    {
+      "id": "picture",
+      "role": "picture",
+      "frame": { "x": 52, "y": 15, "w": 42, "h": 52 },
+      "accepts": ["image"],
+      "required": true,
+      "valign": "top",
+      "hint": "The cover or a photograph, in a wide shape."
+    },
+    {
+      "id": "caption",
+      "role": "body",
+      "frame": { "x": 52, "y": 69, "w": 42, "h": 16 },
+      "accepts": ["caption"],
+      "valign": "top",
+      "style": "margin-note",
+      "hint": "What the picture shows, and who made it."
+    }
+  ]
+}

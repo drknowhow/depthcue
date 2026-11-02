@@ -3,14 +3,20 @@ import { join, resolve } from "node:path";
 import { BRAND_FILE, type Deck } from "@depthcue/core";
 import { describe, expect, it } from "vitest";
 import * as core from "../../core/src/brandcheck.ts";
+import * as coreBuiltIns from "../../core/src/builtins.ts";
 import {
   BRAND_CHECKS_LOADING,
+  BUILT_IN_STYLES,
+  BUILT_IN_TEMPLATES,
+  builtInsLoaded,
   checkBrandFile,
   checkTemplateFile,
   loadBrandChecks,
+  loadBuiltIns,
   readBrand,
   unusedBrand,
   waitedForBrandChecks,
+  waitedForBuiltIns,
 } from "../src/brandchecks.ts";
 
 const fixture = resolve(import.meta.dirname, "../../../fixtures/decks/v0-4-brand");
@@ -58,5 +64,31 @@ describe("the editor's stand-in for core's brand checks", () => {
     expect(waitedForBrandChecks(read.diagnostics)).toBe(false);
     expect(checkBrandFile({ id: "x" })).toEqual(core.checkBrandFile({ id: "x" }));
     expect(unusedBrand(BRAND_FILE, {}, "warning")).toEqual(core.unusedBrand(BRAND_FILE, {}, "warning"));
+  });
+});
+
+describe("the editor's stand-in for core's built-in templates and styles", () => {
+  const unknown = (code: string) => [
+    { severity: "error", code, file: "scenes/a.json", path: "/template", message: "", fix: "" } as const,
+  ];
+
+  it("holds empty records until the chunk is in, and tells a template not there yet from a wrong one", async () => {
+    expect(builtInsLoaded()).toBe(false);
+    expect(BUILT_IN_TEMPLATES).toEqual({});
+    expect(BUILT_IN_STYLES).toEqual({});
+    expect(waitedForBuiltIns(unknown("unknown-template"))).toBe(true);
+    expect(waitedForBuiltIns(unknown("unknown-style"))).toBe(true);
+    // Anything but an unknown id is not for the built-ins to settle.
+    expect(waitedForBuiltIns(unknown("missing-slot"))).toBe(false);
+    expect(waitedForBuiltIns([])).toBe(false);
+    // One fetch for every call, started by the first.
+    expect(loadBuiltIns()).toBe(loadBuiltIns());
+
+    await loadBuiltIns();
+    expect(builtInsLoaded()).toBe(true);
+    expect(BUILT_IN_TEMPLATES).toEqual(coreBuiltIns.BUILT_IN_TEMPLATES);
+    expect(BUILT_IN_STYLES).toEqual(coreBuiltIns.BUILT_IN_STYLES);
+    // Now the same error is the deck's own, so nothing is left to wait for.
+    expect(waitedForBuiltIns(unknown("unknown-template"))).toBe(false);
   });
 });

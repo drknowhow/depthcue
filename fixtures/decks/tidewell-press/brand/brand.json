@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "0.4",
+  "id": "tidewell",
+  "name": "Tidewell Press",
+  "colors": {
+    "paper": {
+      "bg": "#F4EFE4",
+      "surface": "#FBF8F0",
+      "line": "#D6CCB8",
+      "text": "#1E2B26",
+      "muted": "#4F5C55",
+      "action": "#8A2E3B",
+      "evidence": "#1D5C63",
+      "chart": ["#8A2E3B", "#1D5C63", "#A8741F", "#5A4A8C"]
+    },
+    "ink": {
+      "bg": "#12201C",
+      "surface": "#1B2B26",
+      "line": "#33463F",
+      "text": "#F1EBDC",
+      "muted": "#B3BFB5",
+      "action": "#E9919A",
+      "evidence": "#86C8C4",
+      "chart": ["#E9919A", "#86C8C4", "#E6B95F", "#B8A9EC"]
+    }
+  },
+  "fonts": {
+    "display": {
+      "family": "Tidewell Display",
+      "license": "OFL-1.1",
+      "files": [
+        { "file": "fonts/TidewellDisplay-Regular.woff2", "weight": 400, "style": "normal" },
+        { "file": "fonts/TidewellDisplay-Italic.woff2", "weight": 400, "style": "italic" }
+      ]
+    },
+    "body": {
+      "family": "Tidewell Text",
+      "license": "OFL-1.1",
+      "files": [
+        { "file": "fonts/TidewellText-Regular.woff2", "weight": 400, "style": "normal" },
+        { "file": "fonts/TidewellText-Bold.woff2", "weight": 700, "style": "normal" }
+      ]
+    },
+    "fallback": "classic"
+  },
+  "logos": {
+    "light": "logos/tidewell-light.svg",
+    "dark": "logos/tidewell-dark.svg",
+    "alt": "Tidewell Press"
+  },
+  "chrome": {
+    "logo": { "corner": "top-start", "size": "m" },
+    "footer": { "text": "Tidewell Press, autumn list", "place": "end" },
+    "number": { "place": "start" },
+    "accent": "start"
+  },
+  "styles": {
+    "stat": {
+      "name": "Stat",
+      "for": ["heading", "body"],
+      "font": "display",
+      "size": "xl",
+      "tone": "action"
+    },
+    "dateline": {
+      "name": "Dateline",
+      "for": ["caption"],
+      "font": "mono",
+      "size": "s",
+      "case": "upper",
+      "tone": "action"
+    },
+    "margin-note": {
+      "name": "Margin note",
+      "for": ["body", "caption"],
+      "font": "display",
+      "size": "m",
+      "tone": "muted",
+      "edge": "start",
+      "pad": "s"
+    }
+  }
+}

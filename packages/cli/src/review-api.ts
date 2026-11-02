@@ -89,8 +89,37 @@ const refuse = (
   ...extra,
 });
 
-const refusal = (failure: ReviewFailure): ReviewRefusal =>
-  refuse(failure.code, failure.diagnostics, failure.unknown.length > 0 ? { unknown: failure.unknown } : {});
+/**
+ * The changes of the brand's files that were not chosen, when the refusal is for want of a template, a style or the
+ * brand: a scene that names a template which only an unchosen change holds fails for it, and the change to add is the
+ * one to name. The core's refusal says what is missing; which change holds it is only known here.
+ */
+function brandChangesLeft(
+  failure: ReviewFailure,
+  review: Review,
+  doc: Doc,
+  chosen: readonly string[] | "all",
+): string[] {
+  if (
+    chosen === "all" ||
+    !failure.diagnostics.some((d) => /^(unknown-(template|style)|no-brand)$/.test(d.code))
+  )
+    return [];
+  return reviewChanges(review, doc)
+    .map((change) => change.id)
+    .filter((id) => /^deck\/(brand|style:|template:)/.test(id) && !chosen.includes(id));
+}
+
+const refusal = (failure: ReviewFailure, left: readonly string[] = []): ReviewRefusal => {
+  const refused = refuse(
+    failure.code,
+    failure.diagnostics,
+    failure.unknown.length > 0 ? { unknown: failure.unknown } : {},
+  );
+  if (left.length === 0) return refused;
+  const ids = left.map((id) => `"${id}"`).join(", ");
+  return { ...refused, hint: `${refused.hint} It may be waiting for ${ids}: name them in the same call.` };
+};
 
 export type ReviewRead = { ok: true; doc: Doc; review: Review | undefined } | ReviewRefusal;
 
@@ -129,7 +158,7 @@ export function acceptInFolder(folder: string, ids: readonly string[] | "all"): 
       return { ok: true, accepted: [], reviewed: started.rev, remaining: 0 };
     }
     const result = acceptChanges(read.review, read.doc, ids);
-    if (!result.ok) return refusal(result);
+    if (!result.ok) return refusal(result, brandChangesLeft(result, read.review, read.doc, ids));
     if (reviewRevision(result.review) !== reviewRevision(read.review)) {
       saveReviewDir(folder, read.review, result.review);
     }
@@ -168,7 +197,7 @@ export function revertInFolder(folder: string, ids: readonly string[] | "all"): 
   if (!read.ok) return read;
   if (read.review === undefined) return refuse("no-review");
   const result = revertChanges(read.review, read.doc, ids);
-  if (!result.ok) return refusal(result);
+  if (!result.ok) return refusal(result, brandChangesLeft(result, read.review, read.doc, ids));
   let written: string[] = [];
   if (result.reverted.length > 0) {
     try {

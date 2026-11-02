@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "0.4",
+  "id": "reader-voice",
+  "title": "What a reader wrote",
+  "template": "quote",
+  "blocks": [
+    {
+      "id": "reader-voice-words",
+      "type": "text",
+      "role": "quote",
+      "text": "I bought it for the tide tables and kept it for the sentences around them.",
+      "slot": "quote"
+    },
+    {
+      "id": "reader-voice-who",
+      "type": "text",
+      "role": "caption",
+      "text": "A reader's letter, October",
+      "slot": "attribution"
+    }
+  ]
+}

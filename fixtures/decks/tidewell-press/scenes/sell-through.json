@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "0.4",
+  "id": "sell-through",
+  "title": "Faster than any list before",
+  "template": "big-number",
+  "summary": {
+    "id": "sell-through-claim",
+    "text": "The autumn list sold through faster than any list we have published.",
+    "evidenceIds": ["sell-through-figure"]
+  },
+  "blocks": [
+    { "id": "sell-through-figure", "type": "text", "role": "heading", "text": "71%", "slot": "number" },
+    {
+      "id": "sell-through-context",
+      "type": "text",
+      "role": "body",
+      "text": "Share of first printings sold within 90 days of publication, across the eleven autumn titles. The spring list reached 58%.",
+      "slot": "context"
+    }
+  ]
+}

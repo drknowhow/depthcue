@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 776" role="img" aria-label="The harbor mouth at low water, with a long mole, moored boats and a pale sun over the sea">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#C5D9D6"/>
+      <stop offset="0.75" stop-color="#F1E6CF"/>
+      <stop offset="1" stop-color="#F6E9CC"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6AA3A8"/>
+      <stop offset="1" stop-color="#1D5C63"/>
+    </linearGradient>
+  </defs>
+  <rect width="2000" height="776" fill="url(#sky)"/>
+  <circle cx="1480" cy="270" r="96" fill="#F8EFD8"/>
+  <circle cx="1480" cy="270" r="96" fill="none" stroke="#E9C9A4" stroke-width="3"/>
+  <rect y="400" width="2000" height="376" fill="url(#sea)"/>
+  <g fill="none" stroke="#F1E6CF" stroke-width="3" stroke-linecap="round" opacity="0.5">
+    <path d="M160 452h300M600 480h380M1120 444h340M1560 472h260M300 540h460M980 556h420M1500 584h340M120 640h360M720 662h440"/>
+  </g>
+  <path d="M0 520h1180l40-26h300l40 26h440v22H0Z" fill="#33463F"/>
+  <rect x="1230" y="470" width="14" height="30" fill="#33463F"/>
+  <path d="M1237 470l-22-34h44Z" fill="#8A2E3B"/>
+  <g fill="#F4EFE4" stroke="#1E2B26" stroke-width="3">
+    <path d="M300 612l90-8 30 28H320Z"/>
+    <path d="M660 640l110-10 36 32H686Z"/>
+    <path d="M1700 606l80-6 26 24h-92Z"/>
+  </g>
+  <g stroke="#1E2B26" stroke-width="3" stroke-linecap="round">
+    <path d="M360 604v-70M740 630v-86M1750 600v-62"/>
+  </g>
+  <g fill="#8A2E3B" opacity="0.9">
+    <path d="M360 534l40 56h-40Z"/>
+    <path d="M740 544l46 74h-46Z"/>
+    <path d="M1750 538l36 54h-36Z"/>
+  </g>
+</svg>

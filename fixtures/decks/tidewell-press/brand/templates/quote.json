@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.4",
+  "id": "quote",
+  "name": "Quote",
+  "description": "Someone else's words in the house style: the quote in the display face on the surface color, with who said it below in a dateline.",
+  "background": { "color": "surface" },
+  "slots": [
+    {
+      "id": "quote",
+      "role": "body",
+      "frame": { "x": 14, "y": 20, "w": 72, "h": 44 },
+      "accepts": ["quote"],
+      "required": true,
+      "valign": "bottom",
+      "style": "pull-quote",
+      "hint": "The words, exactly as said, in two or three sentences at most."
+    },
+    {
+      "id": "attribution",
+      "role": "body",
+      "frame": { "x": 14, "y": 68, "w": 72, "h": 8 },
+      "accepts": ["caption"],
+      "valign": "top",
+      "style": "dateline",
+      "hint": "Who said it, and where or when."
+    }
+  ]
+}

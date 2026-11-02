@@ -497,6 +497,14 @@
   height: auto;
 }
 
+/* A picture slot is the picture's whole box: the image covers the frame and has no edge of its own. */
+.dc-slot[data-role="picture"] > .dc-figure :is(img, video) {
+  object-fit: cover;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
 .dc-slot > .dc-plot-figure .dc-plot {
   flex: 1 1 0;
   min-height: 11em;
