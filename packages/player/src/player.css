@@ -48,9 +48,11 @@
 
 .dc-player {
   --dc-focus: var(--dc-evidence);
-  /* The text color as the deck set it. A strong background or fill redefines --dc-text for what is on it, and a
-     background that is the text color has to be painted before that. */
+  /* The text, muted and line colors as the deck set them. A strong background or fill redefines the three for what is
+     on it, and a tone, a fill that is not strong and a background that is the text color have to be drawn from these. */
   --dc-ink: var(--dc-text);
+  --dc-ink-muted: var(--dc-muted);
+  --dc-ink-line: var(--dc-line);
   position: fixed;
   inset: 0;
   display: grid;
@@ -132,18 +134,20 @@
 
 /*
  * A scene with the brand's logo gives its corner room, so the logo never lands on the layout's content. The room is read
- * from the logo itself, which says its corner and its size, so the script works out nothing.
+ * from the logo itself, which says its corner and its size, so the script works out nothing. It is the height the logo
+ * takes from the edge (its own and the 1.4em it is set in) and a tenth over: the small logo ends at 3.4em, inside the
+ * 3.5em every scene has, so it adds nothing, and a medium or large one adds only what it reaches past it.
  */
 .dc-scene:has(> .dc-chrome > .dc-logo) {
-  --room: 5.3em;
+  --room: 4.5em;
 }
 
 .dc-scene:has(> .dc-chrome > .dc-logo[data-height="s"]) {
-  --room: 4.3em;
+  --room: 3.5em;
 }
 
 .dc-scene:has(> .dc-chrome > .dc-logo[data-height="l"]) {
-  --room: 6.7em;
+  --room: 5.9em;
 }
 
 .dc-scene:has(> .dc-chrome > .dc-logo[data-corner^="top"]) {
@@ -741,21 +745,32 @@
   text-underline-offset: 0.2em;
 }
 
-/* In a template scene the sources are one line along the foot, over the footer, where the slots leave room for them. */
+/*
+ * In a template scene the sources run along the foot, over the footer, as one line of text: the label and each source
+ * after it, set apart by a dot. They are as many lines as they take at the slide's width, and grow upward from the foot,
+ * so a template leaves them room above its footer; the render check says when a slot or block reaches into them.
+ */
 .dc-scene:has(> .dc-slot) > .dc-sources {
   position: absolute;
   inset: auto 6% 2.3em;
-  display: flex;
-  align-items: baseline;
-  gap: 1em;
   padding: 0;
   border: 0;
 }
 
-.dc-scene:has(> .dc-slot) > .dc-sources :is(p, ol) {
+.dc-scene:has(> .dc-slot) > .dc-sources :is(p, ol, li) {
+  display: inline;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.dc-scene:has(> .dc-slot) > .dc-sources p {
+  margin-inline-end: 0.8em;
+}
+
+.dc-scene:has(> .dc-slot) > .dc-sources li + li::before {
+  content: "\00b7";
+  margin-inline: 0.6em;
 }
 
 @container (max-width: 640px) {
@@ -793,12 +808,13 @@
   --dc-min: 1.4em;
 }
 
+/* A tone is the slide's own color of that name, also on a strong background, where text and muted are reversed. */
 .dc-player :is(.dc-block, .dc-claim, .dc-tone)[data-tone="text"] {
-  color: var(--dc-text);
+  color: var(--dc-ink);
 }
 
 .dc-player :is(.dc-block, .dc-claim, .dc-tone)[data-tone="muted"] {
-  color: var(--dc-muted);
+  color: var(--dc-ink-muted);
 }
 
 .dc-player :is(.dc-block, .dc-claim, .dc-tone)[data-tone="action"] {
@@ -920,6 +936,21 @@
   --dc-text: var(--dc-bg);
   --dc-muted: var(--dc-bg);
   --dc-line: color-mix(in srgb, var(--dc-bg) 40%, transparent);
+  color: var(--dc-text);
+}
+
+/*
+ * The surface is one of the slide's own grounds, so a block filled with it on a strong scene is drawn in the slide's own
+ * text, muted and line colors again, as core's `textOn` says. The color itself is `:where`, so a rule of a class that
+ * colors its own text (a caption's muted) still wins.
+ */
+.dc-player [data-on="strong"] [data-fill="surface"] {
+  --dc-text: var(--dc-ink);
+  --dc-muted: var(--dc-ink-muted);
+  --dc-line: var(--dc-ink-line);
+}
+
+:where(.dc-player [data-on="strong"] [data-fill="surface"]) {
   color: var(--dc-text);
 }
 

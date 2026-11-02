@@ -498,15 +498,24 @@ describe("an export of a deck in another font pair", () => {
     const result = exportDeck({ folder, out, notes: true });
     if (!result.ok) throw new Error(`the export failed: ${JSON.stringify(result.diagnostics)}`);
     expect(result.summary.fonts).toBe("technical");
-    // Every file of the two families the pair names, as the font manifest lists them, and its own stylesheet.
+    // Every file of the two families the pair names, as the font manifest lists them, the license text of each family
+    // and the pair's own stylesheet.
     const manifest = JSON.parse(
       readFileSync(fileURLToPath(new URL("../../../brand/fonts/manifest.json", import.meta.url)), "utf8"),
-    ) as { files: Array<{ file: string; family: string }> };
+    ) as {
+      files: Array<{ file: string; family: string }>;
+      families: Record<string, { licenseFile: string }>;
+    };
+    const names = ["IBM Plex Sans", "IBM Plex Mono"];
     const technical = manifest.files
-      .filter((entry) => entry.family === "IBM Plex Sans" || entry.family === "IBM Plex Mono")
+      .filter((entry) => names.includes(entry.family))
       .map((entry) => entry.file);
+    const licenses = names.map((name) => manifest.families[name]?.licenseFile as string);
     expect(technical.length).toBeGreaterThan(0);
-    expect(readdirSync(join(out, "fonts")).sort()).toEqual([...technical, "technical.css"].sort());
+    expect(licenses).toEqual(["IBMPlexSans-OFL.txt", "IBMPlexMono-OFL.txt"]);
+    expect(readdirSync(join(out, "fonts")).sort()).toEqual(
+      [...technical, ...licenses, "technical.css"].sort(),
+    );
 
     // Nothing but files may load: the network is off, and anything else that asks is counted.
     if (!browser) throw new Error("the browser should be up");

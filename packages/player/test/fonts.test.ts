@@ -294,11 +294,31 @@ describe("scripts/build-fonts.mjs", () => {
     expect(readdirSync(out).sort()).toEqual(
       [
         ...manifest.files.map((file) => file.file),
+        ...Object.values(manifest.families).map((family) => family.licenseFile),
+        "licenses.json",
         "all.css",
         ...Object.keys(manifest.pairs).map((p) => `${p}.css`),
       ].sort(),
     );
     for (const file of manifest.files) expect(sha256(join(out, file.file)), file.file).toBe(file.sha256);
+  });
+
+  it("writes each family's license text beside its fonts, and says whose it is, for an export to copy", () => {
+    const written = JSON.parse(readFileSync(join(out, "licenses.json"), "utf8")) as Record<string, string>;
+    expect(Object.keys(written).sort()).toEqual(Object.keys(manifest.families).sort());
+    for (const [family, info] of Object.entries(manifest.families)) {
+      expect(written[family], family).toBe(info.licenseFile);
+      expect(readFileSync(join(out, info.licenseFile), "utf8"), family).toBe(
+        readFileSync(join(fontsDir, info.licenseFile), "utf8"),
+      );
+    }
+    // Every family a pair's stylesheet names has one, so no export of a pair is without a license text.
+    for (const pair of Object.keys(manifest.pairs)) {
+      const css = readFileSync(join(out, `${pair}.css`), "utf8");
+      for (const [, family] of css.matchAll(/font-family:\s*"([^"]+)"/g)) {
+        expect(written[family as string], `${pair}: ${family}`).toBeTruthy();
+      }
+    }
   });
 
   it("makes each pair's stylesheet name the faces of its own families and nothing else", () => {

@@ -175,7 +175,7 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 64,
-                "pattern": "^[^\"'\\\\;{}<>]+$"
+                "pattern": "^[^\"'\\\\;{}<>\\x00-\\x1f\\x7f]+$"
               },
               "license": {
                 "type": "string",
@@ -240,7 +240,7 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 64,
-                "pattern": "^[^\"'\\\\;{}<>]+$"
+                "pattern": "^[^\"'\\\\;{}<>\\x00-\\x1f\\x7f]+$"
               },
               "license": {
                 "type": "string",
@@ -305,7 +305,7 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 64,
-                "pattern": "^[^\"'\\\\;{}<>]+$"
+                "pattern": "^[^\"'\\\\;{}<>\\x00-\\x1f\\x7f]+$"
               },
               "license": {
                 "type": "string",

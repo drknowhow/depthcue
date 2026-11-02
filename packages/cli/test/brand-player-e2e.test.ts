@@ -214,8 +214,9 @@ function layoutScenes(deck: string): string[] {
     id: "lay-claim",
     title: "Claim layout",
     layout: "claim-evidence",
-    // No sources and a short claim: a claim-evidence slide with a chart, sources and a long claim fills the whole stage,
-    // and a logo's room at the top is then room the slide has to find (the render check reports `overflow`).
+    // A short claim and no sources, as this slide is drawn with the largest logo in every corner: that logo reaches past
+    // the margin every slide has, and the room it takes is room a long claim would need (the render check reports
+    // `overflow`). A small logo takes none, which "gives a logo only the room its height needs" below shows.
     summary: { id: "lay-claim-claim", text: "Ships handled rose.", evidenceIds: ["lay-claim-chart"] },
     blocks: [chart("lay-claim-chart")],
   });
@@ -269,24 +270,27 @@ const loadedFaces = (page: Page): Promise<string> =>
       .join("; "),
   );
 
-/** How two pictures differ: the pixels that differ at all, those that differ by more than a rounding, the largest step. */
+/** How two pictures differ: the pixels that differ at all, and the largest step in any channel of any of them. */
 interface Difference {
   changed: number;
-  large: number;
   step: number;
   of: number;
   box: string;
 }
 
-/** A step in one channel of a pixel that rasterizing the same page twice can make, and that no change of look makes. */
-const ROUNDING = 24;
-/** The share of a picture that may differ by rounding and no more. */
-const FEW = 0.01;
+/**
+ * The most pixels two pictures of one page may differ in and still be the same page. Drawing a page twice in Chrome can
+ * move a few edge pixels of text, by a rounding; a changed color or font changes hundreds at least. A count in pixels,
+ * and not a share of the picture, so a change of color too small to see cannot hide in the picture's size.
+ */
+const FEW_PIXELS = 64;
+/** How many times a pair is photographed again, after a face that arrived late repainted, before it is called different. */
+const RETAKES = 3;
 
 /** Counts how two PNGs differ, in a blank page where nothing but the picture is. */
 async function difference(blank: Page, left: Buffer, right: Buffer): Promise<Difference> {
   return blank.evaluate(
-    async ([one, two, rounding]) => {
+    async ([one, two]) => {
       const read = async (base64: string) => {
         const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
         const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
@@ -299,9 +303,9 @@ async function difference(blank: Page, left: Buffer, right: Buffer): Promise<Dif
       };
       const [x, y] = [await read(one as string), await read(two as string)];
       if (x.width !== y.width || x.height !== y.height) {
-        return { changed: 1, large: 1, step: 255, of: x.width * x.height, box: "the sizes differ" };
+        return { changed: x.width * x.height, step: 255, of: x.width * x.height, box: "the sizes differ" };
       }
-      let [changed, large, step] = [0, 0, 0];
+      let [changed, step] = [0, 0];
       let [left, top, right, bottom] = [x.width, x.height, -1, -1];
       for (let at = 0; at < x.data.length; at += 4) {
         let most = 0;
@@ -313,7 +317,6 @@ async function difference(blank: Page, left: Buffer, right: Buffer): Promise<Dif
         }
         if (most === 0) continue;
         changed++;
-        if (most > (rounding as number)) large++;
         step = Math.max(step, most);
         const [column, row] = [(at / 4) % x.width, Math.floor(at / 4 / x.width)];
         [left, top, right, bottom] = [
@@ -325,41 +328,46 @@ async function difference(blank: Page, left: Buffer, right: Buffer): Promise<Dif
       }
       return {
         changed,
-        large,
         step,
         of: x.width * x.height,
         box: changed ? `${left},${top} to ${right},${bottom}` : "",
       };
     },
-    [left.toString("base64"), right.toString("base64"), ROUNDING] as const,
+    [left.toString("base64"), right.toString("base64")] as const,
   );
 }
 
+const SAME: Difference = { changed: 0, step: 0, of: 0, box: "" };
+
 /**
- * Whether the stages of two pages come out as the same picture, to within the rounding of drawing a page twice: on a
- * Linux runner two pages of the same deck differ by a handful of faint pixels, where a different look or font changes
- * whole letters. A face that arrives late repaints, so the pictures are taken again a few times before they are called
- * different. What a difference was is said, in the log when it passes and in the message when it does not.
+ * Whether the stages of two pages come out as the same picture. A third page is the control: the same deck drawn the same
+ * way as the second, which says how much two drawings of one page differ on this machine (none, on Windows; a handful of
+ * faint pixels on a Linux runner). The first two are the same when they differ in no more than `FEW_PIXELS` pixels and by
+ * no larger a step in any channel than the control pair does, so what is allowed is what noise was seen to do, not a
+ * share of the picture a real change can sit inside. A face that arrives late repaints, so the pictures are taken again a
+ * few times before they are called different. What the difference was is said, in the log when it passes and in the
+ * message when it does not.
  */
-async function sameStage(a: Page, b: Page, note: string): Promise<string | undefined> {
+async function sameStage(a: Page, b: Page, control: Page, note: string): Promise<string | undefined> {
   const shoot = (page: Page) => page.locator(".dc-stage").screenshot({ animations: "disabled" });
   const blank = await a.context().newPage();
+  const compare = async (left: Buffer, right: Buffer) =>
+    left.equals(right) ? SAME : await difference(blank, left, right);
   try {
-    let left = await shoot(a);
-    let right = await shoot(b);
-    let found = left.equals(right) ? undefined : await difference(blank, left, right);
-    for (let attempt = 0; attempt < 3 && found && found.large > 0; attempt++) {
-      await a.waitForTimeout(250);
-      await Promise.all([frames(a), frames(b)]);
-      left = await shoot(a);
-      right = await shoot(b);
-      found = left.equals(right) ? undefined : await difference(blank, left, right);
-    }
-    if (!found) return undefined;
-    const said = `${note}: ${found.changed} of ${found.of} pixels differ, ${found.large} by more than ${ROUNDING}, at most by ${found.step}, within ${found.box}`;
-    if (found.large === 0 && found.changed <= found.of * FEW) {
-      console.log(said);
-      return undefined;
+    let said = "";
+    for (let attempt = 0; attempt <= RETAKES; attempt++) {
+      if (attempt > 0) {
+        await a.waitForTimeout(250);
+        await Promise.all([frames(a), frames(b), frames(control)]);
+      }
+      const [first, second, third] = [await shoot(a), await shoot(b), await shoot(control)];
+      const noise = await compare(second, third);
+      const found = await compare(first, second);
+      said = `${note}: ${found.changed} of ${found.of || "all the"} pixels differ, at most by ${found.step}, within ${found.box || "none"}; two drawings of the same page differed in ${noise.changed}, at most by ${noise.step}`;
+      if (found.changed <= FEW_PIXELS && found.step <= noise.step) {
+        if (found.changed > 0) console.log(said);
+        return undefined;
+      }
     }
     return `${said}; loaded: [${await loadedFaces(a)}] and [${await loadedFaces(b)}]`;
   } finally {
@@ -538,6 +546,66 @@ describe("a deck with a brand, served", () => {
     expect(await welcome.locator(".dc-chrome").count()).toBe(0);
   }, 60_000);
 
+  it("sets the sources of a template slide as one flowing line along the foot, which wraps when it must", async () => {
+    const deck = copyDeck();
+    addScene(deck, {
+      id: "few",
+      title: "Few sources",
+      template: "two-column",
+      blocks: [
+        text("few-title", "heading", "Two berths", { slot: "title" }),
+        text("few-left", "body", "Berth A never closed.", { slot: "left" }),
+      ],
+      sources: [
+        { id: "few-1", title: "Berth log" },
+        { id: "few-2", title: "Dredging report" },
+        { id: "few-3", title: "Audit" },
+      ],
+    });
+    addScene(deck, {
+      id: "many",
+      title: "Many sources",
+      template: "two-column",
+      blocks: [
+        text("many-title", "heading", "Two berths", { slot: "title" }),
+        text("many-left", "body", "Berth A never closed.", { slot: "left" }),
+      ],
+      sources: Array.from({ length: 8 }, (_, at) => ({
+        id: `many-${at + 1}`,
+        title: `Harbor master's berth log for July to September, as audited by the port authority (${at + 1})`,
+      })),
+    });
+    const served = await serve(deck, { clean: true });
+    const rows = (page: Page) =>
+      page.evaluate(() => {
+        const band = document.querySelector<HTMLElement>(".dc-sources") as HTMLElement;
+        const parts = [...band.querySelectorAll<HTMLElement>("p, li")];
+        // The label is a smaller type than the sources, so a row is the parts whose middles are within a few pixels.
+        const middles = parts
+          .flatMap((part) => [...part.getClientRects()].map((rect) => (rect.top + rect.bottom) / 2))
+          .sort((a, b) => a - b);
+        const rows = middles.filter(
+          (middle, at) => at === 0 || middle - (middles[at - 1] as number) > 8,
+        ).length;
+        return {
+          rows,
+          position: getComputedStyle(band).position,
+          label: band.querySelector("p")?.textContent ?? "",
+          sources: band.querySelectorAll("li").length,
+          bottom: band.getBoundingClientRect().bottom,
+        };
+      });
+    // A few short ones: the label and every source share one line, at the foot.
+    const few = await rows(await served.go("few"));
+    expect(few).toMatchObject({ rows: 1, position: "absolute", label: "Sources", sources: 3 });
+    expect(few.bottom).toBeLessThan(720);
+    expect(few.bottom).toBeGreaterThan(660);
+    // Many long ones are the same running line, wrapped at the slide's width: more rows, still one block along the foot.
+    const many = await rows(await served.go("many"));
+    expect(many.rows).toBeGreaterThan(1);
+    expect(many.sources).toBe(8);
+    expect(Math.abs(many.bottom - few.bottom)).toBeLessThanOrEqual(1);
+  }, 60_000);
   it("shows the logo alone on a template whose chrome is minimal", async () => {
     const deck = copyDeck();
     moreScenes(deck);
@@ -659,6 +727,174 @@ describe("a deck with a brand, served", () => {
     expect(Math.round((await share(first, slot)).x)).toBe(20);
     expect(Math.round((await share(first, "[data-id='growth-title']")).x)).toBe(20);
   }, 90_000);
+});
+
+// ---- text on a strong background ------------------------------------------------------------------------------------
+
+/** The contrast of two `rgb(...)` colors, as WCAG counts it. */
+function contrastOf(foreground: string, background: string): number {
+  const luminance = (color: string) => {
+    const [red, green, blue] = (color.match(/[\d.]+/g) ?? []).slice(0, 3).map((part) => {
+      const value = Number(part) / 255;
+      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a) as [
+    number,
+    number,
+  ];
+  return (light + 0.05) / (dark + 0.05);
+}
+
+/** A color of the slide itself, as `rgb(...)`, whatever a strong background has done to the colors under it. */
+const slideColor = (page: Page, variable: string): Promise<string> =>
+  page.evaluate((name) => {
+    const probe = document.createElement("span");
+    probe.style.color = `var(${name})`;
+    (document.querySelector(".dc-player") as HTMLElement).append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, variable);
+
+describe("text on a strong background", () => {
+  const WIDE = 4.5;
+
+  /** What the block is drawn in and on, and what the slide's own ink is. */
+  async function look(page: Page, block: string) {
+    return {
+      color: await style(page, block, "color"),
+      ground: await style(page, block, "background-color"),
+      ink: await slideColor(page, "--dc-ink"),
+      paper: await slideColor(page, "--dc-bg"),
+      muted: await slideColor(page, "--dc-ink-muted"),
+    };
+  }
+
+  it("draws a surface panel inside a dark section in the slide's own ink, and reads it", async () => {
+    const deck = copyDeck();
+    moreScenes(deck);
+    // The built-in callout fills with the slide's surface: a light panel on the section's dark ground.
+    editJson(join(deck, "scenes", "part.json"), (scene) => {
+      scene.blocks[2].style = "callout";
+    });
+    const served = await serve(deck, { clean: true });
+    const part = await served.go("part");
+    const panel = await look(part, "[data-id='part-lede']");
+    expect(panel.color).toBe(panel.ink);
+    expect(panel.ground).not.toBe(panel.paper);
+    expect(contrastOf(panel.color, panel.ground), "the panel's text on the panel").toBeGreaterThanOrEqual(
+      WIDE,
+    );
+    // The rest of the section is still the reversed text on the dark ground.
+    const title = await look(part, "[data-id='part-title']");
+    expect(title.color).toBe(title.paper);
+    expect(
+      contrastOf(title.color, await style(part, ".dc-scene", "background-color")),
+    ).toBeGreaterThanOrEqual(WIDE);
+
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    expect((await renderer.render("part", { screenshot: false })).diagnostics).toEqual([]);
+  }, 90_000);
+
+  it("draws the fixture's quiet panel on its cover in the slide's own ink, and reads it", async () => {
+    const deck = copyDeck();
+    editJson(join(deck, "scenes", "welcome.json"), (scene) => {
+      scene.blocks[2].style = "quiet-panel";
+      scene.blocks[2].text = "The analytics team";
+    });
+    // A panel has padding and a border the plain byline does not, so the byline slot is made roomier for it.
+    editJson(join(deck, "brand", "templates", "cover.json"), (template) => {
+      template.slots.find((entry: Json) => entry.id === "byline").frame = { x: 8, y: 66, w: 60, h: 22 };
+    });
+    expect(openDeck(deck).ok).toBe(true);
+    const served = await serve(deck, { clean: true });
+    const welcome = await served.go("welcome");
+    const panel = await look(welcome, "[data-id='welcome-byline']");
+    expect(panel.color).toBe(panel.ink);
+    expect(contrastOf(panel.color, panel.ground), "the panel's text on the panel").toBeGreaterThanOrEqual(
+      WIDE,
+    );
+    // The panel's border is the slide's line, and its muted text, were there any, the slide's muted.
+    const title = await look(welcome, "[data-id='welcome-title']");
+    expect(title.color).toBe(title.paper);
+    expect(
+      contrastOf(title.color, await style(welcome, ".dc-scene", "background-color")),
+    ).toBeGreaterThanOrEqual(3);
+
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    expect((await renderer.render("welcome", { screenshot: false })).diagnostics).toEqual([]);
+  }, 90_000);
+
+  it("draws a block that names its own tone in that tone, on a strong cover too", async () => {
+    const deck = copyDeck();
+    // A cover on a teal both the slide's ink (3.3:1, enough for a large title) and its paper (4.9:1) can be read on, so the\n    // brand is sound, and the author asks for the ink on the title.
+    editJson(join(deck, "brand", "brand.json"), (brand) => {
+      brand.colors.paper.action = "#0C7575";
+    });
+    addScene(deck, {
+      id: "cover-ink",
+      title: "Cover in ink",
+      template: "cover",
+      blocks: [text("cover-ink-title", "heading", "Where the harbor grew", { slot: "title", tone: "text" })],
+    });
+    // The only scene, so the deck has no other scene to fail the light teal.
+    editJson(join(deck, "deck.json"), (manifest) => {
+      manifest.scenes = ["cover-ink"];
+    });
+    const opened = openDeck(deck);
+    expect(opened.ok, JSON.stringify(opened.diagnostics)).toBe(true);
+    const served = await serve(deck, { clean: true });
+    const cover = await served.go("cover-ink");
+    const title = await look(cover, "[data-id='cover-ink-title']");
+    expect(title.color).toBe(title.ink);
+    expect(title.color).not.toBe(title.paper);
+    const ground = await style(cover, ".dc-scene", "background-color");
+    expect(ground).toBe(rgb("#0C7575"));
+    expect(contrastOf(title.color, ground)).toBeGreaterThanOrEqual(3);
+
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    expect((await renderer.render("cover-ink", { screenshot: false })).diagnostics).toEqual([]);
+  }, 90_000);
+
+  it("draws a muted block of the slide's own in the slide's muted color, not the reversed one", async () => {
+    const deck = copyDeck();
+    editJson(join(deck, "brand", "brand.json"), (brand) => {
+      brand.colors.paper.action = "#0C7575";
+    });
+    addScene(deck, {
+      id: "cover-muted",
+      title: "Cover with a muted line",
+      template: "cover",
+      blocks: [
+        text("cover-muted-title", "heading", "Where the harbor grew", { slot: "title", tone: "text" }),
+        text("cover-muted-byline", "body", "The analytics team", { slot: "byline", tone: "muted" }),
+      ],
+    });
+    editJson(join(deck, "deck.json"), (manifest) => {
+      manifest.scenes = ["cover-muted"];
+    });
+    const served = await serve(deck, { clean: true });
+    const cover = await served.go("cover-muted");
+    const byline = await look(cover, "[data-id='cover-muted-byline']");
+    expect(byline.color).toBe(byline.muted);
+    expect(byline.color).not.toBe(byline.paper);
+  }, 90_000);
+
+  it("leaves the fixture's reversed text on its cover as it was", async () => {
+    const served = await serve(copyDeck(), { clean: true });
+    const welcome = await served.go("welcome");
+    for (const block of ["welcome-kicker", "welcome-title", "welcome-byline"]) {
+      const drawn = await look(welcome, `[data-id='${block}']`);
+      // The kicker is in the brand's action color (its own tone); the others are the reversed text.
+      if (block === "welcome-kicker") continue;
+      expect(drawn.color, block).toBe(drawn.paper);
+    }
+  }, 60_000);
 });
 
 // ---- the offline export ----------------------------------------------------------------------------------------------
@@ -813,6 +1049,151 @@ describe("depthcue render, on a deck with a brand", () => {
     );
   }, 90_000);
 
+  /**
+   * A two-column slide of the built-in template: the title, a column of `sentences` sentences on the left and one on the
+   * right, and the sources they cite. A source's title is as long as `title` says, and the sources are set along the foot.
+   */
+  function pairWithSources(
+    deck: string,
+    id: string,
+    sentences: number,
+    sources: { count: number; title: string },
+  ) {
+    const sentence = "Berth A never closed, and moved forty ships in July before the dredging began.";
+    const body = (side: string) =>
+      text(`${id}-${side}`, "body", Array(sentences).fill(sentence).join(" "), { slot: side });
+    const cited = Array.from({ length: sources.count }, (_, at) => `${id}-source-${at + 1}`);
+    addScene(deck, {
+      id,
+      title: "Pair with sources",
+      template: "two-column",
+      blocks: [
+        text(`${id}-title`, "heading", "Two berths, two stories", { slot: "title" }),
+        body("left"),
+        body("right"),
+      ],
+      sources: cited.map((source, at) => ({ id: source, title: `${sources.title} (${at + 1})` })),
+    });
+  }
+  const LONG_SOURCE =
+    "Harbor master's berth log for July to September, as audited by the port authority and filed with its annual review of the berths";
+
+  it("reports the sources along the foot that lie over a slot's content, which the slot's own check cannot see", async () => {
+    const deck = copyDeck();
+    // Six sentences in each column and eight sources: the columns are inside their slots, which run to the foot, and the
+    // sources are set over their last lines.
+    pairWithSources(deck, "crowded", 6, { count: 8, title: LONG_SOURCE });
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    const result = await renderer.render("crowded", { screenshot: false });
+    const found = result.diagnostics.filter((d) => d.code === "sources-overlap");
+    expect(found.length, JSON.stringify(result.diagnostics)).toBeGreaterThan(0);
+    expect(found[0]?.severity).toBe("error");
+    expect(found[0]?.message).toContain("The sources along the foot of the slide overlap");
+    expect(found.map((d) => d.message).join(" ")).toMatch(/"crowded-(left|right)"/);
+    // It says what to change: fewer or shorter sources, or less above them.
+    expect(found[0]?.fix).toContain("fewer or shorter sources");
+    expect(found[0]?.path).toMatch(/^\/blocks\/\d+$/);
+  }, 60_000);
+
+  it("reports nothing when the content stops above the sources, or the sources are few and short", async () => {
+    const deck = copyDeck();
+    pairWithSources(deck, "roomy-long", 3, { count: 8, title: LONG_SOURCE });
+    pairWithSources(deck, "roomy-short", 4, { count: 1, title: "Harbor master's berth log" });
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    for (const scene of ["roomy-long", "roomy-short"]) {
+      expect((await renderer.render(scene, { screenshot: false })).diagnostics, scene).toEqual([]);
+    }
+  }, 60_000);
+  it("gives a logo only the room its height needs at the top: a slide that fits without the small logo fits with it", async () => {
+    const withLogo = copyDeck("v0-4-brand", "with-logo");
+    const without = copyDeck("v0-4-brand", "without-logo");
+    editJson(join(without, "brand", "brand.json"), (brand) => {
+      delete brand.chrome.logo;
+    });
+    // The same claim-evidence slide at ever longer claims, up to the one that is too long for the stage either way. A
+    // small logo sits in the margin every slide has, so it must change nothing about what fits; with the room a
+    // logo of its size does not need, the claim that just fits (18 words, here) ran 14px over the stage.
+    const claim =
+      "Ships handled rose by a third once the berths reopened in August and the gain held through September, October and November, with all three running at capacity".split(
+        " ",
+      );
+    const counts = [8, 14, 16, 17, 18, 19, 20, 30];
+    for (const deck of [withLogo, without]) {
+      for (const count of counts) {
+        addScene(deck, {
+          id: `claim-${count}`,
+          title: "Claim",
+          layout: "claim-evidence",
+          summary: {
+            id: `claim-${count}-claim`,
+            text: claim.slice(0, count).join(" "),
+            evidenceIds: [`claim-${count}-chart`],
+          },
+          blocks: [chart(`claim-${count}-chart`)],
+        });
+      }
+    }
+    const [one, other] = [await openRenderer(withLogo), await openRenderer(without)];
+    closers.push(
+      () => one.close(),
+      () => other.close(),
+    );
+    const seen: Record<number, string[]> = {};
+    for (const count of counts) {
+      const id = `claim-${count}`;
+      const [a, b] = [
+        await one.render(id, { screenshot: false }),
+        await other.render(id, { screenshot: false }),
+      ];
+      seen[count] = codes(b);
+      expect(codes(a), `${id}: the same findings with the small logo as without it`).toEqual(codes(b));
+      expect(
+        a.diagnostics.map((d) => d.message),
+        `${id}: and the same by as much`,
+      ).toEqual(b.diagnostics.map((d) => d.message));
+    }
+    // The range runs from a slide that fits to one that does not, so the comparison above is about the edge.
+    expect(seen[8], "8 words fit").toEqual([]);
+    expect(seen[30], "30 words do not").toContain("overflow");
+  }, 120_000);
+
+  it("pads the top of a slide as far as the logo reaches past the margin every slide has, and no further", async () => {
+    const deck = copyDeck();
+    layoutScenes(deck);
+    const served = await serve(deck, { clean: true });
+    const room = async () => {
+      // A blank page first: going to the same address with only its hash unchanged would not load the page again.
+      await served.page.goto("about:blank");
+      const page = await served.go("lay-title");
+      await frames(page);
+      return page.locator(".dc-scene").evaluate((scene) => {
+        const computed = getComputedStyle(scene);
+        return Number.parseFloat(computed.paddingTop) / Number.parseFloat(computed.fontSize);
+      });
+    };
+    const logoOf = (size?: string) =>
+      editJson(join(deck, "brand", "brand.json"), (brand) => {
+        if (size) brand.chrome.logo = { corner: "top-end", size };
+        else delete brand.chrome.logo;
+      });
+    logoOf();
+    const margin = await room();
+    logoOf("s");
+    expect(await room(), "a small logo ends inside the margin").toBeCloseTo(margin, 1);
+    logoOf("m");
+    expect(await room(), "a medium logo reaches a little past it").toBeGreaterThan(margin);
+    const medium = await room();
+    logoOf("l");
+    expect(await room(), "and a large one further").toBeGreaterThan(medium);
+    expect(medium - margin, "by a medium logo's height, not by more").toBeLessThanOrEqual(1.1);
+    // A logo at the foot pads the foot, and leaves the top at the margin.
+    editJson(join(deck, "brand", "brand.json"), (brand) => {
+      brand.chrome.logo = { corner: "bottom-end", size: "l" };
+    });
+    expect(await room(), "a logo at the foot leaves the top at the margin").toBeCloseTo(margin, 1);
+  }, 90_000);
   it("keeps the chrome off the content of the three built-in layouts in every corner, with the largest logo", async () => {
     const deck = copyDeck();
     const scenes = layoutScenes(deck);
@@ -833,16 +1214,54 @@ describe("depthcue render, on a deck with a brand", () => {
 // ---- decks with no brand ---------------------------------------------------------------------------------------------
 
 describe("a deck with no brand", () => {
-  it("tells two different slides apart, so the comparison below is not a pass for anything", async () => {
+  /** The same deck from a server with no look to give: the page is drawn from the deck alone, as it was before. */
+  async function withoutLook(deck: string, options: { clean?: boolean } = {}) {
+    // The 404 is the point of this page, so the browser's console note of it is not a problem.
+    const served = await serve(deck, { quiet: true, ...options });
+    await served.context.route("**/look.json", (route) => route.fulfill({ status: 404, body: "" }));
+    return served;
+  }
+
+  it("tells a small change of color apart from rounding: a muted text color 16 steps lighter is a different picture", async () => {
     const deck = copyDeck("v0-1", "v0-1");
-    const [first, second] = [await serve(deck), await serve(deck)];
-    const message = await sameStage(
-      await first.go("opening"),
-      await second.go("demand"),
-      "opening and demand",
-    );
-    expect(message).toMatch(/pixels differ, \d+ by more than/);
-  }, 60_000);
+    // Four drawings of one slide, all the same size and with the page's policy off so a style can be added to one: three
+    // as they are, and one with the color moved.
+    const [one, two, three, four] = [
+      await withoutLook(deck, { clean: true }),
+      await withoutLook(deck, { clean: true }),
+      await withoutLook(deck, { clean: true }),
+      await withoutLook(deck, { clean: true }),
+    ];
+    const [a, b, c, shiftedPage] = [
+      await one.go("demand"),
+      await two.go("demand"),
+      await three.go("demand"),
+      await four.go("demand"),
+    ];
+    // The muted color of the page, read as the page has it, and moved 16 steps in each channel: not a change anyone
+    // would call a different look, and what a drawing of the same page twice never does.
+    const muted = await shiftedPage.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--dc-muted)";
+      (document.querySelector(".dc-player") as HTMLElement).append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    const [red, green, blue] = (muted.match(/\d+/g) ?? []).slice(0, 3).map(Number) as [
+      number,
+      number,
+      number,
+    ];
+    const shifted = `rgb(${[red, green, blue].map((channel) => Math.min(255, channel + 16)).join(", ")})`;
+    expect(shifted).not.toBe(muted);
+    await shiftedPage.addStyleTag({ content: `.dc-player { --dc-muted: ${shifted} !important; }` });
+    await frames(shiftedPage);
+    const message = await sameStage(shiftedPage, a, b, "demand with a lighter muted color");
+    expect(message).toMatch(/pixels differ, at most by \d+, within/);
+    // The control: the same page drawn twice is the same page, so the message above is about the color.
+    expect(await sameStage(c, a, b, "demand twice")).toBeUndefined();
+  }, 90_000);
 
   for (const name of ["v0-1", "v0-2", "v0-3", "demo", "charts"]) {
     it(`${name} is drawn the same with the look the server sends as without it`, async () => {
@@ -852,21 +1271,19 @@ describe("a deck with no brand", () => {
       const scenes = opened.doc.deck.scenes;
 
       const withLook = await serve(deck);
-      // The same deck from a server with no look to give: the page is drawn from the deck alone, as it was before. The
-      // 404 is the point of this page, so the browser's console note of it is not a problem.
-      const without = await serve(deck, { quiet: true });
-      await without.context.route("**/look.json", (route) => route.fulfill({ status: 404, body: "" }));
+      const [without, control] = [await withoutLook(deck), await withoutLook(deck)];
 
       for (const scene of scenes) {
         const a = await withLook.go(scene);
         const b = await without.go(scene);
+        const c = await control.go(scene);
         expect(
-          await sameStage(a, b, `${name}/${scene}`),
+          await sameStage(a, b, c, `${name}/${scene}`),
           `${name}/${scene} looks the same with and without a look`,
         ).toBeUndefined();
         expect(await a.locator(".dc-chrome, .dc-slot, .dc-backdrop").count(), `${name}/${scene}`).toBe(0);
       }
-    }, 120_000);
+    }, 150_000);
   }
 });
 

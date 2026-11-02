@@ -37,6 +37,15 @@ if (!custom) rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 for (const file of manifest.files) copyFileSync(join(source, file.file), join(out, file.file));
 
+// The license of each family travels with its fonts: an export copies the ones its pair's families name, beside the
+// font files. `licenses.json` says which text is which family's, so the export reads no manifest.
+const licenses = {};
+for (const [family, info] of Object.entries(manifest.families)) {
+  copyFileSync(join(source, info.licenseFile), join(out, info.licenseFile));
+  licenses[family] = info.licenseFile;
+}
+writeFileSync(join(out, "licenses.json"), `${JSON.stringify(licenses, null, 2)}\n`);
+
 const banner =
   "/* Built from brand/fonts/manifest.json by packages/player/scripts/build-fonts.mjs. Do not edit. */\n";
 const pairs = Object.keys(manifest.pairs);
