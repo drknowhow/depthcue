@@ -27,13 +27,13 @@ export const BRAND_CHECKS_LOADING = "brand-checks-loading";
 
 let real: typeof Checks | undefined;
 
-/** Fetches a chunk once. A fetch that failed is tried again by the next call. */
-function once(load: () => Promise<void>): () => Promise<void> {
+/** Fetches a chunk once. A fetch that failed is tried again by the next call, and rejects unless `quiet`. */
+function once(load: () => Promise<void>, quiet = false): () => Promise<void> {
   let fetching: Promise<void> | undefined;
   return () =>
     (fetching ??= load().catch((error: unknown) => {
       fetching = undefined;
-      throw error;
+      if (!quiet) throw error;
     }));
 }
 
@@ -82,12 +82,17 @@ export const BUILT_IN_TEMPLATES: Record<string, Template> = {};
 /** Depthcue's own component styles, empty until `loadBuiltIns` is done. */
 export const BUILT_IN_STYLES: Record<string, BlockStyle> = {};
 
-/** Fetches Depthcue's own templates and styles once, and puts them in the records. */
-export const loadBuiltIns = once(() =>
-  import("../../core/src/builtins.ts").then((module) => {
-    Object.assign(BUILT_IN_TEMPLATES, module.BUILT_IN_TEMPLATES);
-    Object.assign(BUILT_IN_STYLES, module.BUILT_IN_STYLES);
-  }),
+/**
+ * Fetches Depthcue's own templates and styles once, and puts them in the records. It never rejects: a fetch that fails
+ * leaves the records empty, which `builtInsLoaded` says, and the next call tries again.
+ */
+export const loadBuiltIns = once(
+  () =>
+    import("../../core/src/builtins.ts").then((module) => {
+      Object.assign(BUILT_IN_TEMPLATES, module.BUILT_IN_TEMPLATES);
+      Object.assign(BUILT_IN_STYLES, module.BUILT_IN_STYLES);
+    }),
+  true,
 );
 
 /** True once the records hold Depthcue's own templates and styles. */

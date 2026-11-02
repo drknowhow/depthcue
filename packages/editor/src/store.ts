@@ -112,14 +112,15 @@ const waitedForChunk = (diagnostics: readonly Diagnostic[]): boolean =>
 
 /** Fetches what a read of the deck waited for, rejecting with `CHECKS_FAILED` when a chunk does not arrive. */
 async function chunksIn(diagnostics: readonly Diagnostic[]): Promise<void> {
-  try {
-    await Promise.all([
-      waitedForBrandChecks(diagnostics) && loadBrandChecks(),
-      waitedForBuiltIns(diagnostics) && loadBuiltIns(),
-    ]);
-  } catch {
-    throw new Error(CHECKS_FAILED);
-  }
+  // `loadBuiltIns` never rejects: a fetch of it that failed is told by its records still being empty.
+  const arrived = await Promise.all([
+    waitedForBrandChecks(diagnostics) && loadBrandChecks(),
+    waitedForBuiltIns(diagnostics) && loadBuiltIns(),
+  ]).then(
+    () => !waitedForBuiltIns(diagnostics),
+    () => false,
+  );
+  if (!arrived) throw new Error(CHECKS_FAILED);
 }
 
 /**

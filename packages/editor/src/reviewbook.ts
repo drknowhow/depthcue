@@ -109,7 +109,7 @@ export function createReviewBook(
     const answer = await api.loadReview();
     // A review holds the deck as it was, which may name a template of Depthcue's that the deck now does not, and an
     // accept or a revert that brings it back needs them in. They are fetched with the review, before it can be used.
-    if (answer.ok && answer.review) await loadBuiltIns().catch(() => undefined);
+    if (answer.ok && answer.review) await loadBuiltIns();
     if (disposed || epoch !== seen) return; // a write finished while the file was being read, so this may predate it
     ready = true;
     if (answer.ok) {

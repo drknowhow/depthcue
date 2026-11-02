@@ -641,10 +641,12 @@ Found, not fixed (older than the brand work):
   headroom for a machine with wider fonts than this one.
 - **Sizes.** The built-ins are a chunk of their own in the editor, fetched for a deck that names a template or style
   of Depthcue's, as the brand checks are (`packages/editor/src/brandchecks.ts` is the stand-in for both modules, and the
-  store waits for the chunk and reads the deck again). Editor script 92,106 to 92,069 of 92,160; new row editor
-  built-ins 1,971 of 4,096; core runtime 41,084 to 43,269 gzip of 61,440; the exported page is the same size and the
-  player rows moved by 10 bytes or less either way. A search of the player files finds no built-in template and no
-  review code in them.
+  store waits for the chunk and reads the deck again). Editor script 92,152 of 92,160 with step 3 merged, where main is at 92,153: the fix round
+  added the built-ins load to
+  eviewbook.ts, which took it to 92,206 after the merge, and moving the handling of a failed
+  fetch into `loadBuiltIns` (below) brought it back; new row editor built-ins 1,983 of 4,096; core runtime 43,489 gzip of
+  61,440 (41,084 before this step); the player styles are 5,895 of 30,720 with the picture rule. A search of the
+  player files finds no built-in template and no review code in them.
 - **Review.** A brand change is a set of changes in scope `deck`, one per thing a person would accept or refuse on its
   own: `deck/brand/<key>` for each property of `brand.json` (`name`, `colors`, `fonts`, `logos`, `chrome`, `lock`,
   `hideBuiltIn`, the `BRAND_KEYS` but `id`), `deck/style:<id>` for each style in it and `deck/template:<id>` for each
@@ -660,7 +662,10 @@ Found, not fixed (older than the brand work):
   failed in the editor when the built-ins chunk had never been fetched, because the checks read the kit from the chunk
   and a deck that names no built-in did not fetch it. `reviewbook.ts` now fetches the chunk whenever it reads a review,
   so the first revert is not the first fetch (`packages/editor/test/reviewbook-builtins.test.ts`). The chunk is
-  now fetched for every deck that has a review, not only one that names a built-in.
+  now fetched for every deck that has a review, not only one that names a built-in. `loadBuiltIns` never rejects: a
+  fetch that fails leaves the records empty and the next call tries again, so the caller needs no `.catch` and the
+  store, which used to rely on the rejection, now tells a failed fetch by the records still being empty and says to
+  reload the page as before (`brandchecks-retry.test.ts`, `store-builtins.test.ts`).
 - **`brand init <dir> [--name] [--json]`.** Writes `brand.json` alone: both presets' palettes, `fonts: "editorial"`,
   a footer with the brand's name, a slide number and the top accent. It refuses a folder with anything in it (exit 2,
   nothing written), makes the folder when it is missing, and checks its own output before it writes.
@@ -713,7 +718,7 @@ Found, not fixed (older than the brand work):
     failed with `missing-brand-file`. Of the two ways to fix it, `brand use` now **keeps** the old brand's files that
     the baseline still names (`is named by the brand under review, which a revert brings back`) and leaves them in the
     record, so the next `brand use` after the review closed or moved on removes them. The other, putting them back
-    on revert, would need the review code in the editor's script, which has 91 bytes of room. The result: `depthcue
+    on revert, would need the review code in the editor's script, which has 8 bytes of room. The result: `depthcue
     diff revert --all` after a `brand use` restores the old brand with its files. Known limit: after such a revert
     the record still describes the replaced brand, so the next `brand use` into that deck is refused for the files
     that differ until `--force`, once.
