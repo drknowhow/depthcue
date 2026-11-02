@@ -1038,3 +1038,109 @@ Found, not fixed (older than the brand work):
   (same parts otherwise, the pictures alike to the eye); three CLI runs alone gave the same bytes. Two tests this step
   does not change fail now and then in a full run: `edit-e2e`'s "moves freely while Alt is held", as step 6's record
   describes, and `chart-module-e2e`'s "does not move the page when it hydrates" (2 px, about one run in five alone).
+
+## Step 8a record: brand operations and uploads
+
+- **Slot operations.** `slot.add` (after a slot, or last), `slot.set` (a patch; null removes a field, `id` is refused
+  with "Use slot.rename."), `slot.rename` (moves the blocks of every scene on the template; the result names the
+  scenes it changed) and `slot.remove`. Remove is refused while the slot holds blocks, each named (`slot-in-use`),
+  unless `to` names the slot they go to (its `max` and `accepts` hold) or is null, which pins each block at its old
+  slot's frame. A built-in template is refused with the `template.set` call that copies it into the brand. The
+  template is checked whole after each operation. Codes: `unknown-template`, `unknown-style`, `unknown-slot`.
+- **Patch forms.** `template.set` and `style.set` take `set`: each key it names is replaced whole and null removes it;
+  `id` (and a template's `schemaVersion`) cannot be set. The merged result is checked whole. The whole forms write
+  the same bytes as before (tested).
+- **Upload.** `POST /_depthcue/api/brand-file?kind=font|logo|image&name=<sent name>`, the raw file as the body, with
+  the token and origin checks of the other write calls. The name is the base name only, with every run of other
+  characters than `A-Za-z0-9._-` made one hyphen, leading dots and hyphens dropped, the stem cut at 100, and the
+  extension of what the bytes are; Windows device names and names with no letter or digit are `bad-name`. Names
+  compare without case: a file there in other letters is the same file and keeps its name. A font must be a font by
+  its bytes and pass step 6's guard (`unpackFont`, `FONT_LIMITS`), have the `name`, `head`, `cmap`, `maxp` and `hhea`
+  tables and outlines, and name a family. A WOFF or WOFF2 whose tables state over 1 MB and over 20 times the file's
+  length is refused before it is unpacked: real fonts state at most 3.4 times. Step 6's four hostile fonts are each
+  refused in under 200 ms, as a test holds, and the server keeps answering. Uploads and `brand add` are decoded one at a time, in the
+  order they came. A logo is SVG or PNG, an image PNG, JPG, WebP or SVG, sniffed, within `MAX_ASSET_BYTES`. An SVG
+  must be UTF-8 (a declaration may name no other encoding) with no NUL or other control character than tab, LF and
+  CR, no DOCTYPE, entity or linked style sheet, parse as XML within 1 MiB and 20,000 elements with `svg` at its root,
+  every element in the SVG namespace, and have no `script` or `foreignObject`, no `on*` attribute, no `href`,
+  `xlink:href`, `src`, `srcset`, `action`, `formaction`, `data`, `poster`, `xml:base` or other loading attribute, no
+  `url()` that does not start with `#`, no `image-set(` or `image(`, and no `@import`; a style element or attribute
+  is at most 64 KiB, and `url(` is found by index, never a regular expression, with one left open refused. A MiB of
+  open `url(` is refused in under 100 ms while a GET is answered (it took seconds before). Then step 4's check of
+  imported SVGs runs too, whose `url()` search is the same scan now. An export leaves out, with a warning, a brand
+  SVG this check refuses, whoever put it in the folder.
+- **Writes and races.** The same bytes give back the existing path and write nothing (`written: false`). Other bytes
+  under the name are `exists` (409, with the existing path) unless `replace=1` comes with `baseRev`, and a `baseRev`
+  that is not the deck's revision is `stale` (409, with the revision now) and writes nothing. The file there under
+  another case is compared by its bytes on disk, never by the listing; one whose name brand.json cannot take (such
+  as `ARIAL.TTF`) is `exists`, "Rename or remove it first", and is never written over. A file is written to a
+  temporary file at the deck's top (`wx`) and renamed into place, retried briefly, without blocking, on Windows'
+  sharing errors; temporaries over ten minutes old are swept first. A brand folder that is a link, out of the deck or
+  not, is refused. The answer is the path in `brand/`, `file` (the deck path, `brand/fonts/X.woff2`), `hash` (its
+  SHA-256, which the revision counts), the kind, what was sniffed (format; a font's family, style, weight and italic;
+  an SVG's element count), bytes, `written`, `replaced`, `prevRev` and `rev`, the revision read back after the
+  write. Codes: `bad-request` and `bad-name` 400, `too-large` 413, `not-a-font` and `unsupported` 415, `unsafe-svg`,
+  `unreadable-deck` and `linked-brand-folder` 422, `exists`, `stale` and `in-use` 409, `not-found` 404,
+  `write-failed` 500.
+- **Removal.** `POST /_depthcue/api/brand-file/remove` with `{path, baseRev}`. `baseRev` is required, since removing
+  a file is a change to the deck. Refused while brand.json or a template names the file (`in-use`, each place as a
+  file and a JSON pointer, compared without case), and for any path that is not a font, logo or image in `brand/`.
+  The answer has `file`, `hash: null`, `prevRev` and `rev`.
+- **CLI.** `depthcue brand add <file> <deck> --kind font|logo|image [--name] [--replace --base-rev] [--json]` and
+  `depthcue brand remove <path> <deck> --base-rev [--json]` call the same code as the route, so the path, the bytes
+  and the JSON are the same (tested byte for byte). Exit codes as `brand use` has them: 3 for `stale`; 2 for usage, a
+  file that cannot be read, `unreadable-deck`, `linked-brand-folder` and `write-failed`; 1 for every other refusal.
+  A file the CLI adds is the agent's change in review; one a person uploads in the editor is folded into the
+  reviewed deck, as a save is.
+- **The revision.** A deck with a brand counts its fonts, logos and images: the revision is the first 16 hex digits
+  of SHA-256 over the JSON revision, a newline, and the canonical JSON of `{path: SHA-256 of the file}`. Only files
+  brand.json could name count (`fonts/`, `logos/`, `images/` by their patterns), so `OFL.txt` and the record of
+  `brand use` do not, nor do the files of a brand folder in a deck with no brand. The loader hashes a file once per
+  change, cached by size, mtime, ctime and inode, and not cached at all while its times are under 3 s old, since a
+  second write in the same tick of the clock keeps all four. The edit API sends the hashes in `text`, so the editor
+  computes the same revision with no change of its own; every reader of `text` takes only the JSON paths it knows,
+  so a hash is never parsed or written (`DeckFiles` says so, and a test holds each reader and the save route to it).
+  A file replaced on disk makes the next save and the next apply stale.
+  Unchanged: v0-1 `ec4e0cd5c59ef06a`, v0-2 `5ba3679835bdb955`, v0-3 `b2c39f24e9089ee9`, demo `eb9d45889adffe19`,
+  charts `468152e3f5f8027b`, and the brand deck with its fonts and logo taken out `3b25c7e19e33f331`. Changed:
+  v0-4-brand `325c6bcdb08ac4a2` to `3615e932844d6f4a`, Tidewell Press `d35e78e6dc040fbb` to `253f1a61dd25dc7c`.
+  Opening Tidewell Press as the editor's `/deck` does, on this PC: 11.1 to 12.0 ms cold and a median of 3.0 ms warm,
+  against 10 to 12 ms and 3.2 to 3.5 ms before; the hashing is within the noise.
+- **Saved work.** A review.json from before has no `files`; its reviewed deck takes the folder's files as they are, so
+  no file shows as a change, and the agent's next write records them and moves its revision to the new form. A
+  pending agent change in such a review stays to accept or revert. A draft now holds the files' hashes. A draft from
+  before is compared with the files now folded into its saved revision, so it recovers with no warning, and a hand
+  edit since still warns. It cannot tell that a brand file was replaced while it waited, since it holds no hashes.
+- **Review.** Each added, replaced or removed file is its own change, `deck/file:<path in brand/>`, by the agent or
+  outside. Accept takes it. Revert never claims to restore the old bytes: it leaves the change and says why in `left`
+  (`FILE_REVERT_REASON`; the CLI prints `left <id>: <why>`). A change whose reviewed value names a file that is gone
+  (the agent un-named a logo and removed it) is left too, "brand/logos/dark.svg does not exist. Put the file back,
+  then revert this change.", and the rest revert; `revertOps` gives the editor the same split as `[id, gone files]`.
+  While either side has a brand the files compare as they are, so making a brand or taking it off lists no font
+  already in the folder. Accepting a brand change that names a new file without the file's change is
+  `missing-brand-file`, and the review API's hint names the file change to accept with it.
+- **Contrast advice.** `palette-low-contrast` says to make a color lighter only when white would reach the minimum
+  against the other color, darker only when black would, and when both would, the way it already leans, which is
+  the nearer by contrast (`contrastWay`); both colors print in capitals. No color is out of reach both ways of a
+  need under 4.58:1, so at 4.5 and 3 there is always a way; `contrastWay` says neither for a higher need.
+- **MCP.** `deck_apply` describes the slot operations and `set`. Its copy of the operations schema leaves out the id
+  pattern on every id and each operation's `type: "object"`, which `items` says; the core refuses a bad id with what
+  an id is, and a test compares the copy with the schema. The tool list is 13,142 of its 13,200 characters,
+  `deck_apply`'s description 971 of 1,100.
+- **Sizes.** The editor's main script gains 1,488 bytes brotli from core (88,664 to 90,152 on step 7's editor), of
+  the 1,500 the brief allows; two refusal fixes were shortened to stay inside it. No budget row moved.
+- **Outside the brief's files.** `cli/src/loader.ts` (hashing), `cli/src/brand/use.ts` (brand use now records the
+  files it copies, so its own save is not stale), `cli/src/index.ts` (the flags of brand add and remove, and revert's
+  `left` lines), `cli/src/export.ts` and `core/src/style.ts` (asked for in review), and the MCP schema copy above.
+- **For step 8b.** The upload route takes the raw file with `kind` and `name` in the query, and answers with the path
+  to put in brand.json. An upload or removal changes the deck on disk, so run it as the store runs a save: one at a
+  time with saves, and no `syncFromDisk` while it is out. On a good answer, call
+  `session.brandFile(answer.file, answer.hash, answer)`: every undo state gets the file, the revisions move with it,
+  and a session saved at `answer.prevRev` is saved at `answer.rev`, so it stays clean, while unsaved edits stay
+  unsaved. Then take `answer.rev` as the disk's revision the next save names. A refused answer changes nothing. The
+  session emits a `files` event; the History's steps are keyed by revision, which every revision's move breaks, so
+  drop them on it. Taking `rev` without `brandFile` leaves the session a revision behind the disk, dirty after every
+  save. Send `replace=1&baseRev=` only after asking the person. A removal needs the revision and is refused while
+  anything names the file, so un-name it, save, then remove. Upload answers are the person's, so they never show in
+  review. `sniffed` gives a font's family, style, weight and italic to check against the slot it fills. Tested over
+  HTTP: upload, edit, save, an upload with unsaved edits, save, removal, reload, each leaving the session clean.

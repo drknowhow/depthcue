@@ -25,6 +25,7 @@ import {
   pageLook,
   type Scene,
 } from "@depthcue/core";
+import { strictSvg } from "./brand/files.ts";
 import { openDeck } from "./deck-api.ts";
 import { builtFontsDir, builtStandaloneDir, isBrandFile } from "./serve.ts";
 
@@ -175,13 +176,17 @@ const FONT_FILE = /\.(woff2|woff|ttf|otf)$/i;
 const LICENSE_TEXT = /^[A-Za-z0-9][A-Za-z0-9._-]*\.txt$/i;
 
 /** A brand file the export did not copy, though the page names it: the page will draw without it, so it is said. */
-const notCopied = (path: string, why: string): Diagnostic => ({
+const notCopied = (
+  path: string,
+  why: string,
+  fix = "Put the file itself in the brand folder, not a link to a file outside it, and export again.",
+): Diagnostic => ({
   severity: "warning",
   code: "brand-file-not-copied",
   file: path,
   path: "",
   message: `${path} ${why}, so it was not copied into the export. The exported page still names it and will draw without it.`,
-  fix: "Put the file itself in the brand folder, not a link to a file outside it, and export again.",
+  fix,
 });
 
 /**
@@ -189,7 +194,7 @@ const notCopied = (path: string, why: string): Diagnostic => ({
  * its templates put behind a slide. Nothing else in the brand folder goes, such as brand.json, the templates or a
  * logo for the other theme, because a page does not read them. Only files the server would hand a page, that are
  * there and that stay inside the brand folder, are listed. One the page names that is left out, because it is a link
- * out of the brand folder or is not a file, comes back with a warning that names it.
+ * out of the brand folder, is not a file, or is an SVG the upload would refuse, comes back with a warning that names it.
  */
 export function brandFilesOf(look: DeckLook, folder: string): { files: string[]; left: Diagnostic[] } {
   const wanted = new Set<string>();
@@ -216,10 +221,31 @@ export function brandFilesOf(look: DeckLook, folder: string): { files: string[];
     } else if (!within(root, realish(file))) {
       left.push(notCopied(path, "is a link to a file outside the brand folder"));
     } else {
-      files.push(path);
+      const problem = svgProblemOf(path, file);
+      if (problem === undefined) files.push(path);
+      else {
+        left.push(
+          notCopied(
+            path,
+            `is an SVG with ${problem}`,
+            "Save the drawing as plain SVG that links only to places in itself, check it with depthcue brand add, and export again.",
+          ),
+        );
+      }
     }
   }
   return { files, left };
+}
+
+/**
+ * What the upload's check finds wrong with a brand SVG, or undefined for one it takes or a file that is no SVG. An SVG
+ * reaches the brand folder by other ways than the upload, such as brand use or a hand copy, and an exported page may be
+ * opened some other way than in Depthcue's player, so the export checks each one it would copy again.
+ */
+function svgProblemOf(path: string, file: string): string | undefined {
+  if (!/\.svg$/i.test(path)) return undefined;
+  const checked = strictSvg(new Uint8Array(readFileSync(file)));
+  return "problem" in checked ? checked.problem : undefined;
 }
 
 /**

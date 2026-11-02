@@ -90,24 +90,31 @@ const refuse = (
 });
 
 /**
- * The changes of the brand's files that were not chosen, when the refusal is for want of a template, a style or the
- * brand: a scene that names a template which only an unchosen change holds fails for it, and the change to add is the
- * one to name. The core's refusal says what is missing; which change holds it is only known here.
+ * The changes of the brand that were not chosen, when the refusal is for want of a template, a style, the brand or a
+ * file it names: a scene that names a template which only an unchosen change holds fails for it, and so does a brand
+ * that names a font only an unchosen file change adds, and the change to add is the one to name. The core's refusal
+ * says what is missing; which change holds it is only known here. A revert is never pointed at a file change, which it
+ * cannot undo.
  */
 function brandChangesLeft(
   failure: ReviewFailure,
   review: Review,
   doc: Doc,
   chosen: readonly string[] | "all",
+  files = true,
 ): string[] {
   if (
     chosen === "all" ||
-    !failure.diagnostics.some((d) => /^(unknown-(template|style)|no-brand)$/.test(d.code))
+    !failure.diagnostics.some((d) => /^(unknown-(template|style)|no-brand|missing-brand-file)$/.test(d.code))
   )
     return [];
   return reviewChanges(review, doc)
     .map((change) => change.id)
-    .filter((id) => /^deck\/(brand|style:|template:)/.test(id) && !chosen.includes(id));
+    .filter(
+      (id) =>
+        (files ? /^deck\/(brand|style:|template:|file:)/ : /^deck\/(brand|style:|template:)/).test(id) &&
+        !chosen.includes(id),
+    );
 }
 
 const refusal = (failure: ReviewFailure, left: readonly string[] = []): ReviewRefusal => {
@@ -184,6 +191,8 @@ export type RevertOutcome =
       removed: string[];
       written: string[];
       remaining: number;
+      /** Brand file changes among those named, left as they are, and why: a revert cannot bring back a file's bytes. */
+      left: { id: string; why: string }[];
     }
   | ReviewRefusal;
 
@@ -197,7 +206,7 @@ export function revertInFolder(folder: string, ids: readonly string[] | "all"): 
   if (!read.ok) return read;
   if (read.review === undefined) return refuse("no-review");
   const result = revertChanges(read.review, read.doc, ids);
-  if (!result.ok) return refusal(result, brandChangesLeft(result, read.review, read.doc, ids));
+  if (!result.ok) return refusal(result, brandChangesLeft(result, read.review, read.doc, ids, false));
   let written: string[] = [];
   if (result.reverted.length > 0) {
     try {
@@ -222,5 +231,6 @@ export function revertInFolder(folder: string, ids: readonly string[] | "all"): 
     removed: result.removed,
     written,
     remaining: reviewChanges(result.review, result.doc).length,
+    left: result.left,
   };
 }

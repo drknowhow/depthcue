@@ -121,6 +121,7 @@ const VALUE_FLAGS = [
   "kine",
   "format",
   "brand",
+  "kind",
 ] as const;
 type ValueFlag = (typeof VALUE_FLAGS)[number];
 
@@ -130,6 +131,7 @@ interface Parsed {
   noNotes: boolean;
   all: boolean;
   force: boolean;
+  replace: boolean;
   help: boolean;
   values: Partial<Record<ValueFlag, string>>;
   unknown: string[];
@@ -142,6 +144,7 @@ function parse(args: readonly string[]): Parsed {
     noNotes: false,
     all: false,
     force: false,
+    replace: false,
     help: false,
     values: {},
     unknown: [],
@@ -166,6 +169,10 @@ function parse(args: readonly string[]): Parsed {
     }
     if (arg === "--force") {
       parsed.force = true;
+      continue;
+    }
+    if (arg === "--replace") {
+      parsed.replace = true;
       continue;
     }
     const flag = VALUE_FLAGS.find((name) => arg === `--${name}` || arg.startsWith(`--${name}=`));
@@ -705,6 +712,7 @@ function diffActCommand(
   );
   for (const id of outcome.reverted) io.out(`  reverted ${id}`);
   for (const path of outcome.written) io.out(`  wrote ${path}`);
+  for (const { id, why } of outcome.left) io.out(`  left ${id}: ${why}`);
   return 0;
 }
 
@@ -715,7 +723,7 @@ export interface RunOptions {
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, noNotes, all, force, help, values, unknown } = parse(rest);
+  const { positional, json, noNotes, all, force, replace, help, values, unknown } = parse(rest);
   const baseRev = values["base-rev"];
   const portText = values.port;
   const port = portText === undefined ? undefined : Number(portText);
@@ -787,6 +795,9 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   if (clipFlags !== undefined) return usage("--name, --quality, --scale and --kine belong to clip build.");
   if (command !== "new" && values.brand !== undefined) return usage("--brand belongs to new.");
   if (force && command !== "brand") return usage("--force belongs to brand use.");
+  if ((replace || values.kind !== undefined) && command !== "brand") {
+    return usage(`${replace ? "--replace" : "--kind"} belongs to brand add.`);
+  }
   if (command === "brand" || command === "new") {
     // brand/command.ts says which of these each subcommand takes.
     const flags = {
@@ -795,10 +806,10 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
       brand: values.brand,
       force,
       json,
-      stray:
-        baseRev !== undefined ||
-        portText !== undefined ||
-        (values.step ?? values.width ?? values.height) !== undefined,
+      kind: values.kind,
+      replace,
+      baseRev,
+      stray: portText !== undefined || (values.step ?? values.width ?? values.height) !== undefined,
     };
     return import("./brand/command.ts")
       .then((brands) =>

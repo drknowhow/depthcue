@@ -1,4 +1,4 @@
-import { checkDoc, type Doc, revisionOf } from "./doc.ts";
+import { brandHashesOf, checkDoc, type Doc, revisionOf, withBrandHashes } from "./doc.ts";
 import type { Session } from "./session.ts";
 import type { Brand, Deck, Diagnostic, Scene, Template } from "./types.ts";
 
@@ -63,6 +63,8 @@ export function serializeDraft(session: Pick<Session, "doc" | "rev" | "savedRev"
     deck: doc.deck,
     scenes: doc.deck.scenes.map((id) => doc.scenes[id]),
     ...(doc.brand === undefined ? {} : { brand: doc.brand, templates: doc.templates ?? {} }),
+    // The brand files' hashes the two revisions above count. A draft from before they counted has none.
+    files: doc.brandHashes ?? {},
   });
 }
 
@@ -160,12 +162,19 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * Reads a draft left by a crashed or closed session. It never throws and never changes the store: a draft that
  * does not parse, fails validation or does not match its own revision comes back as `unusable`, and the caller
- * decides whether to discard it. `context` describes the deck as saved now: its assets, the brand folder's files, and
- * its revision.
+ * decides whether to discard it. `context` describes the deck as saved now: its assets, the brand folder's files and
+ * their hashes, and its revision. The hashes may be left out for a set of brand files `loadDoc` made, which knows them.
+ * The draft comes back with the hashes of the files now, since a save of it sends JSON and leaves the files as they are.
+ * A draft from before brand files counted toward the revision is compared with the files now folded into its revision.
  */
 export function recoverDraft(
   store: DraftStore,
-  context: { assets: ReadonlySet<string>; brandFiles?: ReadonlySet<string>; savedRev: string },
+  context: {
+    assets: ReadonlySet<string>;
+    brandFiles?: ReadonlySet<string>;
+    brandHashes?: Readonly<Record<string, string>>;
+    savedRev: string;
+  },
 ): Recovery {
   let text: string | null;
   try {
@@ -194,6 +203,10 @@ export function recoverDraft(
   if (data.brand !== undefined && (!isRecord(data.brand) || !isRecord(data.templates))) {
     return unusable("The draft's brand is missing its templates.");
   }
+  if (data.files !== undefined && !isRecord(data.files))
+    return unusable("The draft's brand files are damaged.");
+  const files = data.files as Record<string, string> | undefined;
+  const disk = context.brandHashes ?? brandHashesOf(context.brandFiles);
   const doc: Doc = {
     deck: data.deck as unknown as Deck,
     scenes,
@@ -205,14 +218,17 @@ export function recoverDraft(
   };
   const errors = checkDoc(doc).filter((d) => d.severity === "error");
   if (errors.length > 0) return unusable("The draft no longer passes validation.", errors);
-  if (revisionOf(doc) !== data.rev)
+  if (revisionOf({ ...doc, brandHashes: files }) !== data.rev)
     return unusable("The draft does not match its own revision; it was edited or damaged.");
 
   return {
     status: "found",
-    doc,
+    doc: disk === undefined || Object.keys(disk).length === 0 ? doc : { ...doc, brandHashes: disk },
     rev: data.rev,
     savedAt: typeof data.savedAt === "string" ? data.savedAt : "",
-    diskChanged: data.savedRev !== context.savedRev,
+    // A draft from before has the saved revision without the files, which count now if the deck on disk has a brand.
+    diskChanged:
+      data.savedRev !== context.savedRev &&
+      (files !== undefined || withBrandHashes(String(data.savedRev), disk) !== context.savedRev),
   };
 }

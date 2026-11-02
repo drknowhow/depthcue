@@ -17,6 +17,7 @@ import { type DeckLook, type ExportData, type FontPair, lookOf, type PageLook } 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDeck } from "../src/deck-api.ts";
 import { brandFilesOf, EXPORT_MARKER, type ExportRequest, exportDeck } from "../src/export.ts";
+import { brandHashEntries, loadDeckDir } from "../src/loader.ts";
 
 const branded = fileURLToPath(new URL("../../../fixtures/decks/v0-4-brand", import.meta.url));
 const plain = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
@@ -159,8 +160,19 @@ describe("an export of a deck with a brand", () => {
 
   it("copies those files byte for byte, and counts them in the summary", () => {
     const summary = done();
+    expect(summary.brandFiles.length).toBeGreaterThan(0);
+    // The hashes the loader puts in `text` for the revision are in no file the export writes.
+    const hashes = Object.values(brandHashEntries(loadDeckDir(deck)));
+    expect(hashes.length).toBeGreaterThan(0);
     for (const path of summary.brandFiles) {
       expect(readFileSync(join(out(), path)).equals(readFileSync(join(deck, path))), path).toBe(true);
+    }
+    for (const path of listing(out())) {
+      const text = readFileSync(join(out(), path), "latin1");
+      expect(
+        hashes.filter((hash) => text.includes(hash)),
+        path,
+      ).toEqual([]);
     }
     const written = listing(out()).filter((path) => path !== EXPORT_MARKER);
     expect(summary.files).toBe(written.length);
@@ -188,7 +200,7 @@ describe("an export of a deck with a brand", () => {
   });
 
   it("leaves the other theme's logo behind, and takes it when the deck is on that theme", () => {
-    put(join(deck, "brand", "logos", "harbor-dark.svg"), "<svg/>");
+    put(join(deck, "brand", "logos", "harbor-dark.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
     editJson(join(deck, "brand", "brand.json"), (brand) => {
       brand.logos.dark = "logos/harbor-dark.svg";
     });
@@ -272,6 +284,37 @@ describe("an export of a deck with a brand", () => {
     expect(summary.licenses).toEqual(["fonts/modern-OFL.txt"]);
     expect(existsSync(join(out(), "brand", "fonts", "OFL.txt"))).toBe(false);
     expect(summary.warnings.map((diagnostic) => diagnostic.file)).toContain("brand/fonts/OFL.txt");
+  });
+
+  it.each([
+    [
+      "an XHTML img",
+      '<svg xmlns="http://www.w3.org/2000/svg"><img xmlns="http://www.w3.org/1999/xhtml" src="http://evil.example/p.png"/></svg>',
+      'an element outside the SVG namespace ("img")',
+    ],
+    [
+      "a script",
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.domain)</script></svg>',
+      'a "script" element',
+    ],
+    [
+      "an encoding other than UTF-8",
+      '<?xml version="1.0" encoding="ISO-2022-JP"?><svg xmlns="http://www.w3.org/2000/svg"/>',
+      'an encoding of "ISO-2022-JP"',
+    ],
+  ])("leaves out a brand SVG with %s, which the upload would refuse, and says so", (_, svg, problem) => {
+    // Written into the brand folder by hand, as brand use or a copy can: not through the upload's check.
+    writeFileSync(join(deck, "brand", "logos", "harbor.svg"), svg);
+    const summary = done();
+    expect(summary.brandFiles).not.toContain("brand/logos/harbor.svg");
+    expect(existsSync(join(out(), "brand", "logos", "harbor.svg"))).toBe(false);
+    const warnings = summary.warnings.filter((diagnostic) => diagnostic.code === "brand-file-not-copied");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ severity: "warning", file: "brand/logos/harbor.svg" });
+    expect(warnings[0]?.message).toContain(`brand/logos/harbor.svg is an SVG with ${problem}`);
+    expect(warnings[0]?.fix).toContain("plain SVG");
+    // The fonts still go: only the SVG is left out.
+    expect(summary.brandFiles).toContain("brand/fonts/HarborSans-Bold.woff2");
   });
 
   it("has no warning to give when every brand file the page names was copied", () => {

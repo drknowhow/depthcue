@@ -59,7 +59,16 @@ const everyOp = [
   { op: "block.unframe", scene: "opening", id: "note" },
   { op: "brand.set", set: { id: "acme", name: "Acme" } },
   { op: "style.set", id: "quiet", style: { name: "Quiet", for: ["body"] } },
-  { op: "template.set", id: "plain", template: null },
+  { op: "template.set", id: "plain", set: { name: "Plain", background: null } },
+  {
+    op: "slot.add",
+    template: "plain",
+    slot: { id: "aside", role: "content", frame, accepts: ["body"], hint: "A note." },
+    after: "body",
+  },
+  { op: "slot.set", template: "plain", id: "aside", set: { max: 2, style: null } },
+  { op: "slot.rename", template: "plain", id: "aside", to: "note" },
+  { op: "slot.remove", template: "plain", id: "note", to: null },
 ];
 const at = "2026-11-01T10:00:00.000Z";
 const everyCommentOp = [

@@ -1,7 +1,7 @@
 import { type ApplyResult, applyOps, type Op } from "./apply.ts";
-import { type Doc, revisionOf } from "./doc.ts";
+import { type Doc, revisionOf, withBrandFile } from "./doc.ts";
 
-export type SessionEventType = "apply" | "undo" | "redo" | "reset" | "saved" | "assets";
+export type SessionEventType = "apply" | "undo" | "redo" | "reset" | "saved" | "assets" | "files";
 
 export interface SessionEvent {
   type: SessionEventType;
@@ -37,6 +37,13 @@ export interface Session {
    * and redo state, without touching the revision, the history or the dirty flag.
    */
   addAssets(paths: readonly string[]): void;
+  /**
+   * Takes in a brand file the server added or replaced (`hash`) or removed (null), as an upload's answer names it, in
+   * the present document and in every undo and redo state. The revisions change with it. A session saved at the
+   * revision the disk had before (`prevRev`) is saved at the one after (`rev`), so the upload alone leaves it clean,
+   * and unsaved edits stay unsaved.
+   */
+  brandFile(path: string, hash: string | null, revs: { prevRev: string; rev: string }): void;
   subscribe(listener: (event: SessionEvent) => void): () => void;
 }
 
@@ -52,7 +59,8 @@ interface Snapshot {
  */
 export function createSession(initial: Doc, options: { historyLimit?: number } = {}): Session {
   const limit = options.historyLimit ?? 200;
-  let present: Snapshot = { doc: initial, rev: revisionOf(initial) };
+  const snapshotOf = (doc: Doc): Snapshot => ({ doc, rev: revisionOf(doc) });
+  let present = snapshotOf(initial);
   let savedRev = present.rev;
   let past: Snapshot[] = [];
   let future: Snapshot[] = [];
@@ -61,6 +69,11 @@ export function createSession(initial: Doc, options: { historyLimit?: number } =
 
   const emit = (type: SessionEventType, prevRev: string) => {
     for (const listener of [...listeners]) listener({ type, rev: present.rev, prevRev });
+  };
+  const every = (change: (snapshot: Snapshot) => Snapshot) => {
+    present = change(present);
+    past = past.map(change);
+    future = future.map(change);
   };
 
   return {
@@ -120,7 +133,7 @@ export function createSession(initial: Doc, options: { historyLimit?: number } =
     },
     reset(doc, resetOptions = {}) {
       const prevRev = present.rev;
-      present = { doc, rev: revisionOf(doc) };
+      present = snapshotOf(doc);
       if (!resetOptions.dirty) savedRev = present.rev;
       past = [];
       future = [];
@@ -133,14 +146,17 @@ export function createSession(initial: Doc, options: { historyLimit?: number } =
     },
     addAssets(paths) {
       if (paths.every((path) => present.doc.assets.has(path))) return;
-      const widen = (snapshot: Snapshot): Snapshot => ({
+      every((snapshot) => ({
         rev: snapshot.rev,
         doc: { ...snapshot.doc, assets: new Set([...snapshot.doc.assets, ...paths]) },
-      });
-      present = widen(present);
-      past = past.map(widen);
-      future = future.map(widen);
+      }));
       emit("assets", present.rev);
+    },
+    brandFile(path, hash, revs) {
+      const prevRev = present.rev;
+      every(({ doc }) => snapshotOf(withBrandFile(doc, path, hash)));
+      if (savedRev === revs.prevRev) savedRev = revs.rev;
+      emit("files", prevRev);
     },
     subscribe(listener) {
       listeners.add(listener);

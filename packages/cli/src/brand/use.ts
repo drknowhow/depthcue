@@ -3,9 +3,9 @@
  * JSON goes in as the operations `apply` would run (`brand.set`, `style.set`, `template.set`), against the revision the
  * deck has now, saved by the same code, so it meets the same guards: a deck that changed meanwhile is refused, and a
  * brand folder that is a link is too. The fonts, logos and images are copied byte for byte before that, and put back
- * if the save is refused or anything fails before it is done. They are not part of the deck's revision: the revision is
- * the token for edits by operations, which never touch these files, and the editor does not hold their bytes. A record
- * beside them (see record.ts) lets the next `use` replace what it copied and refuse what someone changed.
+ * if the save is refused or anything fails before it is done. Their hashes are part of the deck's revision, so the save
+ * is checked against the deck as it will be with them copied, and the revision reported is the one with all of them. A
+ * record beside them (see record.ts) lets the next `use` replace what it copied and refuse what someone changed.
  *
  * What the earlier brand had that this one does not is removed only when it is safe to: not through a link, not when it
  * was changed since, not when a file of the new brand has the same name in other letter case, and not while the review
@@ -42,6 +42,7 @@ import {
   templatesOf,
 } from "@depthcue/core";
 import { openDeck } from "../deck-api.ts";
+import { brandHashEntries, isNameableBrandFile, loadDeckDir } from "../loader.ts";
 import { loadReviewDir, recordAgentWrite } from "../review-file.ts";
 import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "../save.ts";
 import { checkBrandSource } from "./check.ts";
@@ -264,6 +265,16 @@ function writer() {
       return stuck;
     },
   };
+}
+
+/**
+ * `doc` with its brand files' hashes as they are once `put` (path in brand/ to bytes) is written, counting only the
+ * files a brand.json can name, as the loader does.
+ */
+function withHashes(doc: Doc, put: Iterable<readonly [string, Uint8Array]>): Doc {
+  const hashes: Record<string, string> = { ...doc.brandHashes };
+  for (const [path, data] of put) if (isNameableBrandFile(path)) hashes[brandFilePath(path)] = sha256(data);
+  return { ...doc, brandHashes: Object.keys(hashes).length > 0 ? hashes : undefined };
 }
 
 /** Removes empty folders from `file`'s up to, not including, `stop`. */
@@ -544,8 +555,10 @@ export function useBrand(deck: string, source: BrandSource, options: UseOptions)
     for (const path of early) files.put(place(path), source.binaries.get(path) as Uint8Array);
     const absent = notThere().filter((path) => !late.map(brandFilePath).includes(path));
     if (absent.length > 0) throw new Error(`${absent.join(", ")} is not in the deck as it was written.`);
-    // The save's own steps go through the writer too, so that a step that fails halfway is undone with the rest.
-    written = saveDeckDir(deck, doc, result.doc, {
+    // The save's own steps go through the writer too, so that a step that fails halfway is undone with the rest. It
+    // checks the deck against the one read with the files just copied, which are part of its revision.
+    const copied = early.map((path) => [path, source.binaries.get(path) as Uint8Array] as const);
+    written = saveDeckDir(deck, withHashes(doc, copied), result.doc, {
       write: (dir, path, text) => files.put(join(dir, ...path.split("/")), text),
       remove: (dir, path) => files.remove(join(dir, ...path.split("/"))),
     });
@@ -590,7 +603,14 @@ export function useBrand(deck: string, source: BrandSource, options: UseOptions)
       );
     }
   }
-  const recorded = options.review === false ? [] : recordAgentWrite(deck, doc, result.doc);
+  // The brand files' hashes as they are now, read back rather than worked out: where letter case counts, a file that
+  // replaced one in other letters sits beside it.
+  const hashesNow = (): Doc["brandHashes"] => {
+    const hashes = brandHashEntries(loadDeckDir(deck));
+    return Object.keys(hashes).length > 0 ? hashes : undefined;
+  };
+  const saved: Doc = { ...result.doc, brandHashes: hashesNow() };
+  const recorded: Diagnostic[] = options.review === false ? [] : recordAgentWrite(deck, doc, saved);
   const needed = options.review === false ? () => false : reviewedNames(deck);
   const removed: string[] = [];
   for (const path of stale) {
@@ -644,13 +664,25 @@ export function useBrand(deck: string, source: BrandSource, options: UseOptions)
       ),
     );
   }
+  // The files removed after the save are the agent's changes too.
+  const ended: Doc =
+    removed.length === 0
+      ? saved
+      : {
+          ...saved,
+          brandFiles: new Set(
+            [...(saved.brandFiles ?? [])].filter((path) => !removed.map(brandFilePath).includes(path)),
+          ),
+          brandHashes: hashesNow(),
+        };
+  if (removed.length > 0 && options.review !== false) recorded.push(...recordAgentWrite(deck, saved, ended));
   // Whatever happened above, the deck must still pass its own checks before this says it is done.
   const again = openDeck(deck);
   if (!again.ok) {
     return fail(
       "incomplete",
       `The brand was copied, but ${deck} no longer passes depthcue check (see below). Nothing was undone.`,
-      { diagnostics: again.diagnostics, rev: result.rev },
+      { diagnostics: again.diagnostics, rev: revisionOf(ended) },
     );
   }
   return {
@@ -659,7 +691,7 @@ export function useBrand(deck: string, source: BrandSource, options: UseOptions)
     replaced: doc.brand === undefined ? null : { id: doc.brand.id, name: doc.brand.name },
     upToDate: written.length === 0 && toCopy.length === 0 && removed.length === 0,
     prevRev: result.prevRev,
-    rev: result.rev,
+    rev: revisionOf(ended),
     written,
     copied: toCopy.map(brandFilePath),
     unchanged: unchanged.map(brandFilePath),
