@@ -1,7 +1,13 @@
-import type { Session } from "@depthcue/core";
+import { acceptChanges, revertChanges, revertOps, type Session } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import type { Outcome, ReviewBook } from "./reviewbook.ts";
-import { type ChangeRow, rowOf } from "./reviewview.ts";
+import { BRAND_CHANGE, type ChangeRow, rowOf } from "./reviewview.ts";
+
+/**
+ * The refusals that come of a template, a style, the brand or a brand file being in a change that was not chosen: a
+ * brand.json that names a font, say, accepted without the font's own change.
+ */
+const WAITS = /^(unknown-(template|style)|no-brand|missing-brand-file)$/;
 
 export interface ReviewDrawerHooks {
   /** Shows what a change is about: its scene, and its block when it has one. */
@@ -46,6 +52,7 @@ export function createReviewDrawer(
   });
   close.append(h("span", { class: "ed-icon ed-icon-close", "aria-hidden": "true" }));
   const problem = h("p", { class: "ed-problem ed-review-problem", role: "alert", hidden: true });
+  const together = h("div", { class: "ed-review-together", hidden: true });
   const empty = h("p", { class: "ed-review-empty" });
   const list = h("ol", { class: "ed-review-list" });
   const element = h(
@@ -53,22 +60,74 @@ export function createReviewDrawer(
     { class: "ed-review", id: "ed-review", "aria-label": "Changes to review", tabindex: "-1", hidden: true },
     h("header", { class: "ed-review-head" }, h("h2", {}, "Changes"), count, acceptAll, close),
     problem,
+    together,
     empty,
     list,
   );
 
   const show = (outcome: Outcome) => {
-    problem.hidden = outcome.ok;
-    problem.textContent = outcome.ok ? "" : outcome.message;
+    const said = outcome.ok ? leftWords(outcome.left ?? []) : outcome.message;
+    problem.hidden = said === "";
+    problem.textContent = said;
+    together.hidden = true;
   };
 
+  /**
+   * Why a revert left changes as they were, in core's words, which the command line prints too: a brand file's change,
+   * or one that names a file that is gone. Each is named by its row when there is more than one.
+   */
+  function leftWords(ids: readonly string[]): string {
+    const { review } = book.state;
+    const said = ids.length > 0 && review ? revertChanges(review, session.doc, ids) : undefined;
+    if (!said?.ok) return "";
+    const rows = new Map(book.changes().map((change) => [change.id, change]));
+    return said.left
+      .map(({ id, why }) => {
+        const change = rows.get(id);
+        return said.left.length > 1 && change ? `${rowOf(change, session.doc).where}: ${why}` : why;
+      })
+      .join(" ");
+  }
+
+  /**
+   * After an answer to one change was refused for want of a template, a style or the brand, the changes of the brand's
+   * files nobody has chosen yet, which it may be waiting for, as the command line names them, with the answer that takes
+   * them all at once.
+   */
+  function offerTogether(kind: "accept" | "revert", id: string) {
+    const { review } = book.state;
+    if (!review) return;
+    const tried = (kind === "accept" ? acceptChanges : revertOps)(review, session.doc, [id]);
+    if (tried.ok || !tried.diagnostics.some((diagnostic) => WAITS.test(diagnostic.code))) return;
+    const left = book.changes().filter((change) => change.id !== id && BRAND_CHANGE.test(change.id));
+    if (left.length === 0) return;
+    const ids = [id, ...left.map((change) => change.id)];
+    const names = left.map((change) => rowOf(change, session.doc).where);
+    const both = h(
+      "button",
+      { type: "button", "data-action": `${kind}-together` },
+      kind === "accept" ? "Accept them together" : "Revert them together",
+    );
+    both.addEventListener("click", () => answer(() => book[kind](ids)));
+    together.replaceChildren(
+      h(
+        "p",
+        {},
+        `It may be waiting for ${names.join(", ")}: choose ${left.length === 1 ? "both" : "them"} together.`,
+      ),
+      both,
+    );
+    together.hidden = false;
+  }
+
   /** Runs an answer and shows what came of it. A second one waits for the first, so an accept is not asked twice. */
-  function answer(run: () => Outcome | Promise<Outcome>) {
+  function answer(run: () => Outcome | Promise<Outcome>, refused?: () => void) {
     if (busy) return;
     busy = true;
     const finish = (outcome: Outcome) => {
       busy = false;
       show(outcome);
+      if (!outcome.ok) refused?.();
       render();
     };
     try {
@@ -105,8 +164,18 @@ export function createReviewDrawer(
       { type: "button", "data-action": "revert-change", "aria-label": `Revert: ${row.said}` },
       "Revert",
     );
-    accept.addEventListener("click", () => answer(() => book.accept([change.id])));
-    revert.addEventListener("click", () => answer(() => book.revert([change.id])));
+    accept.addEventListener("click", () =>
+      answer(
+        () => book.accept([change.id]),
+        () => offerTogether("accept", change.id),
+      ),
+    );
+    revert.addEventListener("click", () =>
+      answer(
+        () => book.revert([change.id]),
+        () => offerTogether("revert", change.id),
+      ),
+    );
     return h(
       "li",
       { class: "ed-ri", "data-id": change.id, "data-by": change.by },
@@ -197,6 +266,7 @@ export function createReviewDrawer(
       element.hidden = false;
       drawn = "";
       problem.hidden = true;
+      together.hidden = true;
       document.addEventListener("keydown", onKey);
       render();
       element.focus({ preventScroll: true });

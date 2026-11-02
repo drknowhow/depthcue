@@ -526,7 +526,7 @@ describe("right-clicking the empty slide", () => {
     expect(context(view()).defaultPrevented).toBe(true);
     expect(editor.blockId).toBeUndefined();
     expect(menu().getAttribute("aria-label")).toBe("Slide menu");
-    expect(labels().slice(0, -2)).toEqual([
+    expect(labels().slice(0, -3)).toEqual([
       "Paste here",
       "Add a text here",
       "Add a chart here",
@@ -536,11 +536,12 @@ describe("right-clicking the empty slide", () => {
       "-",
       "Layout>",
       "Change template…",
+      "Save as template…",
       "Lead>",
       "-",
     ]);
-    expect(labels().at(-2)).toMatch(/^(Show|Hide) the comments$/);
-    expect(labels().at(-1)).toBe("Deck style");
+    expect(labels().at(-3)).toMatch(/^(Show|Hide) the comments$/);
+    expect(labels().slice(-2)).toEqual(["Deck style", "Brand…"]);
   });
 
   it("holds the layouts and the leads in submenus that leave out the one the slide has", () => {
@@ -606,6 +607,7 @@ describe("right-clicking a scene in the strip", () => {
     // The first scene has nowhere earlier to go. The demo deck is below 0.3, so it can start using text styles.
     expect(labels()).toEqual([
       "Change template…",
+      "Save as template…",
       "-",
       "Add scene from a template…",
       "Duplicate",
@@ -967,7 +969,7 @@ describe("closing without choosing", () => {
     expect(labels()).toContain("Duplicate");
     context(row("opening"));
     expect(labels()).not.toContain("Cut");
-    expect(menu().querySelectorAll(".ed-menu-item")).toHaveLength(7);
+    expect(menu().querySelectorAll(".ed-menu-item")).toHaveLength(8);
   });
 });
 

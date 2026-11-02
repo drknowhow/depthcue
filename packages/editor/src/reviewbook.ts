@@ -24,7 +24,8 @@ export interface ReviewState {
   readonly ready: boolean;
 }
 
-export type Outcome = { ok: true } | { ok: false; message: string };
+/** `left`: the changes a revert left as they are (a brand file's, or one naming a file that is gone), by id. */
+export type Outcome = { ok: true; left?: string[] } | { ok: false; message: string };
 
 export interface Summary {
   /** Changes the agent made and nobody has answered. */
@@ -262,7 +263,9 @@ export function createReviewBook(
       const wanted = ids === "all" ? changes().map((change) => change.id) : ids;
       const plan = revertOps(review, session.doc, wanted);
       if (!plan.ok) return refused(plan);
-      if (plan.ops.length === 0) return { ok: true };
+      const done: Outcome =
+        plan.left.length === 0 ? { ok: true } : { ok: true, left: plan.left.map(([id]) => id) };
+      if (plan.ops.length === 0) return done;
       const before = session.rev;
       const result = session.apply(plan.ops);
       if (!result.ok) return failure(messageOf(result.diagnostics, "That change was refused."));
@@ -290,7 +293,7 @@ export function createReviewBook(
           return undefined;
         },
       });
-      return { ok: true };
+      return done;
     },
 
     keepAgent() {

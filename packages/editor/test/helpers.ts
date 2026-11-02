@@ -25,6 +25,7 @@ import {
 import type {
   Api,
   ApiDiagnostic,
+  BrandFileAnswer,
   ClipSize,
   CommentsAnswer,
   CommentsSaveResult,
@@ -116,6 +117,8 @@ export class FakeServer implements Api {
   duringReviewSave: (() => void) | undefined;
   /** Holds loadReview's answers, which are read when the call is made, until this settles. */
   reviewGate: Promise<void> | undefined;
+  /** The calls to the brand folder, by the path after `brand-file`. */
+  brandCalls: string[] = [];
 
   constructor() {
     const demo = readDemo();
@@ -227,6 +230,12 @@ export class FakeServer implements Api {
     this.uploads.push(path);
     if (!this.assets.includes(path)) this.assets.push(path);
     return path;
+  }
+
+  /** The sample deck has no brand folder, so a brand file is refused, as the server refuses one it cannot take. */
+  async brandFile(path: string, _body: Blob | string): Promise<BrandFileAnswer> {
+    this.brandCalls.push(path);
+    return { ok: false, error: "unreadable-deck", message: "This deck has no brand folder." };
   }
 
   async loadCues(source: string): Promise<CueList> {

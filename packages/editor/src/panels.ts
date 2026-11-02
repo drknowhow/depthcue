@@ -749,7 +749,7 @@ export function notesPanel(host: PanelHost, current: () => string): Panel {
 const THEME_LABEL = { paper: "Paper (light)", ink: "Ink (dark)" } as const;
 
 /** What each palette color is for, in a person's words. A color the schema adds is a type error here until it is named. */
-const COLOR_LABEL: Record<PaletteColor, string> = {
+export const COLOR_LABEL: Record<PaletteColor, string> = {
   bg: "Background",
   surface: "Panels and cards",
   line: "Lines and borders",

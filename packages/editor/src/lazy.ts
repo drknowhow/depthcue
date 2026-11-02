@@ -1,4 +1,4 @@
-import { builtInsLoaded, loadBuiltIns } from "./brandchecks.ts";
+import { builtInsLoaded, loadBrandChecks, loadBuiltIns } from "./brandchecks.ts";
 
 /**
  * Parts of the editor that most sessions never open. Each is a chunk of its own that is fetched the first time it is
@@ -48,6 +48,14 @@ export const PARTS = {
   // The picker, the slots and the styles list Depthcue's own templates and styles too, so they wait for those as well.
   brand: part(() =>
     Promise.all([import("./branduse.ts"), loadBuiltIns()]).then(([module]) => {
+      if (!builtInsLoaded()) throw new Error("Depthcue's own templates and styles did not arrive.");
+      return module;
+    }),
+  ),
+  // Defining the brand: the Brand panel, Save as template and the template editor. They check colors as they are
+  // chosen, so they wait for the brand checks as well.
+  define: part(() =>
+    Promise.all([import("./branddefine.ts"), loadBuiltIns(), loadBrandChecks()]).then(([module]) => {
       if (!builtInsLoaded()) throw new Error("Depthcue's own templates and styles did not arrive.");
       return module;
     }),

@@ -408,6 +408,10 @@ const WAYS: Record<string, Entry> = {
     where: "Deck popover, one choice per module",
     reach: () => find(deckPop() as HTMLElement, "select[data-field^='panel:deck:module:']"),
   },
+  "deck.brand": {
+    where: "Deck popover, Brand…: on a deck with no brand, the Brand panel's Start a brand writes its id",
+    reach: () => find(deckPop() as HTMLElement, "[data-action='brand']"),
+  },
 
   "scene.$schema": { never: NEVER_FORMAT },
   "scene.schemaVersion": { never: NEVER_FORMAT },
@@ -710,7 +714,6 @@ const WAYS: Record<string, Entry> = {
  * property a way in WAYS. A block type added later fails "has a way" above until it is listed here or given a way.
  */
 const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
-  ["deck.brand", "BRANDS_AND_PPTX step 8, the Brand panel"],
   ["scene.template", "BRANDS_AND_PPTX step 7, the template picker and Change template"],
   ...["text", "image", "bar-chart", "clip", "table", "chart"].flatMap(
     (type): Array<[string, string]> => [

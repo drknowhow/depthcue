@@ -116,6 +116,12 @@
       "limitBytes": 6144
     },
     {
+      "name": "editor brand define",
+      "file": "packages/editor/dist/branddefine.js",
+      "metric": "brotli",
+      "limitBytes": 16384
+    },
+    {
       "name": "editor PowerPoint download",
       "file": "packages/editor/dist/pptxdownload.js",
       "metric": "brotli",

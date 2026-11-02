@@ -140,6 +140,101 @@ describe("rowOf", () => {
   });
 });
 
+describe("a change of the brand's files", () => {
+  const deck = (over: { [K in keyof Change]?: Change[K] | undefined }) =>
+    change({ scope: "deck", scene: undefined, block: undefined, ...over });
+
+  it("names the part of the brand plainly, with no Deck before it", () => {
+    expect(
+      rowOf(deck({ id: "deck/brand", field: "brand", kind: "added", before: undefined }), doc).where,
+    ).toBe("Brand");
+    expect(rowOf(deck({ id: "deck/brand/colors", field: "brand/colors" }), doc).where).toBe("Brand colors");
+    expect(rowOf(deck({ id: "deck/brand/hideBuiltIn", field: "brand/hideBuiltIn" }), doc).where).toBe(
+      "Built-ins the brand hides",
+    );
+    expect(rowOf(deck({ id: "deck/brand/someday", field: "brand/someday" }), doc).where).toBe(
+      "Brand someday",
+    );
+  });
+
+  it("names a style or a template by its name, and says only what changed in it", () => {
+    const row = rowOf(
+      deck({
+        id: "deck/style:kicker",
+        field: "style:kicker",
+        before: { name: "Kicker", for: ["caption"], size: "s" },
+        after: { name: "Kicker", for: ["caption"], size: "l" },
+      }),
+      doc,
+    );
+    expect(row.where).toBe("Style: Kicker");
+    expect([row.before, row.after]).toEqual(['size: "s"', 'size: "l"']);
+  });
+
+  it("gives a template added or removed as its name and how many slots it has", () => {
+    const added = rowOf(
+      deck({
+        id: "deck/template:quote",
+        field: "template:quote",
+        kind: "added",
+        before: undefined,
+        after: { name: "Quote", slots: [{ id: "q" }] },
+      }),
+      doc,
+    );
+    expect(added.where).toBe("Template: Quote");
+    expect([added.before, added.after]).toEqual([undefined, "Quote (1 slot)"]);
+    const removed = rowOf(
+      deck({
+        id: "deck/template:wide",
+        field: "template:wide",
+        kind: "removed",
+        before: { name: "Wide", slots: [{ id: "a" }, { id: "b" }] },
+        after: undefined,
+      }),
+      doc,
+    );
+    expect([removed.where, removed.before, removed.after]).toEqual([
+      "Template: Wide",
+      "Wide (2 slots)",
+      undefined,
+    ]);
+  });
+
+  it("names a font, a logo or an image file by its kind and name, and says what became of it, never its hash", () => {
+    const file = (path: string, kind: Change["kind"]) =>
+      rowOf(
+        deck({
+          id: `deck/file:${path}`,
+          field: `file:${path}`,
+          kind,
+          before: kind === "added" ? undefined : "a".repeat(64),
+          after: kind === "removed" ? undefined : "b".repeat(64),
+        }),
+        doc,
+      );
+    const font = file("fonts/Inter-Bold.woff2", "added");
+    expect([font.where, font.before, font.after]).toEqual([
+      "Font file Inter-Bold.woff2",
+      undefined,
+      "brand/fonts/Inter-Bold.woff2",
+    ]);
+    expect(font.said).toBe("Brand file fonts/Inter-Bold.woff2 added");
+    const logo = file("logos/mark.svg", "removed");
+    expect([logo.where, logo.before, logo.after]).toEqual([
+      "Logo file mark.svg",
+      "brand/logos/mark.svg",
+      undefined,
+    ]);
+    const image = file("images/cover.jpg", "changed");
+    expect([image.where, image.before, image.after]).toEqual([
+      "Image file cover.jpg",
+      undefined,
+      "Replaced with other bytes",
+    ]);
+  });
+});
+
 describe("the counts", () => {
   it("separates what the agent changed from what was changed outside", () => {
     expect(summaryOf([change({}), change({ by: "outside" }), change({})])).toEqual({ agent: 2, outside: 1 });
