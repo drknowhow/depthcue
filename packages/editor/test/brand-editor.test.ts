@@ -140,10 +140,17 @@ describe("the template picker in the strip", () => {
 });
 
 describe("Change template", () => {
-  it("is in the scene bar, named for the scene's template, and applies as one step of Undo", () => {
+  it("is in a template scene's bar in place of the layouts, named for its template, and applies as one step of Undo", () => {
     editor.select("growth");
     const button = host.querySelector<HTMLButtonElement>(".ed-scene-tools [data-action='change-template']");
-    expect(button?.textContent).toBe("Template: Chart and note");
+    const layouts = host.querySelector<HTMLElement>(".ed-scene-tools [aria-label='Layout of this scene']");
+    expect(button?.textContent).toBe("Chart and note");
+    expect(button?.getAttribute("aria-label")).toBe("Template: Chart and note, change");
+    expect([button?.hidden, layouts?.hidden]).toEqual([false, true]);
+    // A layout scene has its layouts there, and no template button: the bar is no wider than it was.
+    editor.select("context");
+    expect([button?.hidden, layouts?.hidden]).toEqual([true, false]);
+    editor.select("growth");
     button?.click();
     const box = dialog("retemplate") as HTMLDialogElement;
     change(box.querySelector("input[value='template:cover']") as HTMLInputElement);
@@ -159,9 +166,15 @@ describe("Change template", () => {
     expect(block("growth", "growth-chart").slot).toBe("chart");
   });
 
-  it("opens at a layout when a layout button is pressed on a template scene, so nothing moves unseen", () => {
+  it("opens at a layout when a template scene is given one from the right-click menu, so nothing moves unseen", () => {
     editor.select("growth");
-    host.querySelector<HTMLButtonElement>(".ed-scene-tools [data-layout='text-media']")?.click();
+    slide().dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
+    );
+    const item = [...host.querySelectorAll<HTMLElement>(".ed-menu-sub .ed-menu-item")].find(
+      (node) => node.querySelector(".ed-menu-label")?.textContent === "Text and media",
+    );
+    item?.click();
     expect(scene("growth").template).toBe("chart-and-note");
     const box = dialog("retemplate") as HTMLDialogElement;
     expect(box.querySelector<HTMLInputElement>("input:checked")?.value).toBe("layout:text-media");
@@ -169,6 +182,16 @@ describe("Change template", () => {
     expect(scene("growth").layout).toBe("text-media");
     expect(scene("growth").template).toBeUndefined();
     expect(scene("growth").blocks.every((candidate) => candidate.slot === undefined)).toBe(true);
+  });
+
+  it("is in the Scene popover of a layout scene", () => {
+    editor.select("context");
+    (host.querySelector(".ed-scene-tools [data-tb='scene']") as HTMLButtonElement).click();
+    (host.querySelector("[data-field='panel:change-template']") as HTMLButtonElement).click();
+    const box = dialog("retemplate") as HTMLDialogElement;
+    // The scene's own layout is marked as the one it has now.
+    expect(box.querySelector("label:has(input[value='layout:text-media'])")?.textContent).toContain("Now");
+    expect(host.querySelector(".ed-scene-tools .ed-tb-pop:not([hidden])")).toBeNull();
   });
 
   it("is on the slide's right-click menu", () => {

@@ -17,6 +17,7 @@ import {
   blockStylesOf,
   type Doc,
   loadDoc,
+  type NewScene,
   type Op,
   retemplate,
   revisionOf,
@@ -359,7 +360,9 @@ describe("Change template in a real browser", () => {
     const mine = copy(harborDeck, "mine");
     const theirs = copy(harborDeck, "theirs");
     await open(mine, "growth");
-    expect(await changeOpener().textContent()).toBe("Template: Chart and note");
+    // A template scene shows its template where a layout scene shows its three layouts, so the bar is no wider.
+    expect(await changeOpener().textContent()).toBe("Chart and note");
+    expect(await page.locator(".ed-scene-tools [data-layout]").first().isVisible()).toBe(false);
     await changeOpener().click();
     const box = dialog("retemplate");
     await box.waitFor();
@@ -416,12 +419,12 @@ describe("the empty slots of a template scene in a real browser", () => {
   it("show their hints in the editor only, and a click adds what the slot takes, as `depthcue apply` does", async () => {
     const mine = copy(harborDeck, "mine");
     const theirs = copy(harborDeck, "theirs");
-    const scene = {
+    const scene: NewScene = {
       id: "findings",
       title: "Findings",
       template: "chart-and-note",
       blocks: [{ id: "findings-title", type: "text", role: "heading", text: "One finding", slot: "title" }],
-    } as const;
+    };
     for (const dir of [mine, theirs]) await agentApply(dir, [{ op: "scene.add", after: "growth", scene }]);
     await open(mine, "findings");
 
@@ -671,7 +674,10 @@ describe("an older deck opened in the editor", () => {
     await styleChip().click();
     await styleChoices().first().waitFor();
     await page.keyboard.press("Escape");
-    await changeOpener().click();
+    // A layout scene has its three layouts in the bar and reaches Change template from the Scene popover.
+    expect(await changeOpener().isVisible()).toBe(false);
+    await page.locator(".ed-scene-tools [data-tb='scene']").click();
+    await page.locator("[data-field='panel:change-template']").click();
     await dialog("retemplate").waitFor();
     await dialog("retemplate").locator("[data-dialog-action='cancel']").click();
     await goTo("data");

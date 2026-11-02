@@ -783,14 +783,15 @@ Found, not fixed (older than the brand work):
   once, `mountEditor` takes others in its place so a test can hold one back or make it fail, a fetch that fails says
   "Could not load ... Check that depthcue edit is still running, then try again." where the person is looking, the
   editor goes on, and the next use tries again. What the person typed or chose is read after the part is in. The
-  editor script is now 88,132 with all of step 7 but Download PowerPoint, which leaves 4,028 bytes, and 956 above the
+  editor script is now 88,215 with all of step 7 but Download PowerPoint, which leaves 3,945 bytes, and 873 above the
   3 KB step 8 needs. `retemplate.ts` stays in the script: core's index exports it, and a chunk group that pulled it
   out pulled its imports with it.
 - **The brand part.** Everything below is `branduse.js` (4,399 of 6,144), fetched with Depthcue's own templates and
   styles, since the picker, the slots and the styles list them; the part fails when they do not arrive. The script
   keeps only the hooks. It is fetched the first time a template scene is drawn (for its slots), a block is chosen (so
   its Style menu can list styles), or the picker, Change template or the Style chip is opened. A deck with no template
-  scene opens without it.
+  scene opens without it. When it arrives after a block's toolbar is drawn, only the chip that waited for it is drawn
+  again, so a field the person is typing in keeps its text and selection.
 - **Template picker.** "From a template…" in the strip, the scene menu and the command palette ("Add scene from a
   template…"). A modal dialog named "Add a scene" lists the brand's templates under the brand's name, then "Built in"
   (none when the brand sets `hideBuiltIn`; one the brand replaces is listed once, as the brand's), then the three
@@ -799,9 +800,11 @@ Found, not fixed (older than the brand work):
   Escape closes. A choice adds the scene with `scene.add` after the scene on show and goes to it. The new scene starts
   with one text, in the first slot that takes a heading, else one that takes text; a template with no slot for text
   gets it pinned near the top. A refusal is said in the dialog, which stays open.
-- **Change template.** "Template: <name>" in the scene bar (where the layout buttons are), "Change template…" on the
-  slide's and the scene's right-click menus, and a layout button pressed on a template scene, which opens the dialog
-  at that layout instead of moving blocks unseen. The dialog lists every template and layout, the current one marked
+- **Change template.** On a template scene the scene bar shows the template's name in place of the three layout
+  buttons, so the bar is no wider, and pressing it opens the dialog. On a layout scene it is "Change template or
+  layout…" in the Scene popover. It is also "Change template…" on the slide's and the scene's right-click menus and in
+  the palette, and a layout chosen for a template scene from the right-click menu or the palette opens the dialog at
+  that layout instead of moving blocks unseen. The dialog lists every template and layout, the current one marked
   "Now". Choosing one shows the slide as it will be, drawn by the player, a line per block saying where it goes, and,
   under "Fits no slot", each block that fits none by name, with what happens to it: a block stays on the slide, pinned
   where it is now (its measured frame), to move or delete; a claim with no slot in the template becomes a text pinned
@@ -837,8 +840,10 @@ Found, not fixed (older than the brand work):
   menu and Change template opened and closed, is byte for byte the same with the same file times. The brand part and
   the built-ins chunk are each refused once (the message shows, the editor goes on, the next try opens the picker),
   and so is the storyboard.
-- **Decisions.** The new scene goes after the scene on show; its first block is the template's heading slot's; Change
-  template opens from a layout button on a template scene; the scene menu starts with Change template; choosing a
+- **Decisions.** The new scene goes after the scene on show; its first block is the template's heading slot's; the
+  template's name takes the layout buttons' place in the scene bar, so the top bar keeps its width at 1024 (beside
+  them it left the deck title 14 px wide); a layout chosen for a template scene opens Change template; the
+  scene menu starts with Change template; choosing a
   block fetches the brand part; the styles come after the text's own controls in the chip; No style is drawn as a
   plain block.
 - **Not done.** Download PowerPoint waits for step 6's endpoint.

@@ -243,10 +243,14 @@ export function createToolbar(
             (module) => {
               real = make(module);
               body.replaceChildren(real.body);
-              // A part that came late finds the chip's count and the popover drawn without it.
+              // A part that came late finds its chip's count and popover drawn without it. Only that chip is drawn
+              // again: drawing the whole bar would rebuild the other popovers and lose the selection in their fields.
               const live = scene(sceneId);
-              const target = late && live && shown?.id === id ? resolve(live, id) : undefined;
-              if (target) sync(target, false);
+              const chip =
+                late && live && shown?.id === id
+                  ? chips.find((candidate) => candidate.panel.name === shape.name)
+                  : undefined;
+              if (chip && live) fillChip(chip, live, false);
             },
             () => {
               body.textContent = notLoaded(what);

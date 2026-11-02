@@ -1306,11 +1306,26 @@ body {
 }
 
 /* The scene's template, in the scene bar: what it is now, and the way to change it. */
+/* In a template scene's bar, where a layout scene has its three layouts, and no wider than they are. */
 .ed-app .ed-template {
-  max-width: 14rem;
+  max-width: 9.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ed-app .ed-template::before {
+  content: "";
+  display: inline-block;
+  width: 0.85em;
+  height: 0.6em;
+  margin-inline-end: 0.4em;
+  border: 1.5px dashed currentColor;
+  border-radius: 2px;
+}
+
+.ed-scene-tools .ed-seg[hidden] {
+  display: none;
 }
 
 /* The styles a block can take, each with its picture, the one it has checked. */

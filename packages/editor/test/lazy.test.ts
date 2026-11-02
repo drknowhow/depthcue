@@ -287,6 +287,30 @@ describe("templates and styles, a part fetched when first wanted", () => {
     await flush();
     expect(hint().hasAttribute("data-problem")).toBe(false);
   });
+
+  it("fills the Style chip when it arrives and leaves the field being typed in, and its selection, alone", async () => {
+    const parts = stub(await real("brand"));
+    await mount({ brand: parts.from });
+    editor?.select("method");
+    blockNode("method-diagram").click();
+    const style = host
+      .querySelector(".ed-toolbar [data-tb='style']")
+      ?.closest(".ed-tb-chip-wrap")
+      ?.querySelector<HTMLElement>(".ed-tb-pop") as HTMLElement;
+    expect(style.textContent).toContain("Loading");
+    // As after a dropped picture: the alt text field has the keyboard, with the file's name chosen to be typed over.
+    const alt = host.querySelector<HTMLInputElement>(
+      ".ed-toolbar [data-field='image:alt']",
+    ) as HTMLInputElement;
+    alt.focus();
+    alt.setSelectionRange(0, alt.value.length);
+    parts.arrive();
+    await flush();
+    expect(style.textContent).not.toContain("Loading");
+    expect(host.querySelector(".ed-toolbar [data-field='image:alt']")).toBe(alt);
+    expect(document.activeElement).toBe(alt);
+    expect([alt.selectionStart, alt.selectionEnd]).toEqual([0, alt.value.length]);
+  });
 });
 
 describe("the cue editor, a part fetched when a clip's Cues chip is first filled", () => {

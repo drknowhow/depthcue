@@ -89,6 +89,8 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
     const result = hooks.edits.act([{ op: "scene.set", id: current, set }]);
     hooks.problem(result.ok ? undefined : problemOf(result));
   }
+  // A template scene shows its template where a layout scene shows its three layouts, so the bar is no wider; a layout
+  // scene reaches Change template from the Scene popover, the right-click menu and the palette.
   const change = hooks.change;
   const template =
     change &&
@@ -97,6 +99,7 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
       class: "ed-template",
       "data-action": "change-template",
       "aria-haspopup": "dialog",
+      hidden: true,
     });
   template?.addEventListener("click", () => change?.());
 
@@ -153,17 +156,34 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
   });
   const panel = scenePanel(host, () => current);
   const popover = popoverChip(panel);
+  if (change) {
+    const again = h(
+      "button",
+      { type: "button", "data-field": "panel:change-template", "aria-haspopup": "dialog" },
+      "Change template or layout…",
+    );
+    again.addEventListener("click", () => {
+      popover.close();
+      change();
+    });
+    panel.body.append(again);
+  }
 
   function open(section?: "steps" | "sources") {
     popover.open();
     if (section) panel.reveal(section);
   }
 
+  const layoutGroup = h(
+    "div",
+    { class: "ed-seg", role: "group", "aria-label": "Layout of this scene" },
+    ...layouts,
+  );
   const element = h(
     "div",
     { class: "ed-scene-tools" },
     h("div", { class: "ed-seg", role: "group", "aria-label": "Who leads this scene" }, ...leads),
-    h("div", { class: "ed-seg", role: "group", "aria-label": "Layout of this scene" }, ...layouts),
+    layoutGroup,
     template,
     auto,
     popover.chip.wrap,
@@ -188,8 +208,11 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
         node.setAttribute("aria-pressed", String(node.dataset.layout === scene.layout));
       if (template) {
         const name = scene.template && (templatesOf(session.doc)[scene.template]?.name ?? scene.template);
-        template.textContent = name ? `Template: ${name}` : "Template";
-        template.title = "Change this scene's template or layout, with a preview first";
+        template.hidden = !name;
+        layoutGroup.hidden = Boolean(name);
+        template.textContent = name || "";
+        template.title = `Template: ${name}. Change the template or layout, with a preview first`;
+        template.setAttribute("aria-label", `Template: ${name}, change`);
       }
       auto.hidden = !scene.blocks.some((block) => block.frame);
     },
