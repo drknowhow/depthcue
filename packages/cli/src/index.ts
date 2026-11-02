@@ -10,6 +10,7 @@ import { ExportError, exportDeck } from "./export.ts";
 import { writeLink } from "./link.ts";
 import { loadDeckDir } from "./loader.ts";
 import { openRenderer, type RenderOptions } from "./render.ts";
+import { count, format, type Io, report, summary } from "./report.ts";
 import {
   acceptInFolder,
   listChanges,
@@ -19,10 +20,8 @@ import {
 } from "./review-api.ts";
 import { builtEditorDir, builtPlayerDir, startServer } from "./serve.ts";
 
-export interface Io {
-  out(line: string): void;
-  err(line: string): void;
-}
+export type { Io };
+export { report, summary };
 
 /** The two forms of export, which `depthcue export --help` prints on their own. */
 const EXPORT_USAGE = `  depthcue export <deck-folder> [--out <dir>] [--no-notes] [--json]
@@ -103,22 +102,6 @@ diff   Lists what changed since the deck was last reviewed, one entry per proper
 
 Exit codes: 0 done, 1 errors found, edit rejected or a clip did not build, 2 could not run, 3 stale revision.`;
 
-function format(diagnostic: Diagnostic): string[] {
-  const where = `${diagnostic.file}${diagnostic.path}`;
-  const lines = [`${where}  ${diagnostic.severity}  ${diagnostic.message}`];
-  if (diagnostic.fix) lines.push(`  fix: ${diagnostic.fix}`);
-  return lines;
-}
-
-const count = (diagnostics: readonly Diagnostic[], severity: Diagnostic["severity"]) =>
-  diagnostics.filter((d) => d.severity === severity).length;
-
-export function summary(diagnostics: readonly Diagnostic[]): string {
-  const errors = count(diagnostics, "error");
-  const warnings = count(diagnostics, "warning");
-  return `${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}`;
-}
-
 const VALUE_FLAGS = [
   "base-rev",
   "port",
@@ -190,21 +173,6 @@ function parse(args: readonly string[]): Parsed {
     }
   }
   return parsed;
-}
-
-export function report(io: Io, diagnostics: readonly Diagnostic[], json: boolean, extra: object = {}): void {
-  const errors = count(diagnostics, "error");
-  if (json) {
-    io.out(
-      JSON.stringify(
-        { ok: errors === 0, errors, warnings: count(diagnostics, "warning"), ...extra, diagnostics },
-        null,
-        2,
-      ),
-    );
-  } else {
-    for (const diagnostic of diagnostics) for (const line of format(diagnostic)) io.out(line);
-  }
 }
 
 function check(folder: string, json: boolean, io: Io): number {

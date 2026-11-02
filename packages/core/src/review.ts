@@ -42,9 +42,9 @@ export interface Review {
   scenes: Record<string, Scene>;
   /**
    * The brand and its templates as they were, for a branded deck: the scenes of the reviewed deck are checked against
-   * them, and a change to either is a change of its own (`deck/brand`, `deck/template:<id>`), accepted or reverted like
-   * a scene's. The brand's font, logo and picture files are not in the review: a change to one is not listed, and a
-   * revert does not bring one back.
+   * them, and a change to either is a change of its own (`deck/brand/<key>`, `deck/style:<id>`, `deck/template:<id>`),
+   * accepted or reverted like a scene's. The brand's font, logo and picture files are not in the review: a change to one
+   * is not listed, and a revert does not bring one back.
    */
   brand?: Brand;
   templates?: Record<string, Template>;
@@ -67,11 +67,13 @@ export type ChangeKind = "added" | "removed" | "changed" | "moved";
  * `scene:<id>/block:<id>/<field>`. A field is a top-level property, and its value is the whole of it. A scene that was
  * added or removed is one change, not one per block, and so is a block whose type changed (field `type`).
  *
- * The brand's files are changes of the deck, not of a scene: `deck/brand` is `brand.json` as a whole (field `brand`,
- * its value the brand without its `$schema` and `schemaVersion`), and `deck/template:<id>` is one template file (field
- * `template:<id>`, its value the template). A deck that changed to a brand with another id is one `deck/brand` change,
- * and writing it writes the new brand's templates too, since the old brand's went with it; they are listed one by one as
- * well, as what changed from the old brand's.
+ * The brand's files are changes of the deck, not of a scene. A brand with the same id in both decks has one change per
+ * property of `brand.json` (`deck/brand/colors`, field `brand/colors`, its value the property), one per style
+ * (`deck/style:<id>`, field `style:<id>`) and one per template file (`deck/template:<id>`, field `template:<id>`, its
+ * value the template). A deck that got a brand, lost it, or changed to a brand with another id has `deck/brand` instead
+ * of the properties and styles: `brand.json` as a whole (field `brand`, its value the brand without its `$schema` and
+ * `schemaVersion`). Writing it writes the new brand's templates too, since the old brand's went with it; they are
+ * listed one by one as well, as what changed from the old brand's.
  */
 export interface Difference {
   id: string;
@@ -232,51 +234,63 @@ const alignedTo = (doc: Doc, like: Doc): Doc => ({
   ),
 });
 
-/** The field a deck-level change of the brand's files names: `brand` for brand.json, `template:<id>` for a template. */
+/**
+ * The field a deck-level change of the brand's files names: `brand` for a brand made or taken off or replaced by one
+ * with another id, `brand/<key>` for a property of the brand, `style:<id>` for a style and `template:<id>` for a template.
+ */
 const BRAND_FIELD = "brand";
+const KEY_FIELD = "brand/";
+const STYLE_FIELD = "style:";
 const TEMPLATE_FIELD = "template:";
 const isBrandField = (field: string | undefined): boolean =>
-  field === BRAND_FIELD || field?.startsWith(TEMPLATE_FIELD) === true;
+  field === BRAND_FIELD || [KEY_FIELD, STYLE_FIELD, TEMPLATE_FIELD].some((start) => field?.startsWith(start));
 
 /** A brand or a template as it is reviewed: without what an operation cannot write, which is no one's change. */
-function reviewed(value: Brand | Template): Record<string, unknown> {
+function reviewed(value: Brand | Template | undefined): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
   const { $schema: _schema, schemaVersion: _version, ...rest } = record(value);
   return rest;
 }
 
-/** One of the brand's files as one change: what it was and what it is, or nothing when it is the same. */
-function fileDiff(
-  field: string,
-  was: Brand | Template | undefined,
-  is: Brand | Template | undefined,
-): Difference[] {
-  if (was === undefined ? is === undefined : is !== undefined && same(reviewed(was), reviewed(is))) return [];
+/** One part of the brand's files as one change: what it was and what it is, or nothing when it is the same. */
+function fileDiff(field: string, was: unknown, is: unknown): Difference[] {
+  if (was === undefined ? is === undefined : is !== undefined && same(was, is)) return [];
   return [
     make(
       `deck/${field}`,
       "deck",
       was === undefined ? "added" : is === undefined ? "removed" : "changed",
       { field },
-      {
-        ...(was === undefined ? {} : { before: reviewed(was) }),
-        ...(is === undefined ? {} : { after: reviewed(is) }),
-      },
+      { ...(was === undefined ? {} : { before: was }), ...(is === undefined ? {} : { after: is }) },
     ),
   ];
 }
 
 /**
- * The changes to the deck's brand: `brand.json` as one, and each template as one. With no brand now, each template it
- * had is removed with it, and writing the brand's removal writes theirs.
+ * The changes to the deck's brand. A brand made, taken off or replaced by one with another id is `brand.json` as one
+ * change, and its styles go with it. Otherwise each property of the brand is a change, and each style, so a reviewer can
+ * refuse one edit and keep another. Each template is one either way. With no brand now, each template it had is
+ * removed with it, and writing the brand's removal writes theirs.
  */
 function brandDiffs(base: Doc, current: Doc): Difference[] {
-  const out = fileDiff(BRAND_FIELD, base.brand, current.brand);
-  const before: Readonly<Record<string, Template>> = base.brand === undefined ? {} : (base.templates ?? {});
-  const after: Readonly<Record<string, Template>> =
-    current.brand === undefined ? {} : (current.templates ?? {});
+  const [was, is] = [base.brand, current.brand];
+  const out: Difference[] = [];
+  if (was !== undefined && is !== undefined && was.id === is.id) {
+    for (const key of BRAND_KEYS) {
+      if (key !== "id") out.push(...fileDiff(`${KEY_FIELD}${key}`, record(was)[key], record(is)[key]));
+    }
+    for (const id of new Set([...Object.keys(was.styles ?? {}), ...Object.keys(is.styles ?? {})].sort())) {
+      out.push(...fileDiff(`${STYLE_FIELD}${id}`, ownEntry(was.styles, id), ownEntry(is.styles, id)));
+    }
+  } else out.push(...fileDiff(BRAND_FIELD, reviewed(was), reviewed(is)));
+  const before: Readonly<Record<string, Template>> = was === undefined ? {} : (base.templates ?? {});
+  const after: Readonly<Record<string, Template>> = is === undefined ? {} : (current.templates ?? {});
   const gone = Object.keys(before).filter((id) => !Object.hasOwn(after, id));
-  for (const id of [...Object.keys(after).sort(), ...gone.sort()])
-    out.push(...fileDiff(`${TEMPLATE_FIELD}${id}`, ownEntry(before, id), ownEntry(after, id)));
+  for (const id of [...Object.keys(after).sort(), ...gone.sort()]) {
+    out.push(
+      ...fileDiff(`${TEMPLATE_FIELD}${id}`, reviewed(ownEntry(before, id)), reviewed(ownEntry(after, id))),
+    );
+  }
   return out;
 }
 /**
@@ -312,6 +326,9 @@ export function describeChange(change: Difference): string {
   if (change.scope === "deck") {
     if (change.field === "scenes") what = "scene order";
     else if (change.field === BRAND_FIELD) what = "brand";
+    else if (change.field?.startsWith(KEY_FIELD)) what = `brand ${change.field.slice(KEY_FIELD.length)}`;
+    else if (change.field?.startsWith(STYLE_FIELD))
+      what = `style "${change.field.slice(STYLE_FIELD.length)}"`;
     else if (change.field?.startsWith(TEMPLATE_FIELD))
       what = `template "${change.field.slice(TEMPLATE_FIELD.length)}"`;
     else what = `deck ${change.field}`;
@@ -388,52 +405,32 @@ const into = <T>(map: Map<string, T>, key: string, start: () => T): T => {
 const ownEntry = <T>(record: Readonly<Record<string, T>> | undefined, id: string): T | undefined =>
   record !== undefined && Object.hasOwn(record, id) ? record[id] : undefined;
 
-/** The `brand.set` that writes the properties of `next` that `prev` does not have as they are, all of them for a new brand. */
-function brandSet(prev: Brand | undefined, next: Brand): Record<string, unknown> {
-  // An id is written once, when the brand is made, and never changes.
-  const set: Record<string, unknown> = prev === undefined ? { id: next.id } : {};
-  const before = record(prev ?? {});
-  const after = record(next);
-  for (const key of BRAND_KEYS) {
-    if (key !== "id" && !same(before[key], after[key])) set[key] = after[key] ?? null;
-  }
-  return set;
-}
-
-/** The `style.set` operations that turn the styles of `prev` into those of `next`. */
-function styleOps(prev: Brand | undefined, next: Brand): Op[] {
-  const was = prev?.styles;
-  const is = next.styles;
-  return [...new Set([...Object.keys(was ?? {}), ...Object.keys(is ?? {})])].sort().flatMap((id): Op[] => {
-    const style = ownEntry(is, id);
-    if (style === undefined) return [{ op: "style.set", id, style: null }];
-    return same(ownEntry(was, id), style) ? [] : [{ op: "style.set", id, style }];
-  });
-}
-
 /**
- * The operations that put the brand's files as `to` has them, for the chosen changes of `deck/brand` and
- * `deck/template:<id>`: the brand first, with its styles, then each template. A brand made new, or taken over by one with
- * another id, brings all of its templates, since the folder a brand is made in is empty: the changes of templates that
- * come with it are writes of what is there already, and the old brand's are gone.
+ * The operations that put the brand's files as `to` has them, for the chosen changes of the brand: its properties
+ * (`brand/<key>`), its styles (`style:<id>`) and its templates (`template:<id>`), the brand first, then each style and
+ * template. A brand made new, or taken over by one with another id (`brand`), brings all of its properties, styles and
+ * templates, since the folder a brand is made in is empty: the changes of templates that come with it are writes of
+ * what is there already, and the old brand's are gone.
  */
-function brandOps(from: Doc, to: Doc, brand: Difference | undefined, templates: readonly Difference[]): Op[] {
+function brandOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
   const next = to.brand;
-  const prev = from.brand;
+  const named = (start: string): string[] =>
+    picked.flatMap(({ field }) => (field?.startsWith(start) ? [field.slice(start.length)] : []));
+  const whole = picked.some(({ field }) => field === BRAND_FIELD);
   // The templates go with the brand, so there is nothing more to write.
-  if (brand && next === undefined) return [{ op: "brand.set", set: null }];
-  const brought = brand !== undefined && next !== undefined && (prev === undefined || prev.id !== next.id);
-  const ops: Op[] = prev !== undefined && brought ? [{ op: "brand.set", set: null }] : [];
-  if (brand && next !== undefined) {
-    const kept = brought ? undefined : prev;
-    const set = brandSet(kept, next);
-    if (Object.keys(set).length > 0) ops.push({ op: "brand.set", set } as Op);
-    ops.push(...styleOps(kept, next));
-  }
-  const ids = brought
-    ? Object.keys(to.templates ?? {})
-    : templates.map((change) => (change.field as string).slice(TEMPLATE_FIELD.length));
-  for (const id of ids) ops.push({ op: "template.set", id, template: ownEntry(to.templates, id) ?? null });
+  if (whole && next === undefined) return [{ op: "brand.set", set: null }];
+  const ops: Op[] = from.brand !== undefined && whole ? [{ op: "brand.set", set: null }] : [];
+  const keys = whole
+    ? BRAND_KEYS.filter((key) => record(next as Brand)[key] !== undefined)
+    : named(KEY_FIELD);
+  // An id is written once, when the brand is made, and never changes.
+  const set = Object.fromEntries(keys.map((key) => [key, record(next as Brand)[key] ?? null]));
+  if (keys.length > 0) ops.push({ op: "brand.set", set } as Op);
+  const styles = whole ? Object.keys(next?.styles ?? {}) : named(STYLE_FIELD);
+  for (const id of styles) ops.push({ op: "style.set", id, style: ownEntry(next?.styles, id) ?? null });
+  const templates = whole ? Object.keys(to.templates ?? {}) : named(TEMPLATE_FIELD);
+  for (const id of templates)
+    ops.push({ op: "template.set", id, template: ownEntry(to.templates, id) ?? null });
   return ops;
 }
 /**
@@ -456,15 +453,10 @@ function buildOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
   const blockRemove = new Map<string, Set<string>>();
   const blockOrder = new Set<string>();
   let sceneOrder = false;
-  let brandChange: Difference | undefined;
-  const templateChanges: Difference[] = [];
+  const brandChanges = picked.filter((change) => change.scope === "deck" && isBrandField(change.field));
 
   for (const change of picked) {
-    if (change.scope === "deck" && isBrandField(change.field)) {
-      if (change.field === BRAND_FIELD) brandChange = change;
-      else templateChanges.push(change);
-      continue;
-    }
+    if (brandChanges.includes(change)) continue;
     const value = change.kind === "removed" ? null : change.after;
     const field = change.field as string;
     const scene = change.scene as string;
@@ -494,7 +486,7 @@ function buildOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
   }
 
   const ops: Op[] = [
-    ...brandOps(from, to, brandChange, templateChanges),
+    ...brandOps(from, to, brandChanges),
     ...[...upgrade].map((id): Op => ({ op: "scene.upgrade", id })),
   ];
   if (Object.keys(deckSet).length > 0) ops.push({ op: "deck.set", set: deckSet as DeckChanges });

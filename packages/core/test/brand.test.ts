@@ -1338,9 +1338,9 @@ describe("drafts and reviews of a branded deck", () => {
       { op: "scene.set", id: "growth", set: { title: "Growth, by berth" } },
     ]);
     const changes = reviewChanges(review, changed);
-    expect(changes.map((change) => change.id)).toEqual(["deck/brand", "scene:growth/title"]);
+    expect(changes.map((change) => change.id)).toEqual(["deck/brand/name", "scene:growth/title"]);
     const accepted = acceptChanges(review, changed, "all");
-    expect(accepted).toMatchObject({ ok: true, accepted: ["deck/brand", "scene:growth/title"] });
+    expect(accepted).toMatchObject({ ok: true, accepted: ["deck/brand/name", "scene:growth/title"] });
     if (accepted.ok) expect(accepted.review.brand?.name).toBe("Harbor");
   });
 

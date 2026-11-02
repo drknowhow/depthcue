@@ -15,9 +15,15 @@ export const BINARY_DIRS = ["fonts", "logos", "images"] as const;
 
 /** A name inside those folders: letters, digits, dot, dash and underscore, never starting with a dot. */
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+/** Names Windows keeps for devices, with or without an extension, in any letter case: `con`, `NUL.svg`, `lpt1.png`. */
+const DEVICE = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i;
 
-const MAX_FILES = 200;
-const MAX_BYTES = 64 * 1024 * 1024;
+/** A name a brand can carry: the pattern above, not a device name, and not ending in a dot or a space. */
+export const carriable = (name: string): boolean =>
+  SEGMENT.test(name) && !DEVICE.test(name) && !/[. ]$/.test(name);
+
+export const MAX_FILES = 200;
+export const MAX_BYTES = 64 * 1024 * 1024;
 
 export interface BrandSource {
   readonly dir: string;
@@ -94,9 +100,9 @@ export function readBrandFolder(dir: string): BrandSource {
     }
     if (kind === "directory") {
       for (const name of readdirSync(full).sort()) {
-        if (!SEGMENT.test(name)) {
+        if (!carriable(name)) {
           throw new BrandFolderError(
-            `${path}/${name} has a name a brand cannot carry. Use letters, digits, dots, dashes and underscores, not starting with a dot.`,
+            `${path}/${name} has a name a brand cannot carry. Use letters, digits, dots, dashes and underscores, not starting with a dot or ending in one, and not a name Windows keeps for a device, such as con, nul, aux, prn, com1 or lpt1.`,
           );
         }
         take(`${path}/${name}`);
@@ -104,14 +110,15 @@ export function readBrandFolder(dir: string): BrandSource {
       return;
     }
     if (kind !== "file") throw new BrandFolderError(`${path} is not a plain file.`);
-    const data = readFileSync(full);
-    bytes += data.length;
-    if (binaries.size >= MAX_FILES || bytes > MAX_BYTES) {
+    // The size is read before the file, so a file over the limit is never held in memory.
+    const size = lstatSync(full).size;
+    if (binaries.size >= MAX_FILES || bytes + size > MAX_BYTES) {
       throw new BrandFolderError(
         `The brand carries more than ${MAX_FILES} files or ${MAX_BYTES / 1024 / 1024} MB of fonts, logos and images.`,
       );
     }
-    binaries.set(path, data);
+    bytes += size;
+    binaries.set(path, readFileSync(full));
   };
   for (const name of BINARY_DIRS) {
     const kind = kindOf(join(dir, name));

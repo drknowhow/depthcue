@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   acceptChanges,
   applyOps,
+  type BlockStyle,
   type Doc,
   describeChange,
   docToFiles,
@@ -52,31 +53,47 @@ describe("a review of the brand's own files", () => {
     expect(reviewChanges(review, before)).toEqual([]);
   });
 
-  it("lists brand.json as one change, whatever part of it changed", () => {
-    const named = applied([{ op: "brand.set", set: { name: "Harbor" } }]);
-    const styled = applied([
-      { op: "style.set", id: "shout", style: { name: "Shout", for: ["heading"], case: "upper" } },
-    ]);
-    for (const doc of [named, styled]) {
-      const [change, ...rest] = reviewChanges(review, doc);
-      expect(rest).toEqual([]);
-      expect(change).toMatchObject({
-        id: "deck/brand",
-        scope: "deck",
-        kind: "changed",
-        field: "brand",
-        by: "outside",
-      });
-      expect(change?.scene).toBeUndefined();
-      expect(describeChange(change as never)).toBe("Brand changed");
-    }
-    const [change] = reviewChanges(review, named);
-    expect(change).toMatchObject({
-      before: { id: "harbor", name: "Harbor Analytics" },
-      after: { id: "harbor", name: "Harbor" },
+  it("lists each property of brand.json as its own change", () => {
+    const named = applied([{ op: "brand.set", set: { name: "Harbor", lock: true } }]);
+    const [name, lock, ...rest] = reviewChanges(review, named);
+    expect(rest).toEqual([]);
+    expect(name).toMatchObject({
+      id: "deck/brand/name",
+      scope: "deck",
+      kind: "changed",
+      field: "brand/name",
+      before: "Harbor Analytics",
+      after: "Harbor",
+      by: "outside",
     });
-    // What an operation cannot write is not a change.
-    expect(change?.before).not.toHaveProperty("schemaVersion");
+    expect(name?.scene).toBeUndefined();
+    expect(describeChange(name as never)).toBe("Brand name changed");
+    expect(lock).toMatchObject({ id: "deck/brand/lock", kind: "added", after: true });
+    // Nothing else in the file is a change, and neither is what an operation cannot write.
+    expect(ids(reviewChanges(review, applied([{ op: "brand.set", set: { fonts: null } }])))).toEqual([
+      "deck/brand/fonts",
+    ]);
+  });
+
+  it("lists each style as its own change, added, changed and removed", () => {
+    const shout: BlockStyle = { name: "Shout", for: ["heading"], case: "upper" };
+    const doc = applied([
+      { op: "style.set", id: "shout", style: shout },
+      { op: "style.set", id: "kicker", style: null },
+      {
+        op: "style.set",
+        id: "quiet-panel",
+        style: { ...(before.brand?.styles?.["quiet-panel"] as BlockStyle), name: "Calm panel" },
+      },
+    ]);
+    const changes = reviewChanges(review, doc);
+    expect(changes.map((change) => `${change.id} ${change.kind}`)).toEqual([
+      "deck/style:kicker removed",
+      "deck/style:quiet-panel changed",
+      "deck/style:shout added",
+    ]);
+    expect(changes[2]).toMatchObject({ field: "style:shout", after: shout, by: "outside" });
+    expect(describeChange(changes[2] as never)).toBe('Style "shout" added');
   });
 
   it("lists each template as its own change, added, changed and removed", () => {
@@ -114,7 +131,7 @@ describe("a review of the brand's own files", () => {
     const both = applied(newTemplateAndScene());
     const changed = applied([{ op: "brand.set", set: { name: "Harbor" } }], both);
     expect(ids(reviewChanges(review, changed))).toEqual([
-      "deck/brand",
+      "deck/brand/name",
       "deck/template:note",
       "scene:welcome/template",
     ]);
@@ -127,8 +144,8 @@ describe("accepting a change of the brand's files", () => {
 
   it("copies brand.json into the reviewed deck and leaves the templates to be reviewed", () => {
     const doc = applied([{ op: "brand.set", set: { name: "Harbor" } }, ...newTemplateAndScene()]);
-    const accepted = acceptChanges(review, doc, ["deck/brand"]);
-    expect(accepted).toMatchObject({ ok: true, accepted: ["deck/brand"] });
+    const accepted = acceptChanges(review, doc, ["deck/brand/name"]);
+    expect(accepted).toMatchObject({ ok: true, accepted: ["deck/brand/name"] });
     if (!accepted.ok) return;
     expect(accepted.review.brand?.name).toBe("Harbor");
     expect(Object.keys(accepted.review.templates ?? {}).sort()).toEqual(["chart-and-note", "cover"]);
@@ -207,11 +224,58 @@ describe("reverting a change of the brand's files", () => {
       { op: "style.set", id: "shout", style: { name: "Shout", for: ["heading"], case: "upper" } },
       { op: "style.set", id: "kicker", style: null },
     ]);
-    const reverted = revertChanges(review, doc, ["deck/brand"]);
-    expect(reverted).toMatchObject({ ok: true, reverted: ["deck/brand"], brandChanged: true });
+    const every = ["deck/brand/name", "deck/brand/lock", "deck/style:kicker", "deck/style:shout"];
+    const reverted = revertChanges(review, doc, every);
+    expect(reverted).toMatchObject({ ok: true, reverted: every, brandChanged: true });
     if (!reverted.ok) return;
     expect(revisionOf(reverted.doc)).toBe(revisionOf(before));
     expect(reviewChanges(reverted.review, reverted.doc)).toEqual([]);
+  });
+
+  it("refuses one edit and keeps another, a color and a style that a block now uses", () => {
+    const shout: BlockStyle = { name: "Shout", for: ["heading"], case: "upper" };
+    const colors = before.brand?.colors as NonNullable<typeof before.brand>["colors"];
+    const doc = applied([
+      { op: "brand.set", set: { colors: { ...colors, paper: { ...colors?.paper, line: "#9A9A9A" } } } },
+      { op: "style.set", id: "shout", style: shout },
+      { op: "block.set", scene: "welcome", id: "welcome-title", set: { style: "shout" } },
+    ]);
+    expect(ids(reviewChanges(review, doc))).toEqual([
+      "deck/brand/colors",
+      "deck/style:shout",
+      "scene:welcome/block:welcome-title/style",
+    ]);
+    // Accept the style and the block that uses it, revert the color.
+    const accepted = acceptChanges(review, doc, [
+      "deck/style:shout",
+      "scene:welcome/block:welcome-title/style",
+    ]);
+    expect(accepted).toMatchObject({ ok: true });
+    if (!accepted.ok) return;
+    expect(ids(reviewChanges(accepted.review, doc))).toEqual(["deck/brand/colors"]);
+    const reverted = revertChanges(accepted.review, doc, ["deck/brand/colors"]);
+    expect(reverted).toMatchObject({ ok: true, reverted: ["deck/brand/colors"] });
+    if (!reverted.ok) return;
+    expect(reverted.doc.brand?.colors).toEqual(colors);
+    expect(reverted.doc.brand?.styles).toHaveProperty("shout");
+    expect(reviewChanges(reverted.review, reverted.doc)).toEqual([]);
+    // The block's style is a change of the scene, so a style alone cannot be taken back from under it.
+    expect(revertChanges(review, doc, ["deck/style:shout"])).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: "unknown-style" })],
+    });
+  });
+
+  it("reverts one style and keeps another", () => {
+    const doc = applied([
+      { op: "style.set", id: "shout", style: { name: "Shout", for: ["heading"], case: "upper" } },
+      { op: "style.set", id: "calm", style: { name: "Calm", for: ["body"] } },
+    ]);
+    const reverted = revertChanges(review, doc, ["deck/style:shout"]);
+    expect(reverted).toMatchObject({ ok: true, reverted: ["deck/style:shout"] });
+    if (!reverted.ok) return;
+    expect(Object.keys(reverted.doc.brand?.styles ?? {}).sort()).toEqual(["calm", "kicker", "quiet-panel"]);
+    expect(ids(reviewChanges(reverted.review, reverted.doc))).toEqual(["deck/style:calm"]);
   });
 
   it("takes a template the agent added out again, and brings a removed one back", () => {
@@ -330,7 +394,7 @@ describe("whose change it is", () => {
   it("marks a change of the brand the agent made as the agent's, and a person's own edit as reviewed", () => {
     const agent = applied([{ op: "brand.set", set: { name: "Harbor" } }]);
     const recorded = recordAgentEdit(review, before, agent);
-    expect(reviewChanges(recorded, agent)).toMatchObject([{ id: "deck/brand", by: "agent" }]);
+    expect(reviewChanges(recorded, agent)).toMatchObject([{ id: "deck/brand/name", by: "agent" }]);
 
     // A person then renames a template; theirs is folded into the reviewed deck and leaves only the agent's.
     const edited = applied(
@@ -344,7 +408,7 @@ describe("whose change it is", () => {
       agent,
     );
     const folded = foldEdit(recorded, agent, edited);
-    expect(reviewChanges(folded, edited)).toMatchObject([{ id: "deck/brand", by: "agent" }]);
+    expect(reviewChanges(folded, edited)).toMatchObject([{ id: "deck/brand/name", by: "agent" }]);
     expect(folded.templates?.cover?.name).toBe("Front page");
   });
 });

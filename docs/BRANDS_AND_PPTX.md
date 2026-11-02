@@ -591,9 +591,17 @@ Found, not fixed (older than the brand work):
   `highlight`, `pull-quote`, `label`. They use theme colors only, so they follow whatever palette and font pair the deck
   has. Frames leave the foot of the slide to the chrome and the sources band; `section` and `closing` are on the `text`
   color with minimal chrome, `full-image` has none. No check was changed to make one pass.
+- **The built-ins' frames are not the layouts' areas.** A scene on a built-in template is placed by its frames, and they
+  are smaller than the layouts they stand in for. The review measured the `statement` template's evidence slot at 43% of
+  the slide's height where the `claim-evidence` layout's evidence area is 54%; the frames leave the foot to the chrome
+  and the sources band. A deck moved from a layout to a template gets less room for its evidence, and its text may need
+  to be cut.
 - **`full-image` is not a full-bleed picture.** A title cannot be drawn over a picture: the render reports `overlap`
   for any block over an image block. The template is a picture band over the top 69% of the slide (`contain`, so it
-  is never cropped) with the title on a plate below it.
+  is never cropped) with the title on a plate below it. The slot is as wide as the slide, and its description and hint
+  now say the slot is, not that the picture fills it: the player draws an image inside its slot (`contain`) with a
+  border, rounded corners and a background, so the picture did not reach the edges as the first description said.
+  A rule in `player.css` for a picture slot's image is to follow the step 3 merge.
 - **Proof.** Every built-in, with a sample scene each (`brand-commands-fixtures.ts`), draws with no render finding on
   both presets, all four font pairs, with and without three sources, and under the Harbor and Tidewell brands, and each
   slot's box is within 1 px of its frame. The same scenes with half again as much text in every block that is not a
@@ -601,21 +609,34 @@ Found, not fixed (older than the brand work):
   headroom for a machine with wider fonts than this one.
 - **Sizes.** The built-ins are a chunk of their own in the editor, fetched for a deck that names a template or style
   of Depthcue's, as the brand checks are (`packages/editor/src/brandchecks.ts` is the stand-in for both modules, and the
-  store waits for the chunk and reads the deck again). Editor script 92,106 to 92,082 of 92,160; new row editor
-  built-ins 1,975 of 4,096; core runtime 41,084 to 43,221 gzip of 61,440; the exported page is the same size and the
+  store waits for the chunk and reads the deck again). Editor script 92,106 to 92,069 of 92,160; new row editor
+  built-ins 1,971 of 4,096; core runtime 41,084 to 43,269 gzip of 61,440; the exported page is the same size and the
   player rows moved by 10 bytes or less either way. A search of the player files finds no built-in template and no
   review code in them.
-- **Review.** A brand change is one change in scope `deck`: `deck/brand` (the whole `brand.json`, as one field, so
-  accepting it accepts every edit in the file, including an agent's) and `deck/template:<id>` per template file, each
-  `added`, `changed` or `removed`. Revert puts the files back. An accept or revert that would leave a scene naming a
-  template or style that only a change not chosen holds fails with the deck's own `unknown-template` or `unknown-style`;
-  the command line's refusal (`cli/src/review-api.ts`) adds which changes to name in the same call to its hint. That
-  hint is not in core, because core's code is in the editor's script, which had 54 bytes of room. The editor's review
-  panel shows these as "Deck, brand" until step 8 draws them, and gives no such hint.
+- **Review.** A brand change is a set of changes in scope `deck`, one per thing a person would accept or refuse on its
+  own: `deck/brand/<key>` for each property of `brand.json` (`name`, `colors`, `fonts`, `logos`, `chrome`, `lock`,
+  `hideBuiltIn`, the `BRAND_KEYS` but `id`), `deck/style:<id>` for each style in it and `deck/template:<id>` for each
+  template file, each `added`, `changed` or `removed`. The whole file is one change, `deck/brand`, only when a brand
+  is made, taken off or given another id, which is not an edit to part of one. (The first version of this step made the
+  whole file one change, so accepting a color accepted a style and a block that used it; the review of it blocked on
+  that.) Revert puts the files back. An accept or revert that would leave a scene naming a template or style that only
+  a change not chosen holds fails with the deck's own `unknown-template` or `unknown-style`; the command line's refusal
+  (`cli/src/review-api.ts`) adds which changes to name in the same call to its hint. That hint is not in core, because
+  core's code is in the editor's script, which had 54 bytes of room. The editor's review panel shows these as "Deck,
+  brand" until step 8 draws them, and gives no such hint.
+- **The editor and Depthcue's own templates.** A revert or an accept that puts a scene back on a template of Depthcue's
+  failed in the editor when the built-ins chunk had never been fetched, because the checks read the kit from the chunk
+  and a deck that names no built-in did not fetch it. `reviewbook.ts` now fetches the chunk whenever it reads a review,
+  so the first revert is not the first fetch (`packages/editor/test/reviewbook-builtins.test.ts`). The chunk is
+  now fetched for every deck that has a review, not only one that names a built-in.
 - **`brand init <dir> [--name] [--json]`.** Writes `brand.json` alone: both presets' palettes, `fonts: "editorial"`,
   a footer with the brand's name, a slide number and the top accent. It refuses a folder with anything in it (exit 2,
   nothing written), makes the folder when it is missing, and checks its own output before it writes.
 - **`brand check <brand folder | deck folder> [--json]`.** Exit 0 clean or warnings only, 1 errors, 2 unreadable.
+  A deck folder that cannot be read as a deck (`{ not json`), or whose `brand.json` is broken, is 2 with the errors
+  that stop it, and its brand is reported as not checked (`deck-unreadable`); a missing folder is 2 too. With `--json`
+  it always prints JSON, `{ ok: false, message }` when there is nothing else to say. A brand folder with two file
+  names that differ only in letter case is an error (`brand-file-case`).
   A deck folder reports only what is about its brand; a brand folder is checked on both presets, and Depthcue's own
   templates are then checked under the brand's styles as warnings (`built-in-*`), because a brand style that does not
   fit a built-in template breaks a deck that uses it. File-level errors (a template file named for another id) stop
@@ -624,14 +645,50 @@ Found, not fixed (older than the brand work):
   `logos/` and `images/` as real files, never links; the import marker and anything else in the folder stay behind. A
   folder with a link in it, a name a brand cannot carry, more than 200 files or 64 MB is refused. The JSON goes in as
   `brand.set`, `style.set` and `template.set` operations against the deck's current revision through `saveDeckDir`, so
-  a deck that changed meanwhile is refused (exit 3) and a refused save puts the copied fonts back. A record, `brand/.depthcue-brand-use`,
-  keeps a hash of every file, `[old, new]` while the copy is under way. Replacing a deck brand is refused when a recorded
-  file differs from its record, a file was added, or there is no record at all, naming each file and why; `--force`
-  replaces them and the result lists what it overwrote. Files of the old brand that the new one lacks are removed
-  (and their empty folders), unless changed since, when they are kept and listed. A scene that uses a template the new
-  brand lacks is refused with no override, naming the scene, the template and the `retemplate` operations to the kit
-  template that leaves the fewest blocks unplaced; `--json` carries them with `unplaced`. A style a scene uses that the
-  new brand lacks is a deck error and refused the same way, by the checks `apply` runs.
+  a deck that changed meanwhile is refused (exit 3). A record, `brand/.depthcue-brand-use`, keeps a hash of every
+  file, `[old, new]` while the copy is under way. Replacing a deck brand is refused when a recorded file differs from
+  its record, a file was added, or there is no record at all, naming each file and why; `--force` replaces them and
+  the result lists what it overwrote. A scene that uses a template the new brand lacks is refused with no override,
+  naming the scene, the template and the `retemplate` operations to the kit template that leaves the fewest blocks
+  unplaced; `--json` carries them with `unplaced`. A style a scene uses that the new brand lacks is a deck error and
+  refused the same way, by the checks `apply` runs.
+- **What `brand use` removes, and what it never does.** The review of the first version found ways it lost files or left
+  a deck that did not check, and each is now a rule with a test (`brand-commands-safety.test.ts`,
+  `brand-commands-failure.test.ts`).
+  - _Never through a link._ A file of the old brand is removed only when no folder or name on the way to it is a link.
+    A deck whose `brand/fonts` is a junction to a folder shared with other decks had that folder emptied, with
+    `--force` too; now each file is kept and listed with why (`kept brand/fonts/X (is behind the link brand/fonts, so
+    it was left where it is)`), and `--force` does not change that. A link on the way to a file the brand copies is a
+    refusal as before.
+  - _Letter case._ A deck on a computer that ignores case answers to `Bold.woff2` and `bold.woff2` alike. A file is
+    compared with the record only under the letters it was written with, a file of the old brand whose lowercase
+    name is a file of the new brand is never removed (it is listed as kept, `differs only in letter case from a file of
+    the new brand`), and a file of the new brand that takes the place of one with other letters is written after the
+    save and given the new letters, so `brand.json` and the font on disk agree. A brand folder that holds two names
+    that differ only by case is refused by `brand check` (`brand-file-case`) and `brand use`. Before it says it is done,
+    `brand use` checks that every file `brand.json` names is in the deck as the brand has it; a font renamed by case
+    alone had left a deck that failed `depthcue check` and exit 0.
+  - _Failure partway._ Everything before the save is done is put back if any step fails: the record, each font, logo
+    and image, every JSON file the save wrote and the folders it made (`write-failed`, exit 2, nothing changed; it
+    names any file it could not put back). A temporary file whose rename fails is deleted. After the save, a step that
+    does not finish (a stale file that cannot be removed, the final record that cannot be written) is a warning
+    `brand-use-incomplete` on a result that is `ok`; the review is still recorded, and the record still lists what was
+    not removed, so the next `brand use` finishes it. The result is checked with `openDeck` last, and a deck that no
+    longer passes is `incomplete` (exit 2).
+  - _What an open review needs._ Files of the old brand that the new one lacks are removed (and their empty folders),
+    unless changed since, when they are kept and listed with why. The review's baseline (`review.json`) holds the
+    earlier brand, and a revert needs its fonts, logos and images; before, a revert of a brand replaced by `brand use`
+    failed with `missing-brand-file`. Of the two ways to fix it, `brand use` now **keeps** the old brand's files that
+    the baseline still names (`is named by the brand under review, which a revert brings back`) and leaves them in the
+    record, so the next `brand use` after the review closed or moved on removes them. The other, putting them back
+    on revert, would need the review code in the editor's script, which has 91 bytes of room. The result: `depthcue
+    diff revert --all` after a `brand use` restores the old brand with its files. Known limit: after such a revert
+    the record still describes the replaced brand, so the next `brand use` into that deck is refused for the files
+    that differ until `--force`, once.
+  - _Refused names._ `source.ts` refuses the Windows device names (`con`, `prn`, `aux`, `nul`, `com` or `lpt` and a
+    digit, with or without an extension, any case) and names that end in a dot or a space, which a folder made on
+    Linux holds and a Windows computer cannot. The 200 files and 64 MB caps are checked against the size on disk before
+    a file is read.
 - **Binary bytes and the revision.** Fonts, logos and images do not join the deck's revision: the revision guards edits
   by operation, no operation edits these files, the editor never holds their bytes, and assets are the same. What guards
   them is the record's hashes. A deck whose font was swapped by hand shows the same revision, and `brand use` still
@@ -642,26 +699,40 @@ Found, not fixed (older than the brand work):
   brand that hides the built-ins and has no `title`, is refused and no deck is left. No review is started.
 - **The fixture.** `fixtures/decks/tidewell-press` (a made-up publisher, 11 scenes): its own `feature` template, its
   own `quote` over the built-in one, a `dateline` and `margin-note` style, two logos, an Instrument Serif display face
-  and a Source Sans 3 body face (both OFL; the licence texts are in `brand/fonts/OFL.txt`), no mono face. It checks and
-  renders with no finding on both presets.
+  and a Source Sans 3 body face (both OFL; the licence texts are in `brand/fonts/OFL.txt`, with the copyright line of
+  each face as its name table has it), no mono face. The two logos have their words drawn as outlines of those faces,
+  not as text in Georgia and Helvetica, so they look the same on any computer. It checks and renders with no finding on
+  both presets.
+- **`deck_get` is smaller.** With Depthcue's own templates and styles in every deck, the outline's kit was most of an
+  answer. The short answer now lists the templates as `{ id, name }` (and `brand: true` on a brand's own) and the
+  styles by id; the detailed answer has each template's description and slots (role, accepts, hint) and each style's
+  name and kinds. For the `demo` fixture the short answer is 1,002 characters and the detailed one 7,105 (`getOutline`,
+  `kitSummary` in `deck-api.ts`; `packages/cli/test/brand-commands-outline.test.ts`). The tool list is 11,997 of
+  12,000 characters; the one sentence in `deck_get`'s description that named the slots now says `detailed adds slots`.
+- **Revert writes the save layout.** A revert (and an accept) writes the files it changes in the layout `saveDeckDir`
+  gives them, so a hand-formatted scene or template that a review reverts is rewritten in that layout. A file the
+  review does not change keeps its formatting. Left as it is: the text is the same data.
 - **Decisions the brief left open.** The record file's name and format; the transitional hashes; refusing a brand that
   does not pass `brand check`; refusing a brand folder with a link, and the 200 file and 64 MB caps; `use` is an agent
   write in the review and `new` is not; the suggestion for a missing template is the kit template with the fewest
-  unplaced blocks; `--force` never lifts the missing-template refusal; `full-image`'s shape; the review's whole-brand
-  granularity; the editor's built-ins as a second lazy chunk.
+  unplaced blocks; `--force` never lifts the missing-template refusal; `full-image`'s shape; the review's granularity
+  (first one change for the whole file, now one per key, style and template); keeping the old brand's files for a
+  review instead of putting them back on revert; the editor's built-ins as a second lazy chunk.
 - **Outside the write-set.** `packages/cli/test/brand-import-command.test.ts` (the messages for `brand` with no
   subcommand and for `--name` on `brand import`); `packages/editor/src/store.ts` (waits for either lazy chunk);
   `packages/editor/test/{brandchecks,vite-config}.test.ts` and `packages/core/test/brand.test.ts`. In `index.ts`, which
-  is in it, `report` and `summary` are now exported, and `--brand`, `--force` and `--name` are read for `new` and
-  `brand`, which is more than the usage text.
+  is in it, `report` and `summary` moved to `packages/cli/src/report.ts` (and are still exported from `index.ts`) so
+  that `brand/check.ts` does not import `index.ts`, and `--brand`, `--force` and `--name` are read for `new` and
+  `brand`, which is more than the usage text. Cleared in the fix round: `packages/editor/src/reviewbook.ts`,
+  `packages/cli/src/deck-api.ts`. Not cleared, and needed by the same change: the `deck_get` sentence in
+  `packages/mcp/src/server.ts` and the test that reads the outline in `packages/mcp/test/server.test.ts`.
 - **Risks for later steps.**
-  - `deck_get`'s outline lists the kit, so it now carries the ten built-in templates and seven styles
-    (`kitSummary`, in `deck-api.ts`, which this step did not touch); step 6's MCP descriptions and the 12,000
-    character tool list are untouched here.
   - A logo in a bottom corner sits on the sources band; the checks do not flag it (the player places it).
   - An old layout scene under a brand with wider fonts can overflow: the demo deck's `trend` scene is 14 px over
     with Harbor's faces. `render` says so; `brand use` does not predict it.
-  - The review's `deck/brand` is one change for the whole file, so step 8 should show its fields before it asks for
-    an accept.
+  - Step 8 draws `deck/brand/<key>` and `deck/style:<id>` as their own rows; until then the editor shows each as
+    "Deck, brand".
+  - After a revert of a `brand use`, the next `brand use` into that deck needs `--force` once (the record describes the
+    brand the revert took away).
   - `brand use` of a brand into a deck whose brand files have no record is refused until `--force`; a deck made by
     hand needs it once.

@@ -107,7 +107,7 @@ function brandChangesLeft(
     return [];
   return reviewChanges(review, doc)
     .map((change) => change.id)
-    .filter((id) => (id === "deck/brand" || id.startsWith("deck/template:")) && !chosen.includes(id));
+    .filter((id) => /^deck\/(brand|style:|template:)/.test(id) && !chosen.includes(id));
 }
 
 const refusal = (failure: ReviewFailure, left: readonly string[] = []): ReviewRefusal => {

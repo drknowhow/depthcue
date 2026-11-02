@@ -3,9 +3,13 @@
  * JSON goes in as the operations `apply` would run (`brand.set`, `style.set`, `template.set`), against the revision the
  * deck has now, saved by the same code, so it meets the same guards: a deck that changed meanwhile is refused, and a
  * brand folder that is a link is too. The fonts, logos and images are copied byte for byte before that, and put back
- * if the save is refused. They are not part of the deck's revision: the revision is the token for edits by operations,
- * which never touch these files, and the editor does not hold their bytes. A record beside them (see record.ts) lets the
- * next `use` replace what it copied and refuse what someone changed.
+ * if the save is refused or anything fails before it is done. They are not part of the deck's revision: the revision is
+ * the token for edits by operations, which never touch these files, and the editor does not hold their bytes. A record
+ * beside them (see record.ts) lets the next `use` replace what it copied and refuse what someone changed.
+ *
+ * What the earlier brand had that this one does not is removed only when it is safe to: not through a link, not when it
+ * was changed since, not when a file of the new brand has the same name in other letter case, and not while the review
+ * of the deck still holds the earlier brand, which a revert would need.
  */
 import {
   existsSync,
@@ -38,7 +42,7 @@ import {
   templatesOf,
 } from "@depthcue/core";
 import { openDeck } from "../deck-api.ts";
-import { recordAgentWrite } from "../review-file.ts";
+import { loadReviewDir, recordAgentWrite } from "../review-file.ts";
 import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "../save.ts";
 import { checkBrandSource } from "./check.ts";
 import { isJsonFile, readUseRecord, recordText, sha256, USE_RECORD } from "./record.ts";
@@ -51,7 +55,7 @@ export interface MissingTemplate {
   move: { template: string; ops: Op[]; unplaced: string[] } | null;
 }
 
-/** A file of the deck's brand folder that the replacement would overwrite or remove, and why it is not safe to. */
+/** A file of the deck's brand folder that the replacement would overwrite or remove, or left alone, and why. */
 export interface ChangedFile {
   path: string;
   why: string;
@@ -67,7 +71,9 @@ export type UseFailureCode =
   | "bad-op"
   | "invalid-deck"
   | "changed-on-disk"
-  | "refused-save";
+  | "refused-save"
+  | "write-failed"
+  | "incomplete";
 
 export type UseResult =
   | {
@@ -87,10 +93,11 @@ export type UseResult =
       unchanged: string[];
       /** Files an earlier copy made that this brand does not have, removed. */
       removed: string[];
-      /** Files an earlier copy made that this brand does not have, left because they were changed since. */
-      kept: string[];
+      /** Files an earlier copy made that this brand does not have, left where they are, and why. */
+      kept: ChangedFile[];
       /** What `--force` replaced although it was not as copied. */
       overwrote: ChangedFile[];
+      /** The brand-wide findings, and a warning for each step after the save that did not finish. */
       diagnostics: Diagnostic[];
     }
   | {
@@ -136,10 +143,20 @@ export const USE_EXIT: Readonly<Record<UseFailureCode, number>> = {
   "invalid-deck": 1,
   "changed-on-disk": 3,
   "refused-save": 2,
+  "write-failed": 2,
+  incomplete: 2,
 };
 
-/** What stops a copy from writing into the deck: a link where a folder or a file of the brand goes. */
-function linkProblem(deck: string, paths: Iterable<string>): string | undefined {
+/** The first place on the way to a path where the deck has a link, or not the kind of thing a brand's file goes in. */
+interface Blocker {
+  at: string;
+  link: boolean;
+  /** The place is a folder in the path, not its last name. */
+  folder: boolean;
+}
+
+/** What stops a copy from writing into the deck, or a removal from reaching outside it: a link on the way to a path. */
+function blockerOf(deck: string, paths: Iterable<string>): Blocker | undefined {
   const seen = new Set<string>();
   for (const path of paths) {
     const parts = path.split("/");
@@ -153,16 +170,18 @@ function linkProblem(deck: string, paths: Iterable<string>): string | undefined 
       } catch {
         break; // Nothing there yet, and nothing under it.
       }
-      if (found.isSymbolicLink()) {
-        return `${at} in the deck is a link, so copying the brand would write outside the deck. Replace the link with a copy of the folder.`;
-      }
-      if (i < parts.length ? !found.isDirectory() : !found.isFile()) {
-        return `${at} in the deck is not ${i < parts.length ? "a folder" : "a plain file"}, so the brand cannot be copied there.`;
-      }
+      const folder = i < parts.length;
+      if (found.isSymbolicLink()) return { at, link: true, folder };
+      if (folder ? !found.isDirectory() : !found.isFile()) return { at, link: false, folder };
     }
   }
   return undefined;
 }
+
+const copyProblem = ({ at, link, folder }: Blocker): string =>
+  link
+    ? `${at} in the deck is a link, so copying the brand would write outside the deck. Replace the link with a copy of the folder.`
+    : `${at} in the deck is not ${folder ? "a folder" : "a plain file"}, so the brand cannot be copied there.`;
 
 /** The scenes that name a template the brand does not have, each with the move to one it has that leaves fewest blocks over. */
 function missingTemplates(part: BrandPart, doc: Doc): MissingTemplate[] {
@@ -183,36 +202,66 @@ function missingTemplates(part: BrandPart, doc: Doc): MissingTemplate[] {
   return out;
 }
 
+/** Writes a file whole or not at all: a temporary file beside it, renamed over it, and removed if either step fails. */
+function writeWhole(abs: string, data: Uint8Array | string): void {
+  const temporary = `${abs}.depthcue-${process.pid}.tmp`;
+  try {
+    writeFileSync(temporary, data);
+    renameSync(temporary, abs);
+  } catch (error) {
+    try {
+      rmSync(temporary, { force: true });
+    } catch {
+      // The error that matters is the one below.
+    }
+    throw error;
+  }
+}
+
 interface Touched {
   abs: string;
   before: Buffer | undefined;
 }
 
-/** Writes a file whole or not at all, and remembers what was there, so a refused save can put it back. */
+/** Writes files whole, and remembers what was there, so that a failure or a refused save can put it back. */
 function writer() {
   const touched: Touched[] = [];
   const made: string[] = [];
   return {
     put(abs: string, data: Uint8Array | string): void {
-      touched.push({ abs, before: existsSync(abs) ? readFileSync(abs) : undefined });
-      const first = mkdirSync(dirname(abs), { recursive: true });
-      if (first !== undefined) made.push(first);
-      const temporary = `${abs}.depthcue-${process.pid}.tmp`;
-      writeFileSync(temporary, data);
-      renameSync(temporary, abs);
+      const before = existsSync(abs) ? readFileSync(abs) : undefined;
+      const fresh: string[] = [];
+      for (let dir = dirname(abs); !existsSync(dir); dir = dirname(dir)) fresh.push(dir);
+      mkdirSync(dirname(abs), { recursive: true });
+      made.push(...fresh);
+      writeWhole(abs, data);
+      touched.push({ abs, before });
     },
-    undo(): void {
+    /** Removes a file, remembering its bytes. */
+    remove(abs: string): void {
+      const before = existsSync(abs) ? readFileSync(abs) : undefined;
+      rmSync(abs, { force: true });
+      if (before !== undefined) touched.push({ abs, before });
+    },
+    /** Puts back every file written, as it was, and returns the ones that could not be. */
+    undo(): string[] {
+      const stuck: string[] = [];
       for (const { abs, before } of touched.reverse()) {
-        if (before === undefined) rmSync(abs, { force: true });
-        else writeFileSync(abs, before);
+        try {
+          if (before === undefined) rmSync(abs, { force: true });
+          else writeWhole(abs, before);
+        } catch {
+          stuck.push(abs);
+        }
       }
-      for (const folder of made.reverse()) {
+      for (const folder of [...new Set(made)].sort((a, b) => b.length - a.length)) {
         try {
           rmdirSync(folder);
         } catch {
           // Something else is in it now; it stays.
         }
       }
+      return stuck;
     },
   };
 }
@@ -224,6 +273,35 @@ function sweepEmpty(stop: string, file: string): void {
     rmdirSync(dir);
   }
 }
+
+/** Every string in the brand and the templates a review holds as the reviewed deck's, which name the files it needs. */
+function reviewedNames(deck: string): (name: string) => boolean {
+  try {
+    const read = loadReviewDir(deck);
+    if (!read.ok || read.review?.brand === undefined) return () => false;
+    const names = new Set<string>();
+    const walk = (value: unknown): void => {
+      if (typeof value === "string") names.add(value);
+      else if (typeof value === "object" && value !== null)
+        for (const item of Object.values(value)) walk(item);
+    };
+    walk(read.review.brand);
+    walk(read.review.templates);
+    return (name) => names.has(name);
+  } catch {
+    // Not knowing what the review holds, nothing it might need is removed.
+    return () => true;
+  }
+}
+
+const unfinished = (message: string, fix: string): Diagnostic => ({
+  severity: "warning",
+  code: "brand-use-incomplete",
+  file: BRAND_DIR,
+  path: "",
+  message,
+  fix,
+});
 
 /** Copies the brand into the deck folder and makes it the deck's brand, or says why not and leaves the deck as it was. */
 export function useBrand(deck: string, source: BrandSource, options: UseOptions): UseResult {
@@ -251,8 +329,8 @@ export function useBrand(deck: string, source: BrandSource, options: UseOptions)
   const deckBrandFolder = join(deck, BRAND_DIR);
   const incoming = [...source.binaries.keys()];
 
-  const linked = linkProblem(deck, [USE_RECORD, ...incoming.map(brandFilePath)]);
-  if (linked !== undefined) return fail("linked-brand-folder", linked, { rev: base });
+  const linked = blockerOf(deck, [USE_RECORD, ...incoming.map(brandFilePath)]);
+  if (linked !== undefined) return fail("linked-brand-folder", copyProblem(linked), { rev: base });
 
   const missing = missingTemplates(part, doc);
   if (missing.length > 0) {
@@ -263,11 +341,40 @@ export function useBrand(deck: string, source: BrandSource, options: UseOptions)
     );
   }
 
-  // What the deck's brand files are now, to compare with what the last copy left.
+  // What the deck's brand files are now, to compare with what the last copy left. A file is there only under the name
+  // it was written with, in every letter of it: on a computer that ignores case, `Bold.woff2` also answers to
+  // `bold.woff2`, and a deck that holds one must not be read as holding the other.
+  const place = (path: string): string => join(deckBrandFolder, ...path.split("/"));
+  const exact = (path: string): boolean => {
+    let dir = deckBrandFolder;
+    for (const segment of path.split("/")) {
+      try {
+        if (!readdirSync(dir).includes(segment)) return false;
+      } catch {
+        return false;
+      }
+      dir = join(dir, segment);
+    }
+    return true;
+  };
   const diskHash = (path: string): string | undefined => {
     try {
-      const at = join(deckBrandFolder, ...path.split("/"));
-      return lstatSync(at).isFile() ? sha256(readFileSync(at)) : "not-a-file";
+      if (!exact(path)) return undefined;
+      return lstatSync(place(path)).isFile() ? sha256(readFileSync(place(path))) : "not-a-file";
+    } catch {
+      return undefined;
+    }
+  };
+  /** The name a file of the deck has that differs from `path` only in letter case, when there is such a file. */
+  const caseMate = (path: string): string | undefined => {
+    if (exact(path)) return undefined;
+    try {
+      const parts = path.split("/");
+      const last = parts.pop() as string;
+      const mate = readdirSync(dirname(place(path))).find(
+        (name) => name !== last && name.toLowerCase() === last.toLowerCase(),
+      );
+      return mate === undefined ? undefined : [...parts, mate].join("/");
     } catch {
       return undefined;
     }
@@ -296,8 +403,20 @@ export function useBrand(deck: string, source: BrandSource, options: UseOptions)
       }
     }
   }
-  // A file of the brand's that is already in the deck's brand folder with other bytes is overwritten.
+  // A file of the brand's that is already in the deck's brand folder with other bytes, or under another case, is overwritten.
+  const mates = new Map<string, string>();
   for (const [path, data] of source.binaries) {
+    const mate = caseMate(path);
+    if (mate !== undefined) {
+      mates.set(path, mate);
+      if (!record?.files.get(mate)?.includes(diskHash(mate) as string) && !changed.has(path)) {
+        changed.set(
+          path,
+          `differs only in letter case from ${mate}, which is in the deck and was not copied by brand use`,
+        );
+      }
+      continue;
+    }
     const there = diskHash(path);
     if (there === undefined || there === sha256(data)) continue;
     if (record?.files.get(path)?.includes(there)) continue;
@@ -371,14 +490,33 @@ export function useBrand(deck: string, source: BrandSource, options: UseOptions)
     final.set(path, sha256(data));
     (diskHash(path) === final.get(path) ? unchanged : toCopy).push(path);
   }
-  // What an earlier copy made and this brand does not have goes, unless it was changed since.
+  // What an earlier copy made and this brand does not have goes, unless it was changed since, is behind a link, or has
+  // the name of a file of this brand in other letters, which is that file on a computer that ignores case.
+  const incomingLower = new Set(incoming.map((path) => path.toLowerCase()));
   const stale: string[] = [];
-  const kept: string[] = [];
+  const kept: ChangedFile[] = [];
+  const sameName: string[] = [];
   for (const [path, accepted] of record?.files ?? []) {
     if (isJsonFile(path) || source.binaries.has(path)) continue;
     const there = diskHash(path);
     if (there === undefined) continue;
-    (accepted.includes(there) ? stale : kept).push(path);
+    if (incomingLower.has(path.toLowerCase())) {
+      sameName.push(path);
+      continue;
+    }
+    const blocked = blockerOf(deck, [brandFilePath(path)]);
+    if (blocked !== undefined) {
+      kept.push({
+        path: brandFilePath(path),
+        why: blocked.link
+          ? `is behind the link ${blocked.at}, so it was left where it is`
+          : `is behind ${blocked.at}, which is not as it was copied, so it was left where it is`,
+      });
+    } else if (!accepted.includes(there)) {
+      kept.push({ path: brandFilePath(path), why: "was changed after it was copied" });
+    } else {
+      stale.push(path);
+    }
   }
   // Until the copy is done the record accepts a file as it was or as it will be, and a file to go as it is.
   const under = new Map<string, string | readonly string[]>();
@@ -388,54 +526,147 @@ export function useBrand(deck: string, source: BrandSource, options: UseOptions)
   }
   for (const path of stale) under.set(path, diskHash(path) as string);
 
+  // A file that takes the place of one with the same name in other letters is written after the save. Where case does
+  // not count it is the same file, and the brand.json on disk until then names it by the old letters.
+  const early = toCopy.filter((path) => !mates.has(path));
+  const late = toCopy.filter((path) => mates.has(path));
+  /** The files the brand carries that are not in the deck under the name brand.json gives them, with their bytes. */
+  const notThere = (): string[] =>
+    [...source.binaries]
+      .filter(([path, data]) => diskHash(path) !== sha256(data))
+      .map(([path]) => brandFilePath(path));
+
   const files = writer();
   const recordFile = join(deck, ...USE_RECORD.split("/"));
   let written: string[];
   try {
     files.put(recordFile, recordText(brand.id, under));
-    for (const path of toCopy) {
-      files.put(join(deckBrandFolder, ...path.split("/")), source.binaries.get(path) as Uint8Array);
-    }
-    written = saveDeckDir(deck, doc, result.doc);
+    for (const path of early) files.put(place(path), source.binaries.get(path) as Uint8Array);
+    const absent = notThere().filter((path) => !late.map(brandFilePath).includes(path));
+    if (absent.length > 0) throw new Error(`${absent.join(", ")} is not in the deck as it was written.`);
+    // The save's own steps go through the writer too, so that a step that fails halfway is undone with the rest.
+    written = saveDeckDir(deck, doc, result.doc, {
+      write: (dir, path, text) => files.put(join(dir, ...path.split("/")), text),
+      remove: (dir, path) => files.remove(join(dir, ...path.split("/"))),
+    });
   } catch (error) {
+    const stuck = files.undo();
     if (error instanceof ChangedOnDiskError) {
-      files.undo();
       return fail("changed-on-disk", `${error.message} Nothing was copied.`, { rev: base });
     }
     if (error instanceof RefusedSaveError) {
-      files.undo();
       return fail("refused-save", `${error.message} Nothing was copied.`, {
         diagnostics: error.diagnostics,
         rev: base,
       });
     }
-    throw error;
+    return fail(
+      "write-failed",
+      `The brand could not be copied into ${deck}: ${(error as Error).message} ${
+        stuck.length === 0
+          ? "Nothing was changed."
+          : `These files could not be put back: ${stuck.join(", ")}. Run depthcue check ${deck}.`
+      }`,
+      { rev: base },
+    );
   }
+
+  // The deck is saved. From here an error is a warning, and the record and the review are still written.
+  const warnings: Diagnostic[] = [];
+  for (const path of late) {
+    try {
+      files.put(place(path), source.binaries.get(path) as Uint8Array);
+      // Replacing a file keeps the letters it had on some computers: set them as the brand gives them.
+      if (!exact(path)) {
+        renameSync(place(path), `${place(path)}.depthcue-${process.pid}.tmp`);
+        renameSync(`${place(path)}.depthcue-${process.pid}.tmp`, place(path));
+      }
+    } catch (error) {
+      warnings.push(
+        unfinished(
+          `${brandFilePath(path)} could not be written: ${(error as Error).message}`,
+          "Copy it from the brand folder by hand, or run brand use again with --force.",
+        ),
+      );
+    }
+  }
+  const recorded = options.review === false ? [] : recordAgentWrite(deck, doc, result.doc);
+  const needed = options.review === false ? () => false : reviewedNames(deck);
+  const removed: string[] = [];
   for (const path of stale) {
-    const at = join(deckBrandFolder, ...path.split("/"));
-    rmSync(at, { force: true });
-    sweepEmpty(deckBrandFolder, at);
+    // The review still holds the earlier brand, and a revert would need its fonts, logos and images back.
+    if (needed(path)) {
+      kept.push({
+        path: brandFilePath(path),
+        why: "is named by the brand under review, which a revert brings back",
+      });
+      final.set(path, diskHash(path) as string);
+      continue;
+    }
+    try {
+      rmSync(place(path), { force: true });
+      removed.push(path);
+      sweepEmpty(deckBrandFolder, place(path));
+    } catch (error) {
+      final.set(path, diskHash(path) ?? sha256(""));
+      warnings.push(
+        unfinished(
+          `${brandFilePath(path)} could not be removed: ${(error as Error).message}`,
+          "Remove it by hand, or run brand use again.",
+        ),
+      );
+    }
+  }
+  for (const path of sameName) {
+    if (exact(path)) {
+      kept.push({
+        path: brandFilePath(path),
+        why: "differs only in letter case from a file of the new brand, so it was left",
+      });
+    }
   }
   // A template file the save removed can leave its folder empty.
   for (const path of written) {
     const at = join(deck, ...path.split("/"));
-    if (path.startsWith(`${BRAND_DIR}/`) && !existsSync(at)) sweepEmpty(deckBrandFolder, at);
+    try {
+      if (path.startsWith(`${BRAND_DIR}/`) && !existsSync(at)) sweepEmpty(deckBrandFolder, at);
+    } catch {
+      // An empty folder left behind is harmless.
+    }
   }
-  files.put(recordFile, recordText(brand.id, final));
-  const recorded = options.review === false ? [] : recordAgentWrite(deck, doc, result.doc);
+  try {
+    writeWhole(recordFile, recordText(brand.id, final));
+  } catch (error) {
+    warnings.push(
+      unfinished(
+        `The record of the files brand use copied could not be written: ${(error as Error).message}`,
+        "Run brand use again with --force.",
+      ),
+    );
+  }
+  // Whatever happened above, the deck must still pass its own checks before this says it is done.
+  const again = openDeck(deck);
+  if (!again.ok) {
+    return fail(
+      "incomplete",
+      `The brand was copied, but ${deck} no longer passes depthcue check (see below). Nothing was undone.`,
+      { diagnostics: again.diagnostics, rev: result.rev },
+    );
+  }
   return {
     ok: true,
     brand: { id: brand.id, name: brand.name },
     replaced: doc.brand === undefined ? null : { id: doc.brand.id, name: doc.brand.name },
-    upToDate: written.length === 0 && toCopy.length === 0 && stale.length === 0,
+    upToDate: written.length === 0 && toCopy.length === 0 && removed.length === 0,
     prevRev: result.prevRev,
     rev: result.rev,
     written,
     copied: toCopy.map(brandFilePath),
     unchanged: unchanged.map(brandFilePath),
-    removed: stale.map(brandFilePath),
-    kept: kept.map(brandFilePath),
-    overwrote,
-    diagnostics: [...result.diagnostics, ...recorded],
+    removed: removed.map(brandFilePath),
+    kept,
+    // A file that --force allowed for but that was left where it is, being the earlier brand's, was not replaced.
+    overwrote: overwrote.filter((file) => !kept.some((left) => left.path === file.path)),
+    diagnostics: [...result.diagnostics, ...recorded, ...warnings],
   };
 }

@@ -313,7 +313,7 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
     id: "full-image",
     name: "Full image",
     description:
-      "A picture across the width of the slide, edge to edge at the top, with its title on a color plate below it. The brand's chrome is off.",
+      "A picture in the top part of the slide, with its title on a color plate below it. The brand's chrome is off.",
     chrome: "none",
     slots: [
       {
@@ -323,7 +323,7 @@ export const BUILT_IN_TEMPLATES: Readonly<Record<string, Template>> = {
         accepts: ["image"],
         required: true,
         valign: "top",
-        hint: "The picture, in a wide shape: it fills the width of the slide and 69% of its height.",
+        hint: "The picture, in a wide shape: the slot is as wide as the slide and 69% of its height.",
       },
       {
         id: "title",

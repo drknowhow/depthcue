@@ -20,9 +20,8 @@ import {
   styleOf,
   THEMES,
 } from "@depthcue/core";
-import type { Io } from "../index.ts";
-import { report, summary } from "../index.ts";
 import { loadDeckDir } from "../loader.ts";
+import { type Io, report, summary } from "../report.ts";
 import { BrandFolderError, readBrandFolder } from "./source.ts";
 
 const COUNT = (diagnostics: readonly Diagnostic[]) =>
@@ -78,6 +77,22 @@ export function checkBrandSource(source: {
     seen.add(key);
     diagnostics.push({ ...found, file: withoutBrandDir(found.file) });
   };
+  // Two files whose names differ only in letter case are one file on some computers and two on others.
+  const byLetters = new Map<string, string>();
+  for (const path of [...source.binaries.keys()].sort()) {
+    const other = byLetters.get(path.toLowerCase());
+    if (other === undefined) byLetters.set(path.toLowerCase(), path);
+    else {
+      add({
+        severity: "error",
+        code: "brand-file-case",
+        file: path,
+        path: "",
+        message: `${other} and ${path} differ only in letter case, so they are one file on a computer that ignores case.`,
+        fix: "Rename one of them, and the name brand.json gives it.",
+      });
+    }
+  }
   let part: BrandPart | undefined;
   // A deck on each preset: the brand's colors are checked on every preset it gives a palette for and on the deck's.
   for (const theme of THEMES) {
@@ -107,14 +122,28 @@ const exists = (path: string): boolean => statSync(path, { throwIfNoEntry: false
 
 /** Checks a brand folder or a deck folder and prints the report. */
 export function brandCheckCommand(target: string, json: boolean, io: Io): number {
+  const cannot = (message: string): number => {
+    if (json) io.out(JSON.stringify({ ok: false, message }, null, 2));
+    else io.err(message);
+    return 2;
+  };
   try {
-    if (!statSync(target, { throwIfNoEntry: false })?.isDirectory()) {
-      io.err(`${target} is not a folder.`);
-      return 2;
-    }
+    if (!statSync(target, { throwIfNoEntry: false })?.isDirectory())
+      return cannot(`${target} is not a folder.`);
     if (exists(join(target, "deck.json"))) {
       const files = loadDeckDir(target);
       const { doc, diagnostics } = loadDoc(files);
+      if (doc === null) {
+        // A deck that cannot be read has no brand to check, and "no errors" would be a false answer.
+        report(io, diagnostics, json, { kind: "deck", brand: null, code: "deck-unreadable" });
+        if (!json) {
+          io.out(summary(diagnostics));
+          io.err(
+            `${target} could not be read as a deck, so its brand was not checked. Fix the errors above first.`,
+          );
+        }
+        return 2;
+      }
       const found = diagnostics.filter(isAboutBrand);
       if (doc?.brand !== undefined) {
         found.push(
@@ -143,8 +172,6 @@ export function brandCheckCommand(target: string, json: boolean, io: Io): number
     return COUNT(diagnostics) === 0 ? 0 : 1;
   } catch (error) {
     if (!(error instanceof BrandFolderError)) throw error;
-    if (json) io.out(JSON.stringify({ ok: false, message: error.message }, null, 2));
-    else io.err(error.message);
-    return 2;
+    return cannot(error.message);
   }
 }

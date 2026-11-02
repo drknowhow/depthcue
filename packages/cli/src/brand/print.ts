@@ -1,5 +1,7 @@
 /** What `brand use` and `new --brand` say: lines for a person, or data for a program (`--json`). */
-import type { Io } from "../index.ts";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import type { Io } from "../report.ts";
 import { USE_EXIT, type UseResult } from "./use.ts";
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -24,15 +26,17 @@ export function printUse(result: UseResult, deck: string, json: boolean, io: Io)
       );
       io.out(`Revision ${result.prevRev} -> ${result.rev}`);
     }
-    for (const path of result.written) io.out(`  wrote ${path}`);
+    // The save lists the JSON files it wrote and the ones it removed together; a file that is not there now was removed.
+    const there = (path: string): boolean => existsSync(join(deck, ...path.split("/")));
+    for (const path of result.written) io.out(`  ${there(path) ? "wrote" : "removed"} ${path}`);
     for (const path of result.copied) io.out(`  copied ${path}`);
     for (const path of result.removed)
       io.out(`  removed ${path} (copied with the earlier brand, which this one does not have)`);
-    for (const path of result.kept)
-      io.out(`  kept ${path} (copied with the earlier brand and changed since)`);
+    for (const file of result.kept) io.out(`  kept ${file.path} (${file.why})`);
     if (result.unchanged.length > 0)
       io.out(`  ${plural(result.unchanged.length, "file")} already there with the same bytes`);
-    for (const file of result.overwrote) io.out(`  replaced ${file.path} although it ${file.why} (--force)`);
+    for (const file of result.overwrote)
+      io.out(`  ${there(file.path) ? "replaced" : "removed"} ${file.path} although it ${file.why} (--force)`);
     for (const found of result.diagnostics) {
       io.out(`  ${found.file}${found.path}  ${found.severity}  ${found.message}`);
     }

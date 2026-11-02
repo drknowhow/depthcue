@@ -479,6 +479,12 @@ describe("depthcue brand use", () => {
     expect(existsSync(join(deck, "brand", "templates"))).toBe(false);
     expect(json(join(deck, "deck.json")).brand).toBe("acme-widgets");
     expect((await cli("check", deck)).code).toBe(0);
+    // The record is the final one: only what is in the deck now, each file with the one hash it has, no hash for a
+    // file that was removed or one under way.
+    expect(readUseRecord(deck)).toEqual({
+      brand: "acme-widgets",
+      files: new Map([["brand.json", [sha(readFileSync(join(deck, "brand", "brand.json")))]]]),
+    });
   });
 
   it("keeps a file of the old brand that was changed since, and says so", async () => {
@@ -488,9 +494,9 @@ describe("depthcue brand use", () => {
     const acme = await initBrand();
     const forced = await cli("brand", "use", acme, deck, "--force");
     expect(forced.code).toBe(0);
-    expect(forced.out).toContain(
-      "kept brand/fonts/OFL.txt (copied with the earlier brand and changed since)",
-    );
+    expect(forced.out).toContain("kept brand/fonts/OFL.txt (was changed after it was copied)");
+    // --force allowed for it, and it was not replaced.
+    expect(forced.out).not.toContain("although it was changed after it was copied");
     expect(readFileSync(join(deck, "brand", "fonts", "OFL.txt"), "utf8")).toBe("edited by hand");
     expect(readUseRecord(deck)?.files.has("fonts/OFL.txt")).toBe(false);
   });
