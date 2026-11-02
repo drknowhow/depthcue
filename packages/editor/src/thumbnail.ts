@@ -1,4 +1,4 @@
-import type { Scene } from "@depthcue/core";
+import { type DeckLook, type Doc, lookOf, type Scene } from "@depthcue/core";
 import { applyLook, h, type Look, renderScene } from "@depthcue/player";
 
 /** A thumbnail draws the real slide at this width and scales it down, so it shows the true layout. editor.css sets the same size. */
@@ -18,12 +18,30 @@ export interface Drawn {
 export const isStale = (drawn: Drawn | undefined, scene: Scene, look: string) =>
   drawn === undefined || drawn.scene !== scene || drawn.look !== look;
 
+const looks = new WeakMap<Doc, DeckLook>();
+
+/**
+ * How the deck looks, as the player is given it: the deck's colors, the brand's faces and chrome, and the templates and
+ * styles its scenes use. It is worked out once for each version of the document, and the editor draws the canvas, the
+ * strip and the storyboard from it, so all three show the brand the person will present. It needs no brand check, so
+ * the chunk that holds those is not fetched for it.
+ */
+export function lookFor(doc: Doc): DeckLook {
+  const known = looks.get(doc);
+  if (known) return known;
+  const made = lookOf(doc);
+  looks.set(doc, made);
+  return made;
+}
+
 /**
  * The slide as a picture: the real scene at full size, inert so nothing in it takes focus or a click, to be scaled by
- * the `--thumb-k` of whatever holds it. The strip and the storyboard both draw it, so they show the same thing.
+ * the `--thumb-k` of whatever holds it. The strip and the storyboard both draw it, so they show the same thing. It has
+ * the brand's logo, footer and accent but not the slide number, which a thumbnail this small could not show.
  */
 export function thumbnailFrame(scene: Scene, look: Look): HTMLElement {
-  const view = h("div", { class: "dc-view" }, renderScene(scene, { assetBase: "" }));
+  const context = { assetBase: "", ...("colors" in look ? { look } : {}) };
+  const view = h("div", { class: "dc-view" }, renderScene(scene, context));
   for (const node of view.querySelectorAll<HTMLElement>("[data-gated]")) node.dataset.revealed = "true";
   for (const video of view.querySelectorAll("video")) video.controls = false;
   for (const image of view.querySelectorAll("img")) image.loading = "lazy";
@@ -32,7 +50,7 @@ export function thumbnailFrame(scene: Scene, look: Look): HTMLElement {
     { class: "dc-player ed-thumb-frame", inert: true },
     h("div", { class: "dc-stage" }, view),
   );
-  applyLook(frame, look);
+  applyLook(frame, look, "");
   return frame;
 }
 

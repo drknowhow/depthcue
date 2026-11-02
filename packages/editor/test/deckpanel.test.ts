@@ -264,7 +264,10 @@ describe("the Style section of the deck popover", () => {
     expect(control("panel:deck:palette:evidence").value).toBe(PRESETS.paper.evidence.toLowerCase());
     reset("action").click();
     expect(deck()).not.toHaveProperty("palette");
-    expect(frame().style.getPropertyValue("--dc-action")).toBe("");
+    // The deck's look sets every color, so a color put back is the preset's, not none.
+    expect(frame().style.getPropertyValue("--dc-action").toLowerCase()).toBe(
+      PRESETS.paper.action.toLowerCase(),
+    );
   });
 
   it("puts every color back at once, and does nothing when none has been changed", () => {
@@ -335,7 +338,7 @@ describe("the Style section of the deck popover", () => {
     expect(choice("technical").checked).toBe(true);
     store.session.undo();
     expect(deck()).not.toHaveProperty("fonts");
-    expect(frame().hasAttribute("data-fonts")).toBe(false);
+    expect(frame().dataset.fonts).toBe("editorial");
     expect(choice("editorial").checked).toBe(true);
   });
 

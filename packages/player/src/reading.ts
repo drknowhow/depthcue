@@ -1,18 +1,45 @@
-import { type Deck, readsMarkup, type Scene, textFlow } from "@depthcue/core";
+import { type Block, type Deck, readsMarkup, type Scene, textFlow } from "@depthcue/core";
 import { h } from "./dom.ts";
 import { assetUrl } from "./safe.ts";
-import { type RenderContext, renderChartTable, renderSources } from "./scene.ts";
+import { type RenderContext, renderChartTable, renderSources, templateOf } from "./scene.ts";
 import { renderTable } from "./table.ts";
 import { renderFlow } from "./text.ts";
+
+/**
+ * The blocks of a scene in the order a reader meets them, with the claim, if there is one, among them as `"claim"`. A
+ * template scene reads in its template's slot order, whatever order its blocks are written in, with the claim where the
+ * claim slot is; a block without a slot (or in a slot the template lacks) follows. Any other scene reads claim first,
+ * then its blocks as written, as it always has.
+ */
+function readingOrder(scene: Scene, ctx: RenderContext): Array<Block | "claim"> {
+  const template = templateOf(scene, ctx.look);
+  const items: Array<Block | "claim"> = scene.summary ? ["claim", ...scene.blocks] : [...scene.blocks];
+  if (!template) return items;
+  const rank = (item: Block | "claim"): number => {
+    const slots = template.slots;
+    const at =
+      item === "claim"
+        ? slots.findIndex((slot) => slot.role === "claim")
+        : slots.findIndex((slot) => slot.id === item.slot);
+    return at < 0 ? (item === "claim" ? -1 : slots.length) : at;
+  };
+  return items
+    .map((item, at) => ({ item, at, rank: rank(item) }))
+    .sort((a, b) => a.rank - b.rank || a.at - b.at)
+    .map(({ item }) => item);
+}
 
 /**
  * The words of a scene when its author wrote no reading text: headings and body text, in order, with the formatting
  * and lists of a scene that reads markup. A scene below 0.3 gives its text as written.
  */
-function fallbackText(scene: Scene): HTMLElement[] {
+function fallbackText(scene: Scene, ctx: RenderContext): HTMLElement[] {
   const out: HTMLElement[] = [];
-  if (scene.summary) out.push(h("p", {}, scene.summary.text));
-  for (const block of scene.blocks) {
+  for (const block of readingOrder(scene, ctx)) {
+    if (block === "claim") {
+      if (scene.summary) out.push(h("p", {}, scene.summary.text));
+      continue;
+    }
     if (block.type !== "text" || block.role === "caption") continue;
     out.push(...(readsMarkup(scene) ? renderFlow(textFlow(scene, block)) : [h("p", {}, block.text)]));
   }
@@ -21,7 +48,8 @@ function fallbackText(scene: Scene): HTMLElement[] {
 
 function evidence(scene: Scene, ctx: RenderContext): HTMLElement[] {
   const out: HTMLElement[] = [];
-  for (const block of scene.blocks) {
+  for (const block of readingOrder(scene, ctx)) {
+    if (block === "claim") continue;
     if (block.type === "bar-chart") {
       out.push(h("figure", { class: "dc-figure" }, renderChartTable(block)));
     } else if (block.type === "table") {
@@ -55,7 +83,7 @@ export function renderReading(deck: Deck, scenes: readonly Scene[], ctx: RenderC
         "article",
         { class: "dc-reading-scene", "data-scene": scene.id },
         h("h2", {}, scene.title),
-        ...(scene.reading ? [h("p", {}, scene.reading.text)] : fallbackText(scene)),
+        ...(scene.reading ? [h("p", {}, scene.reading.text)] : fallbackText(scene, ctx)),
         ...evidence(scene, ctx),
         renderSources(scene, ctx),
       ),

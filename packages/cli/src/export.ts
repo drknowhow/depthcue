@@ -13,16 +13,20 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   assetsOf,
+  BRAND_DIR,
+  brandFilePath,
   cueMapPath,
+  type DeckLook,
   type Diagnostic,
   EXPORT_FORMAT,
   type ExportData,
   type FontPair,
+  lookOf,
+  pageLook,
   type Scene,
-  styleOf,
 } from "@depthcue/core";
 import { openDeck } from "./deck-api.ts";
-import { builtFontsDir, builtStandaloneDir } from "./serve.ts";
+import { builtFontsDir, builtStandaloneDir, isBrandFile } from "./serve.ts";
 
 /** Names the file in the exported folder that lists what the export wrote, so a later export can replace it. */
 export const EXPORT_MARKER = ".depthcue-export";
@@ -61,6 +65,13 @@ export interface ExportSummary {
   skipped: string[];
   /** Cue maps embedded in the page, by deck-relative path. */
   cueMaps: string[];
+  /** The brand files copied, deck-relative and in path order: its faces, the logo for the deck's theme and its template images. */
+  brandFiles: string[];
+  /**
+   * The license texts copied beside the faces, export-relative and in path order: the `.txt` files that sit beside the
+   * brand's font files, and the license of each built-in family the page's font pair uses. A page does not read them.
+   */
+  licenses: string[];
   /** The font pair the page carries. Only this pair's files are copied, so the page weighs what its deck uses. */
   fonts: FontPair;
   notes: boolean;
@@ -105,12 +116,16 @@ function page(data: ExportData, fonts: FontPair): string {
 const withoutNotes = (scene: Scene): Scene =>
   Object.fromEntries(Object.entries(scene).filter(([key]) => key !== "notes")) as Scene;
 
+/** The license texts of the built-in families, by family, that the build writes beside the font files. */
+const LICENSES_FILE = "licenses.json";
+
 /**
- * The font files a pair's stylesheet names, which sit beside it. The build writes the stylesheet from the font manifest,
- * so a file it names that is not there, or a `url()` this does not read, would leave a page with a font it cannot load.
- * Both stop the export instead.
+ * The font files a pair's stylesheet names, which sit beside it, and the license text of each family it names. The build
+ * writes the stylesheet from the font manifest, so a file it names that is not there, or a `url()` this does not read,
+ * would leave a page with a font it cannot load. Both stop the export instead. So does a family with no license text:
+ * the license asks to travel with the font, and an export without it would be wrong in a way nobody sees.
  */
-function fontStylesheet(fontsDir: string, pair: FontPair): { files: string[] } {
+function fontStylesheet(fontsDir: string, pair: FontPair): { files: string[]; licenses: string[] } {
   const sheet = join(fontsDir, `${pair}.css`);
   const missing = (what: string) =>
     new ExportError(
@@ -127,7 +142,105 @@ function fontStylesheet(fontsDir: string, pair: FontPair): { files: string[] } {
     );
   }
   for (const name of files) if (!existsSync(join(fontsDir, name))) throw missing(`file ${name}`);
-  return { files: [...new Set(files)].sort() };
+
+  const listFile = join(fontsDir, LICENSES_FILE);
+  let list: Record<string, unknown> = {};
+  try {
+    list = JSON.parse(readFileSync(listFile, "utf8")) as Record<string, unknown>;
+  } catch {
+    throw new ExportError(
+      "player-not-built",
+      `The font license list is missing or unreadable (${listFile}). Build the player again: pnpm build.`,
+    );
+  }
+  const licenses = new Set<string>();
+  for (const family of new Set(
+    [...css.matchAll(/font-family:\s*"([^"]+)"/g)].map((match) => match[1] as string),
+  )) {
+    const name = Object.hasOwn(list, family) ? list[family] : undefined;
+    if (typeof name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.txt$/.test(name)) {
+      throw new ExportError(
+        "player-not-built",
+        `The font license list (${listFile}) has no license text for "${family}". Build the player again: pnpm build.`,
+      );
+    }
+    if (!existsSync(join(fontsDir, name))) throw missing(`license text ${name}`);
+    licenses.add(name);
+  }
+  return { files: [...new Set(files)].sort(), licenses: [...licenses].sort() };
+}
+
+const FONT_FILE = /\.(woff2|woff|ttf|otf)$/i;
+/** A license text beside a font: a plain `.txt` name, which also keeps the marker's own rules about paths. */
+const LICENSE_TEXT = /^[A-Za-z0-9][A-Za-z0-9._-]*\.txt$/i;
+
+/** A brand file the export did not copy, though the page names it: the page will draw without it, so it is said. */
+const notCopied = (path: string, why: string): Diagnostic => ({
+  severity: "warning",
+  code: "brand-file-not-copied",
+  file: path,
+  path: "",
+  message: `${path} ${why}, so it was not copied into the export. The exported page still names it and will draw without it.`,
+  fix: "Put the file itself in the brand folder, not a link to a file outside it, and export again.",
+});
+
+/**
+ * The brand files a deck draws with, deck-relative: the brand's faces, the logo for the deck's theme, and the images
+ * its templates put behind a slide. Nothing else in the brand folder goes, such as brand.json, the templates or a
+ * logo for the other theme, because a page does not read them. Only files the server would hand a page, that are
+ * there and that stay inside the brand folder, are listed. One the page names that is left out, because it is a link
+ * out of the brand folder or is not a file, comes back with a warning that names it.
+ */
+export function brandFilesOf(look: DeckLook, folder: string): { files: string[]; left: Diagnostic[] } {
+  const wanted = new Set<string>();
+  for (const face of [look.faces?.display, look.faces?.body, look.faces?.mono]) {
+    for (const file of face?.files ?? []) wanted.add(file.path);
+  }
+  if (look.chrome?.logo) wanted.add(look.chrome.logo.path);
+  for (const template of Object.values(look.templates)) {
+    if (template.background?.image) wanted.add(brandFilePath(template.background.image));
+  }
+  const root = realish(join(folder, BRAND_DIR));
+  const prefix = `${BRAND_DIR}/`;
+  const files: string[] = [];
+  const left: Diagnostic[] = [];
+  for (const path of [...wanted].sort()) {
+    // The same rule as the server's: a path it would not hand a page is not one the export copies.
+    if (!path.startsWith(prefix) || !isBrandFile(path.slice(prefix.length))) {
+      left.push(notCopied(path, "is not a path a page may read"));
+      continue;
+    }
+    const file = join(folder, path);
+    if (!existsSync(file) || !statSync(file).isFile()) {
+      left.push(notCopied(path, "is not a file"));
+    } else if (!within(root, realish(file))) {
+      left.push(notCopied(path, "is a link to a file outside the brand folder"));
+    } else {
+      files.push(path);
+    }
+  }
+  return { files, left };
+}
+
+/**
+ * The license texts that sit beside the brand's font files: every `.txt` in a folder a copied font is in. They go to the
+ * same place in the export and are not part of what a page reads, which is why the server does not hand them out.
+ */
+function brandLicensesOf(folder: string, copied: readonly string[]): { files: string[]; left: Diagnostic[] } {
+  const root = realish(join(folder, BRAND_DIR));
+  const files: string[] = [];
+  const left: Diagnostic[] = [];
+  for (const dir of new Set(copied.filter((path) => FONT_FILE.test(path)).map((path) => dirname(path)))) {
+    const names = readdirSync(join(folder, dir)).filter((name) => LICENSE_TEXT.test(name));
+    for (const name of names.sort()) {
+      const path = `${dir}/${name}`;
+      const file = join(folder, path);
+      if (!statSync(file).isFile()) continue;
+      if (within(root, realish(file))) files.push(path);
+      else left.push(notCopied(path, "is a link to a file outside the brand folder"));
+    }
+  }
+  return { files, left };
 }
 
 /** The path as the file system sees it, even when its last parts do not exist yet. */
@@ -211,7 +324,8 @@ function sweep(out: string, stale: readonly string[]) {
 
 /**
  * Exports a deck folder as a folder that opens by double-click: `index.html` with the deck inside it, the
- * script and styles beside it, the one font pair the deck uses, and only the assets a scene names. Nothing is fetched, so it works from
+ * script and styles beside it, the one font pair the deck uses, only the assets a scene names, and the brand files it
+ * draws with (its faces, the logo for its theme and its templates' images). Nothing is fetched, so it works from
  * `file://`, from a USB stick, and with no network. A deck with errors writes nothing.
  */
 export function exportDeck(request: ExportRequest): ExportResult {
@@ -231,8 +345,11 @@ export function exportDeck(request: ExportRequest): ExportResult {
     }
   }
 
-  // The deck's font pair decides which stylesheet goes, and that stylesheet names the files that go with it.
-  const fonts = styleOf(doc.deck).fonts;
+  // How the deck looks is worked out here, once, and goes into the page, so the page needs no brand file to read it.
+  // The look's font pair decides which stylesheet goes (a brand's faces load over it), and that stylesheet names the
+  // files that go with it.
+  const look = lookOf(doc);
+  const fonts = look.fonts;
   const fontsDir = request.fontsDir ?? builtFontsDir();
   const fontSheet = fontStylesheet(fontsDir, fonts);
 
@@ -274,10 +391,27 @@ export function exportDeck(request: ExportRequest): ExportResult {
   const assets = [...used].sort();
   const skipped = [...doc.assets].filter((path) => !used.has(path) && !Object.hasOwn(files, path)).sort();
 
-  const data: ExportData = { format: EXPORT_FORMAT, deck: doc.deck, scenes, files };
+  const brand = brandFilesOf(look, request.folder);
+  const brandFiles = brand.files;
+  const brandLicenses = brandLicensesOf(request.folder, brandFiles);
+  // The page gets the look cut to what the player reads, so it does not carry the templates' hints or accepted kinds.
+  const data: ExportData = { format: EXPORT_FORMAT, deck: doc.deck, scenes, files, look: pageLook(look) };
   const html = page(data, fonts);
-  const fontPaths = [`${fonts}.css`, ...fontSheet.files].map((name) => `${FONTS_DIR}/${name}`);
-  const writing = new Set(["index.html", ...runtimeFiles, ...fontPaths, ...assets]);
+  const fontPaths = [`${fonts}.css`, ...fontSheet.files, ...fontSheet.licenses].map(
+    (name) => `${FONTS_DIR}/${name}`,
+  );
+  const licenses = [
+    ...fontSheet.licenses.map((name) => `${FONTS_DIR}/${name}`),
+    ...brandLicenses.files,
+  ].sort();
+  const writing = new Set([
+    "index.html",
+    ...runtimeFiles,
+    ...fontPaths,
+    ...assets,
+    ...brandFiles,
+    ...brandLicenses.files,
+  ]);
 
   const stale = claim(outDir, writing);
   mkdirSync(outDir, { recursive: true });
@@ -289,7 +423,7 @@ export function exportDeck(request: ExportRequest): ExportResult {
   sweep(outDir, stale);
 
   let bytes = 0;
-  for (const path of assets) {
+  for (const path of [...assets, ...brandFiles, ...brandLicenses.files]) {
     const to = join(outDir, path);
     mkdirSync(dirname(to), { recursive: true });
     copyFileSync(join(request.folder, path), to);
@@ -300,7 +434,7 @@ export function exportDeck(request: ExportRequest): ExportResult {
     bytes += statSync(join(outDir, name)).size;
   }
   mkdirSync(join(outDir, FONTS_DIR), { recursive: true });
-  for (const name of [`${fonts}.css`, ...fontSheet.files]) {
+  for (const name of [`${fonts}.css`, ...fontSheet.files, ...fontSheet.licenses]) {
     copyFileSync(join(fontsDir, name), join(outDir, FONTS_DIR, name));
     bytes += statSync(join(outDir, FONTS_DIR, name)).size;
   }
@@ -316,11 +450,13 @@ export function exportDeck(request: ExportRequest): ExportResult {
       assets,
       skipped,
       cueMaps,
+      brandFiles,
+      licenses,
       fonts,
       notes: keepNotes,
       files: writing.size,
       bytes,
-      warnings: opened.diagnostics,
+      warnings: [...opened.diagnostics, ...brand.left, ...brandLicenses.left],
     },
   };
 }

@@ -17,7 +17,7 @@ import {
 import { createModuleHost, type ModuleEvent, type ModuleRegistry, type ModuleState } from "./modules.ts";
 import { renderReading } from "./reading.ts";
 import { assetUrl } from "./safe.ts";
-import { renderScene } from "./scene.ts";
+import { type RenderContext, renderScene } from "./scene.ts";
 import { applyLook } from "./style.ts";
 
 export type Mode = "present" | "read";
@@ -135,7 +135,12 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     },
     ...(options.onModule ? { onEvent: options.onModule } : {}),
   });
-  const context = () => ({ assetBase: source.assetBase, language: source.deck.language });
+  const context = (): RenderContext => ({
+    assetBase: source.assetBase,
+    language: source.deck.language,
+    ...(source.look ? { look: source.look } : {}),
+    number: position.scene + 1,
+  });
   const current = (): Scene => source.scenes[position.scene] as Scene;
 
   function applySteps() {
@@ -171,7 +176,7 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     const scene = current();
     const total = source.scenes.length;
     const steps = stepCount(scene);
-    applyLook(root, source.deck);
+    applyLook(root, source.look ?? source.deck, source.assetBase);
     root.dataset.mode = mode;
     root.dataset.notes = notes && mode === "present" ? "open" : "closed";
     deckTitle.textContent = source.deck.title;

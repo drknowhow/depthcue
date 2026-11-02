@@ -215,8 +215,13 @@ describe("fonts whose license reserves their name", () => {
   });
 });
 
+/**
+ * The stack a pair rule declares, without the brand-face variable a stack starts with: `var(--dc-face-display,)` is
+ * nothing when a deck has no brand, and the family of the face when it has one, so what a pair is drawn in is what follows.
+ */
+const withoutBrand = (stack: string) => stack.replace(/^\s*var\(--dc-face-[a-z]+,\)\s*/, "");
 /** The first family of a `font-family` list, without its quotes. */
-const firstFamily = (stack: string) => /^\s*"?([^",]+)"?/.exec(stack)?.[1]?.trim();
+const firstFamily = (stack: string) => /^\s*"?([^",]+)"?/.exec(withoutBrand(stack))?.[1]?.trim();
 const declared = (css: string, property: string) => new RegExp(`${property}:\\s*([^;]+);`).exec(css)?.[1];
 
 describe("the font stacks of player.css", () => {
@@ -231,22 +236,44 @@ describe("the font stacks of player.css", () => {
 
   it("answer to the manifest: each pair's display and body fonts are the ones it names", () => {
     for (const [pair, roles] of Object.entries(manifest.pairs)) {
-      // editorial is the default, so tokens.css has its stacks and player.css has no rule for it.
-      const source = pair === "editorial" ? tokens.slice(0, tokens.indexOf("}")) : rule(pair);
+      const source = rule(pair);
       expect(source, `no rule for ${pair}`).not.toBe("");
       expect(firstFamily(declared(source, "--dc-font-display") ?? ""), `${pair} display`).toBe(roles.display);
       expect(firstFamily(declared(source, "--dc-font-ui") ?? ""), `${pair} body`).toBe(roles.body);
     }
   });
 
-  it("set data text in the one mono face every pair names", () => {
+  it("repeat the editorial stacks of tokens.css, which a deck with a brand needs because it always names its pair", () => {
+    const defaults = tokens.slice(0, tokens.indexOf("}"));
+    for (const property of ["--dc-font-display", "--dc-font-ui"]) {
+      expect(withoutBrand(declared(rule("editorial"), property) ?? ""), property).toBe(
+        declared(defaults, property),
+      );
+    }
+  });
+
+  it("put a brand's face in front of every pair's display and body stack, and of the mono one, and nowhere else", () => {
+    for (const pair of FONT_PAIRS) {
+      expect(declared(rule(pair), "--dc-font-display"), `${pair} display`).toMatch(
+        /^var\(--dc-face-display,\)\s/,
+      );
+      expect(declared(rule(pair), "--dc-font-ui"), `${pair} body`).toMatch(/^var\(--dc-face-body,\)\s/);
+    }
+    const any = /\[data-fonts\]\s*\{([^}]*)\}/.exec(player)?.[1] ?? "";
+    expect(declared(any, "--dc-font-mono")).toMatch(/^var\(--dc-face-mono,\)\s/);
+  });
+
+  it("set data text in the one mono face every pair names, in the stack tokens.css has", () => {
     const mono = new Set(Object.values(manifest.pairs).map((roles) => roles.data));
     expect([...mono]).toEqual([firstFamily(declared(tokens, "--dc-font-mono") ?? "")]);
     for (const pair of FONT_PAIRS) expect(rule(pair)).not.toContain("--dc-font-mono");
+    const any = /\[data-fonts\]\s*\{([^}]*)\}/.exec(player)?.[1] ?? "";
+    expect(withoutBrand(declared(any, "--dc-font-mono") ?? "")).toBe(declared(tokens, "--dc-font-mono"));
   });
 
   it("set headings in a weight the display font has a file for, so none is made up by the browser", () => {
     for (const [pair, roles] of Object.entries(manifest.pairs)) {
+      // editorial names no weight: headings take the 400 the stylesheet falls back to.
       const weight = pair === "editorial" ? 400 : Number(declared(rule(pair), "--dc-display-weight"));
       expect(hasWeight(roles.display, weight), `${pair}: ${roles.display} has no ${weight}`).toBe(true);
     }
@@ -267,11 +294,31 @@ describe("scripts/build-fonts.mjs", () => {
     expect(readdirSync(out).sort()).toEqual(
       [
         ...manifest.files.map((file) => file.file),
+        ...Object.values(manifest.families).map((family) => family.licenseFile),
+        "licenses.json",
         "all.css",
         ...Object.keys(manifest.pairs).map((p) => `${p}.css`),
       ].sort(),
     );
     for (const file of manifest.files) expect(sha256(join(out, file.file)), file.file).toBe(file.sha256);
+  });
+
+  it("writes each family's license text beside its fonts, and says whose it is, for an export to copy", () => {
+    const written = JSON.parse(readFileSync(join(out, "licenses.json"), "utf8")) as Record<string, string>;
+    expect(Object.keys(written).sort()).toEqual(Object.keys(manifest.families).sort());
+    for (const [family, info] of Object.entries(manifest.families)) {
+      expect(written[family], family).toBe(info.licenseFile);
+      expect(readFileSync(join(out, info.licenseFile), "utf8"), family).toBe(
+        readFileSync(join(fontsDir, info.licenseFile), "utf8"),
+      );
+    }
+    // Every family a pair's stylesheet names has one, so no export of a pair is without a license text.
+    for (const pair of Object.keys(manifest.pairs)) {
+      const css = readFileSync(join(out, `${pair}.css`), "utf8");
+      for (const [, family] of css.matchAll(/font-family:\s*"([^"]+)"/g)) {
+        expect(written[family as string], `${pair}: ${family}`).toBeTruthy();
+      }
+    }
   });
 
   it("makes each pair's stylesheet name the faces of its own families and nothing else", () => {

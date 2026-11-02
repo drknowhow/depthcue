@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mountPlayer, type Player } from "../src/player.ts";
 import { renderScene } from "../src/scene.ts";
 import { demoSource, sceneWith } from "./helpers.ts";
+import { lookWith, slot, template } from "./looks.ts";
 
 const ctx = { assetBase: "." };
 const frame = { x: 56, y: 14, w: 38, h: 44 };
@@ -302,7 +303,7 @@ describe("a pinned block in the player", () => {
   });
 });
 
-describe("a template scene, until the player places its slots", () => {
+describe("a template scene", () => {
   const scene = sceneWith({
     schemaVersion: "0.4",
     layout: undefined,
@@ -314,15 +315,30 @@ describe("a template scene, until the player places its slots", () => {
       { ...image, frame },
     ],
   });
+  const look = lookWith({
+    templates: {
+      statement: template("statement", [
+        slot("claim", "claim", { x: 6, y: 8, w: 88, h: 26 }),
+        slot("evidence", "content", { x: 6, y: 40, w: 88, h: 48 }),
+      ]),
+    },
+  });
 
-  it("draws the claim first, in a box of its own, and keeps a block pinned with no slot out of every box", () => {
-    const section = renderScene(scene, ctx);
+  it("draws the claim in the claim slot, and a block pinned with no slot over the template, in no box", () => {
+    const section = renderScene(scene, { ...ctx, look });
     const boxes = [...section.querySelectorAll<HTMLElement>(".dc-slot")];
     expect(boxes.map((box) => box.dataset.slot)).toEqual(["claim", "evidence"]);
     expect(boxes[0]?.querySelector(".dc-claim")?.textContent).toBe("Demand doubled.");
     // The pinned body still holds its place in its slot; the overlay has none to hold.
-    expect(placesIn(boxes[1]).slice(1)).toEqual(["t-chart", "ghost"]);
+    expect(placesIn(boxes[1])).toEqual(["t-chart", "ghost"]);
     expect(section.querySelectorAll(".dc-ghost")).toHaveLength(1);
+    expect(idsIn(section.querySelector(".dc-pins"))).toEqual(["t-body", "t-image"]);
+  });
+
+  it("is a plain stack, with the claim first and every block in order, where the page has no look for it", () => {
+    const section = renderScene(scene, ctx);
+    expect(section.querySelector(".dc-slot")).toBeNull();
+    expect(placesIn(section.querySelector(".dc-stack"))).toEqual(["t-claim", "t-chart", "ghost", "ghost"]);
     expect(idsIn(section.querySelector(".dc-pins"))).toEqual(["t-body", "t-image"]);
   });
 });

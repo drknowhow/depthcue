@@ -8,7 +8,7 @@ import type {
   THEME_COLORS,
   THEMES,
 } from "./schema.ts";
-import type { BlockStyle, Deck, Scene, Template } from "./types.ts";
+import type { BlockStyle, Deck, Scene, Template, TemplateSlot } from "./types.ts";
 
 /** The format name an exported page carries, so the page can tell whether it understands its data. */
 export const EXPORT_FORMAT = "depthcue-export/1";
@@ -22,6 +22,8 @@ export interface ExportData {
   deck: Deck;
   scenes: Scene[];
   files: Record<string, unknown>;
+  /** How the deck looks, worked out when it was exported, so the page draws the brand without reading a brand file. */
+  look?: PageLook;
 }
 
 /** A face of a brand's own, ready to load: its family, and its files by deck-relative path. */
@@ -63,3 +65,25 @@ export interface DeckLook {
   /** The templates the deck's scenes use, by id. */
   templates: Record<string, Template>;
 }
+
+/**
+ * What the player reads of a slot: where it is on the slide, what it is for, how it aligns its blocks and the style it
+ * gives them. What it holds, how many and what it hints at are for the tools that fill a template.
+ */
+export type PageSlot = Pick<TemplateSlot, "id" | "role" | "frame" | "valign" | "style">;
+
+/** What the player reads of a template: its background, its chrome and its slots. Its name and description are not read. */
+export type PageTemplate = Pick<Template, "background" | "chrome"> & { slots: PageSlot[] };
+
+/** What the player reads of a component style: how it dresses a block. Its name and the kinds it is for are not read. */
+export type PageStyle = Omit<BlockStyle, "name" | "for">;
+
+/**
+ * A `DeckLook` as the page carries it, from `/look.json` and in an export: the same, but for the parts of its templates
+ * and styles that only the tools read. The player takes this type, so what it reads is what `pageLook` keeps; a
+ * `DeckLook` is one too, and draws the same.
+ */
+export type PageLook = Omit<DeckLook, "styles" | "templates"> & {
+  styles: Record<string, PageStyle>;
+  templates: Record<string, PageTemplate>;
+};

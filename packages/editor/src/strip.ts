@@ -5,7 +5,7 @@ import type { Count } from "./commentview.ts";
 import { problemOf } from "./fields.ts";
 import { sortableItems } from "./sortable.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL, newScene, uniqueId } from "./templates.ts";
-import { createDrawQueue, type Drawn, fitThumbnails, isStale, thumbnailFrame } from "./thumbnail.ts";
+import { createDrawQueue, type Drawn, fitThumbnails, isStale, lookFor, thumbnailFrame } from "./thumbnail.ts";
 
 /** How long the edited scene waits for typing to pause before its thumbnail is drawn again. */
 const EDIT_QUIET_MS = 250;
@@ -204,12 +204,12 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     const item = items.get(id);
     const scene = session.doc.scenes[id];
     if (!item || !scene) return;
-    const { deck } = session.doc;
-    const look = lookKey(deck);
-    if (!isStale(item.drawn, scene, look)) return;
+    const look = lookFor(session.doc);
+    const key = lookKey(look);
+    if (!isStale(item.drawn, scene, key)) return;
     // The picture itself is inert, so nothing in it can take focus or a click; the thumbnail around it takes them.
-    item.thumb.replaceChildren(thumbnailFrame(scene, deck), item.changes, item.notes);
-    item.drawn = { scene, look };
+    item.thumb.replaceChildren(thumbnailFrame(scene, look), item.changes, item.notes);
+    item.drawn = { scene, look: key };
     measure();
   }
 
@@ -233,6 +233,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
 
     let edited = false;
     let fresh = false;
+    const looked = lookKey(lookFor(session.doc));
     const total = deck.scenes.length;
     const counts = hooks.comments?.();
     const changed = hooks.changed?.();
@@ -278,7 +279,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       item.remove.title = "Delete scene";
       item.remove.toggleAttribute("disabled", total < 2);
 
-      if (isStale(item.drawn, scene, lookKey(deck))) {
+      if (isStale(item.drawn, scene, looked)) {
         queue.add(id);
         if (item.drawn === undefined) fresh = true;
         else edited = true;

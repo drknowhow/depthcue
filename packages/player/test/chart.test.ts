@@ -123,6 +123,9 @@ function resolveColor(value: string, tokens: Record<string, string>): string {
   if (text.startsWith("#")) return text.toUpperCase();
   const named = /^var\(--dc-([a-z-]+)\)$/.exec(text);
   if (named) return resolveColor(tokens[named[1] as string] as string, tokens);
+  // A brand's chart color for the series wins; without one the series takes the color derived from the palette.
+  const chart = /^var\(--dc-chart-(\d),\s*(.*)\)$/s.exec(text);
+  if (chart) return resolveColor(tokens[`chart-${chart[1]}`] ?? (chart[2] as string), tokens);
   const mix = /^color-mix\((.*)\)$/s.exec(text);
   if (!mix) throw new Error(`The test does not know how to work out ${text}.`);
   const [space = "", first = "", second = ""] = split(mix[1] as string);
@@ -186,6 +189,17 @@ describe("the colors of a chart's series", () => {
     });
     expect(after[0]).toBe("#117733");
     expect(after[1]).toBe("#CC6677");
+  });
+
+  it("are the brand's chart colors where it gives them, series by series, and the palette's mixes for the rest", () => {
+    const plain = seriesColors(PRESETS.paper);
+    const branded = seriesColors({ ...PRESETS.paper, "chart-1": "#112233", "chart-4": "#445566" });
+    expect(branded[0]).toBe("#112233");
+    expect(branded[3]).toBe("#445566");
+    for (const at of [1, 2, 4, 5]) expect(branded[at]).toBe(plain[at]);
+    for (let at = 1; at <= 6; at++) {
+      expect(css).toContain(`--dc-s${at}: var(--dc-chart-${at}, `);
+    }
   });
 });
 

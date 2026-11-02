@@ -5,32 +5,54 @@
 /*
  * Font pairs. A deck's `fonts` is set as `data-fonts` (see style.ts) on the element that is drawn in it, and the pair
  * answers by replacing the display and ui stacks tokens.css names for `editorial`, which is the default and so has no
- * rule here. Data text stays in IBM Plex Mono in every pair. The font files are not named here: packages/player/dist/
+ * pair-only rule here (the one below is for a brand's faces). Data text stays in IBM Plex Mono in every pair. The font
+ * files are not named here: packages/player/dist/
  * fonts has a stylesheet per pair, built from brand/fonts/manifest.json, which a page links and an export copies.
  * `--dc-display-weight` is the weight headings and claims are set in: Instrument Serif and Depthcue Classic Serif ship
  * only a regular, so a bold heading in either would be a computed one. Depthcue Classic Serif and Sans are subsets of
  * Adobe's Source Serif 4 and Source Sans 3, renamed because that license reserves the name "Source".
  */
+/*
+ * A brand's own faces (style.ts) name themselves first in these stacks, as `--dc-face-display`, `--dc-face-body` and
+ * `--dc-face-mono` with a comma after the family, so the pair is what draws while a face loads and wherever a face
+ * lacks a letter. Where a deck has no brand they are unset, and the empty fallback leaves the stack as it was.
+ * `editorial` has a rule here too, because a deck with a brand always names its pair and a face goes in front of it:
+ * the stacks repeat tokens.css, and a test holds the two together.
+ */
+[data-fonts] {
+  --dc-font-mono: var(--dc-face-mono,) "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+
+[data-fonts="editorial"] {
+  --dc-font-display: var(--dc-face-display,) "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --dc-font-ui: var(--dc-face-body,) "Space Grotesk", system-ui, sans-serif;
+}
+
 [data-fonts="modern"] {
-  --dc-font-display: "Inter", system-ui, sans-serif;
-  --dc-font-ui: "Inter", system-ui, sans-serif;
+  --dc-font-display: var(--dc-face-display,) "Inter", system-ui, sans-serif;
+  --dc-font-ui: var(--dc-face-body,) "Inter", system-ui, sans-serif;
   --dc-display-weight: 700;
 }
 
 [data-fonts="classic"] {
-  --dc-font-display: "Depthcue Classic Serif", "Iowan Old Style", Georgia, serif;
-  --dc-font-ui: "Depthcue Classic Sans", system-ui, sans-serif;
+  --dc-font-display: var(--dc-face-display,) "Depthcue Classic Serif", "Iowan Old Style", Georgia, serif;
+  --dc-font-ui: var(--dc-face-body,) "Depthcue Classic Sans", system-ui, sans-serif;
   --dc-display-weight: 400;
 }
 
 [data-fonts="technical"] {
-  --dc-font-display: "IBM Plex Sans", system-ui, sans-serif;
-  --dc-font-ui: "IBM Plex Sans", system-ui, sans-serif;
+  --dc-font-display: var(--dc-face-display,) "IBM Plex Sans", system-ui, sans-serif;
+  --dc-font-ui: var(--dc-face-body,) "IBM Plex Sans", system-ui, sans-serif;
   --dc-display-weight: 700;
 }
 
 .dc-player {
   --dc-focus: var(--dc-evidence);
+  /* The text, muted and line colors as the deck set them. A strong background or fill redefines the three for what is
+     on it, and a tone, a fill that is not strong and a background that is the text color have to be drawn from these. */
+  --dc-ink: var(--dc-text);
+  --dc-ink-muted: var(--dc-muted);
+  --dc-ink-line: var(--dc-line);
   position: fixed;
   inset: 0;
   display: grid;
@@ -100,6 +122,7 @@
 
 .dc-scene {
   --u: clamp(13px, min(1.45cqw, 2.5cqh), 26px);
+  position: relative;
   display: grid;
   align-content: center;
   gap: 2em;
@@ -107,6 +130,32 @@
   padding: 3.5em 5em;
   font-size: var(--u);
   line-height: 1.45;
+}
+
+/*
+ * A scene with the brand's logo gives its corner room, so the logo never lands on the layout's content. The room is read
+ * from the logo itself, which says its corner and its size, so the script works out nothing. It is the height the logo
+ * takes from the edge (its own and the 1.4em it is set in) and a tenth over: the small logo ends at 3.4em, inside the
+ * 3.5em every scene has, so it adds nothing, and a medium or large one adds only what it reaches past it.
+ */
+.dc-scene:has(> .dc-chrome > .dc-logo) {
+  --room: 4.5em;
+}
+
+.dc-scene:has(> .dc-chrome > .dc-logo[data-height="s"]) {
+  --room: 3.5em;
+}
+
+.dc-scene:has(> .dc-chrome > .dc-logo[data-height="l"]) {
+  --room: 5.9em;
+}
+
+.dc-scene:has(> .dc-chrome > .dc-logo[data-corner^="top"]) {
+  padding-block-start: max(3.5em, var(--room));
+}
+
+.dc-scene:has(> .dc-chrome > .dc-logo[data-corner^="bottom"]) {
+  padding-block-end: max(3.5em, var(--room));
 }
 
 /*
@@ -203,6 +252,189 @@
     flex: none;
     max-height: 62cqh;
   }
+
+  /* The slots follow one another here, as the pinned blocks do, and the type goes by the stage and not by a slot's height. */
+  .dc-slot {
+    position: static;
+    width: auto;
+    height: auto;
+  }
+
+  .dc-scene:has(> .dc-slot) {
+    align-content: center;
+  }
+
+  .dc-slot[data-role="title"] .dc-heading {
+    font-size: max(calc(2.6em * var(--dc-k, 1)), var(--dc-min, 0em));
+  }
+
+  .dc-slot[data-role="claim"] .dc-claim {
+    font-size: max(calc(2em * var(--dc-k, 1)), var(--dc-min, 0em));
+  }
+}
+
+/*
+ * A template's background, on the scene: one of the slide's colors, or a brand picture with that color over it at
+ * `--scrim` percent. Text on a strong color is in the slide's background color (`data-on="strong"` below), and the
+ * stage around a slide that is not 16 by 9 takes a color background too, so the slide is not a box on a lighter page.
+ */
+.dc-scene[data-bg="bg"] {
+  --dc-ground: var(--dc-bg);
+}
+
+.dc-scene[data-bg="surface"] {
+  --dc-ground: var(--dc-surface);
+}
+
+.dc-scene[data-bg="text"] {
+  --dc-ground: var(--dc-ink);
+}
+
+.dc-scene[data-bg="action"] {
+  --dc-ground: var(--dc-action);
+}
+
+.dc-scene[data-bg="evidence"] {
+  --dc-ground: var(--dc-evidence);
+}
+
+.dc-scene[data-bg] {
+  background: var(--dc-ground);
+}
+
+.dc-view:has(> .dc-scene[data-bg="surface"]:not([data-image])) {
+  background: var(--dc-surface);
+}
+
+.dc-view:has(> .dc-scene[data-bg="text"]:not([data-image])) {
+  background: var(--dc-ink);
+}
+
+.dc-view:has(> .dc-scene[data-bg="action"]:not([data-image])) {
+  background: var(--dc-action);
+}
+
+.dc-view:has(> .dc-scene[data-bg="evidence"]:not([data-image])) {
+  background: var(--dc-evidence);
+}
+
+.dc-scene[data-image] {
+  isolation: isolate;
+}
+
+.dc-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-position: center;
+  background-size: cover;
+}
+
+.dc-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--dc-ground);
+  opacity: calc(var(--scrim, 0) / 100);
+}
+
+/*
+ * The brand's chrome (scene.ts `renderChrome`): a logo in a corner, a footer line and the slide number along the foot,
+ * and an accent bar, over the scene and under nothing. It takes no pointer. Sizes are in type units of the slide, which
+ * scale with it. Only the logo is for a screen reader.
+ */
+.dc-chrome {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dc-chrome > * {
+  position: absolute;
+}
+
+.dc-logo {
+  max-width: 30%;
+  height: 3em;
+  width: auto;
+  object-fit: contain;
+}
+
+/* The logo is drawn for the theme's own ground, so on a strong background it keeps that ground as a plate behind it. */
+.dc-scene[data-on="strong"] .dc-logo {
+  background: var(--dc-bg);
+  border-radius: 0.2em;
+  box-shadow: 0 0 0 0.45em var(--dc-bg);
+}
+
+.dc-logo[data-height="s"] {
+  height: 2em;
+}
+
+.dc-logo[data-height="l"] {
+  height: 4.4em;
+}
+
+.dc-logo[data-corner^="top"] {
+  inset-block-start: 1.4em;
+}
+
+.dc-logo[data-corner^="bottom"] {
+  inset-block-end: 1.4em;
+}
+
+.dc-logo[data-corner$="start"] {
+  inset-inline-start: 2.2em;
+}
+
+.dc-logo[data-corner$="end"] {
+  inset-inline-end: 2.2em;
+}
+
+.dc-accent {
+  background: var(--dc-action);
+}
+
+.dc-accent[data-accent="top"] {
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: 0.5em;
+}
+
+.dc-accent[data-accent="start"] {
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 0.7em;
+}
+
+.dc-foot {
+  inset-block-end: 1.3em;
+  display: flex;
+  gap: 1.6em;
+  color: var(--dc-muted);
+  white-space: nowrap;
+}
+
+.dc-foot > * {
+  font: 500 0.75em / 1.2 var(--dc-font-mono);
+  letter-spacing: 0.04em;
+}
+
+.dc-foot[data-at="start"] {
+  inset-inline-start: 2.2em;
+}
+
+.dc-foot[data-at="end"] {
+  inset-inline-end: 2.2em;
+}
+
+.dc-foot[data-at="center"] {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.dc-number {
+  font-variant-numeric: tabular-nums;
 }
 
 .dc-region {
@@ -217,24 +449,84 @@
 }
 
 /*
- * A template scene, until the player draws templates: each slot a labeled region, stacked in the order the scene
- * names them, so a person can see which block went where.
+ * A template scene is a 16 by 9 slide (data-framed) and each slot with something in it is a box at the slot's frame,
+ * in percent of the slide like a pinned block. Its blocks stack in block order and sit at the slot's top, middle or
+ * bottom (`data-valign`). Nothing is scaled to fit: a slot that is too small for what is in it runs over, and the
+ * render check says so. A slot with nothing in it is not drawn.
  */
 .dc-slot {
-  position: relative;
-  padding: 1.6em 0.9em 0.9em;
-  border: 1px dashed var(--dc-line);
-  border-radius: 0.4em;
+  position: absolute;
+  left: calc(var(--x) * 1%);
+  top: calc(var(--y) * 1%);
+  width: calc(var(--w) * 1%);
+  height: calc(var(--h) * 1%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
 }
 
-.dc-slot-label {
-  position: absolute;
-  top: 0.35em;
-  left: 0.9em;
-  color: var(--dc-muted);
-  font-family: var(--dc-font-mono);
-  font-size: 0.7em;
-  letter-spacing: 0.04em;
+.dc-slot > * {
+  flex: none;
+}
+
+/* `safe` keeps a slot's overflow at its foot and not above its top; a browser without it keeps the plain value. */
+.dc-slot[data-valign="middle"] {
+  justify-content: center;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: the line above is the fallback for a browser without `safe` */
+  justify-content: safe center;
+}
+
+.dc-slot[data-valign="bottom"] {
+  justify-content: flex-end;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: the line above is the fallback for a browser without `safe` */
+  justify-content: safe flex-end;
+}
+
+/* Media fills what its slot leaves it: a picture, a chart, a clip. A table and a bar chart keep their own height. */
+.dc-slot > .dc-figure:not(.dc-table-figure, .dc-chart-figure) {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dc-slot > .dc-figure :is(img, video) {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  height: auto;
+}
+
+.dc-slot > .dc-plot-figure .dc-plot {
+  flex: 1 1 0;
+  min-height: 11em;
+  max-width: none;
+}
+
+.dc-slot > .dc-plot-figure .dc-sr-only {
+  flex: none;
+}
+
+/* A template scene's own flow holds only its sources, at the foot of the slide. */
+.dc-scene:has(> .dc-slot) {
+  align-content: end;
+}
+
+/* Type in a slot goes by what the slot is for and how tall it is (--h, percent of the slide), then by the block's size. */
+.dc-slot[data-role="title"] .dc-heading {
+  font-size: max(calc(clamp(2.2em, calc(var(--h) * 0.18em), 4.6em) * var(--dc-k, 1)), var(--dc-min, 0em));
+}
+
+.dc-slot[data-role="claim"] .dc-claim {
+  font-size: max(calc(clamp(1.8em, calc(var(--h) * 0.1em), 3.3em) * var(--dc-k, 1)), var(--dc-min, 0em));
+}
+
+.dc-slot:not([data-role="title"]) .dc-heading {
+  font-size: max(calc(1.9em * var(--dc-k, 1)), var(--dc-min, 0em));
+}
+
+.dc-slot[data-role="subtitle"] .dc-body {
+  font-size: max(calc(1.5em * var(--dc-k, 1)), var(--dc-min, 0em));
 }
 
 .dc-heading,
@@ -402,7 +694,7 @@
 }
 
 .dc-claim {
-  font-size: 3.3em;
+  font-size: max(calc(3.3em * var(--dc-k, 1)), var(--dc-min, 0em));
 }
 
 .dc-scene[data-layout="claim-evidence"] .dc-heading {
@@ -454,6 +746,43 @@
 }
 
 /*
+ * In a template scene the sources run along the foot, over the footer, as one line of text: the label and each source
+ * after it, set apart by a dot. They are as many lines as they take at the slide's width, and grow upward from the foot,
+ * so a template leaves them room above its footer; the render check says when a slot or block reaches into them.
+ */
+.dc-scene:has(> .dc-slot) > .dc-sources {
+  position: absolute;
+  inset: auto 6% 2.3em;
+  padding: 0;
+  border: 0;
+}
+
+.dc-scene:has(> .dc-slot) > .dc-sources :is(p, ol, li) {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dc-scene:has(> .dc-slot) > .dc-sources p {
+  margin-inline-end: 0.8em;
+}
+
+.dc-scene:has(> .dc-slot) > .dc-sources li + li::before {
+  content: "\00b7";
+  margin-inline: 0.6em;
+}
+
+@container (max-width: 640px) {
+  .dc-scene:has(> .dc-slot) > .dc-sources {
+    position: static;
+    display: block;
+    padding-top: 1em;
+    border-top: 1px solid var(--dc-line);
+  }
+}
+
+/*
  * Text styles, from schema 0.3. A text block's `size` sets `--dc-k`, how much bigger or smaller than its role's usual
  * size it is drawn, and `--dc-min`, the least it may come to. l and xl never draw under 1.4 units, which is 25 CSS
  * pixels on the 1280 by 720 stage the render check uses and what core's contrast rule counts as large text; s keeps a
@@ -479,32 +808,154 @@
   --dc-min: 1.4em;
 }
 
-.dc-player :is(.dc-block, .dc-tone)[data-tone="text"] {
-  color: var(--dc-text);
+/* A tone is the slide's own color of that name, also on a strong background, where text and muted are reversed. */
+.dc-player :is(.dc-block, .dc-claim, .dc-tone)[data-tone="text"] {
+  color: var(--dc-ink);
 }
 
-.dc-player :is(.dc-block, .dc-tone)[data-tone="muted"] {
-  color: var(--dc-muted);
+.dc-player :is(.dc-block, .dc-claim, .dc-tone)[data-tone="muted"] {
+  color: var(--dc-ink-muted);
 }
 
-.dc-player :is(.dc-block, .dc-tone)[data-tone="action"] {
+.dc-player :is(.dc-block, .dc-claim, .dc-tone)[data-tone="action"] {
   color: var(--dc-action);
 }
 
-.dc-player :is(.dc-block, .dc-tone)[data-tone="evidence"] {
+.dc-player :is(.dc-block, .dc-claim, .dc-tone)[data-tone="evidence"] {
   color: var(--dc-evidence);
 }
 
-.dc-player .dc-block[data-align="start"] {
+/* Reversed text: the slide's own background color, for text on a strong fill or a strong template background. */
+.dc-player :is(.dc-block, .dc-claim)[data-tone="bg"] {
+  color: var(--dc-bg);
+}
+
+.dc-player :is(.dc-block, .dc-claim)[data-align="start"] {
   text-align: start;
 }
 
-.dc-player .dc-block[data-align="center"] {
+.dc-player :is(.dc-block, .dc-claim)[data-align="center"] {
   text-align: center;
 }
 
-.dc-player .dc-block[data-align="end"] {
+.dc-player :is(.dc-block, .dc-claim)[data-align="end"] {
   text-align: end;
+}
+
+/*
+ * Brand component styles (scene.ts `dress`). A node a style dresses has its tone, size and alignment as the attributes
+ * above, and the rest here: face, weight and case, a fill, a border, an accent edge along the start side or the top,
+ * a corner radius and padding. Text on a fill that is not the slide's own colors is reversed, in the slide's background
+ * color, and so is what the block holds that has colors of its own (a caption, a link, a table's rules).
+ */
+.dc-player [data-font="display"] {
+  font-family: var(--dc-font-display);
+}
+
+.dc-player [data-font="body"] {
+  font-family: var(--dc-font-ui);
+}
+
+.dc-player [data-font="mono"] {
+  font-family: var(--dc-font-mono);
+}
+
+.dc-player [data-weight="bold"] {
+  font-weight: 700;
+}
+
+.dc-player [data-weight="regular"] {
+  font-weight: 400;
+}
+
+.dc-player [data-case="upper"] {
+  text-transform: uppercase;
+}
+
+.dc-player [data-case="lower"] {
+  text-transform: lowercase;
+}
+
+.dc-player [data-fill="surface"] {
+  background: var(--dc-surface);
+}
+
+.dc-player [data-fill="action"] {
+  background: var(--dc-action);
+}
+
+.dc-player [data-fill="evidence"] {
+  background: var(--dc-evidence);
+}
+
+.dc-player [data-fill="text"] {
+  background: var(--dc-ink);
+}
+
+.dc-player [data-border="line"] {
+  border: 1px solid var(--dc-line);
+}
+
+.dc-player [data-border="action"] {
+  border: 1px solid var(--dc-action);
+}
+
+.dc-player [data-edge="start"] {
+  border-inline-start: 0.28em solid var(--dc-action);
+}
+
+.dc-player [data-edge="top"] {
+  border-top: 0.28em solid var(--dc-action);
+}
+
+.dc-player [data-radius="s"] {
+  border-radius: var(--dc-radius-sm);
+}
+
+.dc-player [data-radius="m"] {
+  border-radius: var(--dc-radius-md);
+}
+
+.dc-player [data-radius="l"] {
+  border-radius: var(--dc-radius-lg);
+}
+
+.dc-player [data-pad="s"] {
+  padding: 0.5em;
+}
+
+.dc-player [data-pad="m"] {
+  padding: 1em;
+}
+
+.dc-player [data-pad="l"] {
+  padding: 1.6em;
+}
+
+.dc-player [data-on="strong"] {
+  --dc-text: var(--dc-bg);
+  --dc-muted: var(--dc-bg);
+  --dc-line: color-mix(in srgb, var(--dc-bg) 40%, transparent);
+  color: var(--dc-text);
+}
+
+/*
+ * The surface is one of the slide's own grounds, so a block filled with it on a strong scene is drawn in the slide's own
+ * text, muted and line colors again, as core's `textOn` says. The color itself is `:where`, so a rule of a class that
+ * colors its own text (a caption's muted) still wins.
+ */
+.dc-player [data-on="strong"] [data-fill="surface"] {
+  --dc-text: var(--dc-ink);
+  --dc-muted: var(--dc-ink-muted);
+  --dc-line: var(--dc-ink-line);
+}
+
+:where(.dc-player [data-on="strong"] [data-fill="surface"]) {
+  color: var(--dc-text);
+}
+
+.dc-player [data-on="strong"] :is(.dc-link, .dc-sources a) {
+  color: inherit;
 }
 
 .dc-link {
@@ -563,7 +1014,7 @@
   min-width: 2px;
   height: 1.5em;
   border-radius: 3px;
-  background: var(--dc-evidence);
+  background: var(--dc-chart-1, var(--dc-evidence));
   vertical-align: middle;
   transform-origin: left;
 }
@@ -665,20 +1116,20 @@
  */
 
 .dc-plot-figure {
-  --dc-s1: var(--dc-evidence);
-  --dc-s2: var(--dc-action);
-  --dc-s3: var(--dc-muted);
-  --dc-s4: var(--dc-text);
-  --dc-s5: var(--dc-muted);
-  --dc-s6: var(--dc-text);
+  --dc-s1: var(--dc-chart-1, var(--dc-evidence));
+  --dc-s2: var(--dc-chart-2, var(--dc-action));
+  --dc-s3: var(--dc-chart-3, var(--dc-muted));
+  --dc-s4: var(--dc-chart-4, var(--dc-text));
+  --dc-s5: var(--dc-chart-5, var(--dc-muted));
+  --dc-s6: var(--dc-chart-6, var(--dc-text));
 }
 
 @supports (color: color-mix(in oklch longer hue, red, blue)) {
   .dc-plot-figure {
-    --dc-s3: color-mix(in oklch longer hue, var(--dc-evidence) 80%, var(--dc-action));
-    --dc-s4: color-mix(in oklch longer hue, var(--dc-evidence) 20%, var(--dc-action));
-    --dc-s5: color-mix(in oklch, var(--dc-evidence) 65%, var(--dc-action));
-    --dc-s6: color-mix(in oklch longer hue, var(--dc-evidence) 35%, var(--dc-action));
+    --dc-s3: var(--dc-chart-3, color-mix(in oklch longer hue, var(--dc-evidence) 80%, var(--dc-action)));
+    --dc-s4: var(--dc-chart-4, color-mix(in oklch longer hue, var(--dc-evidence) 20%, var(--dc-action)));
+    --dc-s5: var(--dc-chart-5, color-mix(in oklch, var(--dc-evidence) 65%, var(--dc-action)));
+    --dc-s6: var(--dc-chart-6, color-mix(in oklch longer hue, var(--dc-evidence) 35%, var(--dc-action)));
   }
 }
 

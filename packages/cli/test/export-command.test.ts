@@ -20,14 +20,21 @@ const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.u
 
 /**
  * The font files an export of a deck in the default pair carries: every file of the three families that pair names,
- * from the font manifest. A new face changes the count there and not here.
+ * from the font manifest, and the license text of each family. A new face changes the count there and not here.
  */
-const editorialFonts = (() => {
+const { editorialFonts, editorialLicenses } = (() => {
   const manifest = JSON.parse(
     readFileSync(fileURLToPath(new URL("../../../brand/fonts/manifest.json", import.meta.url)), "utf8"),
-  ) as { pairs: Record<string, Record<string, string>>; files: Array<{ file: string; family: string }> };
+  ) as {
+    pairs: Record<string, Record<string, string>>;
+    files: Array<{ file: string; family: string }>;
+    families: Record<string, { licenseFile: string }>;
+  };
   const families = new Set(Object.values(manifest.pairs.editorial ?? {}));
-  return manifest.files.filter((entry) => families.has(entry.family)).map((entry) => entry.file);
+  return {
+    editorialFonts: manifest.files.filter((entry) => families.has(entry.family)).map((entry) => entry.file),
+    editorialLicenses: [...families].map((family) => manifest.families[family]?.licenseFile as string),
+  };
 })();
 /** The page, its two assets, its script and styles, and the pair's stylesheet: the files besides the fonts. */
 const OTHER_FILES = 6;
@@ -77,6 +84,7 @@ describe("depthcue export", () => {
     const fonts = readdirSync(join(out(), "fonts"));
     expect(fonts.filter((name) => name.endsWith(".css"))).toEqual(["editorial.css"]);
     expect(fonts.filter((name) => name.endsWith(".woff2")).sort()).toEqual([...editorialFonts].sort());
+    expect(fonts.filter((name) => name.endsWith(".txt")).sort()).toEqual([...editorialLicenses].sort());
     const written = [
       "assets/method.svg",
       "assets/report.csv",
@@ -88,7 +96,7 @@ describe("depthcue export", () => {
       .map((path) => statSync(join(out(), path)).size)
       .reduce((a, b) => a + b);
     expect(lines[2]).toBe(
-      `  ${OTHER_FILES + editorialFonts.length} files, ${(written / 1024).toFixed(1)} KB: 2 assets, 0 cue maps, notes kept`,
+      `  ${OTHER_FILES + editorialFonts.length + editorialLicenses.length} files, ${(written / 1024).toFixed(1)} KB: 2 assets, 0 cue maps, notes kept`,
     );
     expect(lines).toHaveLength(3);
     expect(existsSync(join(out(), "index.html"))).toBe(true);
@@ -237,7 +245,7 @@ describe("depthcue export --json", () => {
       cueMaps: [],
       fonts: "editorial",
       notes: true,
-      files: OTHER_FILES + editorialFonts.length,
+      files: OTHER_FILES + editorialFonts.length + editorialLicenses.length,
       diagnostics: [],
     });
     expect(result.bytes).toBeGreaterThan(0);

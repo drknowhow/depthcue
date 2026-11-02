@@ -34,9 +34,15 @@ const FAKE_FONTS: Record<FontPair, string[]> = {
   classic: ["ClassicSerif.woff2", "ClassicSans.woff2", "Mono.woff2"],
   technical: ["TechnicalSans.woff2", "Mono.woff2"],
 };
+/** The family a stand-in file is of, and the license text the build writes beside it. */
+const familyOf = (name: string) => name.replace(/\.woff2$/, "");
+const licenseOf = (name: string) => `${familyOf(name)}-OFL.txt`;
 const sheetOf = (files: readonly string[]) =>
   files
-    .map((name) => `@font-face {\n  font-family: "${name}";\n  src: url("${name}") format("woff2");\n}\n`)
+    .map(
+      (name) =>
+        `@font-face {\n  font-family: "${familyOf(name)}";\n  src: url("${name}") format("woff2");\n}\n`,
+    )
     .join("\n");
 
 beforeEach(() => {
@@ -51,10 +57,16 @@ beforeEach(() => {
   // The font stylesheets and files the build writes, as stand-ins.
   fonts = join(root, "fonts-src");
   mkdirSync(fonts);
+  const licenses: Record<string, string> = {};
   for (const [pair, files] of Object.entries(FAKE_FONTS)) {
     writeFileSync(join(fonts, `${pair}.css`), sheetOf(files));
-    for (const name of files) writeFileSync(join(fonts, name), `font:${name}`);
+    for (const name of files) {
+      writeFileSync(join(fonts, name), `font:${name}`);
+      writeFileSync(join(fonts, licenseOf(name)), `license of ${familyOf(name)}`);
+      licenses[familyOf(name)] = licenseOf(name);
+    }
   }
+  writeFileSync(join(fonts, "licenses.json"), JSON.stringify(licenses));
 });
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
@@ -135,10 +147,13 @@ function addClip(cues: string | null = JSON.stringify({ format: "depthcue-cues/1
 const written = () => listing(out()).filter((path) => path !== EXPORT_MARKER);
 const weighed = () => written().reduce((sum, path) => sum + statSync(join(out(), path)).size, 0);
 
-/** What a deck on the default pair, editorial, takes along: its stylesheet and the three files it names. */
+/** What a deck on the default pair, editorial, takes along: its stylesheet, the three files it names and their licenses. */
 const EDITORIAL = [
+  "fonts/EditorialSans-OFL.txt",
   "fonts/EditorialSans.woff2",
+  "fonts/EditorialSerif-OFL.txt",
   "fonts/EditorialSerif.woff2",
+  "fonts/Mono-OFL.txt",
   "fonts/Mono.woff2",
   "fonts/editorial.css",
 ];
@@ -166,7 +181,7 @@ describe("what an export holds", () => {
       cueMaps: [],
       fonts: "editorial",
       notes: true,
-      files: 9,
+      files: 12,
     });
     expect(summary.bytes).toBe(weighed());
   });
@@ -422,7 +437,9 @@ describe("the fonts of an export", () => {
     const summary = done();
     expect(summary.fonts).toBe("technical");
     expect(written().filter((path) => path.startsWith("fonts/"))).toEqual([
+      "fonts/Mono-OFL.txt",
       "fonts/Mono.woff2",
+      "fonts/TechnicalSans-OFL.txt",
       "fonts/TechnicalSans.woff2",
       "fonts/technical.css",
     ]);
@@ -452,10 +469,72 @@ describe("the fonts of an export", () => {
     setFonts("technical");
     done();
     expect(written().filter((path) => path.startsWith("fonts/"))).toEqual([
+      "fonts/Mono-OFL.txt",
       "fonts/Mono.woff2",
+      "fonts/TechnicalSans-OFL.txt",
       "fonts/TechnicalSans.woff2",
       "fonts/technical.css",
     ]);
+  });
+
+  it("copies the license text of every family the pair's stylesheet names, beside the font files, byte for byte", () => {
+    setFonts("classic");
+    const summary = done();
+    for (const name of FAKE_FONTS.classic) {
+      expect(readFileSync(join(out(), "fonts", licenseOf(name)), "utf8")).toBe(
+        `license of ${familyOf(name)}`,
+      );
+    }
+    expect(summary.licenses).toEqual([
+      "fonts/ClassicSans-OFL.txt",
+      "fonts/ClassicSerif-OFL.txt",
+      "fonts/Mono-OFL.txt",
+    ]);
+    // The license of a pair the deck does not use stays behind, and so does the list the build wrote.
+    expect(existsSync(join(out(), "fonts", "TechnicalSans-OFL.txt"))).toBe(false);
+    expect(existsSync(join(out(), "fonts", "licenses.json"))).toBe(false);
+  });
+
+  it("drops the old pair's license texts with the old pair's fonts", () => {
+    setFonts("classic");
+    done();
+    setFonts("technical");
+    const summary = done();
+    expect(summary.licenses).toEqual(["fonts/Mono-OFL.txt", "fonts/TechnicalSans-OFL.txt"]);
+    expect(existsSync(join(out(), "fonts", "ClassicSerif-OFL.txt"))).toBe(false);
+  });
+
+  it("stops, and writes nothing, when the build left no license list, a family out of it, or a text it names", () => {
+    setFonts("modern");
+    const list = join(fonts, "licenses.json");
+    const original = readFileSync(list, "utf8");
+
+    rmSync(list);
+    let error = failure();
+    expect(error.code).toBe("player-not-built");
+    expect(error.message).toContain("license list");
+    expect(existsSync(out())).toBe(false);
+
+    const without = JSON.parse(original) as Record<string, string>;
+    delete without.Mono;
+    writeFileSync(list, JSON.stringify(without));
+    error = failure();
+    expect(error.code).toBe("player-not-built");
+    expect(error.message).toContain('"Mono"');
+    expect(existsSync(out())).toBe(false);
+
+    writeFileSync(list, original);
+    rmSync(join(fonts, "ModernSans-OFL.txt"));
+    error = failure();
+    expect(error.code).toBe("player-not-built");
+    expect(error.message).toContain("ModernSans-OFL.txt");
+    expect(existsSync(out())).toBe(false);
+
+    // A list that names a path instead of a file in the folder is refused, not followed.
+    writeFileSync(list, JSON.stringify({ ...JSON.parse(original), Mono: "../runtime/depthcue.js" }));
+    error = failure();
+    expect(error.code).toBe("player-not-built");
+    expect(existsSync(out())).toBe(false);
   });
 
   it("says the player is not built, and writes nothing, when the deck's stylesheet is missing", () => {
@@ -652,7 +731,7 @@ describe("exporting again", () => {
     done();
     rmSync(join(out(), "index.html"));
     rmSync(join(out(), "assets", "method.svg"));
-    expect(done().files).toBe(9);
+    expect(done().files).toBe(12);
   });
 
   it("can be replaced after an export that failed part-way, because the marker is written first", () => {
@@ -664,7 +743,7 @@ describe("exporting again", () => {
     expect(existsSync(join(out(), "index.html"))).toBe(false);
     rmSync(join(runtime, "depthcue.js"), { recursive: true });
     writeFileSync(join(runtime, "depthcue.js"), "/* the script */");
-    expect(done().files).toBe(9);
+    expect(done().files).toBe(12);
     expect(existsSync(join(out(), "index.html"))).toBe(true);
   });
 

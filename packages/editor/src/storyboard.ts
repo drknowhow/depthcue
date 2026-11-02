@@ -2,7 +2,7 @@ import type { Session } from "@depthcue/core";
 import { h, lookKey } from "@depthcue/player";
 import type { Count } from "./commentview.ts";
 import { type Card, cardsOf, pillsOf, type Step, sayCard, stepOfKey, stepTo } from "./storyboardview.ts";
-import { createDrawQueue, type Drawn, fitThumbnails, isStale, thumbnailFrame } from "./thumbnail.ts";
+import { createDrawQueue, type Drawn, fitThumbnails, isStale, lookFor, thumbnailFrame } from "./thumbnail.ts";
 
 export interface StoryboardHooks {
   /** Shows a scene on the slide. The storyboard closes itself right after. */
@@ -77,9 +77,9 @@ export function createStoryboard(session: Session, hooks: StoryboardHooks): Stor
     const tile = tiles.get(id);
     const scene = session.doc.scenes[id];
     if (!tile || !scene) return;
-    const { deck } = session.doc;
-    tile.thumb.replaceChildren(thumbnailFrame(scene, deck));
-    tile.drawn = { scene, look: lookKey(deck) };
+    const look = lookFor(session.doc);
+    tile.thumb.replaceChildren(thumbnailFrame(scene, look));
+    tile.drawn = { scene, look: lookKey(look) };
     measure();
   }
 
@@ -150,12 +150,13 @@ export function createStoryboard(session: Session, hooks: StoryboardHooks): Stor
     if (target === undefined || !live.has(target)) target = live.has(current) ? current : cards[0]?.id;
 
     const stale: string[] = [];
+    const looked = lookKey(lookFor(doc));
     for (const card of cards) {
       const tile = tiles.get(card.id) ?? make(card.id);
       tiles.set(card.id, tile);
       update(tile, card, current);
       const scene = doc.scenes[card.id];
-      if (scene && isStale(tile.drawn, scene, lookKey(doc.deck))) stale.push(card.id);
+      if (scene && isStale(tile.drawn, scene, looked)) stale.push(card.id);
     }
     // The scene on show is drawn first, so it is the first thing the person sees come in.
     for (const id of stale.sort((a, b) => Number(b === current) - Number(a === current))) queue.add(id);

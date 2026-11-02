@@ -25,7 +25,11 @@ const data = {
     ]),
   ),
 };
-const brandFiles = new Set(["brand/logos/harbor.svg"]);
+const brandFiles = new Set([
+  "brand/fonts/HarborSans-Bold.woff2",
+  "brand/fonts/HarborSans-Regular.woff2",
+  "brand/logos/harbor.svg",
+]);
 
 describe("the editor's stand-in for core's brand checks", () => {
   it("answers with an error and starts fetching until the checks are in, then answers as core does", async () => {

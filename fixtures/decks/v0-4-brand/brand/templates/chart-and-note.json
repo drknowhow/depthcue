@@ -7,7 +7,7 @@
     {
       "id": "title",
       "role": "title",
-      "frame": { "x": 6, "y": 6, "w": 88, "h": 14 },
+      "frame": { "x": 6, "y": 6, "w": 76, "h": 14 },
       "accepts": ["heading"],
       "required": true,
       "hint": "The finding, as one sentence."
