@@ -525,8 +525,12 @@ describe("the styles of a block", () => {
     expect(ids).toContain("callout");
     expect(ids).not.toContain("kicker");
     expect(radios().find((radio) => radio.checked)?.dataset.style).toBe("none");
-    expect(section.body.querySelectorAll(".ed-style-choice .ed-mini")).toHaveLength(ids.length);
-    expect(section.body.querySelectorAll(".ed-style-choice .dc-player")).toHaveLength(ids.length - 1);
+    // Each is the block drawn by the player in it, No style as the block with none.
+    expect(section.body.querySelectorAll(".ed-style-choice .ed-mini .dc-player")).toHaveLength(ids.length);
+    const drawnIn = (id: string) =>
+      section.body.querySelector<HTMLElement>(`.ed-style-choice:has([data-style='${id}']) .dc-block`);
+    expect(drawnIn("quiet-panel")?.dataset.fill).toBe("surface");
+    expect(drawnIn("none")?.dataset.fill).toBeUndefined();
     const panel = radios().find((radio) => radio.dataset.style === "quiet-panel") as HTMLInputElement;
     panel.checked = true;
     panel.dispatchEvent(new Event("change", { bubbles: true }));

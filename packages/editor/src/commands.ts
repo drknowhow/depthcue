@@ -381,7 +381,7 @@ export function listCommands(from: CommandSources): Command[] {
         section: "look",
         submenu: "Style",
         checked: (block.style ?? "") === id,
-        icon: id ? () => from.stylePreview?.(id) : undefined,
+        icon: () => from.stylePreview?.(id),
         run: () => setBlockStyle(block.id, id),
       });
     }

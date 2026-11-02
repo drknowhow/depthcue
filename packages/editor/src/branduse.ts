@@ -613,7 +613,7 @@ export function styleOps(
 
 /**
  * A style as a small picture: a slide with one block in the style, drawn by the player in the deck's look, so it shows
- * the fill, edge, border, face and color the block would get.
+ * the fill, edge, border, face and color the block would get. With "" it is the block with no style, for No style.
  */
 export function stylePreview(doc: Doc, styleId: string, kind: BlockKind = "body"): HTMLElement {
   const role = (TEXT_KINDS as readonly string[]).includes(kind)
@@ -630,8 +630,9 @@ export function stylePreview(doc: Doc, styleId: string, kind: BlockKind = "body"
         type: "text",
         role,
         text: "Aa",
-        style: styleId,
-        frame: { x: 6, y: 18, w: 88, h: 64 },
+        size: "xl",
+        ...(styleId === "" ? {} : { style: styleId }),
+        frame: { x: 4, y: 8, w: 92, h: 84 },
       },
     ],
   };
@@ -698,9 +699,7 @@ export function styleSection(
           "label",
           { class: "ed-style-choice" },
           radio,
-          id === ""
-            ? h("span", { class: "ed-mini ed-style-thumb ed-style-none", "aria-hidden": "true" })
-            : stylePreview(session.doc, id, kind),
+          stylePreview(session.doc, id, kind),
           h("span", {}, label),
         );
       }),

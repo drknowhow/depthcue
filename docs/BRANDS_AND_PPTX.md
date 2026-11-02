@@ -773,3 +773,74 @@ Found, not fixed (older than the brand work):
     brand the revert took away).
   - `brand use` of a brand into a deck whose brand files have no record is refused until `--force`; a deck made by
     hand needs it once.
+
+## Step 7 record: the editor uses a brand
+
+- **Room first.** The editor's script was 92,152 of 92,160 bytes. Four parts most sessions never open are now chunks
+  fetched on first use, each with its own row: the review drawer and its view (`reviewdrawer.js`, 1,982 of 3,072), the
+  storyboard (`storyboard.js`, 2,562 of 4,096), the comment pins and their thread (`commentpins.js`, 3,895 of 5,120)
+  and the cue editor (`cuespanel.js`, 1,475 of 2,560). `packages/editor/src/lazy.ts` holds them: a part is fetched
+  once, `mountEditor` takes others in its place so a test can hold one back or make it fail, a fetch that fails says
+  "Could not load ... Check that depthcue edit is still running, then try again." where the person is looking, the
+  editor goes on, and the next use tries again. What the person typed or chose is read after the part is in. The
+  editor script is now 88,132 with all of step 7 but Download PowerPoint, which leaves 4,028 bytes, and 956 above the
+  3 KB step 8 needs. `retemplate.ts` stays in the script: core's index exports it, and a chunk group that pulled it
+  out pulled its imports with it.
+- **The brand part.** Everything below is `branduse.js` (4,399 of 6,144), fetched with Depthcue's own templates and
+  styles, since the picker, the slots and the styles list them; the part fails when they do not arrive. The script
+  keeps only the hooks. It is fetched the first time a template scene is drawn (for its slots), a block is chosen (so
+  its Style menu can list styles), or the picker, Change template or the Style chip is opened. A deck with no template
+  scene opens without it.
+- **Template picker.** "From a template…" in the strip, the scene menu and the command palette ("Add scene from a
+  template…"). A modal dialog named "Add a scene" lists the brand's templates under the brand's name, then "Built in"
+  (none when the brand sets `hideBuiltIn`; one the brand replaces is listed once, as the brand's), then the three
+  layouts. Each is a button with its name and description and a picture of the slide the player draws in the deck's
+  look, with the template's background, chrome and its slots' hints. Arrow keys, Home and End move through them,
+  Escape closes. A choice adds the scene with `scene.add` after the scene on show and goes to it. The new scene starts
+  with one text, in the first slot that takes a heading, else one that takes text; a template with no slot for text
+  gets it pinned near the top. A refusal is said in the dialog, which stays open.
+- **Change template.** "Template: <name>" in the scene bar (where the layout buttons are), "Change template…" on the
+  slide's and the scene's right-click menus, and a layout button pressed on a template scene, which opens the dialog
+  at that layout instead of moving blocks unseen. The dialog lists every template and layout, the current one marked
+  "Now". Choosing one shows the slide as it will be, drawn by the player, a line per block saying where it goes, and,
+  under "Fits no slot", each block that fits none by name, with what happens to it: a block stays on the slide, pinned
+  where it is now (its measured frame), to move or delete; a claim with no slot in the template becomes a text pinned
+  where the claim is; a claim a layout does not draw stays in the scene, and the dialog says it will not show. The
+  operations are core's `retemplate` plus the pins, applied as one step of Undo. Nothing is dropped.
+- **Empty slots.** In the editor's canvas only, each empty slot of a template scene is a box at the slot's frame with
+  its hint, "Required" on a required one, and an Add button (a menu of kinds when the slot takes more than one; a clip
+  slot is off until the deck has a video). The add is `block.add` with the slot, as an agent writes it. Hints come from
+  the deck's templates and Depthcue's own (`templatesOf`), never from `/look.json`. The strip's pictures, present mode,
+  the exported page and the PowerPoint file never draw them, since only the canvas calls the hook.
+- **Style menu.** The Style chip of a block's toolbar has the deck's styles for the block's kind after the text's own
+  size, alignment and color, so the late list never moves a control the person is aiming at. The block's right-click
+  menu has a Style submenu. Both list No style and each style for the kind (a brand override once), each drawn by the
+  player as a block in that style, the current one checked, and write `block.set` with `style`. Once Depthcue's own
+  are in, a block whose kind has no style gets no list. Given several blocks, `styleOps` styles each one the style is for and names
+  the rest; the editor has no multiple selection yet, so it passes the one chosen block.
+- **Lock.** A brand with `lock` turns off the Colors and Fonts controls of the Deck panel, each with the reason core's
+  `checkBrandLock` gives for the refusal ("The brand "harbor" is locked, so the deck cannot set its own colors.").
+- **Chrome.** The canvas already drew the brand's chrome after step 3, so this step adds the tests: nothing in it can
+  be chosen, focused or dragged, a click on the footer chooses nothing or the block under it, and a drag snaps to the
+  slide's safe margin under the footer, not to the chrome (snap targets are the slide's lines and the scene's blocks).
+- **Fixed on the way: a branded deck that uses one of Depthcue's own styles did not open.** In a real browser the
+  editor read the deck, waited for the brand checks, read it again, and stopped: only that second read reaches a style
+  or template and finds Depthcue's own missing. `v0-4-brand` (its quote is a `callout`) said "The deck on disk does not
+  pass validation." The store now waits for each chunk a read asks for, at most two, on open, on reload and on draft
+  recovery (`store.ts`; `store-two-chunks.test.ts` fails with the old code). The unit tests had not caught it because
+  they run core's modules, which wait for nothing.
+- **Same files as an agent.** `packages/cli/test/editor-brand-use-e2e.test.ts`, in Chrome on copies of `v0-4-brand` and
+  `v0-3`: a scene from the picker, Change template with a block that fits no slot, a block added from an empty slot,
+  and a style from the menu each write the deck and scene files `depthcue apply` writes for the same operations,
+  byte for byte (`review.json` aside). A deck with no brand gets "Built in" and "Layouts", drawn in its own action
+  color and font pair, and its blocks get Depthcue's own styles. `v0-3` opened, browsed, with the picker, the Style
+  menu and Change template opened and closed, is byte for byte the same with the same file times. The brand part and
+  the built-ins chunk are each refused once (the message shows, the editor goes on, the next try opens the picker),
+  and so is the storyboard.
+- **Decisions.** The new scene goes after the scene on show; its first block is the template's heading slot's; Change
+  template opens from a layout button on a template scene; the scene menu starts with Change template; choosing a
+  block fetches the brand part; the styles come after the text's own controls in the chip; No style is drawn as a
+  plain block.
+- **Not done.** Download PowerPoint waits for step 6's endpoint.
+- **Risks.** The style pictures are small: they show fill, border and edge, and the sample text is a few pixels high.
+  Harbor has only a light logo, so on ink its word mark is dark on dark (the player's, from step 3).
