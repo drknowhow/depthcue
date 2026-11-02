@@ -627,11 +627,13 @@ Found, not fixed (older than the brand work):
   and the sources band. A deck moved from a layout to a template gets less room for its evidence, and its text may need
   to be cut.
 - **`full-image` is not a full-bleed picture.** A title cannot be drawn over a picture: the render reports `overlap`
-  for any block over an image block. The template is a picture band over the top 69% of the slide (`contain`, so it
-  is never cropped) with the title on a plate below it. The slot is as wide as the slide, and its description and hint
-  now say the slot is, not that the picture fills it: the player draws an image inside its slot (`contain`) with a
-  border, rounded corners and a background, so the picture did not reach the edges as the first description said.
-  A rule in `player.css` for a picture slot's image is to follow the step 3 merge.
+  for any block over an image block. The template is a picture band over the top 69% of the slide with the title on a
+  plate below it. The first version said the picture filled its slot, and it did not: the player drew an image inside
+  its slot with `contain`, a border, rounded corners and a background, so a wide slot showed a letterboxed picture.
+  One rule in `player.css` now makes the image of a `picture` slot cover its frame, with no border, radius or
+  background (`.dc-slot[data-role="picture"]`). The picture is cropped to the slot, which the hint says, and the
+  Tidewell `feature` template's picture slot gets the same. `brand-commands-e2e.test.ts` checks the computed style
+  and that the image is within a pixel of the slot's box.
 - **Proof.** Every built-in, with a sample scene each (`brand-commands-fixtures.ts`), draws with no render finding on
   both presets, all four font pairs, with and without three sources, and under the Harbor and Tidewell brands, and each
   slot's box is within 1 px of its frame. The same scenes with half again as much text in every block that is not a
@@ -754,7 +756,7 @@ Found, not fixed (older than the brand work):
   is in it, `report` and `summary` moved to `packages/cli/src/report.ts` (and are still exported from `index.ts`) so
   that `brand/check.ts` does not import `index.ts`, and `--brand`, `--force` and `--name` are read for `new` and
   `brand`, which is more than the usage text. Cleared in the fix round: `packages/editor/src/reviewbook.ts`,
-  `packages/cli/src/deck-api.ts`. Not cleared, and needed by the same change: the `deck_get` sentence in
+  `packages/cli/src/deck-api.ts`, and one rule in `packages/player/src/player.css` after step 3 merged. Not cleared, and needed by the same change: the `deck_get` sentence in
   `packages/mcp/src/server.ts` and the test that reads the outline in `packages/mcp/test/server.test.ts`.
 - **Risks for later steps.**
   - A logo in a bottom corner sits on the sources band; the checks do not flag it (the player places it).

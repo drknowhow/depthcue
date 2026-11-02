@@ -445,6 +445,7 @@ describe("every built-in template, with sample content", () => {
         closers.push(() => context.close());
         const page = await context.newPage();
         let checked = 0;
+        let covered = 0;
         for (const id of opened.doc.deck.scenes) {
           const template = look.templates[opened.doc.scenes[id]?.template ?? ""];
           if (!template) throw new Error(`no template for ${id}`);
@@ -485,9 +486,36 @@ describe("every built-in template, with sample content", () => {
             }
             checked++;
           }
+          // A picture slot is the picture's whole box: the image covers the frame, with no edge of its own.
+          const pictures = await page.locator('.dc-slot[data-role="picture"] img').evaluateAll((images) =>
+            images.map((image) => {
+              const slot = (image.closest(".dc-slot") as HTMLElement).getBoundingClientRect();
+              const box = image.getBoundingClientRect();
+              const style = getComputedStyle(image);
+              return {
+                dx: [box.left - slot.left, box.right - slot.right],
+                dy: [box.top - slot.top, box.bottom - slot.bottom],
+                fit: style.objectFit,
+                border: style.borderTopWidth,
+                radius: style.borderTopLeftRadius,
+                background: style.backgroundColor,
+              };
+            }),
+          );
+          for (const picture of pictures) {
+            expect(picture.fit, `${id} picture fit`).toBe("cover");
+            expect(picture.border, `${id} picture border`).toBe("0px");
+            expect(picture.radius, `${id} picture radius`).toBe("0px");
+            expect(picture.background, `${id} picture background`).toBe("rgba(0, 0, 0, 0)");
+            for (const edge of [...picture.dx, ...picture.dy])
+              expect(Math.abs(edge), `${id} picture edge`).toBeLessThanOrEqual(1);
+            covered++;
+          }
         }
         // Ten templates, each with two slots or more in use (a title over a picture has two; an agenda, a few).
         expect(checked).toBeGreaterThanOrEqual(25);
+        // `full-image` is the built-in with a picture slot, and its sample has a picture in it.
+        expect(covered).toBeGreaterThanOrEqual(1);
       },
     );
   }
