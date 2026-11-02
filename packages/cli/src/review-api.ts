@@ -3,7 +3,6 @@ import {
   type Change,
   type Diagnostic,
   type Doc,
-  FILE_REVERT_REASON,
   type Review,
   type ReviewFailure,
   revertChanges,
@@ -232,6 +231,6 @@ export function revertInFolder(folder: string, ids: readonly string[] | "all"): 
     removed: result.removed,
     written,
     remaining: reviewChanges(result.review, result.doc).length,
-    left: result.left.map((id) => ({ id, why: FILE_REVERT_REASON })),
+    left: result.left,
   };
 }

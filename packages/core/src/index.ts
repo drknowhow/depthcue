@@ -112,6 +112,7 @@ export {
   loadDoc,
   revisionOf,
   sceneRevision,
+  withBrandFile,
   withBrandHashes,
 } from "./doc.ts";
 export type { Autosave, AutosaveOptions, DraftStore, Recovery, Timers } from "./draft.ts";
@@ -174,6 +175,7 @@ export type {
   ChangeKind,
   ChangeScope,
   Difference,
+  LeftChange,
   ReadReview,
   Reverted,
   RevertPlan,

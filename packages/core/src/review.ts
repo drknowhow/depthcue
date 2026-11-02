@@ -23,7 +23,7 @@ import { assetsOf } from "./assets.ts";
 import { BRAND_DIR, type BrandPart, brandFilePath } from "./brand.ts";
 import { checkBrandFile, checkTemplateFile } from "./brandcheck.ts";
 import { closest } from "./diagnostics.ts";
-import { checkDoc, countedHashes, type Doc, revisionOf, withBrandHashes } from "./doc.ts";
+import { checkDoc, countedHashes, type Doc, revisionOf, withBrandFile, withBrandHashes } from "./doc.ts";
 import { canonicalJson, sha256Hex } from "./revision.ts";
 import type { Block, Brand, Deck, Diagnostic, Scene, Template } from "./types.ts";
 import { checkManifest, checkScenePart, scenePath } from "./validate.ts";
@@ -321,7 +321,10 @@ export function diffDocs(base: Doc, current: Doc): Difference[] {
   const order = reordered(base.deck.scenes, current.deck.scenes);
   if (order) out.push(make("deck/scenes", "deck", "moved", { field: "scenes" }, order));
   out.push(...brandDiffs(base, current));
-  const [was, is] = [countedHashes(base) ?? {}, countedHashes(current) ?? {}];
+  // The files count while either side has a brand, each side's as it is: a font already in the folder is no change when
+  // the brand is made or taken off. With no brand on either side they change nothing the deck shows.
+  const [was, is] =
+    base.brand || current.brand ? [base.brandHashes ?? {}, current.brandHashes ?? {}] : [{}, {}];
   for (const path of [...new Set([...Object.keys(was), ...Object.keys(is)])].sort()) {
     out.push(
       ...fileDiff(
@@ -689,10 +692,19 @@ export function acceptChanges(
   };
 }
 
+/** A change a revert leaves as it is, and why, in words the CLI and the editor show alike. */
+export interface LeftChange {
+  id: string;
+  why: string;
+}
+
 export interface Reverted extends ApplySuccess {
   reverted: string[];
-  /** The brand files' changes among those named, left as they are: they can only be accepted. */
-  left: string[];
+  /**
+   * The changes among those named that are left as they are: a brand file's (`FILE_REVERT_REASON`), and one whose
+   * reviewed value names a brand file that is gone, which can be reverted once the file is back.
+   */
+  left: LeftChange[];
   /** The review, without the changes that are gone. The reviewed deck is the same. */
   review: Review;
 }
@@ -717,15 +729,9 @@ const unchanged = (doc: Doc): ApplySuccess => ({
 function copyInto(base: Doc, current: Doc, picked: readonly Difference[]): ApplyResult {
   const files = picked.filter(isFile);
   let from = base;
-  if (files.length > 0) {
-    const hashes: Record<string, string> = { ...base.brandHashes };
-    for (const { field } of files) {
-      const path = brandFilePath((field as string).slice(FILE_FIELD.length));
-      const hash = ownEntry(current.brandHashes, path);
-      if (hash === undefined) delete hashes[path];
-      else hashes[path] = hash;
-    }
-    from = { ...base, brandFiles: new Set(Object.keys(hashes)), brandHashes: hashes };
+  for (const { field } of files) {
+    const path = brandFilePath((field as string).slice(FILE_FIELD.length));
+    from = withBrandFile(from, path, ownEntry(current.brandHashes, path) ?? null);
   }
   const ops = buildOps(from, current, picked);
   const result = ops.length > 0 ? applyOps(from, ops, revisionOf(from)) : unchanged(from);
@@ -748,7 +754,13 @@ export function revertChanges(
 ): Reverted | ReviewFailure {
   const plan = revertOps(review, current, ids);
   if (!plan.ok) return plan;
-  const { left } = plan;
+  const left = plan.left.map(([id, gone]) => ({
+    id,
+    why:
+      gone.length > 0
+        ? `${gone.join(" and ")} ${gone.length > 1 ? "do" : "does"} not exist. Put the file back, then revert this change.`
+        : FILE_REVERT_REASON,
+  }));
   if (plan.ops.length === 0)
     return { ...unchanged(current), reverted: [], left, review: prune(review, current) };
   const result = applyOps(current, plan.ops, revisionOf(current));
@@ -761,8 +773,11 @@ export interface RevertPlan {
   /** One transaction: valid as a whole, though a step in between may not be valid alone. */
   ops: Op[];
   reverted: string[];
-  /** The brand files' changes among those named, which a revert leaves as they are (`FILE_REVERT_REASON`). */
-  left: string[];
+  /**
+   * The changes among those named that a revert leaves as they are (see `Reverted`), each with the brand files its
+   * reviewed value names that are gone: none for a brand file's own change.
+   */
+  left: [id: string, gone: string[]][];
 }
 
 /**
@@ -780,16 +795,29 @@ export function revertOps(
   const chosen = ids === "all" ? have.map((change) => change.id) : choose(have, ids);
   if (!Array.isArray(chosen)) return chosen;
   const wanted = new Set(chosen);
-  // A brand file's change makes no operation, so it is not reverted, and is said to be left instead.
-  const left = new Set(
-    have.filter((change) => wanted.has(change.id) && isFile(change)).map((change) => change.id),
-  );
+  // A brand file's change makes no operation, so it is not reverted, and is said to be left instead. So is a change
+  // whose reviewed value names a file that is gone, as when the agent un-named a logo and removed it: putting the name
+  // back without the file would make the deck invalid and refuse every other revert with it.
+  // A value names a file by a string that is its path under brand/: where that string is in the value's JSON. A brand
+  // file's own change has its hash for a value, which names none.
+  const gone = [...(base.brandFiles ?? [])].filter((path) => !current.brandFiles?.has(path));
+  const left = new Map<string, string[]>();
+  for (const change of have) {
+    const json = JSON.stringify(change.before) ?? "";
+    const named = gone.filter((path) => json.includes(JSON.stringify(path.slice(BRAND_DIR.length + 1))));
+    if (wanted.has(change.id) && (isFile(change) || named.length)) left.set(change.id, named);
+  }
   const ops = buildOps(
     current,
     base,
-    diffDocs(current, base).filter((change) => wanted.has(change.id)),
+    diffDocs(current, base).filter((change) => wanted.has(change.id) && !left.has(change.id)),
   );
-  return { ok: true, ops, reverted: chosen.filter((id) => !left.has(id)), left: [...left] };
+  return {
+    ok: true,
+    ops,
+    reverted: chosen.filter((id) => !left.has(id)),
+    left: [...left],
+  };
 }
 
 /**

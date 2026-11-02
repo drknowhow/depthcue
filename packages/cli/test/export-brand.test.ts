@@ -17,6 +17,7 @@ import { type DeckLook, type ExportData, type FontPair, lookOf, type PageLook } 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDeck } from "../src/deck-api.ts";
 import { brandFilesOf, EXPORT_MARKER, type ExportRequest, exportDeck } from "../src/export.ts";
+import { brandHashEntries, loadDeckDir } from "../src/loader.ts";
 
 const branded = fileURLToPath(new URL("../../../fixtures/decks/v0-4-brand", import.meta.url));
 const plain = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
@@ -159,8 +160,19 @@ describe("an export of a deck with a brand", () => {
 
   it("copies those files byte for byte, and counts them in the summary", () => {
     const summary = done();
+    expect(summary.brandFiles.length).toBeGreaterThan(0);
+    // The hashes the loader puts in `text` for the revision are in no file the export writes.
+    const hashes = Object.values(brandHashEntries(loadDeckDir(deck)));
+    expect(hashes.length).toBeGreaterThan(0);
     for (const path of summary.brandFiles) {
       expect(readFileSync(join(out(), path)).equals(readFileSync(join(deck, path))), path).toBe(true);
+    }
+    for (const path of listing(out())) {
+      const text = readFileSync(join(out(), path), "latin1");
+      expect(
+        hashes.filter((hash) => text.includes(hash)),
+        path,
+      ).toEqual([]);
     }
     const written = listing(out()).filter((path) => path !== EXPORT_MARKER);
     expect(summary.files).toBe(written.length);

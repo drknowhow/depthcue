@@ -2,10 +2,12 @@
 import {
   acceptChanges,
   applyOps,
+  checkDeckFiles,
   createSession,
   type DeckFiles,
   type Doc,
   describeChange,
+  docToFiles,
   FILE_REVERT_REASON,
   loadDoc,
   memoryDraftStore,
@@ -21,6 +23,7 @@ import {
   startReview,
   type Template,
   type TemplateSlot,
+  withBrandFile,
   withBrandHashes,
 } from "../src/index.ts";
 import { brandDir, brandDoc, demoDir, demoDoc, loadDir } from "./helpers.ts";
@@ -124,6 +127,23 @@ describe("slot operations", () => {
     expect(result.doc.scenes.growth).toBe(before.scenes.growth);
     const taken = refused(before, [{ op: "slot.rename", template: "cover", id: "kicker", to: "title" }]);
     expect(taken.diagnostics.map((d) => d.code)).toContain("duplicate-id");
+  });
+
+  it("moves no block of a scene on another template whose slot has the same id", () => {
+    const before = brandDoc();
+    // "growth" is on chart-and-note, which has a "title" slot of its own.
+    expect(before.scenes.growth?.blocks.find((block) => block.id === "growth-title")?.slot).toBe("title");
+    const result = applyOps(
+      before,
+      [{ op: "slot.rename", template: "cover", id: "title", to: "headline" }],
+      revisionOf(before),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(result.doc.scenes.welcome?.blocks.find((block) => block.id === "welcome-title")?.slot).toBe(
+      "headline",
+    );
+    expect(result.doc.scenes.growth).toBe(before.scenes.growth);
+    expect(result.changed).toEqual(["welcome"]);
   });
 
   it("refuses to remove a slot that holds blocks, naming each, until `to` says where they go", () => {
@@ -266,12 +286,93 @@ describe("brand files in the revision", () => {
     expect(edited.ok && edited.doc.brandHashes).toEqual(doc.brandHashes);
   });
 
+  it("reads a hash in `text` only as a hash: no check, template or written file takes one", () => {
+    const read = loadDir(brandDir);
+    const listed = [...(read.brandFiles ?? []), SEA];
+    const hashes = { [BOLD]: hash("a"), [REGULAR]: hash("b"), [LOGO]: hash("c"), [SEA]: hash("f") };
+    const files: DeckFiles = { ...read, text: { ...read.text, ...hashes }, brandFiles: listed };
+    expect(checkDeckFiles(files)).toEqual(checkDeckFiles({ ...read, brandFiles: listed }));
+    const doc = loadDoc(files).doc as Doc;
+    expect(doc.templates).toEqual(brandDoc().templates);
+    expect(doc.brandHashes).toEqual(hashes);
+    expect(docToFiles(doc)).toEqual(docToFiles(brandDoc()));
+    // Even a hash that is not one: whatever is under a brand file's path, nothing parses it.
+    const odd = { ...files, text: { ...files.text, [BOLD]: "{not json" } };
+    expect(checkDeckFiles(odd)).toEqual(checkDeckFiles(files));
+  });
+
   it("does not count the files of a brand folder that deck.json does not name", () => {
     const plain = demoDoc();
     const files = loadDir(demoDir);
     const loaded = loadDoc({ ...files, text: { ...files.text, [BOLD]: hash("a") }, brandFiles: [BOLD] });
     expect(loaded.doc?.brandHashes).toEqual({ [BOLD]: hash("a") });
     expect(revisionOf(loaded.doc as Doc)).toBe(revisionOf(plain));
+  });
+});
+
+describe("a brand file uploaded while the deck is open", () => {
+  const SPACE = "brand/fonts/Space.ttf";
+  /** What the server answers: the revisions of the deck on disk before the upload and after it. */
+  const answer = (disk: Doc, path: string, value: string | null) => ({
+    prevRev: revisionOf(disk),
+    rev: revisionOf(withBrandFile(disk, path, value)),
+  });
+
+  it("adds, replaces and removes a file with its hash, as loading the folder would", () => {
+    const added = withBrandFile(hashed(), SPACE, hash("e"));
+    expect(added.brandHashes).toEqual(hashed({ [SPACE]: hash("e") }).brandHashes);
+    expect(revisionOf(added)).toBe(revisionOf(hashed({ [SPACE]: hash("e") })));
+    expect(revisionOf(withBrandFile(added, SPACE, hash("f")))).toBe(
+      revisionOf(hashed({ [SPACE]: hash("f") })),
+    );
+    const removed = withBrandFile(hashed({ [SPACE]: hash("e") }), SPACE, null);
+    expect(removed.brandFiles?.has(SPACE)).toBe(false);
+    expect(removed.brandHashes).toEqual(hashed().brandHashes);
+    expect(revisionOf(removed)).toBe(revisionOf(hashed()));
+  });
+
+  it("leaves a clean session clean, so its next save is not refused as stale", () => {
+    const disk = hashed();
+    const session = createSession(disk);
+    const seen: string[] = [];
+    session.subscribe((event) => seen.push(event.type));
+    session.brandFile(SPACE, hash("e"), answer(disk, SPACE, hash("e")));
+    expect(seen).toEqual(["files"]);
+    expect(session.dirty).toBe(false);
+    expect(session.rev).toBe(revisionOf(hashed({ [SPACE]: hash("e") })));
+    session.apply([{ op: "brand.set", set: { name: "Harbor" } }]);
+    expect(session.dirty).toBe(true);
+    // Undo goes back to the deck with the file, which is what is on disk.
+    session.undo();
+    expect(session.dirty).toBe(false);
+  });
+
+  it("keeps unsaved edits unsaved, and gives every undo step the file", () => {
+    const disk = hashed();
+    const session = createSession(disk);
+    session.apply([{ op: "brand.set", set: { name: "Harbor" } }]);
+    session.brandFile(SPACE, hash("e"), answer(disk, SPACE, hash("e")));
+    expect(session.dirty).toBe(true);
+    expect(session.doc.brandHashes?.[SPACE]).toBe(hash("e"));
+    session.undo();
+    expect(session.doc.brandHashes?.[SPACE]).toBe(hash("e"));
+    expect(session.dirty).toBe(false);
+    session.redo();
+    expect(session.rev).toBe(revisionOf(withBrandFile(session.doc, SPACE, hash("e"))));
+    session.brandFile(SPACE, null, answer(withBrandFile(disk, SPACE, hash("e")), SPACE, null));
+    expect(session.doc.brandFiles?.has(SPACE)).toBe(false);
+    session.undo();
+    expect([session.doc.brandFiles?.has(SPACE), session.dirty]).toEqual([false, false]);
+  });
+
+  it("does not call a session clean whose disk had already changed under it", () => {
+    const disk = hashed();
+    const session = createSession(disk);
+    // Someone else saved first: the upload's prevRev is not what this session last saved.
+    const moved = applied(disk, [{ op: "deck.set", set: { title: "Elsewhere" } }]);
+    session.brandFile(SPACE, hash("e"), answer(moved, SPACE, hash("e")));
+    expect(session.savedRev).toBe(revisionOf(disk));
+    expect(session.dirty).toBe(true);
   });
 });
 
@@ -362,9 +463,62 @@ describe("brand files in review", () => {
     const reverted = revertChanges(review, now, "all");
     if (!reverted.ok) throw new Error(JSON.stringify(reverted.diagnostics));
     expect(reverted.reverted).toEqual(["deck/brand/name"]);
-    expect(reverted.left).toEqual([fileId(BOLD)]);
+    expect(reverted.left).toEqual([{ id: fileId(BOLD), why: FILE_REVERT_REASON }]);
     expect(reverted.doc.brandHashes?.[BOLD]).toBe(hash("d"));
     expect(FILE_REVERT_REASON).toContain("cannot be reverted");
+  });
+
+  it("reverts the rest, and leaves a change whose reviewed value names a file that is gone, naming the file", () => {
+    const DARK = "brand/logos/dark.svg";
+    const logos = { light: "logos/harbor.svg", alt: "Harbor Analytics" };
+    // Reviewed with a dark logo; since then the agent un-named it, removed the file, and renamed the brand.
+    const reviewed = applied(hashed({ [DARK]: hash("9") }), [
+      { op: "brand.set", set: { logos: { ...logos, dark: "logos/dark.svg" } } },
+    ]);
+    const review = startReview(reviewed);
+    const now = applied(hashed(), [{ op: "brand.set", set: { name: "Renamed" } }]);
+    expect(reviewChanges(review, now).map((change) => change.id)).toEqual([
+      "deck/brand/name",
+      "deck/brand/logos",
+      fileId(DARK),
+    ]);
+    const reverted = revertChanges(review, now, "all");
+    if (!reverted.ok) throw new Error(JSON.stringify(reverted.diagnostics));
+    expect(reverted.reverted).toEqual(["deck/brand/name"]);
+    expect(reverted.doc.brand?.name).toBe(reviewed.brand?.name);
+    expect(reverted.doc.brand?.logos).toEqual(logos);
+    expect(reverted.left).toEqual([
+      {
+        id: "deck/brand/logos",
+        why: "brand/logos/dark.svg does not exist. Put the file back, then revert this change.",
+      },
+      { id: fileId(DARK), why: FILE_REVERT_REASON },
+    ]);
+    // Named alone, it is left the same way, and nothing else is touched.
+    const alone = revertChanges(review, now, ["deck/brand/logos"]);
+    expect(alone.ok && [alone.reverted, alone.left.map((left) => left.id), alone.rev]).toEqual([
+      [],
+      ["deck/brand/logos"],
+      revisionOf(now),
+    ]);
+  });
+
+  it("does not list a file already in the folder as added when the brand is made, or removed when it is taken off", () => {
+    const files = loadDir(demoDir);
+    const plain = loadDoc({ ...files, text: { ...files.text, [BOLD]: hash("a") }, brandFiles: [BOLD] })
+      .doc as Doc;
+    const made = applied(plain, [{ op: "brand.set", set: { id: "acme", name: "Acme" } }]);
+    expect(reviewChanges(startReview(plain), made).map((change) => change.id)).toEqual(["deck/brand"]);
+    const off = applied(made, [{ op: "brand.set", set: null }]);
+    expect(reviewChanges(startReview(made), off).map((change) => change.id)).toEqual(["deck/brand"]);
+    // A file that did change while the brand was made is still listed.
+    const replaced = { ...made, brandHashes: { [BOLD]: hash("d") } };
+    expect(reviewChanges(startReview(plain), replaced).map((change) => change.id)).toEqual([
+      "deck/brand",
+      fileId(BOLD),
+    ]);
+    // And with no brand on either side, the folder's files are no change at all.
+    expect(reviewChanges(startReview(plain), { ...plain, brandHashes: { [BOLD]: hash("d") } })).toEqual([]);
   });
 
   it("refuses to accept a brand change without the file it names, and takes both together", () => {

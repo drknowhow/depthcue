@@ -16,7 +16,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadDoc, revisionOf } from "@depthcue/core";
+import { createSession, type Doc, docToFiles, loadDoc, revisionOf } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/index.ts";
 import { loadDeckDir } from "../src/loader.ts";
@@ -589,6 +589,73 @@ describe("brand files and the deck's revision", () => {
     expect(opened.json.text["brand/fonts/HarborSans-Bold.woff2"]).toMatch(/^[0-9a-f]{64}$/);
     expect(opened.json.text["brand/fonts/OFL.txt"]).toBeUndefined();
     expect(opened.json.rev).toBe(revOf(folder));
+  });
+
+  it("refuses a save that sends a brand file's hash back as a file, and writes nothing", async () => {
+    const opened = await call("/_depthcue/api/deck");
+    const before = snapshot(folder);
+    for (const path of ["brand/fonts/HarborSans-Bold.woff2", "brand/logos/harbor.svg"]) {
+      const files = { "deck.json": opened.json.text["deck.json"], [path]: opened.json.text[path] };
+      const refused = await call(
+        "/_depthcue/api/save",
+        "POST",
+        JSON.stringify({ baseRev: opened.json.rev, files }),
+        {
+          "Content-Type": "application/json",
+        },
+      );
+      expect(refused, path).toMatchObject({ status: 400, json: { error: "bad-request" } });
+      expect(refused.json.message).toContain(`"${path}" is not a file the editor may write.`);
+    }
+    expect(snapshot(folder)).toEqual(before);
+  });
+
+  it("leaves an open session clean through uploads, saves and a removal, when it takes in each answer", async () => {
+    // What step 8b's editor does: a session from /deck, `brandFile` with each answer, and saves against the disk's rev.
+    const docOf = (payload: Record<string, any>): Doc => {
+      const loaded = loadDoc({ text: payload.text, assets: payload.assets, brandFiles: payload.brandFiles });
+      if (!loaded.doc) throw new Error(JSON.stringify(loaded.diagnostics));
+      return loaded.doc;
+    };
+    const session = createSession(docOf((await call("/_depthcue/api/deck")).json));
+    let diskRev = session.rev;
+    const takeIn = (answer: Answer) => {
+      expect(answer.status, JSON.stringify(answer.json)).toBe(200);
+      session.brandFile(answer.json.file, answer.json.hash, answer.json as { prevRev: string; rev: string });
+      diskRev = answer.json.rev;
+    };
+    const save = async () => {
+      const files = docToFiles(session.doc);
+      const saved = await call("/_depthcue/api/save", "POST", JSON.stringify({ baseRev: diskRev, files }), {
+        "Content-Type": "application/json",
+      });
+      expect(saved.status, JSON.stringify(saved.json)).toBe(200);
+      session.markSaved(saved.json.rev);
+      diskRev = saved.json.rev;
+    };
+
+    takeIn(await upload(SPACE_GROTESK, { kind: "font", name: "Space.ttf" }));
+    expect([session.dirty, session.rev]).toEqual([false, revOf(folder)]);
+    session.apply([{ op: "brand.set", set: { name: "Harbor (edited)" } }]);
+    await save();
+    expect([session.dirty, session.rev]).toEqual([false, revOf(folder)]);
+
+    // An upload while edits are unsaved: they stay unsaved, and the save after it takes the file in.
+    session.apply([{ op: "deck.set", set: { title: "Not saved yet" } }]);
+    takeIn(await upload(PNG, { kind: "image", name: "sea.png" }));
+    expect(session.dirty).toBe(true);
+    await save();
+    expect([session.dirty, session.rev]).toEqual([false, revOf(folder)]);
+
+    takeIn(await removal({ path: "images/sea.png", baseRev: diskRev }));
+    expect([session.dirty, session.rev, session.doc.brandFiles?.has("brand/images/sea.png")]).toEqual([
+      false,
+      revOf(folder),
+      false,
+    ]);
+    // A reload gives the session's own revision: nothing to merge.
+    const reloaded = await call("/_depthcue/api/deck");
+    expect([reloaded.json.rev, revisionOf(docOf(reloaded.json))]).toEqual([session.rev, session.rev]);
   });
 });
 

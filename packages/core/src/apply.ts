@@ -413,7 +413,7 @@ function either(index: number, op: object, whole: string): Diagnostic | undefine
         index,
         "",
         given ? "forbidden-property" : "missing-property",
-        `Give "${whole}" to write the whole ${whole}, or "set" to change some of its fields: one of the two.`,
+        `Give either "${whole}" to write it whole or "set" to change some of its fields.`,
       );
 }
 
@@ -572,7 +572,7 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
             "/id",
             "slot-in-use",
             `The slot "${op.id}" holds ${used.join(", ")}.`,
-            `Give "to": another slot (${others.join(", ")}), or null to take them out of the slots, pinned where this one was.`,
+            `Give "to": another slot (${others.join(", ")}), or null to pin them where it was.`,
           );
         }
       } else if (typeof op.to === "string" && !others.includes(op.to)) {

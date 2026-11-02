@@ -43,6 +43,20 @@ export const brandHashesOf = (
   files: ReadonlySet<string> | undefined,
 ): Readonly<Record<string, string>> | undefined => files && hashesOfFiles.get(files);
 
+/** `doc` with the brand file at `path` (`brand/...`) added or replaced with its `hash`, or removed with null. */
+export function withBrandFile(doc: Doc, path: string, hash: string | null): Doc {
+  const files = new Set(doc.brandFiles);
+  const hashes: Record<string, string> = { ...doc.brandHashes };
+  if (hash === null) {
+    files.delete(path);
+    delete hashes[path];
+  } else {
+    files.add(path);
+    hashes[path] = hash;
+  }
+  return { ...doc, brandFiles: files, brandHashes: hashes };
+}
+
 /**
  * A revision with brand files' hashes folded in. None leaves it as it is, so a deck without brand files keeps the
  * revision it had before they counted, and a revision stored then can be carried over by folding them in.
