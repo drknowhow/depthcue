@@ -715,7 +715,7 @@ Found, not fixed (older than the brand work):
 - **Sizes.** No budget row moved: the work is in the CLI and the MCP server.
 - **Risks.** The video goes in through pptxgenjs `addMedia`, whose shape ids the package step renumbers, and
   LibreOffice cannot say whether PowerPoint plays it. The fonts are embedded whole, not subset. Embedding a face whose
-  licence allows it still puts a copy of the font in a file that travels; the report names each one.
+  license allows it still puts a copy of the font in a file that travels; the report names each one.
 - **Outside the write-set.** `packages/cli/package.json` (the `./export` and `./pptx` exports) and `vitest.config.ts`
   (their aliases), for the MCP tool; `tools/check-pptx-pages.mjs` and its `check:pptx-pages` script in the root
   `package.json`, which the review asked for; `brand-import/fonts.ts`, which the conductor asked for, and the tests
