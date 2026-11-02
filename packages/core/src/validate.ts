@@ -33,6 +33,11 @@ export const scenePath = (id: string): string => `scenes/${id}.json`;
  * brand.json and templates. Assets are only listed, and so are the brand's other files, its fonts, logos and images.
  */
 export interface DeckFiles {
+  /**
+   * The JSON files' text by path, and for each brand file its sha256 (64 hex characters) under its own path, such as
+   * `brand/fonts/Acme.woff2`. That is how the hashes travel with the files to the editor, whose Doc then has the
+   * server's revision. A brand file without one counts toward no revision.
+   */
   text: Readonly<Record<string, string>>;
   assets: Iterable<string>;
   /** Deck-relative paths of the files in the brand folder that are not JSON, such as `brand/fonts/Acme.woff2`. */

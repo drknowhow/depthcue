@@ -9,6 +9,7 @@
  */
 import {
   type ApplyFailure,
+  type ApplyResult,
   type ApplySuccess,
   applyOps,
   BRAND_KEYS,
@@ -19,10 +20,10 @@ import {
   type SceneChanges,
 } from "./apply.ts";
 import { assetsOf } from "./assets.ts";
-import type { BrandPart } from "./brand.ts";
+import { BRAND_DIR, type BrandPart, brandFilePath } from "./brand.ts";
 import { checkBrandFile, checkTemplateFile } from "./brandcheck.ts";
 import { closest } from "./diagnostics.ts";
-import { type Doc, revisionOf } from "./doc.ts";
+import { checkDoc, countedHashes, type Doc, revisionOf, withBrandHashes } from "./doc.ts";
 import { canonicalJson, sha256Hex } from "./revision.ts";
 import type { Block, Brand, Deck, Diagnostic, Scene, Template } from "./types.ts";
 import { checkManifest, checkScenePart, scenePath } from "./validate.ts";
@@ -43,11 +44,17 @@ export interface Review {
   /**
    * The brand and its templates as they were, for a branded deck: the scenes of the reviewed deck are checked against
    * them, and a change to either is a change of its own (`deck/brand/<key>`, `deck/style:<id>`, `deck/template:<id>`),
-   * accepted or reverted like a scene's. The brand's font, logo and picture files are not in the review: a change to one
-   * is not listed, and a revert does not bring one back.
+   * accepted or reverted like a scene's.
    */
   brand?: Brand;
   templates?: Record<string, Template>;
+  /**
+   * The sha256 of each of the brand folder's fonts, logos and images as they were, by deck path, and part of `rev`. A
+   * file added, replaced or removed since is a change of its own, `deck/file:<path in brand/>`, which can be accepted
+   * but not reverted: the review keeps no copy of a file's bytes. Left out by a review from before files were reviewed,
+   * which takes the files as they are as reviewed until an agent's edit records them.
+   */
+  files?: Record<string, string>;
   /** Ids of the changes the agent made and nobody has accepted or reverted, sorted. */
   agent: string[];
 }
@@ -73,7 +80,9 @@ export type ChangeKind = "added" | "removed" | "changed" | "moved";
  * value the template). A deck that got a brand, lost it, or changed to a brand with another id has `deck/brand` instead
  * of the properties and styles: `brand.json` as a whole (field `brand`, its value the brand without its `$schema` and
  * `schemaVersion`). Writing it writes the new brand's templates too, since the old brand's went with it; they are
- * listed one by one as well, as what changed from the old brand's.
+ * listed one by one as well, as what changed from the old brand's. Each font, logo or image of the brand folder that was
+ * added, replaced or removed is one too (`deck/file:fonts/Acme.woff2`, field `file:fonts/Acme.woff2`, its value the
+ * file's sha256).
  */
 export interface Difference {
   id: string;
@@ -242,8 +251,16 @@ const BRAND_FIELD = "brand";
 const KEY_FIELD = "brand/";
 const STYLE_FIELD = "style:";
 const TEMPLATE_FIELD = "template:";
+/** A file of the brand folder, by its path in it. Operations cannot write one, so it makes none. */
+const FILE_FIELD = "file:";
 const isBrandField = (field: string | undefined): boolean =>
-  field === BRAND_FIELD || [KEY_FIELD, STYLE_FIELD, TEMPLATE_FIELD].some((start) => field?.startsWith(start));
+  field === BRAND_FIELD ||
+  [KEY_FIELD, STYLE_FIELD, TEMPLATE_FIELD, FILE_FIELD].some((start) => field?.startsWith(start));
+const isFile = (change: Difference): boolean => change.field?.startsWith(FILE_FIELD) === true;
+
+/** Why a revert leaves a brand file's change: the CLI and the editor say it alike. */
+export const FILE_REVERT_REASON =
+  "A brand file cannot be reverted: the review keeps no copy of its old bytes. Accept the change, or put the old file back yourself.";
 
 /** A brand or a template as it is reviewed: without what an operation cannot write, which is no one's change. */
 function reviewed(value: Brand | Template | undefined): Record<string, unknown> | undefined {
@@ -304,6 +321,16 @@ export function diffDocs(base: Doc, current: Doc): Difference[] {
   const order = reordered(base.deck.scenes, current.deck.scenes);
   if (order) out.push(make("deck/scenes", "deck", "moved", { field: "scenes" }, order));
   out.push(...brandDiffs(base, current));
+  const [was, is] = [countedHashes(base) ?? {}, countedHashes(current) ?? {}];
+  for (const path of [...new Set([...Object.keys(was), ...Object.keys(is)])].sort()) {
+    out.push(
+      ...fileDiff(
+        `${FILE_FIELD}${path.slice(BRAND_DIR.length + 1)}`,
+        ownEntry(was, path),
+        ownEntry(is, path),
+      ),
+    );
+  }
   for (const id of current.deck.scenes) {
     const now = current.scenes[id] as Scene;
     const was = base.scenes[id];
@@ -331,6 +358,8 @@ export function describeChange(change: Difference): string {
       what = `style "${change.field.slice(STYLE_FIELD.length)}"`;
     else if (change.field?.startsWith(TEMPLATE_FIELD))
       what = `template "${change.field.slice(TEMPLATE_FIELD.length)}"`;
+    else if (change.field?.startsWith(FILE_FIELD))
+      what = `brand file ${change.field.slice(FILE_FIELD.length)}`;
     else what = `deck ${change.field}`;
   } else if (change.scope === "scene") {
     if (change.field === undefined) what = scene;
@@ -531,23 +560,34 @@ function buildOps(from: Doc, to: Doc, picked: readonly Difference[]): Op[] {
 }
 
 /**
- * The reviewed deck as a `Doc`. Its assets are the deck folder's, and the ones it names that were since deleted. Given
- * the brand folder's files, it has those too, for a reviewed deck with a brand.
+ * The reviewed deck as a `Doc`. Its assets are the deck folder's, and the ones it names that were since deleted. Its
+ * brand files are the ones the review holds; for a review from before files were reviewed, the ones given, the deck's
+ * now, which are then no change.
  */
 export function baselineOf(
   review: Review,
   assets: ReadonlySet<string>,
   brandFiles?: ReadonlySet<string>,
+  brandHashes?: Readonly<Record<string, string>>,
 ): Doc {
   const named = Object.values(review.scenes).flatMap(assetsOf);
+  const files = review.files;
   return {
     deck: review.deck,
     scenes: review.scenes,
     assets: new Set([...assets, ...named]),
     ...(review.brand === undefined ? {} : { brand: review.brand, templates: review.templates ?? {} }),
-    ...(brandFiles === undefined ? {} : { brandFiles }),
+    ...(files
+      ? { brandFiles: new Set(Object.keys(files)), brandHashes: files }
+      : {
+          ...(brandFiles === undefined ? {} : { brandFiles }),
+          ...(brandHashes === undefined ? {} : { brandHashes }),
+        }),
   };
 }
+
+const baseOf = (review: Review, current: Doc): Doc =>
+  baselineOf(review, current.assets, current.brandFiles, current.brandHashes);
 
 /** A review whose reviewed deck is `doc`, with nothing for the agent to answer for yet. */
 export function startReview(doc: Doc, agent: readonly string[] = []): Review {
@@ -557,6 +597,7 @@ export function startReview(doc: Doc, agent: readonly string[] = []): Review {
     deck: doc.deck,
     scenes: Object.fromEntries(doc.deck.scenes.map((id) => [id, doc.scenes[id] as Scene])),
     ...(doc.brand === undefined ? {} : { brand: doc.brand, templates: { ...doc.templates } }),
+    ...(doc.brandHashes === undefined ? {} : { files: { ...doc.brandHashes } }),
     agent: [...agent],
   };
 }
@@ -564,14 +605,14 @@ export function startReview(doc: Doc, agent: readonly string[] = []): Review {
 /** The changes since the review, each marked with who made it. */
 export function reviewChanges(review: Review, current: Doc): Change[] {
   const agent = new Set(review.agent);
-  return diffDocs(baselineOf(review, current.assets), current).map(
+  return diffDocs(baseOf(review, current), current).map(
     (change): Change => ({ ...change, by: agent.has(change.id) ? "agent" : "outside" }),
   );
 }
 
 /** Only the ids that are still changes: a change that was accepted, reverted or undone by hand is forgotten. */
 function prune(review: Review, current: Doc): Review {
-  const live = new Set(diffDocs(baselineOf(review, current.assets), current).map((change) => change.id));
+  const live = new Set(diffDocs(baseOf(review, current), current).map((change) => change.id));
   return { ...review, agent: [...new Set(review.agent.filter((id) => live.has(id)))].sort() };
 }
 
@@ -628,21 +669,17 @@ export function acceptChanges(
   current: Doc,
   ids: readonly string[] | "all",
 ): Accepted | ReviewFailure {
-  const base = baselineOf(review, current.assets, current.brandFiles);
+  const base = baseOf(review, current);
   const have = diffDocs(base, current);
   if (ids === "all") return { ok: true, review: startReview(current), accepted: have.map((c) => c.id) };
   const chosen = choose(have, ids);
   if (!Array.isArray(chosen)) return chosen;
   if (chosen.length === 0) return { ok: true, review, accepted: [] };
   const wanted = new Set(chosen);
-  const result = applyOps(
+  const result = copyInto(
     base,
-    buildOps(
-      base,
-      current,
-      have.filter((change) => wanted.has(change.id)),
-    ),
-    revisionOf(base),
+    current,
+    have.filter((change) => wanted.has(change.id)),
   );
   if (!result.ok) return failed(result);
   return {
@@ -654,6 +691,8 @@ export function acceptChanges(
 
 export interface Reverted extends ApplySuccess {
   reverted: string[];
+  /** The brand files' changes among those named, left as they are: they can only be accepted. */
+  left: string[];
   /** The review, without the changes that are gone. The reviewed deck is the same. */
   review: Review;
 }
@@ -671,6 +710,33 @@ const unchanged = (doc: Doc): ApplySuccess => ({
 });
 
 /**
+ * `base` with the picked changes copied in from `current`: brand files by their hashes, the rest by operations. With a
+ * file among them the result is checked whole, since a brand file is named by brand.json or a template that may not
+ * have changed: a font accepted away while the reviewed brand.json still names it is refused, naming that file.
+ */
+function copyInto(base: Doc, current: Doc, picked: readonly Difference[]): ApplyResult {
+  const files = picked.filter(isFile);
+  let from = base;
+  if (files.length > 0) {
+    const hashes: Record<string, string> = { ...base.brandHashes };
+    for (const { field } of files) {
+      const path = brandFilePath((field as string).slice(FILE_FIELD.length));
+      const hash = ownEntry(current.brandHashes, path);
+      if (hash === undefined) delete hashes[path];
+      else hashes[path] = hash;
+    }
+    from = { ...base, brandFiles: new Set(Object.keys(hashes)), brandHashes: hashes };
+  }
+  const ops = buildOps(from, current, picked);
+  const result = ops.length > 0 ? applyOps(from, ops, revisionOf(from)) : unchanged(from);
+  if (!result.ok || files.length === 0) return result;
+  const errors = checkDoc(result.doc).filter((d) => d.severity === "error");
+  return errors.length > 0
+    ? { ok: false, code: "invalid-deck", rev: result.rev, diagnostics: errors }
+    : result;
+}
+
+/**
  * Puts changes back as they were when the deck was reviewed, by running operations on the current deck. The result
  * is a new revision on top of the current one; no revision is rewritten. All of it or none: a change that would
  * leave an invalid deck, such as one that brings back a block whose image file is gone, is refused with the reason.
@@ -682,10 +748,12 @@ export function revertChanges(
 ): Reverted | ReviewFailure {
   const plan = revertOps(review, current, ids);
   if (!plan.ok) return plan;
-  if (plan.ops.length === 0) return { ...unchanged(current), reverted: [], review: prune(review, current) };
+  const { left } = plan;
+  if (plan.ops.length === 0)
+    return { ...unchanged(current), reverted: [], left, review: prune(review, current) };
   const result = applyOps(current, plan.ops, revisionOf(current));
   if (!result.ok) return failed(result);
-  return { ...result, reverted: plan.reverted, review: prune(review, result.doc) };
+  return { ...result, reverted: plan.reverted, left, review: prune(review, result.doc) };
 }
 
 export interface RevertPlan {
@@ -693,6 +761,8 @@ export interface RevertPlan {
   /** One transaction: valid as a whole, though a step in between may not be valid alone. */
   ops: Op[];
   reverted: string[];
+  /** The brand files' changes among those named, which a revert leaves as they are (`FILE_REVERT_REASON`). */
+  left: string[];
 }
 
 /**
@@ -705,17 +775,21 @@ export function revertOps(
   current: Doc,
   ids: readonly string[] | "all",
 ): RevertPlan | ReviewFailure {
-  const base = baselineOf(review, current.assets, current.brandFiles);
+  const base = baseOf(review, current);
   const have = diffDocs(base, current);
   const chosen = ids === "all" ? have.map((change) => change.id) : choose(have, ids);
   if (!Array.isArray(chosen)) return chosen;
   const wanted = new Set(chosen);
+  // A brand file's change makes no operation, so it is not reverted, and is said to be left instead.
+  const left = new Set(
+    have.filter((change) => wanted.has(change.id) && isFile(change)).map((change) => change.id),
+  );
   const ops = buildOps(
     current,
     base,
     diffDocs(current, base).filter((change) => wanted.has(change.id)),
   );
-  return { ok: true, ops, reverted: chosen };
+  return { ok: true, ops, reverted: chosen.filter((id) => !left.has(id)), left: [...left] };
 }
 
 /**
@@ -725,14 +799,14 @@ export function revertOps(
  * ones a person reverted and then undid, which come back as the agent's and not as the person's own.
  */
 export function foldEdit(review: Review, before: Doc, after: Doc, keep: readonly string[] = []): Review {
-  let base = baselineOf(review, after.assets, after.brandFiles);
+  let base = baseOf(review, after);
   const kept = new Set(keep);
   for (const { id } of diffDocs(before, after)) {
     if (kept.has(id)) continue;
     const have = diffDocs(base, after);
     const picked = have.filter((change) => change.id === id);
     if (picked.length === 0) continue;
-    const result = applyOps(base, buildOps(base, after, picked), revisionOf(base));
+    const result = copyInto(base, after, picked);
     if (result.ok) base = result.doc;
   }
   return prune({ ...startReview(base), agent: [...review.agent, ...kept] }, after);
@@ -740,10 +814,20 @@ export function foldEdit(review: Review, before: Doc, after: Doc, keep: readonly
 
 /**
  * The agent's edit, `before` to `after`: every change it made or touched is marked as the agent's, and the changes
- * it did not touch keep whoever's they were.
+ * it did not touch keep whoever's they were. A review from before brand files were reviewed takes the files `before`
+ * has as reviewed, once either side has any, so a file the agent adds, replaces or removes is its change.
  */
 export function recordAgentEdit(review: Review, before: Doc, after: Doc): Review {
-  const base = baselineOf(review, after.assets);
+  if (review.files === undefined && (before.brandHashes ?? after.brandHashes) !== undefined) {
+    const files = { ...before.brandHashes };
+    // The reviewed deck's revision counts them as any deck's does: only with a brand.
+    review = {
+      ...review,
+      rev: withBrandHashes(review.rev, countedHashes({ ...review, brandHashes: files })),
+      files,
+    };
+  }
+  const base = baseOf(review, after);
   // A scene the agent only upgraded holds the same changes as before, in the newer form: they stay whose they were.
   const earlier = new Map(
     diffDocs(base, alignedTo(before, after)).map((change) => [change.id, canonicalJson(change)]),
@@ -809,6 +893,16 @@ export function readReview(text: string | undefined): ReadReview {
   if (data.brand !== undefined && !isRecord(data.templates)) {
     return refuse("/templates", "bad-shape", 'A review with a "brand" needs its "templates".', START_OVER);
   }
+  const files = data.files;
+  if (
+    files !== undefined &&
+    (!isRecord(files) ||
+      Object.entries(files).some(
+        ([path, hash]) => !path.startsWith(`${BRAND_DIR}/`) || !/^[0-9a-f]{64}$/.test(String(hash)),
+      ))
+  ) {
+    return refuse("/files", "bad-shape", '"files" must map brand file paths to their sha256.', START_OVER);
+  }
   const templates = (data.templates ?? {}) as Record<string, unknown>;
   const problems =
     data.brand === undefined
@@ -854,7 +948,7 @@ export function readReview(text: string | undefined): ReadReview {
   if (problems.some((d) => d.severity === "error")) return { ok: false, diagnostics: problems };
 
   const review = data as unknown as Review;
-  if (revisionOf({ deck, scenes, assets, ...part }) !== review.rev) {
+  if (revisionOf({ deck, scenes, assets, ...part, brandHashes: review.files }) !== review.rev) {
     return refuse(
       "/rev",
       "rev-mismatch",

@@ -11,6 +11,9 @@ export type {
   NewTemplate,
   Op,
   SceneChanges,
+  SlotChanges,
+  StyleChanges,
+  TemplateChanges,
 } from "./apply.ts";
 export { applyOps, BRAND_KEYS } from "./apply.ts";
 export type { AssetRef } from "./assets.ts";
@@ -101,7 +104,16 @@ export { chartFromBarChart, checkData, columnKinds, replaceBlockOps } from "./da
 export type { RawError } from "./diagnostics.ts";
 export { explain } from "./diagnostics.ts";
 export type { Doc, LoadResult } from "./doc.ts";
-export { brandPartOf, checkDoc, docToFiles, loadDoc, revisionOf, sceneRevision } from "./doc.ts";
+export {
+  brandHashesOf,
+  brandPartOf,
+  checkDoc,
+  docToFiles,
+  loadDoc,
+  revisionOf,
+  sceneRevision,
+  withBrandHashes,
+} from "./doc.ts";
 export type { Autosave, AutosaveOptions, DraftStore, Recovery, Timers } from "./draft.ts";
 export { attachAutosave, DRAFT_FORMAT, memoryDraftStore, recoverDraft, serializeDraft } from "./draft.ts";
 export type {
@@ -173,6 +185,7 @@ export {
   baselineOf,
   describeChange,
   diffDocs,
+  FILE_REVERT_REASON,
   foldEdit,
   REVIEW_FILE,
   REVIEW_FORMAT,
@@ -204,10 +217,13 @@ export {
   DATA_LIMITS,
   deckSchema,
   FAMILY_PATTERN,
+  FONT_FILE_PATTERN,
   FONT_PAIRS,
   ID_PATTERN,
+  IMAGE_FILE_PATTERN,
   LAYOUTS,
   LEADS,
+  LOGO_FILE_PATTERN,
   MODULE_SETTING_PATTERN,
   OP_NAMES,
   opsSchema,

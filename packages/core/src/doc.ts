@@ -28,7 +28,34 @@ export interface Doc {
   readonly templates?: Readonly<Record<string, Template>> | undefined;
   /** Paths of the brand folder's other files, its fonts, logos and images, such as `brand/fonts/Acme.woff2`. */
   readonly brandFiles?: ReadonlySet<string> | undefined;
+  /**
+   * The sha256 of each of `brandFiles`, by path, as 64 hex characters. Part of the revision, so a font replaced on disk
+   * makes the next save stale. Deck files carry each in `text`, under the file's own path (see `DeckFiles`).
+   */
+  readonly brandHashes?: Readonly<Record<string, string>> | undefined;
 }
+
+/** What `loadDoc` read for a set of brand files, so a draft recovered against them gets the same hashes. */
+const hashesOfFiles = new WeakMap<ReadonlySet<string>, Readonly<Record<string, string>>>();
+
+/** The hashes `loadDoc` read with this set of brand files, the one a loaded Doc carries. */
+export const brandHashesOf = (
+  files: ReadonlySet<string> | undefined,
+): Readonly<Record<string, string>> | undefined => files && hashesOfFiles.get(files);
+
+/**
+ * A revision with brand files' hashes folded in. None leaves it as it is, so a deck without brand files keeps the
+ * revision it had before they counted, and a revision stored then can be carried over by folding them in.
+ */
+export const withBrandHashes = (rev: string, hashes: Readonly<Record<string, string>> | undefined): string =>
+  hashes && Object.keys(hashes).length > 0 ? sha256Hex(`${rev}\n${canonicalJson(hashes)}`).slice(0, 16) : rev;
+
+/**
+ * The brand files' hashes that count: a deck's that has a brand. Files in a brand folder that deck.json does not name
+ * change nothing a deck shows, so they are no edit, as its templates are none.
+ */
+export const countedHashes = (doc: Pick<Doc, "brand" | "brandHashes">): Doc["brandHashes"] =>
+  doc.brand === undefined ? undefined : doc.brandHashes;
 
 const sceneRevisions = new WeakMap<Scene, string>();
 
@@ -55,13 +82,16 @@ const brandRevision = (doc: Doc): string =>
 /**
  * Content hash of the deck and its scenes in listed order: 16 hex characters. Stored nowhere; equal content
  * always gives an equal revision, however the files were formatted. Scene hashes are cached per object, so
- * a change to one scene rehashes only that scene. A branded deck's brand.json and templates count too; a deck without
- * a brand hashes exactly as it did before brands.
+ * a change to one scene rehashes only that scene. A branded deck's brand.json and templates count too, and the brand
+ * folder's files by their hashes; a deck without a brand or brand files hashes exactly as it did before brands.
  */
 export function revisionOf(doc: Doc): string {
   const parts = doc.deck.scenes.map((id) => sceneRevision(doc.scenes[id] as Scene));
   const brand = doc.brand === undefined && doc.templates === undefined ? "" : `\n${brandRevision(doc)}`;
-  return sha256Hex(`${canonicalJson(doc.deck)}\n${parts.join(",")}${brand}`).slice(0, 16);
+  return withBrandHashes(
+    sha256Hex(`${canonicalJson(doc.deck)}\n${parts.join(",")}${brand}`).slice(0, 16),
+    countedHashes(doc),
+  );
 }
 
 /** The brand of a Doc, as the scene checks take it. */
@@ -79,8 +109,17 @@ export function loadDoc(files: DeckFiles): LoadResult {
   for (const id of deck.scenes) scenes[id] = JSON.parse(files.text[scenePath(id)] as string) as Scene;
   const assets = new Set(files.assets);
   const brandFiles = new Set(files.brandFiles ?? []);
+  const hashes: Record<string, string> = Object.fromEntries(
+    [...brandFiles].flatMap((path) =>
+      Object.hasOwn(files.text, path) ? [[path, files.text[path] as string]] : [],
+    ),
+  );
+  hashesOfFiles.set(brandFiles, hashes);
   // Kept even without a brand, so that a brand made later can name the fonts and logos already in the folder.
-  const binaries = brandFiles.size > 0 ? { brandFiles } : {};
+  const binaries =
+    brandFiles.size > 0
+      ? { brandFiles, ...(Object.keys(hashes).length > 0 ? { brandHashes: hashes } : {}) }
+      : {};
   if (deck.brand === undefined) return { doc: { deck, scenes, assets, ...binaries }, diagnostics };
   const brand = JSON.parse(files.text[BRAND_FILE] as string) as Brand;
   // Entries, not assignment, so that no id can reach a prototype.

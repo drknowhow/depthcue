@@ -1,3 +1,4 @@
+import { BUILT_IN_STYLES, BUILT_IN_TEMPLATES } from "./builtins.ts";
 import { closest, explain } from "./diagnostics.ts";
 import { checkChanges, type Doc, revisionOf, sceneRevision } from "./doc.ts";
 import type { Frame } from "./frames.ts";
@@ -6,7 +7,7 @@ import { own } from "./own.ts";
 import { canonicalJson } from "./revision.ts";
 import { ID_PATTERN, opsSchema, SCHEMA_VERSION } from "./schema.ts";
 import { schemaValidator } from "./schemacheck.ts";
-import type { Block, BlockStyle, Brand, Deck, Diagnostic, Scene, Template } from "./types.ts";
+import type { Block, BlockStyle, Brand, Deck, Diagnostic, Scene, Template, TemplateSlot } from "./types.ts";
 import { scenePath } from "./validate.ts";
 import { blockNeeds, raiseDeck, raiseScene, readsMarkup, upgradeScene, versionAtLeast } from "./versions.ts";
 
@@ -33,6 +34,10 @@ export type NewTemplate = Omit<Template, "schemaVersion" | "id"> &
 export type BlockChanges = Record<string, unknown>;
 /** A scene to add. `schemaVersion` may be left out. */
 export type NewScene = Omit<Scene, "schemaVersion"> & { schemaVersion?: Scene["schemaVersion"] };
+/** Fields of a style, a template or a slot to change; the result is checked whole, as the whole-object form is. */
+export type StyleChanges = Nullable<BlockStyle>;
+export type TemplateChanges = Nullable<Omit<Template, "schemaVersion" | "id">>;
+export type SlotChanges = Nullable<Omit<TemplateSlot, "id">>;
 
 /** `after` is a sibling id, or null for the start. Left out on an add, it means the end. */
 export type Op =
@@ -51,10 +56,21 @@ export type Op =
   | { op: "block.unframe"; scene: string; id: string }
   /** Makes the deck's brand, with `id` and `name`, or changes it. Null takes the brand off the deck. */
   | { op: "brand.set"; set: BrandChanges | null }
-  /** Writes a component style of the brand's, or removes it with null. */
-  | { op: "style.set"; id: string; style: BlockStyle | null }
-  /** Writes a template of the brand's, or removes it with null. */
-  | { op: "template.set"; id: string; template: NewTemplate | null };
+  /** Writes a component style of the brand's, or removes it with null. Or, with `set`, changes some of its fields. */
+  | { op: "style.set"; id: string; style?: BlockStyle | null; set?: StyleChanges }
+  /** Writes a template of the brand's, or removes it with null. Or, with `set`, changes some of its fields. */
+  | { op: "template.set"; id: string; template?: NewTemplate | null; set?: TemplateChanges }
+  /** Adds a slot to a template of the brand's. */
+  | { op: "slot.add"; template: string; slot: TemplateSlot; after?: string | null }
+  /** Changes some fields of a slot. Its id changes only with slot.rename. */
+  | { op: "slot.set"; template: string; id: string; set: SlotChanges }
+  /** Renames a slot, and moves the blocks in it, in every scene on the template, to the new name. */
+  | { op: "slot.rename"; template: string; id: string; to: string }
+  /**
+   * Removes a slot. Refused while a block is in it, unless `to` says where the blocks go: another slot, or null for out
+   * of the slots, pinned where the slot was (a pinned block keeps its frame).
+   */
+  | { op: "slot.remove"; template: string; id: string; to?: string | null };
 
 export type ApplyFailureCode =
   /** `baseRev` is not the document's current revision. Read it again and redo the edit. */
@@ -171,6 +187,26 @@ function patch<T extends object>(target: T, set: Record<string, unknown>): T {
     else Object.defineProperty(next, key, { value, enumerable: true, writable: true, configurable: true });
   }
   return next as T;
+}
+
+/** The first of `keys` that `set` writes, refused: what an operation's `set` may never change. */
+function forbid(
+  index: number,
+  set: object,
+  keys: readonly string[],
+  name: string,
+  fix?: string,
+): Diagnostic | undefined {
+  const key = keys.find((candidate) => has(set, candidate));
+  return key === undefined
+    ? undefined
+    : problem(
+        index,
+        `/set/${key}`,
+        "forbidden-property",
+        `"${key}" cannot be changed with ${name}.`,
+        fix ?? own(REDIRECTS, key),
+      );
 }
 
 function checkKeys(
@@ -336,12 +372,65 @@ function setBrand(work: Work, op: Extract<Op, { op: "brand.set" }>, index: numbe
   return undefined;
 }
 
+/**
+ * A change to one of Depthcue's own templates or styles, refused with how to make it: copy it into the brand, where a
+ * template or style with its id takes its place, and change the copy.
+ */
+const builtIn = (index: number, path: string, what: string, id: string, value: unknown): Diagnostic =>
+  problem(
+    index,
+    path,
+    `built-in-${what}`,
+    `"${id}" is Depthcue's own ${what}, which cannot be changed.`,
+    `Copy it into the brand first, then change the copy: {"op": "${what}.set", "id": "${id}", "${what}": ${JSON.stringify(value)}}.`,
+  );
+
+/** The brand's own entry `id` that a `set` changes, or why there is none: no brand, a built-in, or no such id. */
+function ownEntry<T>(
+  work: Work,
+  index: number,
+  what: "template" | "style",
+  id: string,
+  path: string,
+  name: string,
+): T | Diagnostic {
+  if (work.brand === undefined) return noBrand(index, name);
+  const mine = (what === "style" ? work.brand.styles : work.templates) as Record<string, T> | undefined;
+  const found = own(mine, id);
+  if (found) return found;
+  const theirs = own<unknown>(what === "style" ? BUILT_IN_STYLES : BUILT_IN_TEMPLATES, id);
+  return theirs
+    ? builtIn(index, path, what, id, theirs)
+    : unknownId(index, path, id, what, Object.keys(mine ?? {}));
+}
+
+/** That an operation gives exactly one of `whole`, the whole thing or null, and `set`, the fields to change. */
+function either(index: number, op: object, whole: string): Diagnostic | undefined {
+  const given = Number(has(op, whole)) + Number(has(op, "set"));
+  return given === 1
+    ? undefined
+    : problem(
+        index,
+        "",
+        given ? "forbidden-property" : "missing-property",
+        `Give "${whole}" to write the whole ${whole}, or "set" to change some of its fields: one of the two.`,
+      );
+}
+
 function setStyle(work: Work, op: Extract<Op, { op: "style.set" }>, index: number): Diagnostic | undefined {
   if (work.brand === undefined) return noBrand(index, "style.set");
+  const bad = either(index, op, "style");
+  if (bad) return bad;
+  let style = op.style as BlockStyle | null;
+  if (op.set) {
+    const was = ownEntry<BlockStyle>(work, index, "style", op.id, "/id", "style.set");
+    if (isProblem(was)) return was;
+    style = patch(was, op.set);
+  }
   // A computed key in a literal defines the property, so no id can reach a prototype.
   const styles: Record<string, BlockStyle> =
-    op.style === null ? { ...work.brand.styles } : { ...work.brand.styles, [op.id]: op.style };
-  if (op.style === null) {
+    style === null ? { ...work.brand.styles } : { ...work.brand.styles, [op.id]: style };
+  if (style === null) {
     if (!has(styles, op.id)) return unknownId(index, "/id", op.id, "style", Object.keys(styles));
     delete styles[op.id];
   }
@@ -355,8 +444,16 @@ function setTemplate(
   index: number,
 ): Diagnostic | undefined {
   if (work.brand === undefined) return noBrand(index, "template.set");
+  const bad = either(index, op, "template");
+  if (bad) return bad;
   let templates: Record<string, Template> = { ...work.templates };
-  if (op.template === null) {
+  if (op.set) {
+    const was = ownEntry<Template>(work, index, "template", op.id, "/id", "template.set");
+    if (isProblem(was)) return was;
+    const fixed = forbid(index, op.set, ["id", "schemaVersion"], "template.set");
+    if (fixed) return fixed;
+    templates = { ...templates, [op.id]: patch(was, op.set) };
+  } else if (op.template === null) {
     if (!has(templates, op.id)) return unknownId(index, "/id", op.id, "template", Object.keys(templates));
     delete templates[op.id];
   } else {
@@ -377,6 +474,49 @@ function setTemplate(
   return undefined;
 }
 
+/** The template a slot operation names and where its slot `id` is in it, or why there is none. */
+function slotOf(
+  work: Work,
+  index: number,
+  op: { op: string; template: string; id: string },
+): { template: Template; at: number } | Diagnostic {
+  const template = ownEntry<Template>(work, index, "template", op.template, "/template", op.op);
+  if (isProblem(template)) return template;
+  const at = template.slots.findIndex((slot) => slot.id === op.id);
+  if (at >= 0) return { template, at };
+  return unknownId(
+    index,
+    "/id",
+    op.id,
+    "slot",
+    template.slots.map((slot) => slot.id),
+  );
+}
+
+const withSlots = (work: Work, template: Template, slots: TemplateSlot[]) => {
+  work.templates = { ...work.templates, [template.id]: { ...template, slots } };
+};
+
+/**
+ * Each block in the slot `from` of a scene on `template`, as `block "<id>" of scene "<id>"`, and rewritten by `next`
+ * when it is given. A scene with none stays as it is.
+ */
+function blocksIn(work: Work, template: string, from: string, next?: (block: Block) => Block): string[] {
+  const found: string[] = [];
+  for (const id of work.deck.scenes) {
+    const scene = work.scenes[id] as Scene;
+    if (scene.template !== template) continue;
+    const before = found.length;
+    const blocks = scene.blocks.map((block) => {
+      if (block.slot !== from) return block;
+      found.push(`block "${block.id}" of scene "${id}"`);
+      return next ? next(block) : block;
+    });
+    if (next && found.length > before) work.scenes[id] = { ...scene, blocks };
+  }
+  return found;
+}
+
 function step(work: Work, op: Op, index: number): Diagnostic | undefined {
   switch (op.op) {
     case "brand.set":
@@ -385,6 +525,69 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
       return setStyle(work, op, index);
     case "template.set":
       return setTemplate(work, op, index);
+    case "slot.add": {
+      const template = ownEntry<Template>(work, index, "template", op.template, "/template", op.op);
+      if (isProblem(template)) return template;
+      const slots = place(index, "slot", template.slots, op.slot, op.after);
+      if (isProblem(slots)) return slots;
+      withSlots(work, template, slots);
+      return undefined;
+    }
+    case "slot.set": {
+      const found = slotOf(work, index, op);
+      if (isProblem(found)) return found;
+      const bad = forbid(index, op.set, ["id"], "slot.set", "Use slot.rename.");
+      if (bad) return bad;
+      withSlots(
+        work,
+        found.template,
+        found.template.slots.map((slot, i) => (i === found.at ? patch(slot, op.set) : slot)),
+      );
+      return undefined;
+    }
+    case "slot.rename": {
+      const found = slotOf(work, index, op);
+      if (isProblem(found)) return found;
+      const { template, at } = found;
+      // A name another slot has is refused by the template's check: two slots with one id.
+      withSlots(
+        work,
+        template,
+        template.slots.map((slot, i) => (i === at ? { ...slot, id: op.to } : slot)),
+      );
+      blocksIn(work, template.id, op.id, (block) => ({ ...block, slot: op.to }));
+      return undefined;
+    }
+    case "slot.remove": {
+      const found = slotOf(work, index, op);
+      if (isProblem(found)) return found;
+      const { template, at } = found;
+      const gone = template.slots[at] as TemplateSlot;
+      const others = template.slots.filter((slot) => slot !== gone).map((slot) => slot.id);
+      if (!has(op, "to")) {
+        const used = blocksIn(work, template.id, op.id);
+        if (used.length > 0) {
+          return problem(
+            index,
+            "/id",
+            "slot-in-use",
+            `The slot "${op.id}" holds ${used.join(", ")}.`,
+            `Give "to": another slot (${others.join(", ")}), or null to take them out of the slots, pinned where this one was.`,
+          );
+        }
+      } else if (typeof op.to === "string" && !others.includes(op.to)) {
+        return unknownId(index, "/to", op.to, "slot", others);
+      }
+      withSlots(
+        work,
+        template,
+        template.slots.filter((slot) => slot !== gone),
+      );
+      blocksIn(work, template.id, op.id, (block) =>
+        op.to ? { ...block, slot: op.to } : patch(block, { slot: null, frame: block.frame ?? gone.frame }),
+      );
+      return undefined;
+    }
     case "deck.set": {
       const bad = checkKeys(index, op.set, DECK_KEYS, "deck.set");
       if (bad) return bad;
@@ -504,17 +707,8 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
     case "block.set": {
       const named = blockOf(work, index, op.scene, op.id);
       if (isProblem(named)) return named;
-      for (const key of ["id", "type"]) {
-        if (has(op.set, key)) {
-          return problem(
-            index,
-            `/set/${key}`,
-            "forbidden-property",
-            `"${key}" cannot be changed with block.set.`,
-            own(REDIRECTS, key),
-          );
-        }
-      }
+      const bad = forbid(index, op.set, ["id", "type"], "block.set");
+      if (bad) return bad;
       const next = patch(named.block, op.set);
       if (needsUpgrade(named.scene, next)) {
         // The scene is upgraded before the change is made, so text the change writes is read as markup.
@@ -624,6 +818,7 @@ export function applyOps(doc: Doc, ops: unknown, baseRev: string): ApplyResult {
     assets: doc.assets,
     ...(work.brand === undefined ? {} : { brand: work.brand, templates: work.templates ?? {} }),
     ...(doc.brandFiles === undefined ? {} : { brandFiles: doc.brandFiles }),
+    ...(doc.brandHashes === undefined ? {} : { brandHashes: doc.brandHashes }),
   };
   const diagnostics = checkChanges(doc, next);
   if (diagnostics.some((d) => d.severity === "error")) return fail("invalid-deck", prevRev, diagnostics);
