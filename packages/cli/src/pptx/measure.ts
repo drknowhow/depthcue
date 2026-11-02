@@ -64,12 +64,14 @@ export interface Shape {
   ellipse: boolean;
 }
 
-/** A picture as the page draws it: inside its frame, scaled to fit without cropping. */
+/** A picture as the page draws it: inside its frame, scaled to fit it, or to fill it and be cut to it. */
 export interface Picture {
   /** The element's box, border included. */
   box: Box;
   /** Where the picture itself is, after the border and the fit. */
   picture: Box;
+  /** The box the page cuts the picture to, when it fills its frame (`object-fit: cover`) and runs past it. */
+  clip?: Box;
   natural: { w: number; h: number };
   /** The address the page asked for it by. */
   src: string;
@@ -568,9 +570,12 @@ export async function measureSlide(): Promise<SlideMeasure> {
       height: rect.height - 2 * border - px(style.paddingTop) - px(style.paddingBottom),
     };
     const natural = { w: source?.naturalWidth ?? 0, h: source?.naturalHeight ?? 0 };
+    // `contain` fits the whole picture in the box; `cover` (a template's picture slot) fills the box and the box cuts
+    // off what is over, which the slide does with the picture's source rectangle.
+    const cover = style.objectFit === "cover";
     let drawn = inner;
     if (natural.w > 0 && natural.h > 0) {
-      const scale = Math.min(inner.width / natural.w, inner.height / natural.h);
+      const scale = (cover ? Math.max : Math.min)(inner.width / natural.w, inner.height / natural.h);
       const width = natural.w * scale;
       const height = natural.h * scale;
       drawn = {
@@ -581,13 +586,21 @@ export async function measureSlide(): Promise<SlideMeasure> {
       };
     }
     const src = element instanceof HTMLImageElement ? (element.getAttribute("src") ?? "") : element.poster;
-    const place: Picture = { box: boxOf(rect), picture: boxOf(drawn), natural, src };
-    // PowerPoint shows PNG, JPEG and GIF everywhere. Anything else is drawn here, at twice the size it has on the slide.
+    const cut = cover && (drawn.width > inner.width + 0.5 || drawn.height > inner.height + 0.5);
+    const place: Picture = {
+      box: boxOf(rect),
+      picture: boxOf(drawn),
+      natural,
+      src,
+      ...(cut ? { clip: boxOf(inner) } : {}),
+    };
+    // PowerPoint shows PNG, JPEG and GIF everywhere. Anything else is drawn here, at twice the size it has on the slide
+    // and at most 4096 pixels a side, in its own proportions.
     const plain = /\.(png|jpe?g|gif)(\?.*)?$/i.test(src);
     if (source && (asPng || !plain) && natural.w > 0) {
-      const scale = 2;
-      const width = Math.min(4096, Math.max(1, Math.round(drawn.width * scale)));
-      const height = Math.min(4096, Math.max(1, Math.round(drawn.height * scale)));
+      const scale = Math.min(2, 4096 / Math.max(1, drawn.width), 4096 / Math.max(1, drawn.height));
+      const width = Math.max(1, Math.round(drawn.width * scale));
+      const height = Math.max(1, Math.round(drawn.height * scale));
       const raster = document.createElement("canvas");
       raster.width = width;
       raster.height = height;
@@ -745,13 +758,36 @@ export async function measureSlide(): Promise<SlideMeasure> {
         width: viewBox.width * scale,
         height: viewBox.height * scale,
       });
-      const parts = [svgRect, title?.getBoundingClientRect(), legend?.getBoundingClientRect()].filter(
-        (rect): rect is DOMRect => rect !== undefined,
+      // The chart is what the page draws: the plot keeps its proportions at the top left of the svg ("xMinYMin meet"),
+      // so in a wide, short slot it is narrower than the svg's box, and the caption and legend reach as far as their
+      // words do, not as far as their boxes. A chart's own title wraps well short of the chart's width (LibreOffice at
+      // about four fifths of it), so the box is as wide as the caption needs to stay on one line, as it is on the page,
+      // within the figure.
+      const reach = (element: Element | null | undefined) => {
+        if (!element) return undefined;
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const words = range.getBoundingClientRect();
+        return words.width > 0 && words.height > 0 ? words : element.getBoundingClientRect();
+      };
+      const drawn = {
+        left: svgRect.left,
+        top: svgRect.top,
+        right: svgRect.left + viewBox.width * scale,
+        bottom: svgRect.top + viewBox.height * scale,
+      };
+      const caption = reach(title);
+      const parts = [drawn, caption, reach(legend)].filter(
+        (rect): rect is { left: number; top: number; right: number; bottom: number } => rect !== undefined,
       );
       const left = Math.min(...parts.map((rect) => rect.left));
       const topEdge = Math.min(...parts.map((rect) => rect.top));
-      const right = Math.max(svgRect.left + viewBox.width * scale, ...parts.map((rect) => rect.right));
-      const bottomEdge = Math.max(svgRect.top + viewBox.height * scale, ...parts.map((rect) => rect.bottom));
+      const oneLine = caption ? left + (caption.right - left) / 0.8 : left;
+      const right = Math.max(
+        ...parts.map((rect) => rect.right),
+        Math.min(oneLine, block.getBoundingClientRect().right),
+      );
+      const bottomEdge = Math.max(...parts.map((rect) => rect.bottom));
       const axisText = svg.querySelector("text");
       const valueText = svg.querySelector(".dc-v");
       // The y axis marks its ticks as the right-aligned labels at the left edge, and a scatter's x axis marks its own

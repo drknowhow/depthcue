@@ -276,13 +276,15 @@ function addPicture(
   const data = pictureData(page, asset, picture);
   const { w: width, h: height } = page.measure.slide;
   const whole = picture.picture;
+  // What the page shows of it: all of it, or the frame it fills and is cut to.
+  const shown = picture.clip ?? whole;
   // The part of the picture that is on the slide; the rest is cropped away with the picture's source rectangle, so the
   // slide shows what the player shows and the picture keeps its proportions.
   const seen = {
-    x: clamp(whole.x, 0, width),
-    y: clamp(whole.y, 0, height),
-    r: clamp(whole.x + whole.w, 0, width),
-    b: clamp(whole.y + whole.h, 0, height),
+    x: clamp(Math.max(whole.x, shown.x), 0, width),
+    y: clamp(Math.max(whole.y, shown.y), 0, height),
+    r: clamp(Math.min(whole.x + whole.w, shown.x + shown.w), 0, width),
+    b: clamp(Math.min(whole.y + whole.h, shown.y + shown.h), 0, height),
   };
   if (!data || whole.w <= 0 || whole.h <= 0) {
     page.left.push(`"${block.id}": the picture ${asset} could not be read, so it is not on the slide.`);
@@ -299,7 +301,13 @@ function addPicture(
   }
   const cut =
     seen.x > whole.x || seen.y > whole.y || seen.r < whole.x + whole.w || seen.b < whole.y + whole.h;
-  if (cut) {
+  // Cut by the slide's edge, not only by its own frame, which the page cuts it to as well.
+  const past =
+    seen.x > Math.max(whole.x, shown.x) ||
+    seen.y > Math.max(whole.y, shown.y) ||
+    seen.r < Math.min(whole.x + whole.w, shown.x + shown.w) ||
+    seen.b < Math.min(whole.y + whole.h, shown.y + shown.h);
+  if (past) {
     page.left.push(
       `"${block.id}": the picture runs past the slide's edge; it is cropped there, as the slide shows it, and PowerPoint's Crop gives the rest back.`,
     );
@@ -749,9 +757,15 @@ function embedClip(
     return false;
   }
   // The page fits a poster or first frame in the box; with neither it draws an empty box, and the video, in its own
-  // shape (the MP4's track header), is fitted in that box as the player fits it when it plays.
+  // shape (the MP4's track header), is fitted in that box as the player fits it when it plays. A video the page cuts
+  // to fill its frame is fitted inside the frame instead: a video on a slide cannot be cropped here.
   const shape = mp4Tracks(new Uint8Array(video))?.size;
-  const drawn = item.video.natural.w > 0 ? item.video.picture : fitted(item.video.picture, shape);
+  const clip = item.video.clip;
+  const drawn = clip
+    ? fitted(clip, item.video.natural.w > 0 ? item.video.natural : shape)
+    : item.video.natural.w > 0
+      ? item.video.picture
+      : fitted(item.video.picture, shape);
   const { x, y, w, h } = frameOf(page, drawn, true);
   if (w <= 0 || h <= 0) return false;
   const posterFile = poster === undefined ? undefined : join(page.input.folder, poster);
@@ -775,6 +789,11 @@ function embedClip(
     objectName: block.id,
   } as PptxGenJS.MediaProps);
   page.alts[block.id] = block.alt;
+  if (clip) {
+    page.left.push(
+      `"${block.id}": the page crops the video to fill its frame; the slide shows all of it, fitted inside the frame.`,
+    );
+  }
   if (item.firstFrame) {
     page.left.push(`"${block.id}": the video has no poster, so its first frame shows until it plays.`);
   } else if (plain) {

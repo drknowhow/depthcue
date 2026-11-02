@@ -831,6 +831,55 @@ describe("--steps", () => {
   }, 180_000);
 });
 
+describe("a template's picture slot", () => {
+  it("is filled by its picture, cut to the slot's frame as the page cuts it", async () => {
+    // Tidewell's feature template: a 16:9 picture in a slot 42% wide and 52% high, which is narrower than 16:9.
+    const deck = copyDeck("tidewell-press");
+    keepScenes(deck, ["shore-guide"]);
+    const out = join(root, "tidewell.pptx");
+    const summary = await exported(deck, out);
+    const slide = await (await unzip(out)).text("ppt/slides/slide1.xml");
+    const picture = shapeOf(slide, "shore-guide-picture") as string;
+    expect(picture).toContain("<p:pic>");
+    const at = /<a:off x="(\d+)" y="(\d+)"\s*\/>\s*<a:ext cx="(\d+)" cy="(\d+)"/.exec(picture)?.slice(1, 5);
+    const [x, y, w, h] = (at ?? []).map((value) => Number(value) / 9525);
+    const frame = { x: 0.52 * 1280, y: 0.15 * 720, w: 0.42 * 1280, h: 0.52 * 720 };
+    expect(Math.abs((x ?? 0) - frame.x)).toBeLessThan(2);
+    expect(Math.abs((y ?? 0) - frame.y)).toBeLessThan(2);
+    expect(Math.abs((w ?? 0) - frame.w)).toBeLessThan(2);
+    expect(Math.abs((h ?? 0) - frame.h)).toBeLessThan(2);
+    // The sides are cut, top and bottom kept: the picture is wider than the slot.
+    const rect = /<a:srcRect([^/]*)\/>/.exec(picture)?.[1] ?? "";
+    const share = (side: string) => Number(new RegExp(`\\b${side}="(-?\\d+)"`).exec(rect)?.[1] ?? 0);
+    expect(share("l")).toBeGreaterThan(5000);
+    expect(share("r")).toBeGreaterThan(5000);
+    expect(Math.abs(share("t")) + Math.abs(share("b"))).toBeLessThan(500);
+    expect(summary.slides[0]?.left.join("\n")).not.toContain("runs past the slide's edge");
+  }, 180_000);
+});
+
+describe("a chart in a wide, short slot", () => {
+  it("is about as wide as the plot the page draws, not as the slot", async () => {
+    // Tidewell's statement template gives the evidence a slot as wide as the content and about a third as high. The
+    // page keeps the plot's proportions at the slot's left, so the plot is far narrower than the slot (about 390 of
+    // 1126 pixels); the chart is that plot, widened only as far as its one-line title needs.
+    const deck = copyDeck("tidewell-press");
+    keepScenes(deck, ["title-sales"]);
+    const out = join(root, "tidewell-chart.pptx");
+    await exported(deck, out);
+    const pptx = await unzip(out);
+    const slide = await pptx.text("ppt/slides/slide1.xml");
+    const chart = shapeOf(slide, "title-sales-chart") as string;
+    expect(chart).toMatch(/^<p:graphicFrame>/);
+    const width = Number(/<a:ext cx="(\d+)"/.exec(chart)?.[1]) / 9525;
+    expect(width).toBeGreaterThan(300);
+    expect(width).toBeLessThan(0.6 * 1126);
+    const parts = pptx.names.filter((name) => /^ppt\/charts\/chart\d+\.xml$/.test(name));
+    expect(parts).toHaveLength(1);
+    expect(await pptx.text(parts[0] as string)).toContain("Copies sold by title, August to October");
+  }, 180_000);
+});
+
 describe("a clip", () => {
   /** The demo deck with one scene: an MP4 clip and its poster. */
   function clipDeck(): string {

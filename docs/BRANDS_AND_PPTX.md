@@ -857,6 +857,15 @@ Found, not fixed (older than the brand work):
   dot between sources, as many lines as it takes, growing upward from the foot. The measure gives that line's whole
   place (`flow`), and the slide draws it as one paragraph in that box, anchored at its foot, so a line PowerPoint adds
   in a wider face goes up, not into the footer.
+- **Picture slots and charts.** Since step 5, a template's picture slot fills its frame (`object-fit: cover`). The
+  measure scales such a picture to fill and gives the frame as its `clip`, and the slide crops it there with its
+  source rectangle, so PowerPoint's Crop gives the rest back. A video in such a slot is fitted inside the frame, all of
+  it shown, and the report says so. A chart's box was the svg's, but the page keeps the plot's proportions at the svg's
+  top left, so in a wide, short slot (Tidewell's statement template) the plot is a third of the slot's width and the
+  native chart was stretched across all of it. The box is now the drawn plot and the words of the caption and legend,
+  widened only as far as the chart's own title needs to stay on one line (LibreOffice wraps it at about four fifths of
+  the chart's width). The native title is in the case it is written in, without the caption's capitals and letter
+  spacing, as it has been since step 2.
 - **Brand import's logo sizes and family names.** `SIZE_HEIGHTS` in `brand-import/logo.ts` is now 5%, 7.5% and 11%
   of the slide's height for `s`, `m` and `l`: the player draws them 2, 3 and 4.4 em high, and a scene's em is 2.5% of
   a 16:9 stage's height (a template scene's is 0.014 of its width, 2.49% of the height). Step 4's record gives the
@@ -864,7 +873,8 @@ Found, not fixed (older than the brand work):
   checks a theme font's name with core's `FAMILY_PATTERN` instead of a copy, so a name with a control character is not
   used; the report quotes such a name as JSON, DEL included, so no control character reaches a terminal.
 - **Checked.** Every file was opened in LibreOffice and turned to page images, one page per slide, compared with the
-  player's: the brand deck, the demo, the demo in picture mode and with steps, and v0-3. LibreOffice draws the mono
+  player's: the brand deck, Tidewell Press (as it is and in picture mode), the demo, the demo in picture mode and with
+  steps, v0-3 and the charts deck. LibreOffice draws the mono
   "Sources" label in another face, so it wraps there, as it did before this step. `pnpm check:pptx-pages`
   (`tools/check-pptx-pages.mjs`) exports every fixture deck as it is, with `--pictures` and with `--steps`, using the
   built CLI, has LibreOffice convert each file one at a time with a profile of its own, and checks that the pages
@@ -876,7 +886,8 @@ Found, not fixed (older than the brand work):
 - **Sizes.** No budget row moved: the work is in the CLI and the MCP server.
 - **Risks.** The video goes in through pptxgenjs `addMedia`, whose shape ids the package step renumbers, and
   LibreOffice cannot say whether PowerPoint plays it. The fonts are embedded whole, not subset. Embedding a face whose
-  license allows it still puts a copy of the font in a file that travels; the report names each one.
+  license allows it still puts a copy of the font in a file that travels; the report names each one. The MCP tool
+  list is 13,118 of its 13,200 characters, so the next tool needs the limit raised.
 - **Outside the write-set.** `packages/cli/package.json` (the `./export` and `./pptx` exports) and `vitest.config.ts`
   (their aliases), for the MCP tool; `tools/check-pptx-pages.mjs` and its `check:pptx-pages` script in the root
   `package.json`, which the review asked for; `brand-import/fonts.ts`, which the conductor asked for, and the tests
