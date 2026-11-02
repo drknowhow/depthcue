@@ -259,10 +259,14 @@ describe("reverting a change of the brand's files", () => {
     expect(reverted.doc.brand?.colors).toEqual(colors);
     expect(reverted.doc.brand?.styles).toHaveProperty("shout");
     expect(reviewChanges(reverted.review, reverted.doc)).toEqual([]);
-    // The block's style is a change of the scene, so a style alone cannot be taken back from under it.
+    // The block's style is a change of the scene, so a style alone cannot be taken back from under it. (The fixture's
+    // light-only logo is warned of too, as on every check of it.)
     expect(revertChanges(review, doc, ["deck/style:shout"])).toMatchObject({
       ok: false,
-      diagnostics: [expect.objectContaining({ code: "unknown-style" })],
+      diagnostics: [
+        expect.objectContaining({ code: "logo-without-dark" }),
+        expect.objectContaining({ code: "unknown-style" }),
+      ],
     });
   });
 
@@ -300,7 +304,10 @@ describe("reverting a change of the brand's files", () => {
     const doc = applied(newTemplateAndScene());
     const refused = revertChanges(review, doc, ["deck/template:note"]);
     expect(refused).toMatchObject({ ok: false, code: "invalid-deck" });
-    expect(refused.ok ? [] : refused.diagnostics.map((d) => d.code)).toEqual(["unknown-template"]);
+    expect(refused.ok ? [] : refused.diagnostics.map((d) => d.code)).toEqual([
+      "logo-without-dark",
+      "unknown-template",
+    ]);
   });
 
   it("lists a brand the agent took off the deck as one change, and brings it back with its templates on a revert", () => {

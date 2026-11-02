@@ -168,6 +168,23 @@ export function checkBrand(deck: Deck, part: BrandPart, brandFiles: ReadonlySet<
     if (brand.logos.light) need(brand.logos.light, "/logos/light", "logo");
     if (brand.logos.dark) need(brand.logos.dark, "/logos/dark", "logo");
   }
+  // The rule: a placed logo with no dark one, in a brand whose slides can be ink (an ink palette, or an ink deck).
+  if (
+    brand.chrome?.logo &&
+    brand.logos?.light &&
+    !brand.logos.dark &&
+    (deck.theme === "ink" || brand.colors?.ink !== undefined)
+  ) {
+    out.push(
+      warning(
+        BRAND_FILE,
+        "/logos",
+        "logo-without-dark",
+        "The brand has no logo for dark slides, and its slides can be ink: there the light logo is drawn on a plate of the light slides' ground, or it would all but vanish.",
+        'Add "dark" to "logos", a logo drawn for dark slides.',
+      ),
+    );
+  }
   if (brand.chrome?.logo && !brand.logos) {
     out.push(
       error(
