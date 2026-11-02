@@ -3454,7 +3454,8 @@ body {
  * The Brand panel sits down the right of the stage, and the slide moves over so it stays in sight beside the panel and
  * every change shows on it at once. Its sections are tabs; each lists the brand's own things before Depthcue's. The
  * panel gives up width before the slide does: a slide under 640px wide stops being drawn as a slide (player.css), so the
- * panel leaves it about 41rem where the stage has that much, from a 1280px window up.
+ * panel leaves it about 41rem where the stage has that much, from a 1280px window up. In a smaller window the panel is a
+ * drawer over the slide (the 73.98rem query below).
  */
 .ed-stage {
   --ed-side: clamp(20rem, 100% - 43.5rem, 30rem);
@@ -4066,7 +4067,12 @@ body {
   --thumb-k: 0.125;
 }
 
-@media (max-width: 760px) {
+/*
+ * Under a 74rem window the panel is already at its narrowest, and moving the slide over would take it down toward the
+ * 640px where it stops being drawn as a slide. There the panel lies over the slide as a drawer instead, and keeps the
+ * keyboard until Esc closes it: brandpanel.ts reads --ed-over to know.
+ */
+@media (max-width: 73.98rem) {
   .ed-stage[data-side] .ed-main {
     padding-right: var(--dc-space-4);
   }
@@ -4076,6 +4082,15 @@ body {
     max-width: calc(100% - 2 * var(--dc-space-4));
   }
 
+  .ed-brand {
+    --ed-over: 1;
+    z-index: 8;
+    width: min(26rem, 100%);
+    box-shadow: -1rem 0 2.5rem -0.5rem color-mix(in srgb, var(--dc-text) 40%, transparent);
+  }
+}
+
+@media (max-width: 760px) {
   .ed-brand {
     position: fixed;
     inset: auto 0 0;

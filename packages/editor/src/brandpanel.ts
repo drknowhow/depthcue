@@ -781,8 +781,24 @@ function createPanel(host: BrandHost): BrandPanel {
       event.preventDefault();
       panel.close();
     }
+    if (event.key === "Tab" && isDrawer()) keepTab(event);
     if (!isHistoryKey(event)) event.stopPropagation();
   });
+  // In a small window the panel is a drawer over the slide (editor.css says when), and Tab goes round inside it.
+  const isDrawer = () => getComputedStyle(element).getPropertyValue("--ed-over").trim() === "1";
+  const keepTab = (event: KeyboardEvent) => {
+    const stops = [
+      ...element.querySelectorAll<HTMLElement>("button, input, select, textarea, a[href], [tabindex]"),
+    ].filter((node) => node.tabIndex >= 0 && !node.matches(":disabled") && node.getClientRects().length > 0);
+    const first = stops[0];
+    const last = stops.at(-1);
+    const at = document.activeElement;
+    if (!first || !last) return;
+    if (event.shiftKey ? at === first || at === element : at === last) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  };
   close.addEventListener("click", () => panel.close());
 
   const unsubscribe = session.subscribe((event) => {

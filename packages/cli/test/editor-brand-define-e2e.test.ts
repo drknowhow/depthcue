@@ -839,14 +839,57 @@ describe("the panel beside the slide", () => {
     expect(await page.locator(".ed-review").isHidden()).toBe(true);
     expect(problems).toEqual([]);
   });
+
+  it("lies over the slide as a drawer in a 1024px window, keeps the keyboard, and closes with Escape", async () => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const mine = copy(harborDeck, "mine");
+    await open(mine, "growth");
+    const host = page.locator(".ed-canvas-host");
+    const before = await host.boundingBox();
+    await openBrand("colors");
+    const after = await host.boundingBox();
+    const drawer = await panel().boundingBox();
+    if (!before || !after || !drawer) throw new Error("the slide and the panel should be drawn");
+    // The slide stays where and as large as it was, and the panel lies over its right side.
+    expect(Math.abs(after.x - before.x)).toBeLessThan(1);
+    expect(Math.abs(after.width - before.width)).toBeLessThan(1);
+    expect(drawer.x).toBeLessThan(after.x + after.width);
+    const scene = await page.evaluate(() => {
+      const rect = document.querySelector(".ed-canvas-host .dc-scene[data-framed]")?.getBoundingClientRect();
+      return rect && { width: rect.width, ratio: rect.width / rect.height };
+    });
+    expect(scene?.width).toBeGreaterThan(640);
+    expect(scene?.ratio).toBeCloseTo(16 / 9, 1);
+
+    // Tab and Shift+Tab go round inside the drawer, past its last control and its first.
+    const inside = () => page.evaluate(() => document.activeElement?.closest(".ed-brand") !== null);
+    const stops = await panel().evaluate(
+      (element) =>
+        [
+          ...element.querySelectorAll<HTMLElement>("button, input, select, textarea, a[href], [tabindex]"),
+        ].filter((node) => node.tabIndex >= 0 && node.getClientRects().length > 0).length,
+    );
+    for (let press = 0; press < stops + 3; press++) {
+      await page.keyboard.press("Tab");
+      expect(await inside(), `Tab ${press + 1}`).toBe(true);
+    }
+    for (let press = 0; press < stops + 3; press++) {
+      await page.keyboard.press("Shift+Tab");
+      expect(await inside(), `Shift+Tab ${press + 1}`).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    await panel().waitFor({ state: "detached" });
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-tb"))).toBe("deck");
+    expect(problems).toEqual([]);
+  });
 });
 
 // ---- screenshots -----------------------------------------------------------------------------------------------------
 
 /**
  * The screenshots Dimitri looks at, written only when DEPTHCUE_SHOTS names a folder: each section of the panel, a refused
- * swatch, the logo statement, a style's preview, Save as template, the template editor mid-drag and the drawer's brand
- * rows, on both presets.
+ * swatch, the logo statement, a style's preview, Save as template, the template editor mid-drag, the drawer's brand rows
+ * and the panel as a drawer in a 1024px window, on both presets.
  */
 const SHOTS = process.env.DEPTHCUE_SHOTS;
 describe.skipIf(!SHOTS)("screenshots of defining a brand", () => {
@@ -907,6 +950,12 @@ describe.skipIf(!SHOTS)("screenshots of defining a brand", () => {
       await page.locator(".ed-review .ed-ri").first().waitFor();
       await page.waitForTimeout(300);
       await shot("review-rows");
+
+      // In a 1024px window the panel is a drawer over the slide.
+      await page.setViewportSize({ width: 1024, height: 800 });
+      await openBrand("chrome");
+      await page.waitForTimeout(400);
+      await shot("drawer-1024");
       expect(problems).toEqual([]);
     }, 240_000);
   }
