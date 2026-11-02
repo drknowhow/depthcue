@@ -78,6 +78,128 @@ describe("strictSvg's own checks", () => {
       });
     }
   });
+
+  const XHTML = 'xmlns="http://www.w3.org/1999/xhtml"';
+  const problemOf = (text: string): string | undefined => {
+    const checked = strictSvg(encode(text));
+    return "problem" in checked ? checked.problem : undefined;
+  };
+
+  it.each([
+    [
+      "an encoding other than UTF-8, which a browser reads the bytes in",
+      `<?xml version="1.0" encoding="ISO-2022-JP"?><svg ${SVG_NS}><g><!-- --></g></svg>`,
+      'an encoding of "ISO-2022-JP" declared, where only UTF-8 is read',
+    ],
+    [
+      "the ISO-2022-JP trick, whose escape is a control character",
+      `<?xml version="1.0" encoding="ISO-2022-JP"?><svg ${SVG_NS}><g>\x1b$B<!--\x1b(B<script>alert(1)</script>--></g></svg>`,
+      "a control character (U+001B)",
+    ],
+    [
+      "an encoding in single quotes",
+      `<?xml version='1.0' encoding='Shift_JIS'?><svg ${SVG_NS}/>`,
+      'an encoding of "Shift_JIS" declared, where only UTF-8 is read',
+    ],
+    [
+      "a declaration that never closes",
+      `<?xml version="1.0" ${"x".repeat(2000)}<svg ${SVG_NS}/>`,
+      "an XML declaration that does not close",
+    ],
+    [
+      "a second declaration",
+      `<?xml version="1.0"?><svg ${SVG_NS}><?xml version="1.0" encoding="UTF-16"?></svg>`,
+      "an XML declaration after the start of the file",
+    ],
+    ["a form feed", `<svg ${SVG_NS}><g>\f</g></svg>`, "a control character (U+000C)"],
+    ["a C1 control", `<svg ${SVG_NS}><g>\u0085</g></svg>`, "a control character (U+0085)"],
+    ["a NUL", `<svg ${SVG_NS}><g>\0</g></svg>`, "a control character (U+0000)"],
+  ])("refuses %s", (_, text, problem) => {
+    expect(problemOf(text)).toBe(problem);
+  });
+
+  it.each([
+    [
+      "an XHTML frame",
+      `<svg ${SVG_NS}><frame ${XHTML} src="javascript:alert(document.domain)"/></svg>`,
+      "frame",
+    ],
+    ["an XHTML img", `<svg ${SVG_NS}><img ${XHTML} src="http://evil.example/beacon.png"/></svg>`, "img"],
+    ["an XHTML iframe", `<svg ${SVG_NS}><iframe ${XHTML} src="javascript:alert(1)"/></svg>`, "iframe"],
+    [
+      "an XHTML form",
+      `<svg ${SVG_NS}><form ${XHTML} action="javascript:alert(1)"><button>x</button></form></svg>`,
+      "form",
+    ],
+    [
+      "XHTML under a prefix",
+      `<svg ${SVG_NS} xmlns:h="http://www.w3.org/1999/xhtml"><g><h:img src="http://evil.example/p.png"/></g></svg>`,
+      "h:img",
+    ],
+    [
+      "MathML",
+      `<svg ${SVG_NS}><math xmlns="http://www.w3.org/1998/Math/MathML" href="javascript:alert(1)"><mi>x</mi></math></svg>`,
+      "math",
+    ],
+    [
+      "XInclude",
+      `<svg ${SVG_NS} xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="#a"/></svg>`,
+      "xi:include",
+    ],
+    ["no namespace at all", "<svg><rect/></svg>", "svg"],
+    ["a root that declares XHTML", `<svg ${XHTML}><p>hi</p></svg>`, "svg"],
+    ["the default namespace taken off", `<svg ${SVG_NS}><g xmlns=""><rect/></g></svg>`, "g"],
+    ["a prefix no one declared", `<svg ${SVG_NS}><q:rect/></svg>`, "q:rect"],
+    [
+      "the SVG namespace written with a character reference",
+      `<svg xmlns="http://www.w3.org/2000/&#115;vg"><rect/></svg>`,
+      "svg",
+    ],
+    [
+      "an editor's own element",
+      `<svg ${SVG_NS} xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"><sodipodi:namedview/></svg>`,
+      "sodipodi:namedview",
+    ],
+  ])("refuses %s, an element outside the SVG namespace", (_, text, element) => {
+    expect(problemOf(text)).toBe(
+      `an element outside the SVG namespace ("${element}"), which a browser may load or run as HTML`,
+    );
+  });
+
+  it.each(["src", "srcset", "action", "formaction", "data", "poster", "xml:base", "h:src"])(
+    'refuses a "%s" attribute, which loads or sends something in HTML',
+    (attribute) => {
+      expect(problemOf(`<svg ${SVG_NS} xmlns:h="urn:h"><rect ${attribute}="x"/></svg>`)).toBe(
+        `a "${attribute}" attribute, which loads or sends something in HTML`,
+      );
+    },
+  );
+
+  it.each([
+    [
+      "image-set()",
+      `<rect style="background-image:image-set('http://evil.example/x.png' 1x)"/>`,
+      "an image-set()",
+    ],
+    ["-webkit-image-set()", `<style>.a{fill:-webkit-IMAGE-SET("x.png" 1x)}</style>`, "an image-set()"],
+    ["image()", `<rect style="fill:image('x.png')"/>`, "an image()"],
+  ])("refuses a style with %s, which loads a picture by name", (_, inside, what) => {
+    expect(problemOf(`<svg ${SVG_NS}>${inside}</svg>`)).toBe(`${what}, which loads a picture by name`);
+  });
+
+  it.each([
+    ["UTF-8 declared", `<?xml version="1.0" encoding="UTF-8"?><svg ${SVG_NS}/>`],
+    ["utf8 declared after a byte order mark", `﻿<?xml version="1.0" encoding="utf8"?><svg ${SVG_NS}/>`],
+    ["no encoding declared", `<?xml version="1.0" standalone="no"?><svg ${SVG_NS}/>`],
+    ["tabs and line ends", `<svg ${SVG_NS}>\t\r\n<rect/>\n</svg>`],
+    [
+      "SVG and xlink under prefixes, a comment, CDATA and an instruction",
+      `<s:svg xmlns:s="${"http://www.w3.org/2000/svg"}" xmlns:xlink="http://www.w3.org/1999/xlink"><!-- <h:img/> --><s:style><![CDATA[ .a{fill:url(#g)} ]]></s:style><?keep this?><s:use xlink:href="#a"/><s:g xmlns="http://www.w3.org/2000/svg"><rect data-x="1" title="a > b"/></s:g></s:svg>`,
+    ],
+    ["99 groups deep", `<svg ${SVG_NS}>${"<g>".repeat(99)}${"</g>".repeat(99)}</svg>`],
+  ])("takes an SVG with %s", (_, text) => {
+    expect(strictSvg(encode(text))).toEqual({ elements: expect.any(Number) });
+  });
 });
 
 const base128 = (value: number): number[] => {

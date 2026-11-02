@@ -22,7 +22,7 @@ import {
   revisionOf,
   templatePath,
 } from "@depthcue/core";
-import { cssUrls, MAX_STYLE_LENGTH, svgProblem } from "../brand-import/svg.ts";
+import { asciiLower, cssUrls, MAX_STYLE_LENGTH, svgProblem } from "../brand-import/svg.ts";
 import { parseXmlCounted, XmlError, type XmlNode, XmlTooLarge } from "../brand-import/xml.ts";
 import { MAX_ASSET_BYTES, sniffImage } from "../edit-api.ts";
 import { fileHash, isNameableBrandFile, loadDeckDir } from "../loader.ts";
@@ -342,15 +342,145 @@ function cssProblem(css: string): string | undefined {
   for (const target of targets) {
     if (!target.startsWith("#")) return `a url() to "${shown(target)}", which is not a place in the file`;
   }
+  // These name a picture by a plain string, with no url() around it.
+  const lower = asciiLower(css);
+  for (const loader of ["image-set(", "image("]) {
+    if (lower.includes(loader)) return `an ${loader.slice(0, -1)}(), which loads a picture by name`;
+  }
   return undefined;
 }
 
 const TOO_LONG_STYLE = `a style longer than ${MAX_STYLE_LENGTH / 1024} KB, which no drawing needs`;
 
 /**
+ * Attributes that load or send something in HTML, which an SVG never needs, compared by local name; and `xml:base`,
+ * which would make a link to a place in the file a link to another.
+ */
+const LOADING_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "base",
+  "src",
+  "srcset",
+  "action",
+  "formaction",
+  "data",
+  "poster",
+  "background",
+  "lowsrc",
+  "dynsrc",
+  "ping",
+  "codebase",
+  "archive",
+]);
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const XML_SPACE = new Set([" ", "\t", "\n", "\r"]);
+
+/**
+ * The first element that is not in the SVG namespace, by its name as written, or undefined. A browser makes an element
+ * in the XHTML namespace an HTML one, so an `<h:img src>` or `<h:iframe>` in a drawing loads what it names. Read from the
+ * text with indexOf in one pass, which the XML reader has already found well formed: each start tag's namespace
+ * declarations hold for it and what is inside it, and comments, CDATA and processing instructions are passed over. A
+ * declaration written with a character reference does not read as the SVG namespace, so it is refused.
+ */
+function foreignElement(text: string): string | undefined {
+  const scopes: Array<ReadonlyMap<string, string>> = [];
+  const namespaceOf = (prefix: string): string | undefined => {
+    for (let i = scopes.length - 1; i >= 0; i--) {
+      const found = scopes[i]?.get(prefix);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  const after = (from: number, end: string): number => {
+    const found = text.indexOf(end, from);
+    return found === -1 ? text.length : found + end.length;
+  };
+  let at = text.indexOf("<");
+  while (at !== -1) {
+    if (text.startsWith("<!--", at)) at = after(at + 4, "-->");
+    else if (text.startsWith("<![CDATA[", at)) at = after(at + 9, "]]>");
+    else if (text.startsWith("<?", at)) at = after(at + 2, "?>");
+    else if (text.startsWith("<!", at)) at = after(at + 2, ">");
+    else if (text[at + 1] === "/") {
+      scopes.pop();
+      at = after(at + 2, ">");
+    } else {
+      let end = at + 1;
+      while (
+        end < text.length &&
+        !XML_SPACE.has(text[end] as string) &&
+        text[end] !== ">" &&
+        text[end] !== "/"
+      ) {
+        end++;
+      }
+      const name = text.slice(at + 1, end);
+      const declared = new Map<string, string>();
+      let closes = false;
+      for (let i = end; ; ) {
+        while (XML_SPACE.has(text[i] as string)) i++;
+        if (text[i] === ">") {
+          at = i + 1;
+          break;
+        }
+        if (text[i] === "/" || i >= text.length) {
+          closes = true;
+          at = after(i, ">");
+          break;
+        }
+        const equals = text.indexOf("=", i);
+        if (equals === -1) return name;
+        const attribute = text.slice(i, equals).trim();
+        let open = equals + 1;
+        while (XML_SPACE.has(text[open] as string)) open++;
+        const quote = text[open];
+        const close = quote === '"' || quote === "'" ? text.indexOf(quote, open + 1) : -1;
+        if (close === -1) return name;
+        if (attribute === "xmlns") declared.set("", text.slice(open + 1, close));
+        else if (attribute.startsWith("xmlns:"))
+          declared.set(attribute.slice(6), text.slice(open + 1, close));
+        i = close + 1;
+      }
+      scopes.push(declared);
+      const colon = name.indexOf(":");
+      if (namespaceOf(colon === -1 ? "" : name.slice(0, colon)) !== SVG_NAMESPACE) return name;
+      if (closes) scopes.pop();
+    }
+    at = text.indexOf("<", at);
+  }
+  return undefined;
+}
+
+/**
+ * What the XML declaration says wrong, or undefined. A browser reads the bytes in the encoding the declaration names, and
+ * in ISO-2022-JP an escape sequence can hide markup that a reader of UTF-8 takes for text. Only UTF-8 is taken, and a
+ * declaration only at the start, where it means something.
+ */
+function declarationProblem(text: string): string | undefined {
+  const lower = asciiLower(text);
+  const start = lower.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const isDeclaration = (at: number) =>
+    lower.startsWith("<?xml", at) && XML_SPACE.has(lower[at + 5] as string);
+  if (isDeclaration(start)) {
+    const end = lower.indexOf("?>", start);
+    if (end === -1 || end - start > 1024) return "an XML declaration that does not close";
+    const encoding = /\sencoding\s*=\s*(["'])([^"']*)\1/.exec(text.slice(start, end))?.[2];
+    if (encoding !== undefined && !/^utf-?8$/i.test(encoding)) {
+      return `an encoding of "${shown(encoding)}" declared, where only UTF-8 is read`;
+    }
+  }
+  for (let at = lower.indexOf("<?xml", start + 1); at !== -1; at = lower.indexOf("<?xml", at + 5)) {
+    if (isDeclaration(at)) return "an XML declaration after the start of the file";
+  }
+  return undefined;
+}
+
+/**
  * What is wrong with an SVG for a brand, as a phrase that follows "The SVG has", or the number of its elements. Read
- * strictly: no DOCTYPE or entity, no script or foreignObject, no event handler, every link and url() to a place in the
- * file (`#id`), and no @import in a style element; then whatever step 4's check of imported SVGs refuses besides.
+ * strictly: UTF-8 declared or not at all, no control character but tab and line ends, no DOCTYPE or entity, every
+ * element in the SVG namespace, no script or foreignObject, no event handler and no attribute that loads in HTML, every
+ * link and url() to a place in the file (`#id`), and no @import or image-set() in a style; then whatever step 4's check
+ * of imported SVGs refuses besides.
  */
 export function strictSvg(bytes: Uint8Array): { elements: number } | { problem: string } {
   let text: string;
@@ -359,7 +489,14 @@ export function strictSvg(bytes: Uint8Array): { elements: number } | { problem: 
   } catch {
     return { problem: "bytes that are not UTF-8 text" };
   }
-  if (text.includes("\0")) return { problem: "a NUL character" };
+  const control = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/.exec(text)?.[0];
+  if (control !== undefined) {
+    return {
+      problem: `a control character (U+${control.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")})`,
+    };
+  }
+  const declared = declarationProblem(text);
+  if (declared !== undefined) return { problem: declared };
   if (/<!DOCTYPE/i.test(text)) return { problem: "a DOCTYPE, which can define entities" };
   if (/<!ENTITY/i.test(text)) return { problem: "an entity declaration" };
   if (/<\?xml-stylesheet/i.test(text)) return { problem: "a linked style sheet" };
@@ -374,6 +511,12 @@ export function strictSvg(bytes: Uint8Array): { elements: number } | { problem: 
   }
   if (root.name.toLowerCase() !== "svg")
     return { problem: `"${shown(root.name)}" as its root element, not "svg"` };
+  const foreign = foreignElement(text);
+  if (foreign !== undefined) {
+    return {
+      problem: `an element outside the SVG namespace ("${shown(foreign)}"), which a browser may load or run as HTML`,
+    };
+  }
   const pending: XmlNode[] = [root];
   for (let node = pending.pop(); node; node = pending.pop()) {
     const name = node.name.toLowerCase();
@@ -392,6 +535,9 @@ export function strictSvg(bytes: Uint8Array): { elements: number } | { problem: 
       }
       if (local === "href" && !value.trim().startsWith("#")) {
         return { problem: `a link to "${shown(value)}", which is not a place in the file` };
+      }
+      if (LOADING_ATTRIBUTES.has(local)) {
+        return { problem: `a "${shown(attribute)}" attribute, which loads or sends something in HTML` };
       }
       // A path's data is as long as the drawing needs, so only a style attribute has a length limit.
       if (local === "style" && value.length > MAX_STYLE_LENGTH) return { problem: TOO_LONG_STYLE };
