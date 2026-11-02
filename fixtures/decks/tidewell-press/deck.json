@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "0.4",
+  "id": "tidewell-autumn-list",
+  "title": "Tidewell Press: the autumn list, read closely",
+  "language": "en",
+  "theme": "paper",
+  "brand": "tidewell",
+  "scenes": [
+    "cover",
+    "agenda",
+    "part-one",
+    "sell-through",
+    "title-sales",
+    "reader-voice",
+    "shore-guide",
+    "where-readers-found-it",
+    "offset-or-on-demand",
+    "launch-day",
+    "thanks"
+  ]
+}

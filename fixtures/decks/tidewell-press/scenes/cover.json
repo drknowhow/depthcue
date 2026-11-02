@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "0.4",
+  "id": "cover",
+  "title": "Cover",
+  "template": "title",
+  "blocks": [
+    {
+      "id": "cover-kicker",
+      "type": "text",
+      "role": "caption",
+      "text": "Autumn list review",
+      "slot": "kicker"
+    },
+    {
+      "id": "cover-title",
+      "type": "text",
+      "role": "heading",
+      "text": "A season of small books, read closely",
+      "slot": "title"
+    },
+    {
+      "id": "cover-subtitle",
+      "type": "text",
+      "role": "body",
+      "text": "Eleven titles, three months, and what the readers who bought them told us.",
+      "slot": "subtitle"
+    },
+    {
+      "id": "cover-byline",
+      "type": "text",
+      "role": "caption",
+      "text": "Editorial board, 14 November",
+      "slot": "byline"
+    }
+  ]
+}

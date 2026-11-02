@@ -2,6 +2,7 @@ import {
   type Autosave,
   attachAutosave,
   createSession,
+  type Diagnostic,
   type Doc,
   type DraftStore,
   docToFiles,
@@ -10,7 +11,7 @@ import {
   type Session,
 } from "@depthcue/core";
 import type { Api, DeckPayload } from "./api.ts";
-import { loadBrandChecks, waitedForBrandChecks } from "./brandchecks.ts";
+import { loadBrandChecks, loadBuiltIns, waitedForBrandChecks, waitedForBuiltIns } from "./brandchecks.ts";
 import { type CommentBook, createCommentBook } from "./commentbook.ts";
 import { createHistory, type History } from "./history.ts";
 import { createReviewBook, type ReviewBook } from "./reviewbook.ts";
@@ -99,27 +100,37 @@ export interface EditorStore {
  */
 const isCueMap = (path: string) => path.endsWith(".cues.json");
 
-/** What the store says when the brand checks' chunk does not arrive, as when the network fails or the build changed. */
-export const CHECKS_FAILED = "Could not load the brand checks; reload the page.";
+/**
+ * What the store says when a chunk the editor fetches on demand (the brand checks, or Depthcue's own templates and
+ * styles) does not arrive, as when the network fails or the build changed.
+ */
+export const CHECKS_FAILED = "Could not load part of the editor; reload the page.";
 
-/** Fetches the brand checks, rejecting with `CHECKS_FAILED` when they do not arrive. */
-async function checksIn(): Promise<void> {
+/** True when what a read of the deck said may change once a chunk the editor fetches on demand is in. */
+const waitedForChunk = (diagnostics: readonly Diagnostic[]): boolean =>
+  waitedForBrandChecks(diagnostics) || waitedForBuiltIns(diagnostics);
+
+/** Fetches what a read of the deck waited for, rejecting with `CHECKS_FAILED` when a chunk does not arrive. */
+async function chunksIn(diagnostics: readonly Diagnostic[]): Promise<void> {
   try {
-    await loadBrandChecks();
+    await Promise.all([
+      waitedForBrandChecks(diagnostics) && loadBrandChecks(),
+      waitedForBuiltIns(diagnostics) && loadBuiltIns(),
+    ]);
   } catch {
     throw new Error(CHECKS_FAILED);
   }
 }
 
 /**
- * Reads the deck from the server's files, fetching the brand checks first when a check had to wait for them. Rejects
- * with `CHECKS_FAILED` when they cannot be fetched.
+ * Reads the deck from the server's files, fetching the brand checks or the built-in templates first when the read had to
+ * wait for them. Rejects with `CHECKS_FAILED` when they cannot be fetched.
  */
 async function docOf(payload: DeckPayload): Promise<Doc | undefined> {
   const files = { text: payload.text, assets: payload.assets, brandFiles: payload.brandFiles ?? [] };
   let loaded = loadDoc(files);
-  if (waitedForBrandChecks(loaded.diagnostics)) {
-    await checksIn();
+  if (waitedForChunk(loaded.diagnostics)) {
+    await chunksIn(loaded.diagnostics);
     loaded = loadDoc(files);
   }
   return loaded.doc ?? undefined;
@@ -199,8 +210,8 @@ export async function openStore(
   let recovery = recover();
   // A draft with a brand on a deck that has none on disk waits for the brand checks; it is not thrown away for that,
   // nor when they cannot be fetched: the deck does not open, and the draft is there for the next try.
-  if (recovery.status === "unusable" && waitedForBrandChecks(recovery.diagnostics)) {
-    await checksIn();
+  if (recovery.status === "unusable" && waitedForChunk(recovery.diagnostics)) {
+    await chunksIn(recovery.diagnostics);
     recovery = recover();
   }
   if (recovery.status === "found") {

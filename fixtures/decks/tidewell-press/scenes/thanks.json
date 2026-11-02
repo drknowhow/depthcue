@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "0.4",
+  "id": "thanks",
+  "title": "Thank you",
+  "template": "closing",
+  "blocks": [
+    { "id": "thanks-title", "type": "text", "role": "heading", "text": "Thank you", "slot": "title" },
+    {
+      "id": "thanks-message",
+      "type": "text",
+      "role": "body",
+      "text": "Three decisions for the winter list, and then questions.",
+      "slot": "message"
+    },
+    {
+      "id": "thanks-contact",
+      "type": "text",
+      "role": "caption",
+      "text": "editors@tidewell.example",
+      "slot": "contact"
+    }
+  ]
+}

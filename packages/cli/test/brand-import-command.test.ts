@@ -47,7 +47,7 @@ describe("depthcue brand import: the arguments", () => {
   });
 
   it.each([
-    [["brand"], "brand needs a subcommand. The one there is: brand import."],
+    [["brand"], "brand needs a subcommand: brand init, brand use, brand check or brand import."],
     [["brand", "export", "x.potx"], "brand needs a subcommand"],
     [["brand", "import"], "brand import needs a PowerPoint file: a .potx, .pptx or .thmx."],
     [["brand", "import", "a.potx", "b.potx"], "Unexpected argument b.potx."],
@@ -56,8 +56,9 @@ describe("depthcue brand import: the arguments", () => {
     [["brand", "import", "a.potx", "--step", "2"], "brand import takes --out and --json."],
     [["brand", "import", "a.potx", "--width", "800"], "brand import takes --out and --json."],
     [["brand", "import", "a.potx", "--height", "600"], "brand import takes --out and --json."],
+    [["brand", "import", "a.potx", "--name", "x"], "brand import takes --out and --json, not --name."],
     [
-      ["brand", "import", "a.potx", "--name", "x"],
+      ["brand", "import", "a.potx", "--quality", "draft"],
       "--name, --quality, --scale and --kine belong to clip build.",
     ],
     [["brand", "import", "a.potx", "--format", "pptx"], "--format belongs to export."],

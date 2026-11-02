@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkDeckFiles, type Diagnostic, describeChange, loadDoc, revisionOf } from "@depthcue/core";
+import { BRAND_COMMANDS_TEXT, BRAND_COMMANDS_USAGE, NEW_TEXT, NEW_USAGE } from "./brand/usage.ts";
 import { BRAND_IMPORT_TEXT, BRAND_IMPORT_USAGE } from "./brand-import/usage.ts";
 import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./clip.ts";
 import { applyCommentsToFolder, listComments, readFolderComments } from "./comments-api.ts";
@@ -50,6 +51,8 @@ ${EXPORT_USAGE}
   depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
                       [--scale <0.1-1>] [--kine <path>] [--json]
 ${BRAND_IMPORT_USAGE}
+${BRAND_COMMANDS_USAGE}
+${NEW_USAGE}
   depthcue comments list <deck-folder> [--all] [--json]
   depthcue comments apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue diff <deck-folder> [--json]
@@ -82,6 +85,10 @@ clip   Builds a clip from a Kinescript scene with the kine program you have inst
 
 ${BRAND_IMPORT_TEXT}
 
+${BRAND_COMMANDS_TEXT}
+
+${NEW_TEXT}
+
 comments Lists the comments kept beside the deck in comments.json (the open ones; --all adds the resolved ones),
        with the ones people asked the agent to act on marked "ask". apply changes them the way apply changes
        the deck: operations all or none, against the comments' own revision, which list prints. The comments
@@ -106,7 +113,7 @@ function format(diagnostic: Diagnostic): string[] {
 const count = (diagnostics: readonly Diagnostic[], severity: Diagnostic["severity"]) =>
   diagnostics.filter((d) => d.severity === severity).length;
 
-function summary(diagnostics: readonly Diagnostic[]): string {
+export function summary(diagnostics: readonly Diagnostic[]): string {
   const errors = count(diagnostics, "error");
   const warnings = count(diagnostics, "warning");
   return `${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}`;
@@ -124,6 +131,7 @@ const VALUE_FLAGS = [
   "scale",
   "kine",
   "format",
+  "brand",
 ] as const;
 type ValueFlag = (typeof VALUE_FLAGS)[number];
 
@@ -132,6 +140,7 @@ interface Parsed {
   json: boolean;
   noNotes: boolean;
   all: boolean;
+  force: boolean;
   help: boolean;
   values: Partial<Record<ValueFlag, string>>;
   unknown: string[];
@@ -143,6 +152,7 @@ function parse(args: readonly string[]): Parsed {
     json: false,
     noNotes: false,
     all: false,
+    force: false,
     help: false,
     values: {},
     unknown: [],
@@ -165,6 +175,10 @@ function parse(args: readonly string[]): Parsed {
       parsed.noNotes = true;
       continue;
     }
+    if (arg === "--force") {
+      parsed.force = true;
+      continue;
+    }
     const flag = VALUE_FLAGS.find((name) => arg === `--${name}` || arg.startsWith(`--${name}=`));
     if (flag) {
       const value = arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : args[++i];
@@ -178,7 +192,7 @@ function parse(args: readonly string[]): Parsed {
   return parsed;
 }
 
-function report(io: Io, diagnostics: readonly Diagnostic[], json: boolean, extra: object = {}): void {
+export function report(io: Io, diagnostics: readonly Diagnostic[], json: boolean, extra: object = {}): void {
   const errors = count(diagnostics, "error");
   if (json) {
     io.out(
@@ -713,13 +727,18 @@ export interface RunOptions {
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, noNotes, all, help, values, unknown } = parse(rest);
+  const { positional, json, noNotes, all, force, help, values, unknown } = parse(rest);
   const baseRev = values["base-rev"];
   const portText = values.port;
   const port = portText === undefined ? undefined : Number(portText);
   const [folder, opsFile, ...extra] = positional;
   const renderFlags = values.out ?? values.step ?? values.width ?? values.height;
-  const clipFlags = values.name ?? values.quality ?? values.scale ?? values.kine;
+  // --name also names a brand (brand init) and a deck (new).
+  const clipFlags =
+    (command === "brand" || command === "new" ? undefined : values.name) ??
+    values.quality ??
+    values.scale ??
+    values.kine;
   const usage = (message?: string) => {
     io.err(message ? `${message}\n\n${USAGE}` : USAGE);
     return 2;
@@ -772,20 +791,27 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
     });
   }
   if (clipFlags !== undefined) return usage("--name, --quality, --scale and --kine belong to clip build.");
-  if (command === "brand") {
-    const [sub, brandFile, ...more] = positional;
-    if (sub !== "import") return usage("brand needs a subcommand. The one there is: brand import.");
-    if (!brandFile) return usage("brand import needs a PowerPoint file: a .potx, .pptx or .thmx.");
-    if (more.length > 0) return usage(`Unexpected argument ${more[0]}.`);
-    if (
-      baseRev !== undefined ||
-      portText !== undefined ||
-      (values.step ?? values.width ?? values.height) !== undefined
-    ) {
-      return usage("brand import takes --out and --json.");
-    }
-    return import("./brand-import/command.ts")
-      .then(({ brandImportCommand }) => brandImportCommand(brandFile, values.out, json, io))
+  if (command !== "new" && values.brand !== undefined) return usage("--brand belongs to new.");
+  if (force && command !== "brand") return usage("--force belongs to brand use.");
+  if (command === "brand" || command === "new") {
+    // brand/command.ts says which of these each subcommand takes.
+    const flags = {
+      out: values.out,
+      name: values.name,
+      brand: values.brand,
+      force,
+      json,
+      stray:
+        baseRev !== undefined ||
+        portText !== undefined ||
+        (values.step ?? values.width ?? values.height) !== undefined,
+    };
+    return import("./brand/command.ts")
+      .then((brands) =>
+        command === "new"
+          ? brands.newDeckCommand(positional, flags, io, usage)
+          : brands.brandCommand(positional, flags, io, usage),
+      )
       .catch((error: Error) => {
         io.err(error.message);
         return 2;

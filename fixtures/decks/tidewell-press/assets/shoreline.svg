@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="A low shore at the turn of the tide, with dunes, a calm sea and a pale sun">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CFE0DC"/>
+      <stop offset="0.7" stop-color="#F1E6CF"/>
+      <stop offset="1" stop-color="#F6E9CC"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5E9AA0"/>
+      <stop offset="1" stop-color="#1D5C63"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <circle cx="1130" cy="330" r="92" fill="#F8EFD8"/>
+  <circle cx="1130" cy="330" r="92" fill="none" stroke="#E9C9A4" stroke-width="3"/>
+  <rect y="470" width="1600" height="260" fill="url(#sea)"/>
+  <g fill="none" stroke="#F1E6CF" stroke-width="3" stroke-linecap="round" opacity="0.55">
+    <path d="M120 520h260M520 548h340M960 512h300M1340 540h180M260 590h420M820 604h360M1240 628h240"/>
+  </g>
+  <path d="M0 470c180-34 330-36 520-8s340 6 520-20 360-22 560 18v270H0Z" fill="#A8B79A"/>
+  <path d="M0 640c240-70 440-84 700-50s520 40 900-30v340H0Z" fill="#C9A66B"/>
+  <path d="M0 760c300-52 560-60 860-26s500 34 740-14v180H0Z" fill="#8A2E3B"/>
+  <g stroke="#1E2B26" stroke-width="3" stroke-linecap="round" opacity="0.8">
+    <path d="M210 800v-70M236 800v-96M262 800v-60M1290 820v-80M1316 820v-104M1342 820v-70"/>
+  </g>
+</svg>

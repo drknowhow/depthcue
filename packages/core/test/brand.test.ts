@@ -215,7 +215,7 @@ describe("a scene against its deck's templates and styles", () => {
         code: "claim-without-slot",
         path: "/summary",
         message: 'The template "chart-and-note" has no claim slot, so the scene\'s claim has no place to go.',
-        fix: 'Move the scene to a template with a claim slot (statement), or remove "summary".',
+        fix: 'Move the scene to a template with a claim slot (statement, big-number), or remove "summary".',
       },
     ]);
     const chart = { ...growth.blocks[1], slot: "evidence" };
@@ -458,9 +458,9 @@ describe("a brand's own files", () => {
     expect(ignored.doc?.brand).toBeUndefined();
     expect(ignored.doc?.templates).toBeUndefined();
     // Its scenes are checked against Depthcue's own templates and styles alone.
+    // (Depthcue's own kicker style is there for it, so only the brand's quiet panel is unknown.)
     expect(errors(checked({ "deck.json": unbranded }))).toEqual([
       "unknown-template",
-      "unknown-style",
       "unknown-style",
       "unknown-template",
     ]);
@@ -799,15 +799,36 @@ describe("resolution", () => {
   const mine: Template = { ...BUILT_IN_TEMPLATES.section, name: "Our section" } as Template;
 
   it("offers Depthcue's templates and styles beside the brand's, the brand's winning on a shared id", () => {
-    expect(Object.keys(templatesOf(part)).sort()).toEqual([
-      "chart-and-note",
-      "cover",
+    expect(Object.keys(templatesOf(part)).sort()).toEqual(
+      [...Object.keys(BUILT_IN_TEMPLATES), "chart-and-note", "cover"].sort(),
+    );
+    expect(Object.keys(BUILT_IN_TEMPLATES).sort()).toEqual([
+      "agenda",
+      "big-number",
+      "closing",
+      "comparison",
+      "full-image",
+      "quote",
       "section",
       "statement",
+      "title",
       "two-column",
     ]);
     expect(templatesOf({ ...part, templates: { section: mine } }).section?.name).toBe("Our section");
-    expect(Object.keys(blockStylesOf(part)).sort()).toEqual(["callout", "kicker", "quiet-panel", "stat"]);
+    // The brand's kicker replaces Depthcue's, as a brand's style of the same id does.
+    expect(Object.keys(blockStylesOf(part)).sort()).toEqual(
+      [...new Set([...Object.keys(BUILT_IN_STYLES), "kicker", "quiet-panel"])].sort(),
+    );
+    expect(Object.keys(BUILT_IN_STYLES).sort()).toEqual([
+      "callout",
+      "card",
+      "highlight",
+      "kicker",
+      "label",
+      "pull-quote",
+      "stat",
+    ]);
+    expect(blockStylesOf(part).kicker).toEqual(part.brand?.styles?.kicker);
     const callout = { name: "Our callout", for: ["quote"] } as const;
     const brand = { ...part.brand, styles: { callout } } as never;
     expect(blockStylesOf({ brand }).callout).toEqual(callout);
@@ -1020,11 +1041,21 @@ describe("style.set and template.set", () => {
   });
 
   it("refuse removing a style a block uses, on the result", () => {
-    expect(apply(brandDoc(), [{ op: "style.set", id: "kicker", style: null }])).toMatchObject({
+    expect(apply(brandDoc(), [{ op: "style.set", id: "quiet-panel", style: null }])).toMatchObject({
       ok: false,
       code: "invalid-deck",
-      diagnostics: [{ code: "unknown-style", file: "scenes/context.json", path: "/blocks/0/style" }],
+      diagnostics: [
+        { code: "unknown-style", file: "brand/templates/chart-and-note.json", path: "/slots/2/style" },
+        { code: "unknown-style", file: "scenes/context.json", path: "/blocks/2/style" },
+      ],
     });
+  });
+
+  it("let a block fall back to Depthcue's own style when the brand's one of the same id is removed", () => {
+    const result = apply(brandDoc(), [{ op: "style.set", id: "kicker", style: null }]);
+    expect(result).toMatchObject({ ok: true, brandChanged: true });
+    if (!result.ok) return;
+    expect(blockStylesOf(brandPartOf(result.doc)).kicker).toEqual(BUILT_IN_STYLES.kicker);
   });
 
   it("write a template with its id and version filled in, and refuse one that says another id", () => {
@@ -1298,7 +1329,7 @@ describe("drafts and reviews of a branded deck", () => {
     expect([...(recovery.doc.brandFiles ?? [])]).toEqual(FIXTURE_BRAND_FILES);
   });
 
-  it("read back a review of a branded deck, list scene changes but not brand changes, and accept them", () => {
+  it("read back a review of a branded deck, list the brand's changes with the scene's, and accept them", () => {
     const review = startReview(brandDoc());
     const read = readReview(reviewToText(review));
     expect(read).toMatchObject({ ok: true, review: { brand: { id: "harbor" } } });
@@ -1307,9 +1338,9 @@ describe("drafts and reviews of a branded deck", () => {
       { op: "scene.set", id: "growth", set: { title: "Growth, by berth" } },
     ]);
     const changes = reviewChanges(review, changed);
-    expect(changes.map((change) => change.id)).toEqual(["scene:growth/title"]);
+    expect(changes.map((change) => change.id)).toEqual(["deck/brand", "scene:growth/title"]);
     const accepted = acceptChanges(review, changed, "all");
-    expect(accepted).toMatchObject({ ok: true, accepted: ["scene:growth/title"] });
+    expect(accepted).toMatchObject({ ok: true, accepted: ["deck/brand", "scene:growth/title"] });
     if (accepted.ok) expect(accepted.review.brand?.name).toBe("Harbor");
   });
 

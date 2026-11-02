@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "0.4",
+  "id": "shore-guide",
+  "title": "The Shore Path Guide",
+  "template": "feature",
+  "blocks": [
+    {
+      "id": "shore-guide-dateline",
+      "type": "text",
+      "role": "caption",
+      "text": "Autumn list, no. 3",
+      "slot": "dateline"
+    },
+    {
+      "id": "shore-guide-title",
+      "type": "text",
+      "role": "heading",
+      "text": "The Shore Path Guide",
+      "slot": "title"
+    },
+    {
+      "id": "shore-guide-text",
+      "type": "text",
+      "role": "body",
+      "text": "A walker's guide to forty-one miles of coast, written by the people who keep the path open. It reached a third printing in nine weeks.",
+      "slot": "body"
+    },
+    {
+      "id": "shore-guide-note",
+      "type": "text",
+      "role": "body",
+      "text": "Printed on uncoated stock, so it survives a wet pocket.",
+      "style": "margin-note",
+      "slot": "body"
+    },
+    {
+      "id": "shore-guide-picture",
+      "type": "image",
+      "asset": "assets/shoreline.svg",
+      "alt": "A low shore at the turn of the tide, with dunes and a calm sea.",
+      "slot": "picture"
+    },
+    {
+      "id": "shore-guide-caption",
+      "type": "text",
+      "role": "caption",
+      "text": "Dunes near the northern end of the path.",
+      "slot": "caption"
+    }
+  ]
+}
