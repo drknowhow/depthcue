@@ -451,7 +451,7 @@ Found, not fixed (older than the brand work):
   41,084 to 41,271 (limit 61,440; `pageLook` and the exported pattern). The editor is what is tight: Brotli moves 40 to
   60 bytes on a change of one name (a change that takes bytes out can add some), so the next step to touch it should
   look for room first. What bought room: no `data-st` attribute on styled blocks, no slide number on a thumbnail, no
-  `format("woff2")` hint in `@font-face`, and a face loader that does not repeat core's family pattern.
+  `format("woff2")` hint in `@font-face`.
 - **Fixture.** `v0-4-brand` (Harbor Analytics) has two faces (Harbor Display, Harbor Sans) in two real woff2 files
   with their OFL text, a logo, two templates (cover, chart-and-note), two styles and three scenes. The cover template has chrome `none`
   (its light logo was unreadable on teal), the chart-and-note title is 76 wide so it clears the logo, and the logo is
@@ -476,7 +476,10 @@ Found, not fixed (older than the brand work):
   `packages/core/test/brand.test.ts` and `packages/editor/test/brandchecks.test.ts` (the `background-unmeasured`
   wording); `packages/editor/test/deckpanel.test.ts` and `packages/cli/test/edit-style-e2e.test.ts` (the inline colors
   and `data-fonts` above); `packages/cli/test/layout.test.ts`, `export-brand.test.ts` and `serve-brand.test.ts` (the
-  new checks, the export and the server).
+  new checks, the export and the server); `packages/cli/test/export-command.test.ts` and `edit-style-e2e.test.ts` (an
+  export now carries each family's license text); `packages/core/src/schema.ts` (`FAMILY_PATTERN` without control
+  characters), `schema/brand.schema.json` (generated from it) and `index.ts` (exports `FAMILY_PATTERN` and the
+  `PageLook` types).
 
 ## Step 4 record: brand import
 
