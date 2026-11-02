@@ -67,6 +67,11 @@ export interface FontParts {
     charset: number;
     faces: Array<{ slot: Slot; part: number }>;
   }>;
+  /**
+   * The pitch and family and the character set of each family the slides draw that has a font file but is not in the
+   * file, by the name the slides give it, from its file.
+   */
+  others: Map<string, { pitchFamily: number; charset: number }>;
   /** Deck family to the name PowerPoint knows it by, where they differ. */
   rename: Map<string, string>;
   /** Families the page draws only in a bold file, so a run in them is bold in the file too. */
@@ -310,6 +315,7 @@ export function planFonts(
   };
 
   const report: FontReport[] = [];
+  const others: FontParts["others"] = new Map();
   const rename = new Map<string, string>();
   const boldOnly = new Set<string>();
   /** The faces each PowerPoint family gets, by its own name. */
@@ -426,6 +432,12 @@ export function planFonts(
       );
     }
     if (line.embedded.length === 0 && line.notes.length === 0) line.notes.push("not embedded.");
+    if (base === undefined) {
+      // Not in the file: its runs still say what kind of face it is, from the file the page draws its regular text in.
+      const file = pick(own, "regular", factsFor, use.chars) ?? own[0];
+      const facts = file && factsFor(file);
+      if (facts) others.set(family, { pitchFamily: pitchFamily(facts), charset: isLatin(facts) ? 0 : 1 });
+    }
   }
 
   const parts: FontParts["parts"] = [];
@@ -455,7 +467,7 @@ export function planFonts(
     }
     list.push(entry);
   }
-  return { parts, list, rename, boldOnly, report };
+  return { parts, list, others, rename, boldOnly, report };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -486,6 +498,41 @@ export function applyNames(xml: string, fonts: Pick<FontParts, "rename" | "boldO
   return out;
 }
 
+/** What a font tag says about a face besides its name, as `presentation.xml`'s list and the runs both write it. */
+const fontAttributes = (entry: { panose?: string; pitchFamily: number; charset: number }) =>
+  `${entry.panose ? ` panose="${entry.panose}"` : ""} pitchFamily="${entry.pitchFamily}" charset="${entry.charset}"`;
+
+const TYPEFACE = /\btypeface="([^"]*)"/;
+
+/**
+ * A slide's, layout's or master's runs naming each face as the font list does. pptxgenjs writes every run's `a:latin`
+ * as a swiss face and adds East Asian and complex-script faces of the same name with other character sets, and
+ * PowerPoint then lists the embedded faces with no names and draws a serif from a sans. So each `a:latin` takes its
+ * family's PANOSE, pitch and family and character set: from the font list when the face is embedded, from its file when
+ * it is not, and as a variable-pitch face (fixed for a family in `mono`) when there is no file. The `a:ea` and `a:cs`
+ * naming a face are dropped; those that name the theme's fonts stay.
+ */
+export function matchFontTags(
+  xml: string,
+  fonts: Pick<FontParts, "list" | "others">,
+  mono: ReadonlySet<string>,
+): string {
+  const listed = new Map(fonts.list.map((entry) => [entry.typeface, entry]));
+  return xml
+    .replace(/<a:latin\b[^>]*?\/>/g, (whole) => {
+      const name = TYPEFACE.exec(whole)?.[1];
+      if (name === undefined || name.startsWith("+")) return whole;
+      const family = unescapeXml(name);
+      const entry = listed.get(family) ??
+        fonts.others.get(family) ?? {
+          pitchFamily: pitchFamily({ panose: new Uint8Array(10), fixedPitch: mono.has(family) }),
+          charset: 0,
+        };
+      return `<a:latin typeface="${name}"${fontAttributes(entry)}/>`;
+    })
+    .replace(/<a:(?:ea|cs)\b[^>]*?\/>/g, (whole) => (TYPEFACE.exec(whole)?.[1]?.startsWith("+") ? whole : ""));
+}
+
 /** `presentation.xml`, its relationships and the content types, with the fonts listed. */
 export function listFonts(
   presentation: string,
@@ -498,7 +545,7 @@ export function listFonts(
     .filter((entry) => entry.faces.length > 0)
     .map(
       (entry) =>
-        `<p:embeddedFont><p:font typeface="${escapeAttribute(entry.typeface)}"${entry.panose ? ` panose="${entry.panose}"` : ""} pitchFamily="${entry.pitchFamily}" charset="${entry.charset}"/>${entry.faces
+        `<p:embeddedFont><p:font typeface="${escapeAttribute(entry.typeface)}"${fontAttributes(entry)}/>${entry.faces
           .map((face) => `<p:${face.slot} r:id="rIdFont${face.part}"/>`)
           .join("")}</p:embeddedFont>`,
     )
