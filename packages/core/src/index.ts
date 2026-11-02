@@ -258,6 +258,7 @@ export {
   checkPalette,
   checkTones,
   contrastRatio,
+  contrastWay,
   DEFAULT_FONTS,
   isLargeText,
   luminance,

@@ -8,6 +8,7 @@ import {
   checkPalette,
   checkTones,
   contrastRatio,
+  contrastWay,
   DEFAULT_FONTS,
   type Deck,
   isLargeText,
@@ -119,6 +120,34 @@ describe("contrast", () => {
     expect(found.length).toBeGreaterThan(0);
     for (const each of found) expect(each.path).toBe("/palette/surface");
     expect(found[0]?.fix).toMatch(/^Make "surface" lighter/);
+  });
+
+  it("points a color the way that can reach the minimum, and prints both colors alike", () => {
+    // Lighter than paper's bg already, but white is too near it to reach 4.5:1: only darker can.
+    const [pale] = checkPalette(deck({ palette: { text: "#f4f4f4" } }));
+    expect(pale?.message).toContain('"text" (#F4F4F4) on "bg" (#F5F2EA)');
+    expect(pale?.fix).toBe('Make "text" darker until the two reach 4.5:1.');
+    // Darker than ink's bg already, but black is too near it: only lighter can.
+    const [dark] = checkPalette(deck({ theme: "ink", palette: { text: "#000000" } }));
+    expect(dark?.message).toContain('"text" (#000000) on "bg" (#0C0E12)');
+    expect(dark?.fix).toBe('Make "text" lighter until the two reach 4.5:1.');
+    // A background nothing else changed: each way that can, for both colors.
+    const [both] = checkPalette(deck({ palette: { text: "#f4f4f4", bg: "#fafafa" } }));
+    expect(both?.fix).toBe('Make "text" darker, or make "bg" darker, until the two reach 4.5:1.');
+  });
+
+  it("says which way can reach a contrast: the nearer when both can, and neither when the other has to change", () => {
+    // #767676 is about as far from white as from black: both reach 4.5:1, and the side a color is on is nearer.
+    expect(contrastWay("#808080", "#767676", 4.5)).toBe("lighter");
+    expect(contrastWay("#6E6E6E", "#767676", 4.5)).toBe("darker");
+    expect(contrastWay("#F4F4F4", "#F5F2EA", 4.5)).toBe("darker");
+    expect(contrastWay("#000000", "#0C0E12", 4.5)).toBe("lighter");
+    // No color reaches 7:1 on it: the fixed color has to change. Under about 4.58:1 that cannot happen.
+    expect(contrastWay("#808080", "#767676", 7)).toBeUndefined();
+    for (let level = 0; level <= 255; level += 1) {
+      const gray = `#${level.toString(16).padStart(2, "0").repeat(3)}`;
+      expect(contrastWay(gray, gray, CONTRAST.text), gray).toBeDefined();
+    }
   });
 
   it("holds action to 3:1 only, since small text in it is checked where it is used", () => {
