@@ -393,7 +393,11 @@ Found, not fixed (older than the brand work):
   old-deck renders; 38 of 38 of mine); that is a local check, and CI does not make it. The check CI makes allows at most
   64 pixels to differ, and none by a larger step than two drawings of the same page differ by (a control page is drawn
   the same way and photographed beside the pair), after up to three retakes; a test shows that a muted text color 16
-  steps lighter in each channel fails it. Why two drawings of one page differ on the Linux runner is not known.
+  steps lighter in each channel fails it. Each scene is opened by a fresh load of each page. After an in-page change of
+  scene, Chrome on Linux drew the donut of `v0-3` (19 pixels, at most 4 steps) and one text edge differently on the page
+  with the look than on two pages without it, and now and then between two pages without it, though the DOM, computed
+  styles and every box were the same and the difference did not change in 1.5 seconds; opened fresh, 60 of 60 pairs
+  were equal. That is the drawing history of a page, not the look.
 - **Faces.** `@font-face` rules go in a constructed stylesheet (`adoptedStyleSheets`), because the page's policy
   (`style-src 'self'`) refuses a `<style>` element, and are inserted one at a time, so a rule the browser refuses costs
   its own face and no other. A face is a safe family name and a file inside `brand/` (`brandUrl`). The player builds its

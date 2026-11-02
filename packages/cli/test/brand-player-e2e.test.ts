@@ -391,7 +391,8 @@ interface Served {
   context: BrowserContext;
   /** Every answer the server gave this page, by path. */
   responses: Array<{ status: number; path: string }>;
-  go(scene: string): Promise<Page>;
+  /** Opens a scene. `fresh` loads the page again first, so the drawing has no history of an earlier scene. */
+  go(scene: string, options?: { fresh?: boolean }): Promise<Page>;
 }
 
 /**
@@ -425,7 +426,12 @@ async function serve(
     page,
     context,
     responses,
-    async go(scene) {
+    async go(scene, more = {}) {
+      if (more.fresh) {
+        // A hash change alone does not load the page again, and the page that is left takes its added style with it.
+        await page.goto("about:blank");
+        styled = false;
+      }
       await page.goto(`${server.url}#/${scene}`);
       if (options.clean && !styled) {
         styled = true;
@@ -1327,10 +1333,14 @@ describe("a deck with no brand", () => {
       const withLook = await serve(deck);
       const [without, control] = [await withoutLook(deck), await withoutLook(deck)];
 
+      // Each scene is a fresh load of each page. Chrome's drawing of a page after an in-page change of scene can differ
+      // from another page's in a few edge pixels, by a rounding, though the DOM, the computed styles and every box are
+      // the same: on a Linux runner 19 pixels of a donut and of one text edge, by at most 4 steps, between the page with
+      // the look and two without it, and now and then between two without it. Opened fresh, 60 of 60 pairs were equal.
       for (const scene of scenes) {
-        const a = await withLook.go(scene);
-        const b = await without.go(scene);
-        const c = await control.go(scene);
+        const a = await withLook.go(scene, { fresh: true });
+        const b = await without.go(scene, { fresh: true });
+        const c = await control.go(scene, { fresh: true });
         expect(
           await sameStage(a, b, c, `${name}/${scene}`),
           `${name}/${scene} looks the same with and without a look`,
