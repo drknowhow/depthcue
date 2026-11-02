@@ -92,6 +92,8 @@ export interface CommandSources {
   reviewOpen?(): boolean;
   /** Opens the storyboard, which shows every scene on one screen. */
   storyboard?(): void;
+  /** Opens Download PowerPoint. */
+  download?(): void;
   save(): void;
   present(): void;
   showKeys(): void;
@@ -605,6 +607,16 @@ export function listCommands(from: CommandSources): Command[] {
       words: "grid overview sorter all scenes",
       keys: from.keysOf("storyboard"),
       run: storyboard,
+    });
+  }
+  const download = from.download;
+  if (download) {
+    add({
+      id: "download-pptx",
+      title: "Download PowerPoint…",
+      group: "Everywhere",
+      words: "export pptx powerpoint file slides save office",
+      run: download,
     });
   }
   add({ id: "save", title: "Save now", group: "Everywhere", keys: from.keysOf("save"), run: from.save });

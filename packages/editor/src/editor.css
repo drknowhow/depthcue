@@ -1229,6 +1229,96 @@ body {
   visibility: hidden;
 }
 
+.ed-dialog-foot .ed-problem ul {
+  margin: var(--dc-space-1) 0 0;
+  padding-left: 1.25rem;
+}
+
+/* Download PowerPoint: the options, how long the file has taken, and what the export said about it. */
+.ed-dialog-pptx {
+  width: min(36rem, calc(100vw - 2 * var(--dc-space-4)));
+}
+
+.ed-dialog-pptx .ed-dialog-body {
+  display: grid;
+  gap: var(--dc-space-3);
+  align-content: start;
+}
+
+.ed-pptx-options {
+  display: grid;
+  gap: var(--dc-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ed-pptx-options legend {
+  margin-bottom: var(--dc-space-1);
+  padding: 0;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.ed-pptx-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--dc-space-2);
+  align-items: baseline;
+}
+
+.ed-pptx-option small {
+  grid-column: 2;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.ed-pptx-progress:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-2);
+  font-size: 0.8125rem;
+}
+
+.ed-pptx-progress progress {
+  flex: 1 1 100%;
+  width: 100%;
+  accent-color: var(--dc-action);
+}
+
+.ed-pptx-status:not(:empty) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--dc-space-2);
+}
+
+.ed-pptx-saved {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ed-pptx-report h3 {
+  margin: var(--dc-space-3) 0 var(--dc-space-1);
+  font-size: 0.875rem;
+}
+
+.ed-pptx-report p,
+.ed-pptx-report ul {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.ed-pptx-report ul {
+  padding-left: 1.25rem;
+}
+
+.ed-pptx-report ul ul {
+  color: var(--dc-muted);
+}
+
 .ed-pick-group {
   margin: var(--dc-space-3) 0 var(--dc-space-2);
   color: var(--dc-muted);

@@ -44,6 +44,7 @@ export const PARTS = {
   storyboard: part(() => import("./storyboard.ts")),
   comments: part(() => import("./commentpins.ts")),
   cues: part(() => import("./cuespanel.ts")),
+  pptx: part(() => import("./pptxdownload.ts")),
   // The picker, the slots and the styles list Depthcue's own templates and styles too, so they wait for those as well.
   brand: part(() =>
     Promise.all([import("./branduse.ts"), loadBuiltIns()]).then(([module]) => {

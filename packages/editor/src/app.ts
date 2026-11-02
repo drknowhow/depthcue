@@ -208,6 +208,20 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     }),
   );
   const deckChip = popoverChip(deckForm);
+  // Download PowerPoint is a part of its own; its button closes the Deck popover, so the dialog gives the keyboard back
+  // to the Deck chip.
+  const openDownload = () =>
+    withPart(
+      parts.pptx,
+      (module) => module.openDownload(root, store),
+      () => showProblem(notLoaded("the PowerPoint download")),
+    );
+  deckForm.body.append(
+    button("pptx", "Download PowerPoint…", () => {
+      deckChip.close(true);
+      openDownload();
+    }),
+  );
   const present = h(
     "a",
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
@@ -581,6 +595,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       toggleReview,
       reviewOpen: () => drawer?.isOpen === true,
       storyboard: openBoard,
+      download: openDownload,
       save: () => void store.save(),
       present: () => void window.open(present.href, "_blank", "noopener"),
       showKeys: () => shortcuts.open(),

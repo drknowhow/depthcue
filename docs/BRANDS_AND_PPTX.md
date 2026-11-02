@@ -905,7 +905,7 @@ Found, not fixed (older than the brand work):
   editor goes on, and the next use tries again. What the person typed or chose is read after the part is in. Hide
   pins chosen before the pins part arrives holds once it does. The review button says it is busy (`aria-busy`) while
   its part loads, and a second press then does not cancel the first, so the drawer opens. The editor script is now
-  88,479 with all of step 7 but Download PowerPoint, which leaves 3,681 bytes, and 609 above the 3 KB step 8 needs.
+  88,664 with all of step 7, which leaves 3,496 bytes, and 424 above the 3 KB step 8 needs.
   `retemplate.ts` stays in the script: core's index exports it, and a chunk group that pulled it out pulled its
   imports with it.
 - **The brand part.** Everything below is `branduse.js` (4,830 of 6,144), fetched with Depthcue's own templates and
@@ -979,19 +979,47 @@ Found, not fixed (older than the brand work):
   menu and Change template opened and closed, is byte for byte the same with the same file times. The brand part and
   the built-ins chunk are each refused once (the message shows, the editor goes on, the next try opens the picker),
   and so is the storyboard.
+- **Download PowerPoint.** "Download PowerPoint…" at the foot of the Deck popover and in the palette opens a dialog
+  from `pptxdownload.js` (2,679 of 4,096), a part of its own; the main script holds the button, the command and the
+  part's hook (185 bytes). The dialog offers "Each slide as one picture" (picture mode, off) and "Speaker notes" (on,
+  "Anyone with the file can read them."), and calls step 6's `POST /_depthcue/api/export.pptx` with the editor's
+  token and those two switches. The file is made from the deck on disk, so edits the autosave has not written yet are
+  saved first; a save that fails, or files that changed on disk, are said and nothing is sent. While the file is made
+  the dialog shows a progress bar and the seconds it has taken, Download is off and busy, and Cancel stops waiting.
+  The browser saves the file under the server's name (its RFC 8187 `filename*`, so `<deck folder>.pptx`), and the
+  dialog stays open with "Saved <name>, <size>, among your browser's downloads.", Save it again, and the export's
+  report: what has no PowerPoint form, slide by slide (overflow past an edge is one of those lines), the lines for
+  every slide, the fonts in the file and the ones a viewer needs installed, and the warnings. A refusal is said in
+  the dialog in plain words: the server's own message, the deck's first three errors under a 422, "This depthcue
+  edit cannot make PowerPoint files. …" for a server without the call, and "The editor could not reach the server.
+  …" when it is gone. The editor writes nothing into the deck folder. In Chrome (`editor-brand-use-e2e.test.ts`):
+  the Harbor deck's download equals `depthcue export --format pptx` beside the deck byte for byte, with the deck
+  folder unchanged, file times included; picture mode with an edit typed just before it equals `--pictures` part for
+  part (see Risks); and a refusal stays readable in the open dialog.
+- **The report needs the export call to send it.** Step 6's call sends the file and nothing else, and the summary
+  `renderPptx` returns stops in `serve.ts`, outside this step's files. The dialog reads it from an
+  `X-Depthcue-Report` header, the summary without `out` as percent-encoded JSON, and says "This server sent no report
+  with the file." until the call sends one. A real-browser test sends `depthcue export --json`'s summary of the same
+  deck that way and checks that every embedded family, every slide with something left out, and each of its lines
+  are listed; the screenshot `download-report` is that.
 - **Decisions.** The new scene goes after the scene on show; its first block is the template's heading slot's; the
   template's name takes the layout buttons' place in the scene bar, so the top bar keeps its width at 1024 (beside
   them it left the deck title 14 px wide); a layout chosen for a template scene opens Change template; the
   scene menu starts with Change template; a chosen block's Style chip fetches the brand part (the second fetch that
   `selectBlock` made is gone); the styles come after the text's own controls in the chip; No style is drawn as a plain
-  block; a claim a new template cannot hold is taken off, named with its links, rather than the change refused.
+  block; a claim a new template cannot hold is taken off, named with its links, rather than the change refused;
+  Download PowerPoint lives in the Deck popover and the palette (the top bar has no room at 1024), offers speaker
+  notes beside picture mode, saves unsaved edits before it asks, and stays open after the download with the report.
 - **Review fixes (of 812e364).** Each of the above that a review asked for has a test that fails on 812e364: two
   real-browser clicks on a block over an empty slot (a pinned chart, a title in a slide-sized picture slot), the
   claim's ops against core's and its links in the words, Left empty, the refusal's block name, focus in the Style list
   after a choice, no redraw while typing, the right-click loading state, two presses on Review, the replaced dialog's
   return, the picker's names, and the four changes a mutation pass found unguarded (Hide pins before the part, the
   claim filling its slot, Kicker on a quote, the late cue count).
-- **Not done.** Download PowerPoint waits for step 6's endpoint.
+- **Not done.** The export call does not send its report yet (above), so today the dialog says so after the file.
 - **Risks.** The style pictures are 80 px wide: Callout and Pull quote differ by the sample text's color only, since
   both draw an edge bar. Harbor has only a light logo, so on ink its word mark is dark on dark (the player's, from
-  step 3). Download PowerPoint's trigger has 609 bytes of the main script to fit in before step 8's 3 KB.
+  step 3). Step 8 has 424 bytes of the main script beyond its 3 KB. Picture mode is not byte-stable: two exports of
+  `v0-3` with `--pictures`, one from the editor while its own Chrome ran, gave different PNGs for the chart slide
+  (same parts otherwise, the pictures alike to the eye); three CLI runs alone gave the same bytes. `edit-e2e`'s
+  Alt-drag test failed once in a full run and passed alone and in its file, as step 6's record describes.

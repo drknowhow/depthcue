@@ -173,6 +173,48 @@ describe("the storyboard, a part fetched when it is first opened", () => {
   });
 });
 
+describe("Download PowerPoint, a part fetched when it is first opened", () => {
+  const dialog = () => host.querySelector<HTMLDialogElement>("dialog[data-dialog='pptx']");
+  const deckChip = () => host.querySelector<HTMLButtonElement>("[data-tb='deck']") as HTMLButtonElement;
+
+  it("is in the Deck popover, closes it, and opens its dialog when the part arrives", async () => {
+    const parts = stub(await real("pptx"));
+    await mount({ pptx: parts.from });
+    expect(parts.fetches).toHaveLength(0);
+    deckChip().click();
+    expect(deckChip().getAttribute("aria-expanded")).toBe("true");
+    action("pptx").click();
+    expect(deckChip().getAttribute("aria-expanded")).toBe("false");
+    expect(parts.fetches).toHaveLength(1);
+    stillEdits("Typed while it loads");
+    parts.arrive();
+    await flush();
+    expect(dialog()?.open).toBe(true);
+    // Closed, it gives the keyboard back to the Deck chip, as the popover would have.
+    host
+      .querySelector<HTMLButtonElement>("dialog[data-dialog='pptx'] [data-dialog-action='cancel']")
+      ?.click();
+    expect(dialog()).toBeNull();
+    expect(document.activeElement).toBe(deckChip());
+  });
+
+  it("says so when it does not arrive, and the next press tries again", async () => {
+    const parts = stub(await real("pptx"));
+    await mount({ pptx: parts.from });
+    action("pptx").click();
+    parts.fail();
+    await flush();
+    expect(hint().textContent).toBe(notLoaded("the PowerPoint download"));
+    expect(dialog()).toBeNull();
+    stillEdits("Still editing");
+    action("pptx").click();
+    expect(parts.fetches).toHaveLength(2);
+    parts.arrive();
+    await flush();
+    expect(dialog()?.open).toBe(true);
+  });
+});
+
 describe("the comment pins, a part fetched once there is a comment or the Comment tool is taken", () => {
   const quick = () => host.querySelector<HTMLButtonElement>("[data-quick='comment']") as HTMLButtonElement;
   const note: CommentOp = {

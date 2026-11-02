@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -22,14 +23,15 @@ import {
   retemplate,
   revisionOf,
 } from "@depthcue/core";
-import type { Browser, BrowserContext, Page } from "playwright-core";
+import JSZip from "jszip";
+import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { LayoutChecker } from "../src/edit-layout.ts";
 import { exportDeck } from "../src/export.ts";
 import { run } from "../src/index.ts";
 import { loadDeckDir } from "../src/loader.ts";
 import { launchBrowser } from "../src/render.ts";
-import { builtEditorDir, builtPlayerDir, type RunningServer, startServer } from "../src/serve.ts";
+import { builtEditorDir, builtPlayerDir, pptxOutOf, type RunningServer, startServer } from "../src/serve.ts";
 
 /*
  * Using a brand in the editor, in a real Chrome, on copies of the branded fixture and of an older deck with no brand:
@@ -741,6 +743,169 @@ describe("the parts the editor fetches on first use", () => {
   });
 });
 
+// ---- Download PowerPoint ---------------------------------------------------------------------------------------------
+
+/** Opens Download PowerPoint from the Deck popover, ticks the options asked for, and saves the file it gets. */
+async function downloadPptx(options: { pictures?: boolean } = {}) {
+  await page.locator("[data-tb='deck']").click();
+  await page.locator("[data-action='pptx']").click();
+  const box = dialog("pptx");
+  await box.waitFor();
+  if (options.pictures) await box.locator("input[name='pictures']").check();
+  const [file] = await Promise.all([
+    page.waitForEvent("download", { timeout: 150_000 }),
+    box.locator("[data-dialog-action='download']").click(),
+  ]);
+  await box.locator(".ed-pptx-saved").waitFor({ timeout: 30_000 });
+  return { name: file.suggestedFilename(), bytes: readFileSync(await file.path()) };
+}
+
+/**
+ * Sends the export's report with the file, as the export call would if it sent one: `depthcue export --json`'s summary
+ * of the same deck (its fonts, slides, deck lines and warnings), as the `X-Depthcue-Report` header the dialog reads.
+ */
+async function reportWith(dir: string) {
+  const done = capture();
+  const code = await run(
+    ["export", dir, "--format", "pptx", "--out", join(root, "report.pptx"), "--json"],
+    done.io,
+  );
+  expect(code, done.errors.join("\n")).toBe(0);
+  const summary = JSON.parse(done.lines.join("\n")) as Record<string, unknown>;
+  const header = encodeURIComponent(
+    JSON.stringify({
+      fonts: summary.fonts,
+      slides: summary.slides,
+      deck: summary.deck,
+      warnings: summary.diagnostics,
+    }),
+  );
+  await page.route("**/_depthcue/api/export.pptx", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, headers: { ...response.headers(), "x-depthcue-report": header } });
+  });
+  return summary as {
+    fonts: Array<{ family: string; embedded: string[] }>;
+    slides: Array<{ title: string; left: string[] }>;
+  };
+}
+
+/** The file `depthcue export` writes for the deck, where the live server's export says it would be. */
+async function cliPptx(dir: string, ...switches: string[]) {
+  const out = pptxOutOf(realpathSync(dir));
+  const done = capture();
+  const code = await run(["export", dir, "--format", "pptx", "--out", out, ...switches], done.io);
+  expect(code, done.errors.join("\n")).toBe(0);
+  return readFileSync(out);
+}
+
+describe("Download PowerPoint in a real browser", () => {
+  it("saves the file the CLI writes, byte for byte, shows that it is being made, and writes nothing in the deck", async () => {
+    const mine = copy(harborDeck, "harbor");
+    const before = everything(mine);
+    await open(mine, "growth");
+    const exports: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/_depthcue/api/export.pptx")
+        exports.push(request.postData() ?? "");
+    });
+    await page.locator("[data-tb='deck']").click();
+    await page.locator("[data-action='pptx']").click();
+    const box = dialog("pptx");
+    await box.waitFor();
+    expect(await page.getByRole("dialog", { name: "Download PowerPoint" }).count()).toBe(1);
+    const [file] = await Promise.all([
+      page.waitForEvent("download", { timeout: 150_000 }),
+      (async () => {
+        await box.locator("[data-dialog-action='download']").click();
+        // While the file is made the dialog says so, and Download is off.
+        await box.locator(".ed-pptx-progress progress").waitFor();
+        expect(await box.locator("[data-dialog-action='download']").isDisabled()).toBe(true);
+      })(),
+    ]);
+    await box.locator(".ed-pptx-saved").waitFor({ timeout: 30_000 });
+    expect(file.suggestedFilename()).toBe("harbor.pptx");
+    expect(exports.map((body) => JSON.parse(body))).toEqual([{ notes: true, pictures: false }]);
+    expect(await box.locator(".ed-pptx-progress").isHidden()).toBe(true);
+    expect(await box.locator(".ed-pptx-saved").textContent()).toMatch(
+      /^Saved harbor\.pptx, \d+ KB, among your browser's downloads\. $/,
+    );
+    const bytes = readFileSync(await file.path());
+    expect(everything(mine)).toEqual(before);
+    expect((await cliPptx(mine)).equals(bytes)).toBe(true);
+    expect(problems).toEqual([]);
+  }, 300_000);
+
+  it("in picture mode saves the file `depthcue export --pictures` writes, with an edit made just before it", async () => {
+    const mine = copy(oldDeck, "old");
+    await open(mine, "overview");
+    await choose("overview-title");
+    await page.keyboard.press("Control+A");
+    await page.keyboard.type("Channel B leads now");
+    // Straight away: Download saves an edit the autosave has not yet, since the file is made from the deck on disk.
+    const got = await downloadPptx({ pictures: true });
+    expect(got.name).toBe("old.pptx");
+    const title = blockOn(mine, "overview", "overview-title");
+    expect(title && "text" in title ? title.text : undefined).toMatch(/leads now$/);
+    // Part for part. A slide's picture is the page as a browser drew it, and a chart drawn while another browser is busy
+    // can differ in a few pixels between two exports of the same deck, so the pictures are compared by name and count,
+    // and the file's digest of its own parts goes with them.
+    const theirs = await JSZip.loadAsync(await cliPptx(mine, "--pictures"));
+    const ours = await JSZip.loadAsync(got.bytes);
+    const parts = (zip: JSZip) => Object.keys(zip.files).filter((name) => !zip.files[name]?.dir);
+    expect(parts(ours)).toEqual(parts(theirs));
+    expect(parts(ours).filter((name) => /^ppt\/media\/.+\.png$/.test(name))).toHaveLength(3);
+    for (const name of parts(theirs)) {
+      if (/^ppt\/media\/.+\.png$/.test(name) || name === "docProps/custom.xml") continue;
+      const same = Buffer.from(await (ours.file(name) as JSZip.JSZipObject).async("uint8array")).equals(
+        Buffer.from(await (theirs.file(name) as JSZip.JSZipObject).async("uint8array")),
+      );
+      expect(same, name).toBe(true);
+    }
+    expect(problems).toEqual([]);
+  }, 300_000);
+
+  it("lists the export's own report after the download when the call sends one", async () => {
+    const mine = copy(harborDeck, "harbor");
+    await open(mine, "growth");
+    const summary = await reportWith(mine);
+    await downloadPptx();
+    const report = dialog("pptx").locator(".ed-pptx-report");
+    const carried = summary.fonts.filter((font) => font.embedded.length > 0);
+    expect(carried.length).toBeGreaterThan(0);
+    expect(await report.locator("h3").allTextContents()).toContain("Fonts in the file");
+    for (const font of carried) expect(await report.textContent()).toContain(font.family);
+    const left = summary.slides.filter((slide) => slide.left.length > 0);
+    for (const slide of left) expect(await report.textContent()).toContain(slide.title);
+    for (const line of left.flatMap((slide) => slide.left))
+      expect(await report.textContent()).toContain(line);
+    expect(problems).toEqual([]);
+  }, 300_000);
+
+  it("says in plain words what went wrong, and the dialog stays open to try again", async () => {
+    const mine = copy(oldDeck, "old");
+    await open(mine, "overview");
+    const refuse = (route: Route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "no-browser",
+          message: "No Chrome or Edge was found to draw the slides.",
+        }),
+      });
+    await page.route("**/_depthcue/api/export.pptx", refuse);
+    await page.locator("[data-tb='deck']").click();
+    await page.locator("[data-action='pptx']").click();
+    await dialog("pptx").locator("[data-dialog-action='download']").click();
+    await expect
+      .poll(() => dialog("pptx").locator(".ed-problem").textContent())
+      .toBe("No Chrome or Edge was found to draw the slides.");
+    expect(await dialog("pptx").locator("[data-dialog-action='download']").isEnabled()).toBe(true);
+    expect(problems.filter((line) => !line.includes("503"))).toEqual([]);
+  });
+});
+
 // ---- older decks -----------------------------------------------------------------------------------------------------
 
 describe("an older deck opened in the editor", () => {
@@ -830,7 +995,28 @@ describe.skipIf(!SHOTS)("screenshots of a brand in use", () => {
       await page.locator(".ed-toolbar .ed-styles").evaluate((node) => node.scrollIntoView({ block: "end" }));
       await page.waitForTimeout(300);
       await shot("styles");
+      await page.keyboard.press("Escape");
+
+      // The block's right-click menu, with its Style submenu open.
+      await block("context-quote").click({ button: "right" });
+      await page.locator(".ed-menu [data-submenu='Style']").click();
+      await page.locator(".ed-menu-sub [data-command^='block-style-']").first().waitFor();
+      await page.waitForTimeout(300);
+      await shot("style-menu");
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+
+      // Download PowerPoint, after the file is in: as the export call is today, with no report, then with the CLI's
+      // report of the same deck sent as the dialog would read it.
+      await downloadPptx();
+      await page.waitForTimeout(300);
+      await shot("download");
+      await dialog("pptx").locator("[data-dialog-action='cancel']").click();
+      await reportWith(mine);
+      await downloadPptx();
+      await page.waitForTimeout(300);
+      await shot("download-report");
       expect(problems).toEqual([]);
-    }, 60_000);
+    }, 240_000);
   }
 });
