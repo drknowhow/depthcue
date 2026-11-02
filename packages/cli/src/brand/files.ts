@@ -489,6 +489,7 @@ export function strictSvg(bytes: Uint8Array): { elements: number } | { problem: 
   } catch {
     return { problem: "bytes that are not UTF-8 text" };
   }
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: finding control characters is what this check is for.
   const control = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/.exec(text)?.[0];
   if (control !== undefined) {
     return {
