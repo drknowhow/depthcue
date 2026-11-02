@@ -8,6 +8,7 @@ import {
   type Doc,
   loadDoc,
   type Op,
+  retemplate,
   revisionOf,
   type Scene,
   type Template,
@@ -27,6 +28,8 @@ import {
   styleSection,
   templateScene,
 } from "../src/branduse.ts";
+import { removeClaim } from "../src/cleanup.ts";
+import { describeBlock } from "../src/templates.ts";
 
 const decks = resolve(import.meta.dirname, "../../../fixtures/decks");
 
@@ -195,6 +198,22 @@ describe("the empty slots of a template scene", () => {
     expect(chart.parentElement?.classList.contains("dc-scene")).toBe(true);
   });
 
+  it("counts the claim as what fills a claim slot", () => {
+    const doc = plain();
+    const data = sceneOf(doc, "data");
+    const { layout: _layout, ...rest } = data;
+    const statement = { ...rest, template: "statement", blocks: [] } as Scene;
+    const slotsOf = (scene: Scene) => {
+      const view = drawn(scene);
+      drawSlots(doc, scene, view);
+      return [...view.querySelectorAll<HTMLElement>(".ed-slot")].map((slot) => slot.dataset.slot);
+    };
+    expect(statement.summary).toBeDefined();
+    expect(slotsOf(statement)).toEqual(["evidence"]);
+    const { summary: _summary, ...bare } = statement;
+    expect(slotsOf(bare as Scene)).toEqual(["claim", "evidence"]);
+  });
+
   it("draws nothing for a filled slot, or for a scene with a layout", () => {
     const doc = harbor();
     const view = drawn(sceneOf(doc, "welcome"));
@@ -300,6 +319,9 @@ describe("the template picker", () => {
       "A short label above the title, such as the quarter.",
     );
     expect(cover.querySelector(".ed-mini")?.getAttribute("aria-hidden")).toBe("true");
+    // Named by its name alone and described by what it is for, so neither is read twice.
+    const name = document.getElementById(cover.getAttribute("aria-labelledby") as string);
+    expect(name?.textContent).toBe("Cover");
     const about = document.getElementById(cover.getAttribute("aria-describedby") as string);
     expect(about?.textContent).toMatch(/^The first slide/);
     // The keyboard starts on the first, and the arrows move along them.
@@ -351,6 +373,20 @@ describe("the template picker", () => {
     expect(root.querySelector("dialog")).toBeNull();
   });
 
+  it("gives the keyboard back to where it was when a second one replaced the first", () => {
+    const root = document.createElement("div");
+    const opener = document.createElement("button");
+    document.body.append(root, opener);
+    opener.focus();
+    pickTemplate(createSession(harbor()), root, { add: () => undefined });
+    pickTemplate(createSession(harbor()), root, { add: () => undefined });
+    expect(root.querySelectorAll("dialog")).toHaveLength(1);
+    (root.querySelector("dialog") as HTMLDialogElement).dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(opener);
+  });
+
   it("keeps a key pressed in it from the editor behind it", () => {
     const root = document.createElement("div");
     document.body.append(root);
@@ -397,19 +433,64 @@ describe("Change template", () => {
     expect(sceneOf(session.doc, "growth")).toEqual(sceneOf(doc, "growth"));
   });
 
-  it("keeps a claim that the template has no slot for as a text, pinned where it was", () => {
+  it("moves a claim as core does: never into a block, and removed, by name with its links, where no slot takes it", () => {
     const doc = plain();
-    const withClaim = Object.values(doc.scenes).find((scene) => scene.summary !== undefined) as Scene;
-    const claimId = withClaim.summary?.id as string;
-    // Depthcue's Quote has no slot for a claim.
-    const plan = planOf(doc, withClaim.id, { template: "quote" }, () => ({ x: 5, y: 5, w: 50, h: 10 }));
+    const data = sceneOf(doc, "data");
+    expect(data.summary?.evidenceIds).toEqual(["data-chart", "data-table"]);
+    // Depthcue's Two columns has no slot for a claim: core's own operations, and the claim taken off as core suggests.
+    const plan = planOf(doc, "data", { template: "two-column" }, () => undefined);
     expect(plan.problem).toBeUndefined();
-    expect(plan.unplaced.some((line) => line.startsWith(`The claim "${withClaim.summary?.text}"`))).toBe(
-      true,
+    expect(plan.ops).toEqual([
+      ...retemplate(doc, "data", { template: "two-column" }).ops,
+      ...removeClaim(data),
+    ]);
+    expect(removeClaim(data)).toEqual([
+      {
+        op: "scene.set",
+        id: "data",
+        set: { summary: null, steps: [{ id: "data-step-evidence", reveal: ["data-chart", "data-table"] }] },
+      },
+    ]);
+    expect(plan.unplaced).toEqual([
+      expect.stringContaining(
+        'The claim "Channel B now leads, 60 to 40." has no slot in this template, so it is removed, and its links to Chart: Share of orders by quarter, Table: Orders, latest quarter are removed with it.',
+      ),
+    ]);
+    expect(plan.unplaced[0]).toMatch(
+      /To keep it, choose .*Statement.*Big number.* or the layout Claim and evidence\.$/,
     );
     const after = plan.after?.scene as Scene;
     expect(after.summary).toBeUndefined();
-    expect(blockOf(after, claimId)).toMatchObject({ type: "text", text: withClaim.summary?.text });
+    expect(after.blocks.map((block) => block.id)).toEqual(data.blocks.map((block) => block.id));
+  });
+
+  it("keeps the claim, with its links to its evidence, on a template with a claim slot", () => {
+    const doc = plain();
+    const plan = planOf(doc, "data", { template: "statement" }, () => ({ x: 5, y: 5, w: 40, h: 20 }));
+    expect(plan.problem).toBeUndefined();
+    expect(plan.ops.some((op) => op.op === "scene.set" && "summary" in op.set)).toBe(false);
+    expect(plan.after?.scene.summary).toEqual(sceneOf(doc, "data").summary);
+  });
+
+  it("names the required slots the change leaves empty", () => {
+    const doc = plain();
+    // The data scene has no heading for Two columns' title.
+    expect(planOf(doc, "data", { template: "two-column" }, () => undefined).empty).toEqual([
+      "title (required)",
+    ]);
+    expect(planOf(harbor(), "growth", { template: "cover" }, measure).empty).toEqual([]);
+  });
+
+  it("names the block a refusal is about", () => {
+    const doc = plain();
+    const overview = sceneOf(doc, "overview");
+    const plan = planOf(doc, "overview", { template: "section" }, () => undefined);
+    expect(plan.problem).toMatch(/: The text is drawn in "action"/);
+    expect(
+      overview.blocks.some((block) =>
+        plan.problem?.startsWith(`${describeBlock(block, 40, overview)}: The text is drawn in`),
+      ),
+    ).toBe(true);
   });
 
   it("says a claim stays in the scene, unseen, on a layout that does not show one", () => {
@@ -504,11 +585,51 @@ describe("the styles of a block", () => {
     if (!result.ok) expect(result.diagnostics[0]?.code).toBe("block-low-contrast");
   });
 
-  it("draws a style as a slide with one block in it, by the player", () => {
+  it("draws a style as its sample block alone, by the player, with none of the brand's chrome", () => {
     const preview = stylePreview(harbor(), "quiet-panel");
     expect(preview.classList.contains("ed-style-thumb")).toBe(true);
     const sample = preview.querySelector<HTMLElement>(".dc-scene [data-id='sample']");
     expect(sample?.textContent).toBe("Aa");
+    // The footer, the logo and the accent would be all a picture this small showed of the slide round the block.
+    expect(preview.querySelector(".dc-chrome")).toBeNull();
+    expect(preview.textContent).not.toContain("Harbor");
+  });
+
+  it("checks a new choice in place, so the keyboard stays on it, and draws the pictures again only for a new look", () => {
+    const session = createSession(harbor());
+    const section = styleSection(
+      session,
+      "growth",
+      () => ["growth-note"],
+      (ops) => session.apply(ops).ok,
+    );
+    document.body.append(section.body);
+    const radio = (id: string) =>
+      section.body.querySelector<HTMLInputElement>(`input[data-style='${id}']`) as HTMLInputElement;
+    const pictures = () => [...section.body.querySelectorAll(".ed-style-thumb")];
+    const same = (before: Element[]) => pictures().every((node, i) => node === before[i]);
+    const before = pictures();
+    const panel = radio("quiet-panel");
+    panel.focus();
+    panel.checked = true;
+    panel.dispatchEvent(new Event("change", { bubbles: true }));
+    section.fill();
+    expect(radio("quiet-panel")).toBe(panel);
+    expect(document.activeElement).toBe(panel);
+    expect([panel.checked, radio("none").checked]).toEqual([true, false]);
+    expect(same(before)).toBe(true);
+    // A keystroke in the block changes nothing the pictures are drawn from.
+    session.apply([{ op: "block.set", scene: "growth", id: "growth-note", set: { text: "Typed." } }]);
+    section.fill(true);
+    section.fill();
+    expect(same(before)).toBe(true);
+    // Another look draws them again, but not in the middle of typing.
+    session.apply([{ op: "deck.set", set: { theme: "ink" } }]);
+    section.fill(true);
+    expect(same(before)).toBe(true);
+    section.fill();
+    expect(same(before)).toBe(false);
+    expect(radio("quiet-panel").checked).toBe(true);
   });
 
   it("lists No style and the styles for the block's kind, the one it has checked, and writes the choice", () => {

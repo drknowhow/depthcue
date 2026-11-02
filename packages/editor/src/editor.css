@@ -1036,10 +1036,16 @@ body {
 
 /*
  * An empty slot of a template scene: a dashed box at the slot's frame with the template's hint for it, marked when the
- * scene needs it. Only the editor draws it; a click adds what the slot takes. On a narrow stage it follows the filled
- * slots in the flow, as they do.
+ * scene needs it. Only the editor draws it; a click adds what the slot takes. It lies under every block and pin of the
+ * slide, over its background only, so a block over it (a pinned chart, a title inside a slide-sized picture slot) takes
+ * its own clicks. On a narrow stage it follows the filled slots in the flow, as they do.
  */
+.dc-scene:has(> .ed-slot) {
+  isolation: isolate;
+}
+
 .ed-slot {
+  z-index: -1;
   position: absolute;
   left: calc(var(--x) * 1%);
   top: calc(var(--y) * 1%);
@@ -1151,10 +1157,6 @@ body {
   --thumb-k: 0.25;
 }
 
-.ed-style-thumb {
-  --thumb-k: 0.05;
-}
-
 .ed-mini .ed-thumb-frame.dc-player {
   position: absolute;
   inset: 0 auto auto 0;
@@ -1162,6 +1164,19 @@ body {
   height: 720px;
   transform: scale(var(--thumb-k));
   transform-origin: 0 0;
+}
+
+/*
+ * A style's picture is its sample block alone: the part of the slide round it, 30% to 70% each way (512 by 288 of the
+ * slide's 1280 by 720), scaled to fill 80 pixels across.
+ */
+.ed-style-thumb {
+  --thumb-k: 0.15625;
+  width: 80px;
+}
+
+.ed-style-thumb .ed-thumb-frame.dc-player {
+  transform: scale(var(--thumb-k)) translate(-384px, -216px);
 }
 
 /* A dialog of the brand's: the template picker and Change template. */
@@ -1326,6 +1341,12 @@ body {
 
 .ed-scene-tools .ed-seg[hidden] {
   display: none;
+}
+
+/* A button whose part is on its way: it shows so, and a second press waits with the first. */
+.ed-app button[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.7;
 }
 
 /* The styles a block can take, each with its picture, the one it has checked. */

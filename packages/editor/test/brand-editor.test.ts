@@ -217,8 +217,14 @@ describe("the Style menu of a block", () => {
     const styles = host.querySelector<HTMLElement>(".ed-toolbar .ed-styles") as HTMLElement;
     const checked = styles.querySelector<HTMLInputElement>("input:checked");
     expect(checked?.dataset.style).toBe("callout");
-    change(styles.querySelector("input[data-style='quiet-panel']") as HTMLInputElement);
+    // As an arrow key in the list does: the choice is made, and the keyboard stays on it for the next one.
+    const panel = styles.querySelector("input[data-style='quiet-panel']") as HTMLInputElement;
+    panel.focus();
+    change(panel);
     expect(block("context", "context-quote").style).toBe("quiet-panel");
+    expect(host.querySelector(".ed-toolbar .ed-styles input[data-style='quiet-panel']")).toBe(panel);
+    expect(document.activeElement).toBe(panel);
+    expect(panel.checked).toBe(true);
     change(host.querySelector(".ed-toolbar .ed-styles input[data-style='none']") as HTMLInputElement);
     expect(block("context", "context-quote").style).toBeUndefined();
   });
@@ -234,6 +240,8 @@ describe("the Style menu of a block", () => {
       items.find((node) => node.querySelector(".ed-menu-label")?.textContent === name);
     expect(named("Callout")?.getAttribute("aria-checked")).toBe("true");
     expect(named("No style")?.getAttribute("aria-checked")).toBe("false");
+    // Only the styles made for a quote: the brand's Kicker is for a caption.
+    expect(named("Kicker")).toBeUndefined();
     // Each style shows what it looks like.
     expect(named("Quiet panel")?.querySelector(".ed-mini .dc-scene")).not.toBeNull();
     named("Quiet panel")?.click();

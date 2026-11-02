@@ -476,6 +476,88 @@ describe("the empty slots of a template scene in a real browser", () => {
     expect(written(mine)).toEqual(written(theirs));
     expect(problems).toEqual([]);
   });
+
+  /**
+   * What is under the pointer at a point of the slide, given in percent of it: an empty slot, or the id of a block. With
+   * `press`, it is clicked there too.
+   */
+  async function clickAt(sceneId: string, x: number, y: number, press = true) {
+    const box = await slide(sceneId).boundingBox();
+    if (!box) throw new Error("the slide should be drawn");
+    const at = { x: box.x + (box.width * x) / 100, y: box.y + (box.height * y) / 100 };
+    const hit = await page.evaluate(({ x, y }) => {
+      const node = document.elementFromPoint(x, y);
+      return node?.closest(".ed-slot") ? "slot" : (node?.closest("[data-id]")?.getAttribute("data-id") ?? "");
+    }, at);
+    if (press) await page.mouse.click(at.x, at.y);
+    return hit;
+  }
+
+  it("lie under a block pinned over them, so a click there chooses the block", async () => {
+    const mine = copy(harborDeck, "mine");
+    // Growth moved to Cover: its chart fits no slot there and stays pinned, over Cover's empty kicker slot.
+    const moved = retemplate(docAt(mine), "growth", { template: "cover" });
+    await agentApply(mine, [
+      ...moved.ops,
+      { op: "block.set", scene: "growth", id: "growth-chart", set: { slot: null } },
+      { op: "block.frame", scene: "growth", id: "growth-chart", frame: { x: 6, y: 24, w: 58, h: 68 } },
+    ]);
+    await open(mine, "growth");
+    await slide("growth").locator(".ed-slot[data-slot='kicker']").waitFor();
+    // Inside the kicker slot (8 to 68 across, 20 to 28 down) and the chart (6 to 64, 24 to 92).
+    expect(await clickAt("growth", 30, 26)).toBe("growth-chart");
+    await expect.poll(chosen).toBe("growth-chart");
+    expect(sceneOn(mine, "growth")?.blocks).toHaveLength(3);
+    // Where the chart is not, the slot is still there to take a click.
+    expect(await clickAt("growth", 66, 24, false)).toBe("slot");
+    expect(problems).toEqual([]);
+  });
+
+  it("lie under a filled slot inside them, as a title on a slide-sized picture slot of an imported layout", async () => {
+    const mine = copy(harborDeck, "mine");
+    writeFileSync(
+      join(mine, "brand", "templates", "over-picture.json"),
+      JSON.stringify({
+        schemaVersion: "0.4",
+        id: "over-picture",
+        name: "Title over a picture",
+        description: "A picture across the whole slide, with the title on it.",
+        slots: [
+          {
+            id: "picture",
+            role: "picture",
+            frame: { x: 0, y: 0, w: 100, h: 100 },
+            accepts: ["image"],
+            hint: "The picture, across the whole slide.",
+          },
+          {
+            id: "title",
+            role: "title",
+            frame: { x: 8, y: 60, w: 84, h: 20 },
+            accepts: ["heading"],
+            required: true,
+            hint: "The title, on the picture.",
+          },
+        ],
+      }),
+    );
+    const scene: NewScene = {
+      id: "over",
+      title: "Over",
+      template: "over-picture",
+      blocks: [{ id: "over-title", type: "text", role: "heading", text: "Over the picture", slot: "title" }],
+    };
+    await agentApply(mine, [{ op: "scene.add", after: "growth", scene }]);
+    await open(mine, "over");
+    await slide("over").locator(".ed-slot[data-slot='picture']").waitFor();
+    expect(await clickAt("over", 30, 70)).toBe("over-title");
+    await expect.poll(chosen).toBe("over-title");
+    expect(await slide("over").locator(".ed-slot-menu:not([hidden])").count()).toBe(0);
+    // Above the title, the picture slot still asks for its picture.
+    expect(await clickAt("over", 50, 25)).toBe("slot");
+    await slide("over").locator(".ed-slot[data-slot='picture'] .ed-slot-menu:not([hidden])").waitFor();
+    expect(problems).toEqual([]);
+  });
 });
 
 // ---- the Style menu --------------------------------------------------------------------------------------------------

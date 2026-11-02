@@ -286,7 +286,7 @@ export function createToolbar(
         { name: "style", label: "Style", title: "The style of this block" },
         (module) => {
           const section = module.styleSection(session, inScene, () => [block.id], host.run);
-          return { body: section.body, fill: section.fill };
+          return { body: section.body, fill: (_scene, typing) => section.fill(typing) };
         },
       );
     if (!own || !styles) return own || styles || undefined;

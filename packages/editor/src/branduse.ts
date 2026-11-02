@@ -5,11 +5,13 @@
  * and fonts. Everything it changes goes through the operations `depthcue apply` takes, so the files come out the same.
  */
 import {
+  type ApplyFailure,
   applyOps,
   type Block,
   type BlockKind,
   type BlockStyle,
   blockStylesOf,
+  claimSlot,
   type DeckLook,
   type Doc,
   type Frame,
@@ -27,6 +29,7 @@ import {
   templatesOf,
 } from "@depthcue/core";
 import { h } from "@depthcue/player";
+import { removeClaim } from "./cleanup.ts";
 import { fileButton, problemOf } from "./fields.ts";
 import { describeBlock, IMAGE_ACCEPT, LAYOUT_LABEL, type Layout, newScene, uniqueId } from "./templates.ts";
 import { lookFor, thumbnailFrame } from "./thumbnail.ts";
@@ -158,19 +161,19 @@ let uid = 0;
  * With `hooks` a click adds what the slot takes: at once when it takes one kind, from a short menu when it takes more.
  * Only the editor draws these, into its own copy of the slide: the player, the exported page, the thumbnails of the
  * strip and the PowerPoint file never do, and the hints come from the templates, which the page's look leaves out.
+ * They lie under every block and pin (editor.css), so a block over an empty slot, such as a pinned chart or a title
+ * inside a slide-sized picture slot, still takes its own clicks.
  */
 export function drawSlots(doc: Doc, scene: Scene, view: ParentNode, hooks?: SlotHooks): void {
   const template = templateOf(doc, scene.template);
   const root = view.querySelector(".dc-scene");
   if (!template || !root) return;
-  for (const slot of template.slots) {
-    const filled =
-      slot.role === "claim"
-        ? scene.summary !== undefined
-        : scene.blocks.some((block) => block.slot === slot.id);
-    if (!filled) root.append(emptySlot(slot, hooks));
-  }
+  for (const slot of template.slots) if (!filled(scene, slot)) root.append(emptySlot(slot, hooks));
 }
+
+/** Whether a slot of the scene's template has something in it: the claim for the claim slot, else a block. */
+const filled = (scene: Scene, slot: TemplateSlot): boolean =>
+  slot.role === "claim" ? scene.summary !== undefined : scene.blocks.some((block) => block.slot === slot.id);
 
 function emptySlot(slot: TemplateSlot, hooks: SlotHooks | undefined): HTMLElement {
   const { x, y, w, h: tall } = slot.frame;
@@ -294,13 +297,22 @@ interface Modal {
   close(): void;
 }
 
+/** Where the keyboard goes when a dialog closes, kept with the dialog so one that replaces it can take it over. */
+const backs = new WeakMap<Element, HTMLElement | undefined>();
+
 /**
  * A modal dialog over the editor. Esc and Cancel close it, and the keyboard goes back to where it was. While it is open
- * the editor's own keys stay off, so a key pressed in it does only what the dialog says.
+ * the editor's own keys stay off, so a key pressed in it does only what the dialog says. One opened over another of the
+ * same name replaces it and gives the keyboard back to where that one would have.
  */
 function modal(root: HTMLElement, title: string, name: string): Modal {
-  root.querySelector(`dialog[data-dialog="${name}"]`)?.remove();
-  const back = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+  const replaced = root.querySelector(`dialog[data-dialog="${name}"]`);
+  const back = replaced
+    ? backs.get(replaced)
+    : document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : undefined;
+  replaced?.remove();
   const titleId = `ed-dialog-${++uid}`;
   const body = h("div", { class: "ed-dialog-body" });
   const cancel = h("button", { type: "button", "data-dialog-action": "cancel" }, "Cancel");
@@ -313,6 +325,7 @@ function modal(root: HTMLElement, title: string, name: string): Modal {
     body,
     foot,
   );
+  backs.set(element, back);
   const close = () => {
     if (!element.isConnected) return;
     if (element.open && typeof element.close === "function") element.close();
@@ -380,13 +393,20 @@ export function pickTemplate(session: Session, root: HTMLElement, hooks: PickHoo
   for (const [group, options] of grouped(optionsOf(doc))) {
     const list = h("ul", { class: "ed-pick-list" });
     for (const option of options) {
-      const aboutId = `ed-pick-about-${++uid}`;
+      // Named by its name and described by what it is for, so a screen reader says each once.
+      const id = `ed-pick-${++uid}`;
       const button = h(
         "button",
-        { type: "button", class: "ed-pick", "data-pick": keyOf(option.to), "aria-describedby": aboutId },
+        {
+          type: "button",
+          class: "ed-pick",
+          "data-pick": keyOf(option.to),
+          "aria-labelledby": `${id}-name`,
+          "aria-describedby": `${id}-about`,
+        },
         picture(doc, asScene(sceneFor(doc, option.to)), look, "ed-pick-thumb"),
-        h("span", { class: "ed-pick-name" }, option.name),
-        h("span", { class: "ed-pick-about", id: aboutId }, option.about),
+        h("span", { class: "ed-pick-name", id: `${id}-name` }, option.name),
+        h("span", { class: "ed-pick-about", id: `${id}-about` }, option.about),
       );
       button.addEventListener("click", () => {
         const problem = hooks.add(sceneFor(session.doc, option.to));
@@ -411,16 +431,27 @@ export interface Plan {
   placed: string[];
   /** Each block that fits no slot, by name, and what happens to it. Never one dropped without a word. */
   unplaced: string[];
+  /** The new template's required slots that nothing fills: "right (required)". */
+  empty: string[];
   /** The scene as it will be, when the change can be made. */
   after?: { doc: Doc; scene: Scene };
   /** Why the change cannot be made, when it cannot. */
   problem?: string;
 }
 
+/** Why core refused a change, with the block it is about named first when it is about one, such as a contrast. */
+function refusal(failure: ApplyFailure, scene: Scene): string {
+  const at = /^\/blocks\/(\d+)/.exec(failure.diagnostics[0]?.path ?? "");
+  const block = at ? scene.blocks[Number(at[1])] : undefined;
+  return block ? `${describeBlock(block, 40, scene)}: ${problemOf(failure)}` : problemOf(failure);
+}
+
 /**
  * What moving a scene to a template or a layout does, from core's `retemplate`, before anything changes. A block no slot
- * takes is kept, pinned where it is on the slide now; a claim that a template has no slot for becomes a text pinned where
- * it is; a claim a layout does not draw stays in the scene. Each of them is named, with what happens to it.
+ * takes is kept, pinned where it is on the slide now. The claim goes as core moves it: it stays the scene's claim, with
+ * its links to its evidence, and never becomes a block. A layout that does not draw it leaves it in the scene, unseen; a
+ * template with no claim slot takes the scene only without it, so it is removed, as core's own refusal suggests, and the
+ * plan names it, the links that go with it, and the templates that would keep it. Required slots left empty are named.
  */
 export function planOf(
   doc: Doc,
@@ -434,7 +465,6 @@ export function planOf(
   const unplaced: string[] = [];
   for (const id of moved.unplaced) {
     const block = scene.blocks.find((candidate) => candidate.id === id);
-    const frame = measure(id) ?? FALLBACK;
     if (!block) {
       const claim = scene.summary as NonNullable<Scene["summary"]>;
       if ("layout" in to) {
@@ -443,28 +473,32 @@ export function planOf(
         );
         continue;
       }
-      ops.push(
-        { op: "scene.set", id: sceneId, set: { summary: null } },
-        {
-          op: "block.add",
-          scene: sceneId,
-          block: { id: claim.id, type: "text", role: "body", text: claim.text, frame },
-          after: null,
-        },
-      );
+      // As the editor takes a claim off anywhere: out of the build order too.
+      const off = removeClaim(scene);
+      ops.push(...off);
+      const stepped = off.some((op) => op.op === "scene.set" && "steps" in op.set);
+      const links = claim.evidenceIds.flatMap((ref) => {
+        const cited = scene.blocks.find((candidate) => candidate.id === ref);
+        return cited ? [describeBlock(cited, 40, scene)] : [];
+      });
+      const keep = Object.values(templatesOf(doc))
+        .filter((template) => claimSlot(template))
+        .map((template) => template.name);
       unplaced.push(
-        `The claim "${claim.text}" has no slot in this template. It becomes a text, pinned where the claim is now.`,
+        `The claim "${claim.text}" has no slot in this template, so it is removed${
+          links.length > 0 ? `, and its links to ${links.join(", ")} are removed with it` : ""
+        }.${stepped ? " It leaves the build order too." : ""} To keep it, choose ${keep.length > 0 ? `${keep.join(", ")} or ` : ""}the layout ${LAYOUT_LABEL["claim-evidence"]}.`,
       );
       continue;
     }
     if (block.slot !== undefined) ops.push({ op: "block.set", scene: sceneId, id, set: { slot: null } });
-    ops.push({ op: "block.frame", scene: sceneId, id, frame });
+    ops.push({ op: "block.frame", scene: sceneId, id, frame: measure(id) ?? FALLBACK });
     unplaced.push(
       `${describeBlock(block, 40, scene)}. No slot here takes a ${KIND_LABEL[kindOf(block)].toLowerCase()}, so it stays on the slide, pinned where it is now, to move or delete.`,
     );
   }
   const result = applyOps(doc, ops, revisionOf(doc));
-  if (!result.ok) return { ops, placed: [], unplaced, problem: problemOf(result) };
+  if (!result.ok) return { ops, placed: [], unplaced, empty: [], problem: refusal(result, scene) };
   const after = result.doc.scenes[sceneId] as Scene;
   const areas = "layout" in to ? slotsOf(after) : [];
   const placed = after.blocks.map((block) => {
@@ -476,7 +510,10 @@ export function planOf(
           : (areas.find((area) => area.blocks.includes(block.id))?.label ?? "slide");
     return `${describeBlock(block, 40, after)} → ${where.toLowerCase()}`;
   });
-  return { ops, placed, unplaced, after: { doc: result.doc, scene: after } };
+  const empty = (templateOf(result.doc, after.template)?.slots ?? [])
+    .filter((slot) => slot.required && !filled(after, slot))
+    .map((slot) => `${slot.id} (required)`);
+  return { ops, placed, unplaced, empty, after: { doc: result.doc, scene: after } };
 }
 
 export interface ChangeHooks {
@@ -552,6 +589,8 @@ export function changeTemplate(
             rows(plan?.placed ?? [], "placed"),
             unplaced.length > 0 && h("h3", { class: "ed-label" }, "Fits no slot"),
             unplaced.length > 0 && rows(unplaced, "unplaced"),
+            (plan?.empty.length ?? 0) > 0 &&
+              h("p", { class: "ed-retemplate-empty" }, `Left empty: ${plan?.empty.join(", ")}`),
           ];
     preview.replaceChildren(...shown.filter((node): node is HTMLElement => node instanceof HTMLElement));
     apply.disabled = same || plan?.problem !== undefined;
@@ -612,8 +651,10 @@ export function styleOps(
 }
 
 /**
- * A style as a small picture: a slide with one block in the style, drawn by the player in the deck's look, so it shows
- * the fill, edge, border, face and color the block would get. With "" it is the block with no style, for No style.
+ * A style as a small picture: one block in the style, drawn by the player in the deck's look but with no chrome, and
+ * cropped to the block and a little round it (editor.css shows 30% to 70% of the slide each way, scaled up), so the fill,
+ * edge, border, face and color of Callout, Card or Quiet panel can be told apart. With "" it is the block with no style,
+ * for No style.
  */
 export function stylePreview(doc: Doc, styleId: string, kind: BlockKind = "body"): HTMLElement {
   const role = (TEXT_KINDS as readonly string[]).includes(kind)
@@ -632,17 +673,22 @@ export function stylePreview(doc: Doc, styleId: string, kind: BlockKind = "body"
         text: "Aa",
         size: "xl",
         ...(styleId === "" ? {} : { style: styleId }),
-        frame: { x: 4, y: 8, w: 92, h: 84 },
+        frame: { x: 32, y: 32, w: 36, h: 36 },
       },
     ],
   };
-  return picture(doc, scene, lookWithAll(doc), "ed-style-thumb");
+  const { chrome: _chrome, ...look } = lookWithAll(doc);
+  return h("span", { class: "ed-mini ed-style-thumb", "aria-hidden": "true" }, thumbnailFrame(scene, look));
 }
 
 export interface StyleSection {
   readonly body: HTMLElement;
-  /** Draws the list again from the deck: the styles of the block's kind, with the one it has checked. */
-  fill(): void;
+  /**
+   * Brings the list up to date with the deck: the one the block has is checked in place, so the keyboard stays on its
+   * choice. The pictures are drawn again only when the kind, the styles or the deck's look changed, and never while
+   * `typing`, when none of them can.
+   */
+  fill(typing?: boolean): void;
 }
 
 /**
@@ -663,17 +709,35 @@ export function styleSection(
     const scene = session.doc.scenes[sceneId];
     return ids().flatMap((id) => scene?.blocks.find((block) => block.id === id) ?? []);
   };
-  function fill() {
+  /** What the list was drawn from, and its radios, to check in place while that stays the same. */
+  let drawnFrom: string | undefined;
+  let radios: Array<[HTMLInputElement, string]> = [];
+  function fill(typing = false) {
     const chosen = blocks();
     const first = chosen[0];
     if (!first) {
       body.replaceChildren();
+      drawnFrom = undefined;
       return;
     }
     const kind = kindOf(first);
     const current = new Set(chosen.map((block) => block.style ?? ""));
+    const check = () => {
+      for (const [radio, id] of radios) radio.checked = current.size === 1 && current.has(id);
+    };
     const own = stylesFor(session.doc, kind);
-    if (own.length === 0 && current.has("")) {
+    const none = own.length === 0 && current.has("");
+    const from =
+      typing && drawnFrom !== undefined
+        ? drawnFrom
+        : JSON.stringify([kind, none, own, lookWithAll(session.doc)]);
+    if (from === drawnFrom) {
+      check();
+      return;
+    }
+    drawnFrom = from;
+    radios = [];
+    if (none) {
       body.replaceChildren(
         h("legend", { class: "ed-label" }, "Styles"),
         h("p", { class: "ed-hint-text" }, `No style is made for a ${KIND_LABEL[kind].toLowerCase()}.`),
@@ -688,7 +752,7 @@ export function styleSection(
       h("legend", { class: "ed-label" }, "Styles"),
       ...choices.map(([id, label]) => {
         const radio = h("input", { type: "radio", name, value: id, "data-style": id || "none" });
-        radio.checked = current.size === 1 && current.has(id);
+        radios.push([radio, id]);
         radio.addEventListener("change", () => {
           const { ops, refused } = styleOps(session.doc, sceneId, ids(), id);
           said.textContent =
@@ -705,6 +769,7 @@ export function styleSection(
       }),
       said,
     );
+    check();
   }
   fill();
   return { body, fill };

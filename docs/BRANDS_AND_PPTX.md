@@ -778,28 +778,35 @@ Found, not fixed (older than the brand work):
 
 - **Room first.** The editor's script was 92,152 of 92,160 bytes. Four parts most sessions never open are now chunks
   fetched on first use, each with its own row: the review drawer and its view (`reviewdrawer.js`, 1,982 of 3,072), the
-  storyboard (`storyboard.js`, 2,562 of 4,096), the comment pins and their thread (`commentpins.js`, 3,895 of 5,120)
-  and the cue editor (`cuespanel.js`, 1,475 of 2,560). `packages/editor/src/lazy.ts` holds them: a part is fetched
+  storyboard (`storyboard.js`, 2,555 of 4,096), the comment pins and their thread (`commentpins.js`, 3,896 of 5,120)
+  and the cue editor (`cuespanel.js`, 1,473 of 2,560). `packages/editor/src/lazy.ts` holds them: a part is fetched
   once, `mountEditor` takes others in its place so a test can hold one back or make it fail, a fetch that fails says
   "Could not load ... Check that depthcue edit is still running, then try again." where the person is looking, the
-  editor goes on, and the next use tries again. What the person typed or chose is read after the part is in. The
-  editor script is now 88,215 with all of step 7 but Download PowerPoint, which leaves 3,945 bytes, and 873 above the
-  3 KB step 8 needs. `retemplate.ts` stays in the script: core's index exports it, and a chunk group that pulled it
-  out pulled its imports with it.
-- **The brand part.** Everything below is `branduse.js` (4,399 of 6,144), fetched with Depthcue's own templates and
+  editor goes on, and the next use tries again. What the person typed or chose is read after the part is in. Hide
+  pins chosen before the pins part arrives holds once it does. The review button says it is busy (`aria-busy`) while
+  its part loads, and a second press then does not cancel the first, so the drawer opens. The editor script is now
+  88,479 with all of step 7 but Download PowerPoint, which leaves 3,681 bytes, and 609 above the 3 KB step 8 needs.
+  `retemplate.ts` stays in the script: core's index exports it, and a chunk group that pulled it out pulled its
+  imports with it.
+- **The brand part.** Everything below is `branduse.js` (4,830 of 6,144), fetched with Depthcue's own templates and
   styles, since the picker, the slots and the styles list them; the part fails when they do not arrive. The script
-  keeps only the hooks. It is fetched the first time a template scene is drawn (for its slots), a block is chosen (so
-  its Style menu can list styles), or the picker, Change template or the Style chip is opened. A deck with no template
-  scene opens without it. When it arrives after a block's toolbar is drawn, only the chip that waited for it is drawn
-  again, so a field the person is typing in keeps its text and selection.
+  keeps only the hooks. It is fetched the first time a template scene is drawn (for its slots), a block's toolbar
+  draws its Style chip, a right-click menu offers Style, or the picker or Change template is opened. A deck with no
+  template scene opens without it. When it arrives after a block's toolbar is drawn, only the chip that waited for it
+  is drawn again, so a field the person is typing in keeps its text and selection, and the cue count beside it is
+  drawn again too. A right-click before it arrives shows "Loading the styles…" in the Style submenu, then fills the
+  menu in place, keeping the open submenu and the focused item; a failed fetch says so there once and the next
+  right-click tries again.
 - **Template picker.** "From a template…" in the strip, the scene menu and the command palette ("Add scene from a
   template…"). A modal dialog named "Add a scene" lists the brand's templates under the brand's name, then "Built in"
   (none when the brand sets `hideBuiltIn`; one the brand replaces is listed once, as the brand's), then the three
-  layouts. Each is a button with its name and description and a picture of the slide the player draws in the deck's
-  look, with the template's background, chrome and its slots' hints. Arrow keys, Home and End move through them,
-  Escape closes. A choice adds the scene with `scene.add` after the scene on show and goes to it. The new scene starts
-  with one text, in the first slot that takes a heading, else one that takes text; a template with no slot for text
-  gets it pinned near the top. A refusal is said in the dialog, which stays open.
+  layouts. Each is a button named by its name and described by its description (`aria-labelledby`,
+  `aria-describedby`), with a picture of the slide the player draws in the deck's look, with the template's
+  background, chrome and its slots' hints. Arrow keys, Home and End move through them, Escape closes. A choice adds the
+  scene with `scene.add` after the scene on show and goes to it. The new scene starts with one text, in the first slot
+  that takes a heading, else one that takes text; a template with no slot for text gets it pinned near the top. A
+  refusal is said in the dialog, which stays open. Opening a dialog that is already open replaces it, and closing the
+  new one hands focus back where the first one would have.
 - **Change template.** On a template scene the scene bar shows the template's name in place of the three layout
   buttons, so the bar is no wider, and pressing it opens the dialog. On a layout scene it is "Change template or
   layout…" in the Scene popover. It is also "Change template…" on the slide's and the scene's right-click menus and in
@@ -807,20 +814,32 @@ Found, not fixed (older than the brand work):
   that layout instead of moving blocks unseen. The dialog lists every template and layout, the current one marked
   "Now". Choosing one shows the slide as it will be, drawn by the player, a line per block saying where it goes, and,
   under "Fits no slot", each block that fits none by name, with what happens to it: a block stays on the slide, pinned
-  where it is now (its measured frame), to move or delete; a claim with no slot in the template becomes a text pinned
-  where the claim is; a claim a layout does not draw stays in the scene, and the dialog says it will not show. The
-  operations are core's `retemplate` plus the pins, applied as one step of Undo. Nothing is dropped.
+  where it is now (its measured frame), to move or delete. The claim goes as core moves it, never as a block: it stays
+  the scene's claim with its evidence links in a template with a claim slot; a layout that does not draw it leaves it
+  in the scene, and the dialog says it will not show; a template with no claim slot is refused by core
+  (`claim-without-slot`), so the change takes the claim off as the editor's own Remove does (out of the build order
+  too), and the dialog names the claim, each block it links to as evidence, and the templates that would keep it
+  ("To keep it, choose Statement, … or the layout Claim and evidence."). Required slots nothing fills are listed
+  under "Left empty", and a refusal about one block, such as a contrast, names the block first. The operations are
+  core's `retemplate`, the pins and that removal, applied as one step of Undo, so `depthcue apply` given them writes
+  the same files.
 - **Empty slots.** In the editor's canvas only, each empty slot of a template scene is a box at the slot's frame with
   its hint, "Required" on a required one, and an Add button (a menu of kinds when the slot takes more than one; a clip
-  slot is off until the deck has a video). The add is `block.add` with the slot, as an agent writes it. Hints come from
-  the deck's templates and Depthcue's own (`templatesOf`), never from `/look.json`. The strip's pictures, present mode,
-  the exported page and the PowerPoint file never draw them, since only the canvas calls the hook.
+  slot is off until the deck has a video). The boxes lie under the blocks (`z-index: -1` in an isolated scene), so a
+  block pinned over an empty slot, or a text inside a slide-sized picture slot, takes the click and the slot takes the
+  rest. A claim slot counts as filled when the scene has a claim. The add is `block.add` with the slot, as an agent
+  writes it. Hints come from the deck's templates and Depthcue's own (`templatesOf`), never from `/look.json`. The
+  strip's pictures, present mode, the exported page and the PowerPoint file never draw them, since only the canvas
+  calls the hook.
 - **Style menu.** The Style chip of a block's toolbar has the deck's styles for the block's kind after the text's own
   size, alignment and color, so the late list never moves a control the person is aiming at. The block's right-click
-  menu has a Style submenu. Both list No style and each style for the kind (a brand override once), each drawn by the
-  player as a block in that style, the current one checked, and write `block.set` with `style`. Once Depthcue's own
-  are in, a block whose kind has no style gets no list. Given several blocks, `styleOps` styles each one the style is for and names
-  the rest; the editor has no multiple selection yet, so it passes the one chosen block.
+  menu has a Style submenu. Both list No style and each style for the kind (a brand override once; no Kicker on a
+  quote), each drawn by the player as a block in that style, without the brand's chrome, cut to the block and scaled up
+  so its fill, border and edge show, the current one checked, and write `block.set` with `style`. After a choice the
+  checks move in place, so focus stays on the item chosen; the pictures are drawn again only when the kind, the
+  block's own color or the look they are drawn from changes, never while the person types. Once Depthcue's own are in,
+  a block whose kind has no style gets no list. Given several blocks, `styleOps` styles each one the style is for and
+  names the rest; the editor has no multiple selection yet, so it passes the one chosen block.
 - **Lock.** A brand with `lock` turns off the Colors and Fonts controls of the Deck panel, each with the reason core's
   `checkBrandLock` gives for the refusal ("The brand "harbor" is locked, so the deck cannot set its own colors.").
 - **Chrome.** The canvas already drew the brand's chrome after step 3, so this step adds the tests: nothing in it can
@@ -843,9 +862,16 @@ Found, not fixed (older than the brand work):
 - **Decisions.** The new scene goes after the scene on show; its first block is the template's heading slot's; the
   template's name takes the layout buttons' place in the scene bar, so the top bar keeps its width at 1024 (beside
   them it left the deck title 14 px wide); a layout chosen for a template scene opens Change template; the
-  scene menu starts with Change template; choosing a
-  block fetches the brand part; the styles come after the text's own controls in the chip; No style is drawn as a
-  plain block.
+  scene menu starts with Change template; a chosen block's Style chip fetches the brand part (the second fetch that
+  `selectBlock` made is gone); the styles come after the text's own controls in the chip; No style is drawn as a plain
+  block; a claim a new template cannot hold is taken off, named with its links, rather than the change refused.
+- **Review fixes (of 812e364).** Each of the above that a review asked for has a test that fails on 812e364: two
+  real-browser clicks on a block over an empty slot (a pinned chart, a title in a slide-sized picture slot), the
+  claim's ops against core's and its links in the words, Left empty, the refusal's block name, focus in the Style list
+  after a choice, no redraw while typing, the right-click loading state, two presses on Review, the replaced dialog's
+  return, the picker's names, and the four changes a mutation pass found unguarded (Hide pins before the part, the
+  claim filling its slot, Kicker on a quote, the late cue count).
 - **Not done.** Download PowerPoint waits for step 6's endpoint.
-- **Risks.** The style pictures are small: they show fill, border and edge, and the sample text is a few pixels high.
-  Harbor has only a light logo, so on ink its word mark is dark on dark (the player's, from step 3).
+- **Risks.** The style pictures are 80 px wide: Callout and Pull quote differ by the sample text's color only, since
+  both draw an edge bar. Harbor has only a light logo, so on ink its word mark is dark on dark (the player's, from
+  step 3). Download PowerPoint's trigger has 609 bytes of the main script to fit in before step 8's 3 KB.

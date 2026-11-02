@@ -69,6 +69,8 @@ export interface CommandSources {
   setBlockStyle?(id: string, style: string): void;
   /** A small picture of a style, for its item in the menu, once the part that draws it is in. */
   stylePreview?(style: string): Node | undefined;
+  /** Why the styles are not listed yet, while they are on their way or did not arrive; undefined once they are in. */
+  stylesComing?(): string | undefined;
   /** Opens Change template for the scene on show. */
   changeTemplate?(): void;
   /** Opens the template picker, which adds a scene after the one on show. */
@@ -359,9 +361,24 @@ export function listCommands(from: CommandSources): Command[] {
     looks("align", "Align", ALIGN_LABEL, block.align, "start");
     looks("tone", "Color", TONE_LABEL, block.tone);
   }
-  // The deck's styles for the chosen block's kind, the brand's and Depthcue's own, with the one it has checked.
+  // The deck's styles for the chosen block's kind, the brand's and Depthcue's own, with the one it has checked. Until
+  // they are in, the submenu is there and says why it holds nothing yet.
   const setBlockStyle = from.setBlockStyle;
-  if (block && setBlockStyle) {
+  const coming = block && setBlockStyle ? from.stylesComing?.() : undefined;
+  if (block && setBlockStyle && coming !== undefined) {
+    add({
+      id: "block-style-coming",
+      title: "Style",
+      group: "The chosen block",
+      words: "brand look component callout",
+      targets: ["block"],
+      label: "Styles",
+      section: "look",
+      submenu: "Style",
+      disabled: coming,
+      run: () => undefined,
+    });
+  } else if (block && setBlockStyle) {
     const kind = kindOf(block);
     const styles = Object.entries(blockStylesOf(session.doc)).filter(([, style]) =>
       (style.for as readonly string[]).includes(kind),

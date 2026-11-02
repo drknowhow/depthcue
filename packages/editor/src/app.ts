@@ -126,6 +126,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
   // A template scene drawn before the part was in is drawn again when it arrives, with its slots. One that did not
   // arrive is said once, and the slide goes on without them.
   let slotsAsked = false;
+  /** The styles a menu was waiting for did not arrive: the next listing says so once, and the one after tries again. */
+  let stylesMissed = false;
   const adder = createAdder(session, {
     scene: () => selected,
     block: () => selectedBlock,
@@ -260,16 +262,27 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     });
     floor.append(drawer.element);
   };
-  const toggleReview = () =>
+  // Pressed while the part is on its way, the button shows it is busy, and it opens once when the part comes: a second
+  // press then is the same wish, not a second toggle that would shut it again.
+  const reviewBusy = (on: boolean) =>
+    on ? reviewButton.setAttribute("aria-busy", "true") : reviewButton.removeAttribute("aria-busy");
+  const toggleReview = () => {
+    if (reviewButton.hasAttribute("aria-busy")) return;
+    reviewBusy(!parts.review.ready);
     withPart(
       parts.review,
       (module) => {
+        reviewBusy(false);
         if (!drawer) makeDrawer(module);
         drawer?.toggle();
         renderReview();
       },
-      () => showProblem(notLoaded("the list of changes")),
+      () => {
+        reviewBusy(false);
+        showProblem(notLoaded("the list of changes"));
+      },
     );
+  };
   reviewButton.addEventListener("click", toggleReview);
   const sceneBar = createSceneBar(session, {
     edits: editsFor("scene"),
@@ -517,14 +530,25 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
           applied([{ op: "block.set", scene: selected, id, set: { style: style === "" ? null : style } }]),
         );
       },
-      // The pictures of the styles come with the part. Until it is in, the menu lists them by name and fetches it.
+      // The styles and their pictures come with the part. A menu opened before it is in says they are coming, and is
+      // listed again when they come, or says once that they did not.
+      stylesComing() {
+        if (parts.brand.ready) return undefined;
+        if (stylesMissed) {
+          stylesMissed = false;
+          return notLoaded("the styles");
+        }
+        void parts.brand.load().then((module) => {
+          stylesMissed = !module;
+          menu.refresh();
+        });
+        return "Loading the styles…";
+      },
       stylePreview(style) {
-        const brand = parts.brand.ready;
-        if (!brand) void parts.brand.load();
         const block = session.doc.scenes[selected]?.blocks.find(
           (candidate) => candidate.id === selectedBlock,
         );
-        return brand?.stylePreview(session.doc, style, block && kindOf(block));
+        return parts.brand.ready?.stylePreview(session.doc, style, block && kindOf(block));
       },
       changeTemplate: () => openChange(),
       pickTemplate: openPicker,
@@ -821,9 +845,6 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
   function selectBlock(id: string | undefined) {
     const next = id !== undefined && hasItem(selected, id) ? id : undefined;
     canvas.mark(next);
-    // A chosen block is a step toward its Style menu, whose styles come with the brand part: fetched now, quietly,
-    // so the right-click menu can list them. The Style chip says so when the part does not arrive.
-    if (next !== undefined) void parts.brand.load();
     if (next === selectedBlock) return;
     selectedBlock = next;
     toolbar.render(selected, selectedBlock);

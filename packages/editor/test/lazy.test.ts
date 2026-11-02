@@ -3,6 +3,7 @@ import { type CommentOp, memoryDraftStore } from "@depthcue/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Editor, mountEditor } from "../src/app.ts";
 import { notLoaded, PARTS, type Part, type Parts, part } from "../src/lazy.ts";
+import { lazyPins } from "../src/lazypins.ts";
 import { type EditorStore, openStore } from "../src/store.ts";
 import { FakeServer, retitle } from "./helpers.ts";
 
@@ -127,6 +128,22 @@ describe("the list of changes, a part fetched when it is first opened", () => {
     await flush();
     expect(drawer()?.hidden).toBe(false);
   });
+
+  it("shows it is on its way, and opens once for two presses made while it was", async () => {
+    const parts = stub(await real("review"));
+    await mount({ review: parts.from });
+    action("review").click();
+    expect(action("review").getAttribute("aria-busy")).toBe("true");
+    action("review").click();
+    expect(parts.fetches).toHaveLength(1);
+    parts.arrive();
+    await flush();
+    expect(drawer()?.hidden).toBe(false);
+    expect(action("review").hasAttribute("aria-busy")).toBe(false);
+    // Once it is in, a press shuts it, as before.
+    action("review").click();
+    expect(drawer()?.hidden).toBe(true);
+  });
 });
 
 describe("the storyboard, a part fetched when it is first opened", () => {
@@ -203,6 +220,28 @@ describe("the comment pins, a part fetched once there is a comment or the Commen
     quick().click();
     expect(parts.fetches).toHaveLength(2);
   });
+
+  it("keeps Hide chosen while the pins are on their way, and hides them when they come", async () => {
+    const shown: boolean[] = [];
+    const made = { setShown: (on: boolean) => shown.push(on), setShowResolved() {}, draw() {} };
+    const parts = stub({ createCommentPins: () => made });
+    const book = { state: { comments: [note] }, subscribe: () => () => undefined };
+    const pins = lazyPins(
+      {} as never,
+      document.createElement("div"),
+      document.createElement("div"),
+      () => undefined,
+      { book: book as never, changed: () => undefined, part: parts.from as never },
+      () => undefined,
+    );
+    // The deck has a comment, so the pins are on their way.
+    expect(parts.fetches).toHaveLength(1);
+    pins.setShown(false);
+    expect(pins.shown).toBe(false);
+    parts.arrive();
+    await flush();
+    expect(shown).toEqual([false]);
+  });
 });
 
 describe("templates and styles, a part fetched when first wanted", () => {
@@ -277,7 +316,7 @@ describe("templates and styles, a part fetched when first wanted", () => {
     expect(blockNode("said-quote").textContent).toContain("Less, but better.");
   });
 
-  it("is fetched quietly once a block is chosen, so the right-click menu can list the styles", async () => {
+  it("is fetched quietly once a block is chosen, by its Style chip", async () => {
     const parts = stub(await real("brand"));
     await mount({ brand: parts.from });
     editor?.select("method");
@@ -286,6 +325,55 @@ describe("templates and styles, a part fetched when first wanted", () => {
     parts.fail();
     await flush();
     expect(hint().hasAttribute("data-problem")).toBe(false);
+  });
+
+  describe("on a right-click before it is in", () => {
+    const rightClick = () =>
+      blockNode("method-diagram").dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
+      );
+    const style = () => host.querySelector<HTMLElement>(".ed-menu [data-submenu='Style']");
+    const inStyle = () =>
+      [...(style()?.nextElementSibling?.querySelectorAll<HTMLElement>(".ed-menu-item") ?? [])].map(
+        (item) => item.dataset.command,
+      );
+
+    it("has a Style submenu that says the styles are coming, and lists them in the open menu when they come", async () => {
+      const parts = stub(await real("brand"));
+      await mount({ brand: parts.from });
+      editor?.select("method");
+      rightClick();
+      expect(inStyle()).toEqual(["block-style-coming"]);
+      const coming = host.querySelector<HTMLElement>("[data-command='block-style-coming']") as HTMLElement;
+      expect(coming.getAttribute("aria-disabled")).toBe("true");
+      expect(coming.textContent).toContain("Loading the styles…");
+      style()?.click();
+      parts.arrive();
+      await flush();
+      expect(host.querySelector(".ed-menu")?.hasAttribute("hidden")).toBe(false);
+      expect(inStyle()[0]).toBe("block-style-none");
+      expect(inStyle()).not.toContain("block-style-coming");
+      // The submenu that was open is open again, with the keyboard on its first style.
+      expect(style()?.getAttribute("aria-expanded")).toBe("true");
+      expect((document.activeElement as HTMLElement).dataset.command).toBe("block-style-none");
+    });
+
+    it("says so once when they do not come, and the next menu tries again", async () => {
+      const parts = stub(await real("brand"));
+      await mount({ brand: parts.from });
+      editor?.select("method");
+      rightClick();
+      parts.fail();
+      await flush();
+      expect(host.querySelector("[data-command='block-style-coming']")?.textContent).toContain(
+        notLoaded("the styles"),
+      );
+      rightClick();
+      expect(host.querySelector("[data-command='block-style-coming']")?.textContent).toContain(
+        "Loading the styles…",
+      );
+      expect(parts.fetches).toHaveLength(2);
+    });
   });
 
   it("fills the Style chip when it arrives and leaves the field being typed in, and its selection, alone", async () => {
@@ -354,6 +442,8 @@ describe("the cue editor, a part fetched when a clip's Cues chip is first filled
     await flush();
     expect(pop().textContent).not.toContain("Loading");
     expect(pop().querySelectorAll(".ed-cue-row")).toHaveLength(1);
+    // The chip's count, drawn before the part was in, is drawn again with it.
+    expect(chip().closest(".ed-tb-chip-wrap")?.querySelector(".ed-tb-n")?.textContent).toBe("1");
   });
 
   it("says so in the popover when the part does not arrive", async () => {
