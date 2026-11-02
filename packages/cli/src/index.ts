@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkDeckFiles, type Diagnostic, describeChange, loadDoc, revisionOf } from "@depthcue/core";
+import { BRAND_IMPORT_TEXT, BRAND_IMPORT_USAGE } from "./brand-import/usage.ts";
 import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./clip.ts";
 import { applyCommentsToFolder, listComments, readFolderComments } from "./comments-api.ts";
 import { applyToFolder, openDeck } from "./deck-api.ts";
@@ -48,6 +49,7 @@ ${EXPORT_USAGE}
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
   depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
                       [--scale <0.1-1>] [--kine <path>] [--json]
+${BRAND_IMPORT_USAGE}
   depthcue comments list <deck-folder> [--all] [--json]
   depthcue comments apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue diff <deck-folder> [--json]
@@ -77,6 +79,8 @@ clip   Builds a clip from a Kinescript scene with the kine program you have inst
        kinescript; --kine or DEPTHCUE_KINE points elsewhere). It writes assets/<name>.mp4, a poster
        and a cue map, and skips the render when nothing changed. Add the result to a scene as a
        clip block. --scale 0.5 with --quality draft is the fast way to try a scene.
+
+${BRAND_IMPORT_TEXT}
 
 comments Lists the comments kept beside the deck in comments.json (the open ones; --all adds the resolved ones),
        with the ones people asked the agent to act on marked "ask". apply changes them the way apply changes
@@ -768,6 +772,25 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
     });
   }
   if (clipFlags !== undefined) return usage("--name, --quality, --scale and --kine belong to clip build.");
+  if (command === "brand") {
+    const [sub, brandFile, ...more] = positional;
+    if (sub !== "import") return usage("brand needs a subcommand. The one there is: brand import.");
+    if (!brandFile) return usage("brand import needs a PowerPoint file: a .potx, .pptx or .thmx.");
+    if (more.length > 0) return usage(`Unexpected argument ${more[0]}.`);
+    if (
+      baseRev !== undefined ||
+      portText !== undefined ||
+      (values.step ?? values.width ?? values.height) !== undefined
+    ) {
+      return usage("brand import takes --out and --json.");
+    }
+    return import("./brand-import/command.ts")
+      .then(({ brandImportCommand }) => brandImportCommand(brandFile, values.out, json, io))
+      .catch((error: Error) => {
+        io.err(error.message);
+        return 2;
+      });
+  }
   if (command === "comments") {
     const [sub, commentsFolder, commentsOps, ...more] = positional;
     if (sub !== "list" && sub !== "apply") {
