@@ -30,12 +30,14 @@ import {
   toggle,
   without,
 } from "./brandbits.ts";
+import { ACCEPT, filesPart, fontFilePart, sendFile } from "./brandfiles.ts";
 import { stylesSection, templatesSection } from "./brandkit.ts";
 import {
   actionButton,
   choiceField,
   colorField,
   type Edits,
+  fileButton,
   problemOf,
   selectField,
   textField,
@@ -292,6 +294,7 @@ function fontsSection(ctx: BrandContext): Node[] {
       ? hint("This deck chooses its own font pair in Deck style, which shows over the brand's on its slides.")
       : undefined;
   const set = (value: NonNullable<Brand["fonts"]> | null): Op => ({ op: "brand.set", set: { fonts: value } });
+  const files = [fontFilePart(ctx), filesPart(ctx, "fonts")];
   if (fonts === undefined || typeof fonts === "string") {
     return [
       part(
@@ -313,6 +316,7 @@ function fontsSection(ctx: BrandContext): Node[] {
           commit: (value) => set(value === "" ? null : (value as (typeof FONT_PAIRS)[number])),
         }),
       ),
+      ...files,
     ];
   }
   loadFaces(doc);
@@ -390,6 +394,7 @@ function fontsSection(ctx: BrandContext): Node[] {
         { "data-field": "brand:fonts:pair" },
       ),
     ),
+    ...files,
   ];
 }
 
@@ -578,11 +583,26 @@ function logosSection(ctx: BrandContext): Node[] {
           )
         : hint("None yet."),
       path && h("code", {}, fileName(path)),
-      path &&
-        actionButton("Remove", () => ctx.run([setLogos(without(logos ?? { alt: "" }, kind))]), {
-          "data-field": `brand:logos:${kind}:remove`,
-          "aria-label": `Take the ${kind} logo out of the brand`,
-        }),
+      h(
+        "div",
+        { class: "ed-acts" },
+        // The server checks the file and names it; the brand then names it for this kind, as one step of Undo.
+        fileButton(
+          path ? "Another file…" : "Choose a file…",
+          ACCEPT.logo,
+          `brand:logos:${kind}:upload`,
+          (file) =>
+            void sendFile(ctx, "logo", file, (added) => {
+              const now = brand().logos;
+              ctx.run([setLogos({ ...now, alt: now?.alt ?? brand().name, [kind]: added.path })]);
+            }),
+        ),
+        path &&
+          actionButton("Remove", () => ctx.run([setLogos(without(logos ?? { alt: "" }, kind))]), {
+            "data-field": `brand:logos:${kind}:remove`,
+            "aria-label": `Take the ${kind} logo out of the brand`,
+          }),
+      ),
     );
   });
   return [
@@ -609,6 +629,7 @@ function logosSection(ctx: BrandContext): Node[] {
     actionButton("Corner and size: Chrome", () => ctx.show("chrome"), {
       "data-field": "brand:logos:to-chrome",
     }),
+    filesPart(ctx, "logos"),
   ].filter((node): node is HTMLElement => node instanceof HTMLElement);
 }
 
@@ -681,9 +702,9 @@ function createPanel(host: BrandHost): BrandPanel {
     act: (ops, options) => session.apply(ops, options),
   };
   const said = h("p", { class: "ed-problem ed-brand-said", role: "alert", hidden: true });
-  const say = (text: string | undefined) => {
+  const say = (text: string | undefined, offer?: HTMLElement) => {
     said.hidden = text === undefined;
-    said.textContent = text ?? "";
+    said.replaceChildren(text ?? "", ...(offer ? [" ", offer] : []));
   };
   let tab: Tab = "colors";
   const ctx: BrandContext = {
@@ -784,7 +805,8 @@ function createPanel(host: BrandHost): BrandPanel {
     if (event.key === "Tab" && isDrawer()) keepTab(event);
     if (!isHistoryKey(event)) event.stopPropagation();
   });
-  // In a small window the panel is a drawer over the slide (editor.css says when), and Tab goes round inside it.
+  // In a small window the panel is a drawer over the slide (editor.css says when): Tab goes round inside it, and a press
+  // outside closes it.
   const isDrawer = () => getComputedStyle(element).getPropertyValue("--ed-over").trim() === "1";
   const keepTab = (event: KeyboardEvent) => {
     const stops = [
@@ -800,6 +822,29 @@ function createPanel(host: BrandHost): BrandPanel {
     }
   };
   close.addEventListener("click", () => panel.close());
+
+  /** Stops the press that closed the drawer from doing anything else: taking the keyboard, or a click. */
+  const swallow = (event: Event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  // A press outside the drawer only closes it, as Esc does: the slide under it is not clicked. A dialog the panel
+  // opened, and the template editor, are not outside it.
+  const outside = (event: PointerEvent) => {
+    const at = event.target as Element;
+    if (!isDrawer() || element.contains(at) || at.closest?.("dialog, .ed-tpl")) return;
+    swallow(event);
+    for (const type of ["mousedown", "click"]) document.addEventListener(type, swallow, true);
+    document.addEventListener(
+      "pointerup",
+      () =>
+        setTimeout(() => {
+          for (const type of ["mousedown", "click"]) document.removeEventListener(type, swallow, true);
+        }),
+      { capture: true, once: true },
+    );
+    panel.close();
+  };
 
   const unsubscribe = session.subscribe((event) => {
     if (event.type === "saved") return;
@@ -818,10 +863,12 @@ function createPanel(host: BrandHost): BrandPanel {
       if (!element.isConnected) {
         host.floor.append(element);
         host.floor.setAttribute("data-side", "brand");
+        document.addEventListener("pointerdown", outside, true);
         element.focus({ preventScroll: true });
       }
     },
     close() {
+      document.removeEventListener("pointerdown", outside, true);
       unsubscribe();
       element.remove();
       host.floor.removeAttribute("data-side");

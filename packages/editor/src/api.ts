@@ -81,6 +81,26 @@ export type ReviewSaveResult =
   | { ok: false; kind: "stale"; rev: string; message: string }
   | { ok: false; kind: "rejected" | "failed"; message: string };
 
+/**
+ * What the server answers an upload to the brand folder, or a removal from it. Good, it names the file as brand.json
+ * names it (`path`), as the deck has it (`file`, with its sha256 as `hash`, null once removed) and the revisions on disk
+ * before and after; refused, it says why in words to show as they are, with the file already there for `exists` and
+ * what names the file for `in-use`.
+ */
+export type BrandFileAnswer =
+  | {
+      ok: true;
+      path: string;
+      file: string;
+      hash: string | null;
+      prevRev: string;
+      rev: string;
+      /** For an upload: what the bytes were found to be. A font's family, weight and italic. */
+      sniffed?: { format: string; family?: string; weight?: number; italic?: boolean };
+      written?: boolean;
+    }
+  | { ok: false; message: string; error?: string; existing?: string };
+
 /** Sent with a save: what the review needs to know that the files alone do not say. */
 export interface SaveOptions {
   /** Changes the person reverted and then undid, so the server marks them as the agent's again and not as the person's. */
@@ -93,6 +113,11 @@ export interface Api {
   save(files: Record<string, string>, baseRev: string, options?: SaveOptions): Promise<SaveResult>;
   /** Adds an image and returns its deck path, such as "assets/photo-1a2b3c4d.png". */
   uploadAsset(file: Blob, name: string): Promise<string>;
+  /**
+   * Sends a file to the brand folder (`?kind=…&name=…` and the file) or takes one out (`/remove` and its JSON). Never
+   * rejects: a refusal, or a server that cannot be reached, is `ok: false` with the reason.
+   */
+  brandFile(path: string, body: Blob | string): Promise<BrandFileAnswer>;
   /** The cues of a clip, named by its deck path such as "assets/intro.mp4". */
   loadCues(source: string): Promise<CueList>;
   /** Replaces a clip's cues. Rejects with a message the person can read when the server refuses the list. */
@@ -181,6 +206,27 @@ export function createApi(token: string, send: typeof fetch = (...args) => fetch
       const answer = await body(response);
       if (!response.ok || typeof answer.asset !== "string") throw new Error(messageOf(answer, response));
       return answer.asset;
+    },
+
+    async brandFile(path, sent) {
+      try {
+        const response = await call(`brand-file${path}`, {
+          method: "POST",
+          body: sent,
+          headers: {
+            "Content-Type": typeof sent === "string" ? "application/json" : "application/octet-stream",
+          },
+        });
+        const answer = await body(response);
+        return (
+          response.ok ? answer : { ...answer, ok: false, message: messageOf(answer, response) }
+        ) as BrandFileAnswer;
+      } catch {
+        return {
+          ok: false,
+          message: "The editor could not reach the server. Is `depthcue edit` still running?",
+        };
+      }
     },
 
     async loadCues(source) {

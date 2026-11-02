@@ -1144,3 +1144,83 @@ Found, not fixed (older than the brand work):
   anything names the file, so un-name it, save, then remove. Upload answers are the person's, so they never show in
   review. `sniffed` gives a font's family, style, weight and italic to check against the slot it fills. Tested over
   HTTP: upload, edit, save, an upload with unsaved edits, save, removal, reload, each leaving the session clean.
+
+## Step 8b record: the editor defines a brand
+
+- **The part.** The Brand panel, Save as template and the template editor are `branddefine.js` (14,944 of 16,384, a
+  new row), fetched with Depthcue's own templates and styles and the brand checks. The main script holds the hooks:
+  "Brand…" in the Deck popover and the palette, "Save as template…" in the Scene popover, the scene's and slide's
+  right-click menus and the palette. A deck with no brand shows "Start a brand", which writes `brand.set` with the id
+  and name the person gives. Every control writes one undo step.
+- **Where it sits.** Down the right of the stage, with the slide moved over and still drawn as a slide at 1280 px.
+  Under a 74rem window it is a drawer over the slide: Tab and Shift+Tab go round inside it, and Escape or a press
+  outside it closes it and gives focus back to the Deck button. That press does nothing else, so the block under it is
+  not chosen. The panel and the list of changes take turns at the right of the stage.
+- **Logos.** The panel says where each logo shows, as the player draws it today, and when the brand has only a light
+  logo it says that the logo draws with no plate on ink and can all but vanish, and asks for a dark one. "Choose a
+  file…" (or "Another file…") sends an SVG or PNG to step 8a's route and names it for light or dark slides in one step,
+  with the brand's name as alt text when there is none. Remove un-names it. "Files in the brand folder" lists the
+  folder's logos and fonts; one that brand.json or a template names is "In use", and any other has Delete, which asks
+  first, saves edits not yet saved and calls `/brand-file/remove` with the revision.
+- **Fonts.** A built-in pair or the brand's own faces, each role a menu and each face shown in its own font with its
+  license. "Add a font file" sends a WOFF2, WOFF, TrueType or OpenType file. The face takes the family the file names
+  itself by, its weight to the nearest hundred and its style. A file of a family the brand has joins that face and
+  keeps its license; a new family takes the License written beside the button (never filled in from other faces) and
+  the role chosen ("Headings and text", "Headings", "Text", "Code and labels"). With no license the file stays in the
+  folder and the panel says to write one and add it again. The first file makes the brand's own faces for headings
+  and text, falling back on the deck's pair.
+- **Colors, chrome, styles, templates.** Each swatch of paper and ink, and each chart color, is checked by the brand
+  checks before anything is written; a refusal names the two colors and the contrast they reach. Chrome writes
+  `brand.set` and the slide shows it at once. Styles list the brand's and Depthcue's (an override once), with Edit,
+  Remove and "Copy into the brand"; the editor previews the style on a block of each kind in `for` on both presets.
+  Each control writes the one key it changes with `style.set`'s `set`, and an empty one writes null. Templates show
+  step 7's pictures, the name, the description and how many scenes use each; name and description go through
+  `template.set`'s `set`. Remove is refused while a scene uses the template, naming the scenes.
+- **Save as template.** Each block becomes a slot with its frame and a role from its kind; the person names the
+  template, describes it and writes each slot's hint and whether it is required. The scene's background becomes the
+  template's. Saving writes `template.set` and offers to put the scene on it through step 7's `retemplate`, so the
+  blocks land in the slots they came from. On a deck with no brand it says a template belongs to a brand and offers
+  to start one.
+- **Template editor.** "Edit slots" turns the canvas into the template: slots are boxes with their names, dragged and
+  sized with the blocks' snapping guides (Alt turns snapping off), and the arrow keys move the chosen slot (with Ctrl
+  or Cmd they size it). The side panel writes the slot's role, the kinds it takes, hint, required, alignment and frame
+  with `slot.set`, a new name with `slot.rename` (core moves the blocks that name it), a new slot with `slot.add`
+  after the chosen one, and the template's background and chrome with `template.set`'s `set`. Remove is refused
+  before core is asked while a block is in the slot, naming each block and its scene, with "Pin them where the slot
+  was", which sends `slot.remove` with `to: null`. A strip of the scenes on the template is drawn again after each
+  change. Done goes back to the scene.
+- **Uploads and the store.** `store.brandFile` runs an upload or removal as a save runs: after any save in flight, one
+  at a time, with no `syncFromDisk` while it is out (one asked for runs after). On a good answer it brings the review
+  up to date, folds the file into what is on disk, takes `answer.rev` as the next save's base, and calls
+  `session.brandFile`; the History drops its steps on the session's `files` event. A refusal changes nothing and is
+  said at the top of the panel as the server words it; `exists` adds "Replace it", which sends the file again with
+  `replace=1&baseRev=` the disk's revision. Unsaved edits stay unsaved through an upload, and an upload never shows
+  in the review.
+- **Review drawer.** Rows for `deck/brand/<key>` ("Brand colors", "Brand name"), `deck/style:<id>` ("Style:
+  Kicker", only the properties that changed), `deck/template:<id>` ("Template: Cover", added or removed as its name
+  and slot count) and brand files ("Font file Inter-Bold.woff2", "Logo file", "Image file", with the file's path in
+  `brand/` added or removed, or "Replaced with other bytes", never the hash). Each has Accept and Revert. An accept or
+  revert that core refuses for `unknown-template`, `unknown-style`, `no-brand` or `missing-brand-file` offers the
+  changes to choose together, as the command line hints. A revert that leaves changes says why under the list in core's words
+  (`FILE_REVERT_REASON`, or "brand/logos/dark.svg does not exist. Put the file back, then revert this change."),
+  each after its row's name when more than one is left. `review.revert` answers with `left` only when some are.
+- **Same files as an agent.** `packages/cli/test/editor-brand-define-e2e.test.ts`, in Chrome on copies of
+  `v0-4-brand`, `tidewell-press` and `v0-3`: Start a brand, chrome, a style edit, Save as template with the scene put
+  on it, and a slot moved, sized and renamed each write what `depthcue apply` writes for the same operations, byte for
+  byte (`review.json` aside). A logo upload named for dark slides equals `depthcue brand add --kind logo` and the
+  matching `brand.set`, with the same file bytes; a font upload equals `brand add --kind font` and the faces it makes,
+  and the slide's stylesheet then loads the face from that file. The refusal of an SVG with an `onload` is the
+  CLI's `--json` message word for word, and nothing is written. The Delete flow saves an edit made just before it.
+  Old decks opened with the panel looked through are unchanged, file times included.
+- **Decisions.** The License field is never filled in for a new family. The face's family is the one the file names
+  itself by: the test font, Tidewell Text's file, names itself Depthcue Classic Sans, so its face is named that. An
+  upload asks before replacing a file with other bytes, never otherwise. A press outside the drawer closes it and does
+  nothing else.
+- **Sizes.** The editor's main script is 91,048 of 92,160, 896 bytes more than 8a left it (90,152), of the 1,000 the
+  brief allows. `branddefine.js` 14,944 of 16,384, `reviewdrawer.js` 2,868 of 3,072, `editor.css` 14,793 of 30,720.
+  No limit moved.
+- **Risks.** A brand face may take the name of one of Depthcue's own families, as the test font does; its rule then
+  likely serves that name to the whole page, the editor's own text included (not seen in the screenshots, not
+  tested). With a long status ("Saved. Updated from the files on disk.") the top bar runs past the window at 1024 px,
+  and at 1280 px with the list of changes open, hiding Present; this step does not change the bar. `edit-e2e`'s
+  "moves freely while Alt is held" still fails now and then, as before.

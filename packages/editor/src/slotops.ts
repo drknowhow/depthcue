@@ -1,14 +1,14 @@
 /**
- * The changes the template editor makes to a brand template, as operations: one slot's properties, a slot added,
- * renamed or removed, and the template's own background and chrome. Each comes back as the operations of one step, to
- * apply together, or as the reason it cannot be made. A rename takes the blocks that name the slot with it, and a removal
- * is refused while a block is in the slot, naming the blocks, unless they are pinned where the slot was or moved to
- * another slot.
+ * The changes the template editor makes to a brand template, as the operations `depthcue apply` takes for them:
+ * `slot.set`, `slot.add`, `slot.rename` and `slot.remove` for a slot, and `template.set` with `set` for the template's
+ * own background and chrome. Each comes back as the operations of one step, or as the reason it cannot be made, said
+ * before core is asked: a removal is refused while a block is in the slot, naming the blocks, unless they are pinned
+ * where the slot was or moved to another slot.
  */
-import type { Doc, Frame, Op, Scene, Template, TemplateSlot } from "@depthcue/core";
+import type { Doc, Op, Scene, Template, TemplateSlot } from "@depthcue/core";
 import { describeBlock } from "./templates.ts";
 
-/** A template as `template.set` writes it: without the id and version the operation fills in. */
+/** A template as `template.set` writes it whole: without the id and version the operation fills in. */
 export function toWrite(template: Template): Omit<Template, "id" | "schemaVersion"> {
   const {
     id: _id,
@@ -31,23 +31,20 @@ export const scenesOn = (doc: Doc, id: string): Scene[] =>
 /** The properties to write, each null to take one out. */
 export type Changes<T> = { [K in keyof T]?: T[K] | null };
 
-const patched = <T extends object>(value: T, set: { readonly [K in keyof T]?: unknown }): T => {
-  const next = { ...value } as Record<string, unknown>;
-  for (const [key, to] of Object.entries(set)) {
-    if (to === null || to === undefined) delete next[key];
-    else next[key] = to;
-  }
-  return next as T;
-};
-
 const own = (doc: Doc, id: string): Template | undefined =>
   doc.templates && Object.hasOwn(doc.templates, id) ? doc.templates[id] : undefined;
 
-const write = (id: string, template: Template): Op => ({
-  op: "template.set",
-  id,
-  template: toWrite(template),
-});
+/** The template, or why the editor cannot change it. */
+const find = (doc: Doc, id: string): Template | string =>
+  own(doc, id) ?? `The brand has no template "${id}".`;
+
+/** The template and the slot in it, or why the editor cannot change it. */
+function findSlot(doc: Doc, id: string, slot: string): { template: Template; found: TemplateSlot } | string {
+  const template = find(doc, id);
+  if (typeof template === "string") return template;
+  const found = template.slots.find((candidate) => candidate.id === slot);
+  return found ? { template, found } : `The template has no slot "${slot}".`;
+}
 
 /** Changes the template's own properties: its name, description, background or chrome. */
 export function templateSet(
@@ -55,9 +52,8 @@ export function templateSet(
   id: string,
   set: Changes<Omit<Template, "id" | "slots">>,
 ): Op[] | string {
-  const template = own(doc, id);
-  if (!template) return `The brand has no template "${id}".`;
-  return [write(id, patched(template, set))];
+  const template = find(doc, id);
+  return typeof template === "string" ? template : [{ op: "template.set", id, set }];
 }
 
 /** Changes one slot. Its id changes only by `slotRename`. */
@@ -67,24 +63,15 @@ export function slotSet(
   slot: string,
   set: Changes<Omit<TemplateSlot, "id">>,
 ): Op[] | string {
-  const template = own(doc, id);
-  if (!template) return `The brand has no template "${id}".`;
-  if (!template.slots.some((candidate) => candidate.id === slot))
-    return `The template has no slot "${slot}".`;
-  const slots = template.slots.map((candidate) =>
-    candidate.id === slot ? patched(candidate, set) : candidate,
-  );
-  return [write(id, { ...template, slots })];
+  const found = findSlot(doc, id, slot);
+  return typeof found === "string" ? found : [{ op: "slot.set", template: id, id: slot, set }];
 }
 
 /** Adds a slot after another, or at the end. */
 export function slotAdd(doc: Doc, id: string, slot: TemplateSlot, after?: string): Op[] | string {
-  const template = own(doc, id);
-  if (!template) return `The brand has no template "${id}".`;
-  const at =
-    after === undefined ? template.slots.length : template.slots.findIndex((s) => s.id === after) + 1;
-  const slots = [...template.slots.slice(0, at), slot, ...template.slots.slice(at)];
-  return [write(id, { ...template, slots })];
+  const template = find(doc, id);
+  if (typeof template === "string") return template;
+  return [{ op: "slot.add", template: id, slot, ...(after === undefined ? {} : { after }) }];
 }
 
 /** The blocks of the deck in a slot of a template, by scene. */
@@ -94,22 +81,14 @@ function blocksIn(doc: Doc, id: string, slot: string) {
   );
 }
 
-/** Renames a slot, and moves every block that names it to the new name, in the same step. */
+/** Renames a slot; core moves every block that names it to the new name, in the same step. */
 export function slotRename(doc: Doc, id: string, slot: string, to: string): Op[] | string {
-  const template = own(doc, id);
-  if (!template) return `The brand has no template "${id}".`;
+  const found = findSlot(doc, id, slot);
+  if (typeof found === "string") return found;
   if (to === slot) return [];
-  if (template.slots.some((candidate) => candidate.id === to))
+  if (found.template.slots.some((candidate) => candidate.id === to))
     return `The template already has a slot "${to}".`;
-  const slots = template.slots.map((candidate) =>
-    candidate.id === slot ? { ...candidate, id: to } : candidate,
-  );
-  return [
-    write(id, { ...template, slots }),
-    ...blocksIn(doc, id, slot).map(
-      ({ scene, block }): Op => ({ op: "block.set", scene: scene.id, id: block.id, set: { slot: to } }),
-    ),
-  ];
+  return [{ op: "slot.rename", template: id, id: slot, to }];
 }
 
 /**
@@ -117,24 +96,15 @@ export function slotRename(doc: Doc, id: string, slot: string, to: string): Op[]
  * pins each where the slot was, and a slot id moves them into that slot.
  */
 export function slotRemove(doc: Doc, id: string, slot: string, to?: string | null): Op[] | string {
-  const template = own(doc, id);
-  if (!template) return `The brand has no template "${id}".`;
-  const gone = template.slots.find((candidate) => candidate.id === slot);
-  if (!gone) return `The template has no slot "${slot}".`;
-  if (template.slots.length === 1) return "A template keeps at least one slot.";
+  const found = findSlot(doc, id, slot);
+  if (typeof found === "string") return found;
+  if (found.template.slots.length === 1) return "A template keeps at least one slot.";
   const held = blocksIn(doc, id, slot);
-  if (held.length > 0 && to === undefined) {
+  if (held.length === 0) return [{ op: "slot.remove", template: id, id: slot }];
+  if (to === undefined) {
     const named = held.map(({ scene, block }) => `${describeBlock(block, 32, scene)} (${scene.title})`);
-    return `The ${slot} slot holds ${named.join("; ")}. Pin ${held.length === 1 ? "it" : "them"} where the slot was, or move ${held.length === 1 ? "it" : "them"} to another slot first.`;
+    const them = held.length === 1 ? "it" : "them";
+    return `The ${slot} slot holds ${named.join("; ")}. Pin ${them} where the slot was, or move ${them} to another slot first.`;
   }
-  const slots = template.slots.filter((candidate) => candidate.id !== slot);
-  const moved = held.flatMap(({ scene, block }): Op[] =>
-    to === null || to === undefined
-      ? [
-          { op: "block.set", scene: scene.id, id: block.id, set: { slot: null } },
-          { op: "block.frame", scene: scene.id, id: block.id, frame: block.frame ?? (gone.frame as Frame) },
-        ]
-      : [{ op: "block.set", scene: scene.id, id: block.id, set: { slot: to } }],
-  );
-  return [write(id, { ...template, slots }), ...moved];
+  return [{ op: "slot.remove", template: id, id: slot, to }];
 }

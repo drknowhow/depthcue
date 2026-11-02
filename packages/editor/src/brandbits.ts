@@ -44,16 +44,25 @@ export interface BrandContext {
   readonly edits: Edits;
   /** Applies a click or a choice as one step of Undo, and says a refusal at the top of the panel. True when applied. */
   run(ops: readonly Op[]): boolean;
-  /** Says something at the top of the panel, or clears it. */
-  say(text: string | undefined): void;
+  /** Says something at the top of the panel, with a button that acts on it when there is one, or clears it. */
+  say(text: string | undefined, offer?: HTMLElement): void;
   /** Opens a section. */
   show(tab: Tab): void;
   /** Draws the section again, after something only the panel keeps changed, such as the style open for editing. */
   redraw(): void;
   /** The deck's brand. A section is drawn only while there is one. */
   brand(): Brand;
-  /** What the panel keeps between drawings: the style open for editing, and the words typed into Start a brand. */
-  readonly state: { style?: string | undefined; name?: string | undefined; id?: string | undefined };
+  /**
+   * What the panel keeps between drawings: the style open for editing, the words typed into Start a brand, and the
+   * license and the role a new font file is given.
+   */
+  readonly state: {
+    style?: string | undefined;
+    name?: string | undefined;
+    id?: string | undefined;
+    license?: string | undefined;
+    role?: string | undefined;
+  };
 }
 
 /** A checkbox that writes one change, found again after a redraw by its `data-field`. */

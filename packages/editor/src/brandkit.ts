@@ -1,9 +1,10 @@
 /**
  * The Styles and Templates sections of the Brand panel. Each lists the brand's own and Depthcue's, a brand's one with the
  * id of Depthcue's listed once as the brand's. A built-in is changed by copying it into the brand first, as the command
- * line says to. Every change is `style.set` or `template.set`, as `depthcue apply` takes them, and one step of Undo.
+ * line says to. Every change is `style.set` or `template.set`, as `depthcue apply` takes them, and one step of Undo; a
+ * change of one field is their patch form, which names that field alone.
  */
-import type { BlockKind, BlockStyle, Brand, Doc, Op, Scene, Template } from "@depthcue/core";
+import type { BlockKind, BlockStyle, Brand, Doc, Op, Scene, StyleChanges, Template } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import {
   type BrandContext,
@@ -133,7 +134,8 @@ function blocksWith(doc: Doc, id: string): number {
 
 function styleEditor(ctx: BrandContext, id: string): HTMLElement {
   const style = () => ctx.brand().styles?.[id] as BlockStyle;
-  const write = (next: BlockStyle): Op => ({ op: "style.set", id, style: next });
+  // Each control changes its own field only, in the patch form: null takes the field out.
+  const write = (set: StyleChanges): Op => ({ op: "style.set", id, set });
   const props = (Object.keys(STYLE_PROP) as StyleProp[]).map((prop) =>
     selectField(ctx.edits, {
       key: `brand:style:${id}:${prop}`,
@@ -141,12 +143,7 @@ function styleEditor(ctx: BrandContext, id: string): HTMLElement {
       empty: "Not set",
       options: choices(STYLE_VALUES[prop]),
       read: () => (style()[prop] as string | undefined) ?? "",
-      commit: (value) => {
-        const next: Record<string, unknown> = { ...style() };
-        if (value === "") delete next[prop];
-        else next[prop] = value;
-        return write(next as BlockStyle);
-      },
+      commit: (value) => write({ [prop]: value === "" ? null : value }),
     }),
   );
   const doc = ctx.session.doc;
@@ -158,14 +155,14 @@ function styleEditor(ctx: BrandContext, id: string): HTMLElement {
       key: `brand:style:${id}:name`,
       label: "Name",
       read: () => style().name,
-      commit: (value) => (value.trim() === "" ? "A style needs a name." : write({ ...style(), name: value })),
+      commit: (value) => (value.trim() === "" ? "A style needs a name." : write({ name: value })),
     }),
     checkField(ctx.edits, {
       key: `brand:style:${id}:for`,
       label: "For",
       items: (Object.keys(KIND_LABEL) as BlockKind[]).map((kind) => ({ id: kind, label: KIND_LABEL[kind] })),
       read: () => style().for,
-      commit: (ids) => write({ ...style(), for: ids as BlockStyle["for"] }),
+      commit: (ids) => write({ for: ids as BlockStyle["for"] }),
     }),
     h(
       "div",
@@ -321,7 +318,7 @@ export function templatesSection(ctx: BrandContext): Node[] {
             commit: (value) =>
               value.trim() === ""
                 ? "A template needs a name."
-                : { op: "template.set", id, template: { ...toWrite(current(id)), name: value } },
+                : { op: "template.set", id, set: { name: value } },
           }),
           textField(ctx.edits, {
             key: `brand:template:${id}:description`,
@@ -331,7 +328,7 @@ export function templatesSection(ctx: BrandContext): Node[] {
             commit: (value) =>
               value.trim() === ""
                 ? "A template needs a description, for the picker and for an agent choosing one."
-                : { op: "template.set", id, template: { ...toWrite(current(id)), description: value } },
+                : { op: "template.set", id, set: { description: value } },
           }),
         ]
       : [

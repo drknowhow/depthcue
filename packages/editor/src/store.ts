@@ -9,8 +9,9 @@ import {
   loadDoc,
   recoverDraft,
   type Session,
+  withBrandFile,
 } from "@depthcue/core";
-import type { Api, DeckPayload } from "./api.ts";
+import type { Api, BrandFileAnswer, DeckPayload } from "./api.ts";
 import { loadBrandChecks, loadBuiltIns, waitedForBrandChecks, waitedForBuiltIns } from "./brandchecks.ts";
 import { type CommentBook, createCommentBook } from "./commentbook.ts";
 import { createHistory, type History } from "./history.ts";
@@ -89,6 +90,12 @@ export interface EditorStore {
   discardDraft(): Promise<void>;
   dismissNotice(): void;
   upload(file: File): Promise<string>;
+  /**
+   * Adds a file to the brand folder or removes one: `send` gets the revision on disk and names the call, as
+   * `Api.brandFile` takes it. It runs as a save does, one at a time with saves, and a good answer is taken in with no
+   * change to what is saved and what is not.
+   */
+  brandFile(send: (diskRev: string) => [path: string, body: Blob | string]): Promise<BrandFileAnswer>;
   /** Writes the draft now. Call it when the page is about to hide. */
   flush(): void;
   dispose(): void;
@@ -175,6 +182,8 @@ export async function openStore(
   void review.sync();
   let diskRev = payload.rev;
   let saving = false;
+  /** What the save or the brand file call under way resolves with, for a brand file call to wait for. */
+  let running: Promise<unknown> | undefined;
   let failed = false;
   let pendingSync = false;
   /** An edit came in while a save was running, so the save that follows it is still owed. */
@@ -362,7 +371,9 @@ export async function openStore(
       saving = true;
       message = undefined;
       notify();
-      const result = await api.save(files, diskRev, keepAgent.length > 0 ? { keepAgent } : undefined);
+      const answer = api.save(files, diskRev, keepAgent.length > 0 ? { keepAgent } : undefined);
+      running = answer;
+      const result = await answer;
       saving = false;
       epoch += 1;
       if (result.ok) {
@@ -499,6 +510,36 @@ export async function openStore(
       const asset = await api.uploadAsset(file, file.name);
       session.addAssets([asset]);
       return asset;
+    },
+
+    brandFile(send) {
+      const run = async () => {
+        while (saving) await running;
+        saving = true;
+        const answer = await api.brandFile(...send(diskRev));
+        if (answer.ok) {
+          // The server took the person's file into the reviewed deck: read that first, so it never shows as a change.
+          await review.sync();
+          onDisk = withBrandFile(onDisk, answer.file, answer.hash);
+          diskRev = answer.rev;
+          session.brandFile(answer.file, answer.hash, answer);
+        }
+        saving = false;
+        epoch += 1;
+        notify();
+        if (pendingSync) {
+          pendingSync = false;
+          await store.syncFromDisk();
+        }
+        if (resave) {
+          resave = false;
+          if (session.dirty) armAutosave();
+        }
+        return answer;
+      };
+      const done = run();
+      running = done;
+      return done;
     },
 
     flush: () => autosave.flush(),

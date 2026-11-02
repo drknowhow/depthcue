@@ -41,7 +41,8 @@ export function createHistory(session: Session): History {
   };
 
   const stop = session.subscribe((event) => {
-    if (event.type === "reset") {
+    // A brand file taken in moves every revision, which the steps are tied to.
+    if (event.type === "reset" || event.type === "files") {
       done.length = 0;
       undone.length = 0;
     } else if (event.type === "apply") undone.length = 0;

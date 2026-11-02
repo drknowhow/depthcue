@@ -200,6 +200,39 @@ describe("a change of the brand's files", () => {
       undefined,
     ]);
   });
+
+  it("names a font, a logo or an image file by its kind and name, and says what became of it, never its hash", () => {
+    const file = (path: string, kind: Change["kind"]) =>
+      rowOf(
+        deck({
+          id: `deck/file:${path}`,
+          field: `file:${path}`,
+          kind,
+          before: kind === "added" ? undefined : "a".repeat(64),
+          after: kind === "removed" ? undefined : "b".repeat(64),
+        }),
+        doc,
+      );
+    const font = file("fonts/Inter-Bold.woff2", "added");
+    expect([font.where, font.before, font.after]).toEqual([
+      "Font file Inter-Bold.woff2",
+      undefined,
+      "brand/fonts/Inter-Bold.woff2",
+    ]);
+    expect(font.said).toBe("Brand file fonts/Inter-Bold.woff2 added");
+    const logo = file("logos/mark.svg", "removed");
+    expect([logo.where, logo.before, logo.after]).toEqual([
+      "Logo file mark.svg",
+      "brand/logos/mark.svg",
+      undefined,
+    ]);
+    const image = file("images/cover.jpg", "changed");
+    expect([image.where, image.before, image.after]).toEqual([
+      "Image file cover.jpg",
+      undefined,
+      "Replaced with other bytes",
+    ]);
+  });
 });
 
 describe("the counts", () => {

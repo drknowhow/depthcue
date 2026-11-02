@@ -17,6 +17,7 @@ import {
   type BlockStyle,
   BUILT_IN_TEMPLATES,
   type Doc,
+  FILE_REVERT_REASON,
   loadDoc,
   type Op,
   retemplate,
@@ -426,9 +427,13 @@ describe("the Brand panel in a real browser", () => {
     await expect.poll(() => fillOf(block)).not.toBe(blockBefore);
     await expect.poll(() => brandOf(mine).styles?.["quiet-panel"]?.fill).toBe("action");
     await saved();
-    const style = brandOf(theirs).styles?.["quiet-panel"] as BlockStyle;
-    await agentApply(theirs, [{ op: "style.set", id: "quiet-panel", style: { ...style, fill: "action" } }]);
+    // One field changed, in the patch form: the same bytes as the whole style written back with it.
+    await agentApply(theirs, [{ op: "style.set", id: "quiet-panel", set: { fill: "action" } }]);
     expect(written(mine)).toEqual(written(theirs));
+    const whole = copy(harborDeck, "whole");
+    const style = brandOf(whole).styles?.["quiet-panel"] as BlockStyle;
+    await agentApply(whole, [{ op: "style.set", id: "quiet-panel", style: { ...style, fill: "action" } }]);
+    expect(written(whole)).toEqual(written(theirs));
 
     // A built-in is copied into the brand under its own id, and then is the brand's to change.
     await field("brand:style:callout:copy").click();
@@ -462,11 +467,7 @@ describe("the Brand panel in a real browser", () => {
     await expect.poll(() => templateOf(mine, builtIn)?.name).toBe(BUILT_IN_TEMPLATES[builtIn]?.name);
     await saved();
     await agentApply(theirs, [
-      {
-        op: "template.set",
-        id: "chart-and-note",
-        template: { ...toWrite(templateOf(theirs, "chart-and-note")), name: "Chart with a note" },
-      },
+      { op: "template.set", id: "chart-and-note", set: { name: "Chart with a note" } },
       { op: "template.set", id: builtIn, template: toWrite(BUILT_IN_TEMPLATES[builtIn] as Template) },
     ]);
     expect(written(mine)).toEqual(written(theirs));
@@ -619,39 +620,11 @@ describe("the template editor in a real browser", () => {
     await expect.poll(() => box("aside").count()).toBe(1);
     await saved();
 
-    const template = toWrite(templateOf(theirs, "chart-and-note"));
-    const [title, chart, note] = template.slots;
-    await agentApply(theirs, [
-      {
-        op: "template.set",
-        id: "chart-and-note",
-        template: {
-          ...template,
-          slots: [title, chart, { ...note, frame: { x: 64, y: 24, w: 26, h: 68 } }],
-        } as typeof template,
-      },
-    ]);
-    await agentApply(theirs, [
-      {
-        op: "template.set",
-        id: "chart-and-note",
-        template: {
-          ...template,
-          slots: [title, chart, { ...note, frame: { x: 64, y: 24, w: 26, h: 26 } }],
-        } as typeof template,
-      },
-    ]);
-    await agentApply(theirs, [
-      {
-        op: "template.set",
-        id: "chart-and-note",
-        template: {
-          ...template,
-          slots: [title, chart, { ...note, id: "aside", frame: { x: 64, y: 24, w: 26, h: 26 } }],
-        } as typeof template,
-      },
-      { op: "block.set", scene: "growth", id: "growth-note", set: { slot: "aside" } },
-    ]);
+    // The agent's way to the same template: the slot operations, each slot by itself.
+    const slot = { op: "slot.set", template: "chart-and-note", id: "note" } as const;
+    await agentApply(theirs, [{ ...slot, set: { frame: { x: 64, y: 24, w: 26, h: 68 } } }]);
+    await agentApply(theirs, [{ ...slot, set: { frame: { x: 64, y: 24, w: 26, h: 26 } } }]);
+    await agentApply(theirs, [{ op: "slot.rename", template: "chart-and-note", id: "note", to: "aside" }]);
     expect(written(mine)).toEqual(written(theirs));
 
     // Each change was one step of Undo.
@@ -690,17 +663,176 @@ describe("the template editor in a real browser", () => {
     expect(blockOn(mine, "growth", "growth-chart")).toMatchObject({ frame: { x: 6, y: 24, w: 58, h: 68 } });
     expect(blockOn(mine, "growth", "growth-chart")?.slot).toBeUndefined();
     await saved();
-    const template = toWrite(templateOf(theirs, "chart-and-note"));
+    await agentApply(theirs, [{ op: "slot.remove", template: "chart-and-note", id: "chart", to: null }]);
+    expect(written(mine)).toEqual(written(theirs));
+    expect(problems).toEqual([]);
+  });
+});
+
+// ---- the brand folder's files ----------------------------------------------------------------------------------------
+
+/** A small logo the server's checks take: shapes only, in the SVG namespace. */
+const LOGO = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><rect width="120" height="40" rx="6" fill="#f4f1ea"/><circle cx="20" cy="20" r="10" fill="#0b2545"/><rect x="38" y="14" width="70" height="12" fill="#0b2545"/></svg>',
+);
+/** A logo the checks refuse: it would run a script. */
+const UNSAFE = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" onload="alert(1)"><rect width="10" height="10"/></svg>',
+);
+const fontFile = join(tidewellDeck, "brand/fonts/TidewellText-Regular.woff2");
+
+/** Writes bytes to a file of their own outside the decks, to hand to the command line. */
+function loose(name: string, bytes: Buffer): string {
+  const dir = join(root, `loose-${++opsFiles}`);
+  mkdirSync(dir);
+  writeFileSync(join(dir, name), bytes);
+  return join(dir, name);
+}
+
+/** `depthcue brand add` or `brand remove`, as an agent runs it. Answers with what `--json` printed. */
+async function brandCommand(...args: string[]): Promise<{ code: number; json: Record<string, unknown> }> {
+  const done = capture();
+  const code = await run(["brand", ...args, "--json"], done.io);
+  return { code, json: JSON.parse(done.lines.join("\n")) as Record<string, unknown> };
+}
+
+describe("the brand folder's files in a real browser", () => {
+  it("sends a logo through the server's checks and names it for dark slides, as `brand add` and `depthcue apply` write them", async () => {
+    const mine = copy(harborDeck, "mine");
+    const theirs = copy(harborDeck, "theirs");
+    await open(mine, "context");
+    await openBrand("logos");
+    await field("brand:logos:dark:upload").setInputFiles({
+      name: "harbor-dark.svg",
+      mimeType: "image/svg+xml",
+      buffer: LOGO,
+    });
+    await expect.poll(() => brandOf(mine).logos?.dark).toBe("logos/harbor-dark.svg");
+    await saved();
+    expect(readFileSync(join(mine, "brand/logos/harbor-dark.svg"))).toEqual(LOGO);
+    // The panel shows the new logo on the ink ground it is for, and lists the file as in use.
+    await expect
+      .poll(() =>
+        panel()
+          .locator(".ed-brand-logo[data-logo='dark'] img")
+          .evaluate((node) => (node as HTMLImageElement).naturalWidth),
+      )
+      .toBeGreaterThan(0);
+    expect(await panel().locator("[data-file='logos/harbor-dark.svg']").textContent()).toContain("In use");
+    expect(await said().isHidden()).toBe(true);
+
+    const added = await brandCommand("add", loose("harbor-dark.svg", LOGO), theirs, "--kind", "logo");
+    expect(added.code, JSON.stringify(added.json)).toBe(0);
     await agentApply(theirs, [
-      {
-        op: "template.set",
-        id: "chart-and-note",
-        template: { ...template, slots: template.slots.filter((slot) => slot.id !== "chart") },
-      },
-      { op: "block.set", scene: "growth", id: "growth-chart", set: { slot: null } },
-      { op: "block.frame", scene: "growth", id: "growth-chart", frame: { x: 6, y: 24, w: 58, h: 68 } },
+      { op: "brand.set", set: { logos: { ...brandOf(theirs).logos, dark: added.json.path } } } as Op,
     ]);
     expect(written(mine)).toEqual(written(theirs));
+    expect(readFileSync(join(theirs, "brand/logos/harbor-dark.svg"))).toEqual(LOGO);
+    // The upload was the person's, so the list of changes has nothing to show for it.
+    await page.locator("[data-action='review']").click();
+    await page.locator(".ed-review-empty:not([hidden])").waitFor();
+    expect(await page.locator(".ed-review .ed-ri").count()).toBe(0);
+    expect(problems).toEqual([]);
+  });
+
+  it("says the server's refusal as the server words it, and writes nothing", async () => {
+    const mine = copy(harborDeck, "mine");
+    const other = copy(harborDeck, "other");
+    const refused = await brandCommand("add", loose("mark.svg", UNSAFE), other, "--kind", "logo");
+    expect(refused.code).toBe(1);
+    const before = everything(mine);
+    await open(mine, "context");
+    await openBrand("logos");
+    await field("brand:logos:dark:upload").setInputFiles({
+      name: "mark.svg",
+      mimeType: "image/svg+xml",
+      buffer: UNSAFE,
+    });
+    await expect.poll(() => said().textContent()).toBe(refused.json.message);
+    await page.waitForTimeout(800);
+    expect(everything(mine)).toEqual(before);
+    expect(await page.locator(".ed-status").getAttribute("data-state")).toBe("saved");
+    // The refused request is the one console error the page should have.
+    expect(problems.filter((line) => !line.includes("status of 422"))).toEqual([]);
+  });
+
+  it("adds a font file as a new face for headings and text, with the license written, as the command line does", async () => {
+    const mine = copy(harborDeck, "mine");
+    const theirs = copy(harborDeck, "theirs");
+    const bytes = readFileSync(fontFile);
+    await open(mine, "context");
+    await openBrand("fonts");
+    await field("brand:fonts:file-license").fill("OFL-1.1");
+    await field("brand:fonts:upload").setInputFiles({
+      name: "TidewellText-Regular.woff2",
+      mimeType: "font/woff2",
+      buffer: bytes,
+    });
+    // The face takes the family the file names itself by; the fixture's font names the one it stands in for.
+    const family = "Depthcue Classic Sans";
+    await expect
+      .poll(() => {
+        const fonts = brandOf(mine).fonts;
+        return typeof fonts === "object" ? fonts.display.family : fonts;
+      })
+      .toBe(family);
+    await saved();
+    const face = {
+      family,
+      license: "OFL-1.1",
+      files: [{ file: "fonts/TidewellText-Regular.woff2", weight: 400, style: "normal" }],
+    };
+    const fonts = brandOf(mine).fonts as Exclude<ReturnType<typeof brandOf>["fonts"], string>;
+    expect([fonts?.display, fonts?.body]).toEqual([face, face]);
+
+    const added = await brandCommand("add", fontFile, theirs, "--kind", "font");
+    expect(added.code, JSON.stringify(added.json)).toBe(0);
+    expect((added.json.sniffed as { family: string }).family).toBe(family);
+    const own = brandOf(theirs).fonts as NonNullable<typeof fonts>;
+    await agentApply(theirs, [
+      { op: "brand.set", set: { fonts: { ...own, display: face, body: face } } } as Op,
+    ]);
+    expect(written(mine)).toEqual(written(theirs));
+    // The slide's faces come from the file that was sent. A built-in has the same family, so the rule is what tells.
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.adoptedStyleSheets
+            .flatMap((sheet) => [...sheet.cssRules])
+            .some(
+              (rule) =>
+                rule instanceof CSSFontFaceRule &&
+                rule.style.getPropertyValue("font-family").includes("Depthcue Classic Sans") &&
+                rule.style.getPropertyValue("src").includes("brand/fonts/TidewellText-Regular.woff2"),
+            ),
+        ),
+      )
+      .toBe(true);
+    expect(problems).toEqual([]);
+  });
+
+  it("deletes a file nothing names after asking, never one the brand names, and keeps an edit made just before", async () => {
+    const mine = copy(harborDeck, "mine");
+    writeFileSync(join(mine, "brand/logos/spare.svg"), LOGO);
+    await open(mine, "context");
+    await openBrand("logos");
+    const spare = panel().locator("[data-file='logos/spare.svg']");
+    await spare.waitFor();
+    expect(await panel().locator("[data-file='logos/harbor.svg']").textContent()).toContain("In use");
+    expect(await field("brand:file:logos/harbor.svg:remove").count()).toBe(0);
+
+    // An edit not yet saved is saved before the file goes, since the server reads the files on disk.
+    await field("brand:logos:alt").fill("Harbor Analytics, the mark");
+    await field("brand:logos:alt").press("Tab");
+    await field("brand:file:logos/spare.svg:remove").click();
+    await expect.poll(() => said().textContent()).toMatch(/^Delete brand\/logos\/spare\.svg\?/);
+    expect(existsSync(join(mine, "brand/logos/spare.svg"))).toBe(true);
+    await field("brand:file:delete").click();
+    await spare.waitFor({ state: "detached" });
+    expect(existsSync(join(mine, "brand/logos/spare.svg"))).toBe(false);
+    expect(brandOf(mine).logos?.alt).toBe("Harbor Analytics, the mark");
+    await saved();
+    expect(await page.locator(".ed-status").getAttribute("data-state")).toBe("saved");
     expect(problems).toEqual([]);
   });
 });
@@ -784,6 +916,89 @@ describe("the changes of a brand in the review drawer", () => {
     await offer.locator("[data-action='accept-together']").click();
     await row("scene:said").waitFor({ state: "detached" });
     await row("deck/template:big-quote").waitFor({ state: "detached" });
+    expect(problems).toEqual([]);
+  });
+
+  it("lists a font the agent added as a row of its own, says why Revert leaves it, and accepts it", async () => {
+    const mine = copy(harborDeck, "mine");
+    const added = await brandCommand("add", fontFile, mine, "--kind", "font");
+    expect(added.code, JSON.stringify(added.json)).toBe(0);
+    await open(mine, "context");
+    await page.locator("[data-action='review']").click();
+    const font = row("deck/file:fonts/TidewellText-Regular.woff2");
+    await font.waitFor();
+    expect(await font.locator(".ed-ri-where").textContent()).toBe("Font file TidewellText-Regular.woff2");
+    expect(await font.locator(".ed-df").textContent()).toBe("brand/fonts/TidewellText-Regular.woff2");
+    const before = everything(mine);
+    await font.locator("[data-action='revert-change']").click();
+    const problem = page.locator(".ed-review-problem");
+    await expect.poll(() => problem.textContent()).toBe(FILE_REVERT_REASON);
+    expect(await font.count()).toBe(1);
+    expect(everything(mine)).toEqual(before);
+    await font.locator("[data-action='accept-change']").click();
+    await font.waitFor({ state: "detached" });
+    expect(existsSync(join(mine, "brand/fonts/TidewellText-Regular.woff2"))).toBe(true);
+    expect(problems).toEqual([]);
+  });
+
+  it("offers a font's own change with the brand change that names it, as the command line hints", async () => {
+    const mine = copy(harborDeck, "mine");
+    // The agent sends a font and names it for the body text.
+    const added = await brandCommand("add", fontFile, mine, "--kind", "font");
+    expect(added.code, JSON.stringify(added.json)).toBe(0);
+    const fonts = brandOf(mine).fonts as Exclude<ReturnType<typeof brandOf>["fonts"], string | undefined>;
+    const body = {
+      family: "Tidewell Text",
+      license: "OFL-1.1",
+      files: [{ file: "fonts/TidewellText-Regular.woff2", weight: 400 as const, style: "normal" as const }],
+    };
+    await agentApply(mine, [{ op: "brand.set", set: { fonts: { ...fonts, body } } }]);
+    await open(mine, "context");
+    await page.locator("[data-action='review']").click();
+    await row("deck/brand/fonts").waitFor();
+    await row("deck/brand/fonts").locator("[data-action='accept-change']").click();
+    const offer = page.locator(".ed-review-together");
+    await offer.waitFor();
+    expect(await offer.textContent()).toContain("Font file TidewellText-Regular.woff2");
+    await offer.locator("[data-action='accept-together']").click();
+    await row("deck/brand/fonts").waitFor({ state: "detached" });
+    await row("deck/file:fonts/TidewellText-Regular.woff2").waitFor({ state: "detached" });
+    expect(problems).toEqual([]);
+  });
+
+  it("leaves a revert of a brand change that names a file now gone, saying to put the file back first", async () => {
+    const mine = copy(harborDeck, "mine");
+    // Before any review: a dark logo on disk and named, as a person left it.
+    writeFileSync(join(mine, "brand/logos/harbor-dark.svg"), LOGO);
+    const brandFile = join(mine, "brand/brand.json");
+    const json = JSON.parse(readFileSync(brandFile, "utf8"));
+    writeFileSync(
+      brandFile,
+      `${JSON.stringify({ ...json, logos: { ...json.logos, dark: "logos/harbor-dark.svg" } }, null, 2)}\n`,
+    );
+    // The agent un-names it and takes the file out.
+    const { dark: _dark, ...logos } = brandOf(mine).logos ?? { alt: "" };
+    await agentApply(mine, [{ op: "brand.set", set: { logos } }]);
+    const removed = await brandCommand(
+      "remove",
+      "logos/harbor-dark.svg",
+      mine,
+      "--base-rev",
+      revisionOf(docAt(mine)),
+    );
+    expect(removed.code, JSON.stringify(removed.json)).toBe(0);
+    await open(mine, "context");
+    await page.locator("[data-action='review']").click();
+    await row("deck/brand/logos").waitFor();
+    expect(await row("deck/file:logos/harbor-dark.svg").locator(".ed-ri-where").textContent()).toBe(
+      "Logo file harbor-dark.svg",
+    );
+    await row("deck/brand/logos").locator("[data-action='revert-change']").click();
+    await expect
+      .poll(() => page.locator(".ed-review-problem").textContent())
+      .toBe("brand/logos/harbor-dark.svg does not exist. Put the file back, then revert this change.");
+    expect(await row("deck/brand/logos").count()).toBe(1);
+    expect(brandOf(mine).logos?.dark).toBeUndefined();
     expect(problems).toEqual([]);
   });
 });
@@ -880,6 +1095,28 @@ describe("the panel beside the slide", () => {
     await page.keyboard.press("Escape");
     await panel().waitFor({ state: "detached" });
     expect(await page.evaluate(() => document.activeElement?.getAttribute("data-tb"))).toBe("deck");
+
+    // A press on the slide outside it closes it too, and only that: the block under it is not chosen.
+    const chosen = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll(".ed-canvas-host [data-selected]")].map((node) =>
+          node.getAttribute("data-id"),
+        ),
+      );
+    await openBrand("colors");
+    const chosenBefore = await chosen();
+    expect(chosenBefore).not.toContain("growth-chart");
+    const at = await slide("growth").locator("[data-id='growth-chart']").boundingBox();
+    if (!at) throw new Error("the chart should be drawn");
+    expect(at.x + 20).toBeLessThan(drawer.x);
+    await page.mouse.click(at.x + 20, at.y + 20);
+    await panel().waitFor({ state: "detached" });
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-tb"))).toBe("deck");
+    await page.waitForTimeout(200);
+    expect(await chosen()).toEqual(chosenBefore);
+    // The next press is the slide's again.
+    await page.mouse.click(at.x + 20, at.y + 20);
+    await expect.poll(chosen).toContain("growth-chart");
     expect(problems).toEqual([]);
   });
 });
@@ -888,8 +1125,9 @@ describe("the panel beside the slide", () => {
 
 /**
  * The screenshots Dimitri looks at, written only when DEPTHCUE_SHOTS names a folder: each section of the panel, a refused
- * swatch, the logo statement, a style's preview, Save as template, the template editor mid-drag, the drawer's brand rows
- * and the panel as a drawer in a 1024px window, on both presets.
+ * swatch, the logo statement, a style's preview, Save as template, the template editor mid-drag, the drawer's brand rows,
+ * a logo and a font sent, a logo refused, a brand file's row with what Revert says of it, and the panel as a drawer in a
+ * 1024px window, on both presets.
  */
 const SHOTS = process.env.DEPTHCUE_SHOTS;
 describe.skipIf(!SHOTS)("screenshots of defining a brand", () => {
@@ -951,12 +1189,62 @@ describe.skipIf(!SHOTS)("screenshots of defining a brand", () => {
       await page.waitForTimeout(300);
       await shot("review-rows");
 
+      // The brand folder's files: a logo sent, one refused, a font sent, and the agent's font in the list of changes.
+      await openBrand("logos");
+      await field("brand:logos:dark:upload").setInputFiles({
+        name: "harbor-dark.svg",
+        mimeType: "image/svg+xml",
+        buffer: LOGO,
+      });
+      await expect.poll(() => brandOf(mine).logos?.dark).toBe("logos/harbor-dark.svg");
+      await saved();
+      await page.waitForTimeout(400);
+      await shot("upload-logo");
+      await field("brand:logos:light:upload").setInputFiles({
+        name: "mark.svg",
+        mimeType: "image/svg+xml",
+        buffer: UNSAFE,
+      });
+      await expect.poll(() => said().isVisible()).toBe(true);
+      await shot("upload-refused");
+      await panel().locator("[data-tab='fonts']").click();
+      await field("brand:fonts:file-license").fill("OFL-1.1");
+      await field("brand:fonts:file-role").selectOption("display");
+      await field("brand:fonts:upload").setInputFiles({
+        name: "TidewellText-Regular.woff2",
+        mimeType: "font/woff2",
+        buffer: readFileSync(fontFile),
+      });
+      await expect
+        .poll(() => {
+          const fonts = brandOf(mine).fonts;
+          return typeof fonts === "object" ? fonts.display.family : fonts;
+        })
+        .toBe("Depthcue Classic Sans");
+      await saved();
+      await panel().locator(".ed-brand-face[data-family='Depthcue Classic Sans']").scrollIntoViewIfNeeded();
+      await page.waitForTimeout(400);
+      await shot("upload-font");
+      await page.keyboard.press("Escape");
+      const agentFont = join(tidewellDeck, "brand/fonts/TidewellDisplay-Regular.woff2");
+      expect((await brandCommand("add", agentFont, mine, "--kind", "font")).code).toBe(0);
+      await page.locator("[data-action='review']").click();
+      const fileRow = page.locator(
+        ".ed-review .ed-ri[data-id='deck/file:fonts/TidewellDisplay-Regular.woff2']",
+      );
+      await fileRow.waitFor();
+      await fileRow.locator("[data-action='revert-change']").click();
+      await page.locator(".ed-review-problem:not([hidden])").waitFor();
+      await page.waitForTimeout(300);
+      await shot("file-rows");
+
       // In a 1024px window the panel is a drawer over the slide.
       await page.setViewportSize({ width: 1024, height: 800 });
       await openBrand("chrome");
       await page.waitForTimeout(400);
       await shot("drawer-1024");
-      expect(problems).toEqual([]);
+      // The refused logo is the one console error the page should have.
+      expect(problems.filter((line) => !line.includes("status of 422"))).toEqual([]);
     }, 240_000);
   }
 });

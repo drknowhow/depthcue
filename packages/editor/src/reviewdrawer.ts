@@ -1,10 +1,13 @@
-import { acceptChanges, revertOps, type Session } from "@depthcue/core";
+import { acceptChanges, revertChanges, revertOps, type Session } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import type { Outcome, ReviewBook } from "./reviewbook.ts";
 import { BRAND_CHANGE, type ChangeRow, rowOf } from "./reviewview.ts";
 
-/** The refusals that come of a template, a style or the brand being in a change that was not chosen. */
-const WAITS = /^(unknown-(template|style)|no-brand)$/;
+/**
+ * The refusals that come of a template, a style, the brand or a brand file being in a change that was not chosen: a
+ * brand.json that names a font, say, accepted without the font's own change.
+ */
+const WAITS = /^(unknown-(template|style)|no-brand|missing-brand-file)$/;
 
 export interface ReviewDrawerHooks {
   /** Shows what a change is about: its scene, and its block when it has one. */
@@ -63,10 +66,28 @@ export function createReviewDrawer(
   );
 
   const show = (outcome: Outcome) => {
-    problem.hidden = outcome.ok;
-    problem.textContent = outcome.ok ? "" : outcome.message;
+    const said = outcome.ok ? leftWords(outcome.left ?? []) : outcome.message;
+    problem.hidden = said === "";
+    problem.textContent = said;
     together.hidden = true;
   };
+
+  /**
+   * Why a revert left changes as they were, in core's words, which the command line prints too: a brand file's change,
+   * or one that names a file that is gone. Each is named by its row when there is more than one.
+   */
+  function leftWords(ids: readonly string[]): string {
+    const { review } = book.state;
+    const said = ids.length > 0 && review ? revertChanges(review, session.doc, ids) : undefined;
+    if (!said?.ok) return "";
+    const rows = new Map(book.changes().map((change) => [change.id, change]));
+    return said.left
+      .map(({ id, why }) => {
+        const change = rows.get(id);
+        return said.left.length > 1 && change ? `${rowOf(change, session.doc).where}: ${why}` : why;
+      })
+      .join(" ");
+  }
 
   /**
    * After an answer to one change was refused for want of a template, a style or the brand, the changes of the brand's

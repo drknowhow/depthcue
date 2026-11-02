@@ -3700,6 +3700,27 @@ body {
   max-height: 100%;
 }
 
+/* The files of a folder of the brand's: each by name, with Delete for one that nothing names. */
+.ed-brand-files {
+  display: grid;
+  gap: var(--dc-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ed-brand-files li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dc-space-2);
+  min-height: 2rem;
+}
+
+.ed-brand-files code {
+  overflow-wrap: anywhere;
+}
+
 /* Styles and templates: a list of entries, each with its picture, what it is, and what can be done to it. */
 .ed-brand-list {
   display: grid;

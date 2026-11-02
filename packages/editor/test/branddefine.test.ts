@@ -12,11 +12,12 @@ import {
   revisionOf,
   type Scene,
   type Template,
+  type TemplateSlot,
 } from "@depthcue/core";
 import { describe, expect, it } from "vitest";
 import { STYLE_VALUES } from "../src/brandkit.ts";
 import { brandColors, brandId, logoStatement } from "../src/brandpanel.ts";
-import { slotRemove, slotRename, slotSet, templateSet, toWrite } from "../src/slotops.ts";
+import { slotAdd, slotRemove, slotRename, slotSet, templateSet, toWrite } from "../src/slotops.ts";
 import { draftOf, putOnOps } from "../src/templatesave.ts";
 
 const decks = resolve(import.meta.dirname, "../../../fixtures/decks");
@@ -137,21 +138,29 @@ describe("where each logo shows", () => {
 });
 
 describe("the template editor's operations", () => {
-  it("move one slot's frame, and take a property out with null, as one template.set core takes", () => {
+  it("move one slot's frame, and take a property out with null, as one slot.set core takes", () => {
     const doc = harbor();
     const ops = slotSet(doc, "chart-and-note", "note", {
       frame: { x: 64, y: 24, w: 26, h: 68 },
       style: null,
     });
-    expect(ops).toHaveLength(1);
+    expect(ops).toEqual([
+      {
+        op: "slot.set",
+        template: "chart-and-note",
+        id: "note",
+        set: { frame: { x: 64, y: 24, w: 26, h: 68 }, style: null },
+      },
+    ]);
     const note = templateOf(applied(doc, ops), "chart-and-note").slots.find((slot) => slot.id === "note");
     expect(note?.frame).toEqual({ x: 64, y: 24, w: 26, h: 68 });
     expect(note).not.toHaveProperty("style");
   });
 
-  it("rename a slot and every block in it, in one step", () => {
+  it("rename a slot with slot.rename, which takes every block in it along, in one step", () => {
     const doc = harbor();
     const ops = slotRename(doc, "chart-and-note", "note", "aside");
+    expect(ops).toEqual([{ op: "slot.rename", template: "chart-and-note", id: "note", to: "aside" }]);
     const after = applied(doc, ops);
     expect(templateOf(after, "chart-and-note").slots.map((slot) => slot.id)).toEqual([
       "title",
@@ -171,6 +180,9 @@ describe("the template editor's operations", () => {
     expect(typeof refused).toBe("string");
     expect(refused).toMatch(/^The note slot holds .*\(Growth\)\. Pin it where the slot was/);
 
+    expect(slotRemove(doc, "chart-and-note", "note", null)).toEqual([
+      { op: "slot.remove", template: "chart-and-note", id: "note", to: null },
+    ]);
     const pinned = applied(doc, slotRemove(doc, "chart-and-note", "note", null));
     const block = sceneOf(pinned, "growth").blocks.find((candidate) => candidate.id === "growth-note");
     expect(block?.slot).toBeUndefined();
@@ -193,6 +205,31 @@ describe("the template editor's operations", () => {
     );
     expect(templateSet(doc, "title", { name: "Mine" })).toBe('The brand has no template "title".');
     expect(slotSet(doc, "chart-and-note", "nowhere", {})).toBe('The template has no slot "nowhere".');
+    // The template's own fields change in the patch form, naming only what changes.
+    expect(templateSet(doc, "chart-and-note", { chrome: "minimal" })).toEqual([
+      { op: "template.set", id: "chart-and-note", set: { chrome: "minimal" } },
+    ]);
+  });
+
+  it("add a slot with slot.add, after another or at the end", () => {
+    const doc = harbor();
+    const slot: TemplateSlot = {
+      id: "aside",
+      role: "body",
+      accepts: ["body"],
+      hint: "A line under the chart",
+      frame: { x: 6, y: 86, w: 40, h: 8 },
+    };
+    expect(slotAdd(doc, "chart-and-note", slot, "title")).toEqual([
+      { op: "slot.add", template: "chart-and-note", slot, after: "title" },
+    ]);
+    const after = applied(doc, slotAdd(doc, "chart-and-note", slot));
+    expect(templateOf(after, "chart-and-note").slots.map((one) => one.id)).toEqual([
+      "title",
+      "chart",
+      "note",
+      "aside",
+    ]);
   });
 });
 

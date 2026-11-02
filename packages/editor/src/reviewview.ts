@@ -69,7 +69,28 @@ const BRAND_KEY: Record<string, string> = {
 };
 
 /** A change to the brand's files is one of the deck's: these name its parts, as `rowOf` says them. */
-export const BRAND_CHANGE = /^deck\/(brand|style:|template:)/;
+export const BRAND_CHANGE = /^deck\/(brand|style:|template:|file:)/;
+
+/** A file of the brand folder by its folder, as a row names it: "Font file Inter.woff2". */
+const FILE_KIND: Record<string, string> = { fonts: "Font file", logos: "Logo file", images: "Image file" };
+
+/**
+ * A font, a logo or an image added to the brand folder, replaced or taken out of it. Its value is the file's hash,
+ * which says nothing to a person, so the row says what happened to the file instead.
+ */
+function fileRow(change: Change, path: string): Pick<ChangeRow, "where" | "before" | "after"> {
+  const cut = path.indexOf("/");
+  return {
+    where: `${FILE_KIND[path.slice(0, cut)] ?? "Brand file"} ${path.slice(cut + 1)}`,
+    before: change.kind === "removed" ? `brand/${path}` : undefined,
+    after:
+      change.kind === "added"
+        ? `brand/${path}`
+        : change.kind === "removed"
+          ? undefined
+          : "Replaced with other bytes",
+  };
+}
 
 /** The name of a style or a template, from the value it had or has. */
 const nameIn = (change: Change, id: string): string => {
@@ -105,6 +126,9 @@ function brandWhere(change: Change): string | undefined {
 }
 
 export function rowOf(change: Change, doc: Doc): ChangeRow {
+  if (change.scope === "deck" && change.field?.startsWith("file:")) {
+    return { change, said: describeChange(change), ...fileRow(change, change.field.slice(5)) };
+  }
   const parts: string[] = [];
   const brand = change.scope === "deck" ? brandWhere(change) : undefined;
   if (brand !== undefined) {
