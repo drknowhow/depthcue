@@ -1114,6 +1114,52 @@ describe("depthcue render, on a deck with a brand", () => {
       expect((await renderer.render(scene, { screenshot: false })).diagnostics, scene).toEqual([]);
     }
   }, 60_000);
+
+  it("reports the sources that lie over the logo in a bottom corner, and nothing with the logo where it was", async () => {
+    const deck = copyDeck();
+    // Three long sources set over several lines along the foot, under content that stops well above them.
+    pairWithSources(deck, "foot-logo", 3, { count: 3, title: LONG_SOURCE });
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    const render = async (logo: { corner: string; size: string }) => {
+      editJson(join(deck, "brand", "brand.json"), (brand) => {
+        brand.chrome.logo = logo;
+      });
+      return renderer.render("foot-logo", { screenshot: false });
+    };
+
+    // The fixture's own logo, small in the top corner: nothing is under the sources.
+    expect((await render({ corner: "top-end", size: "s" })).diagnostics).toEqual([]);
+
+    const found = (await render({ corner: "bottom-end", size: "l" })).diagnostics.filter(
+      (d) => d.code === "sources-overlap",
+    );
+    expect(found.length, "the sources reach the logo at the foot").toBeGreaterThan(0);
+    expect(found[0]?.severity).toBe("error");
+    expect(found[0]?.message).toContain("overlap the brand's logo by");
+    // It says what to change in the logo, not only in the sources.
+    expect(found[0]?.fix).toContain("fewer or shorter sources");
+    expect(found[0]?.fix).toContain("make the logo smaller");
+    expect(found[0]?.fix).toContain("move it to a top corner");
+  }, 60_000);
+  it("reports the sources that run into a chart's own citation, and not the one source that sits under it", async () => {
+    const deck = copyDeck();
+    // The chart cites one source, and the foot lists it with two more: the foot grows to a second line, which comes up
+    // over the citation at the bottom of the chart.
+    editJson(join(deck, "scenes", "growth.json"), (scene) => {
+      scene.sources = [1, 2, 3].map((n) => ({
+        id: `src-${n}`,
+        title: `Harbor master's berth log, volume ${n}, July to September`,
+      }));
+      scene.blocks[1].sourceIds = ["src-1"];
+    });
+    const renderer = await openRenderer(deck);
+    closers.push(() => renderer.close());
+    const found = (await renderer.render("growth", { screenshot: false })).diagnostics.filter(
+      (d) => d.code === "sources-overlap",
+    );
+    expect(found.map((d) => d.message).join(" ")).toContain('overlap "growth-chart"');
+  }, 60_000);
   it("gives a logo only the room its height needs at the top: a slide that fits without the small logo fits with it", async () => {
     const withLogo = copyDeck("v0-4-brand", "with-logo");
     const without = copyDeck("v0-4-brand", "without-logo");

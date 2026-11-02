@@ -419,10 +419,10 @@ Found, not fixed (older than the brand work):
   content: the label and each source after it, a middle dot between them, as many lines as they take at the slide's
   width, growing upward from the foot. Under 640 px of container width they fall back to a block with a rule above.
   The line is out of the flow, so content that comes down to it is covered, and `depthcue render` says so with
-  `sources-overlap` (the lines of the sources over a block's text, picture, chart or panel, the footer or the slide
-  number, with the overlap in pixels and a fix). Two lines set one under the other, a citation and the sources below it,
-  share a few pixels of box without a letter touching a letter; a reach of less than two fifths of a line is not
-  reported.
+  `sources-overlap` (the lines of the sources over a block's text, picture, chart or panel, or over the brand's logo,
+  footer or slide number, with the overlap in pixels and a fix; a logo in a bottom corner is the usual one). A text
+  line's box is taller than its letters, so a reach of less than a third of a line, as a citation and the sources
+  set one under the other have, is not reported.
 - **Export.** `index.html` carries the `PageLook`; `fonts/<pair>.css` goes for the look's pair (a brand's faces load over
   it) and the files under `brand/` are copied only when the look uses them: its faces, the logo for the deck's theme and
   the images of the templates in use. The `.txt` license text beside a copied font file is copied with it, and the

@@ -294,10 +294,11 @@ export async function measureLayout(): Promise<LayoutMeasure> {
       for (const line of foot) {
         const across = Math.min(line.right, box.right) - Math.max(line.left, box.left);
         const down = Math.min(line.bottom, box.bottom) - Math.max(line.top, box.top);
-        // A text line's box is its font's full height, which is more than its letters fill: two lines set one under
-        // the other, as a citation and the sources below it are, share a few pixels of box without a letter touching
-        // a letter. A reach of less than two fifths of the line is that, and not one thing drawn over another.
-        const least = Math.max(2, 0.4 * Math.min(line.height, box.height));
+        // A text line's box is its font's full height, which is more than its letters fill: about a third of it is
+        // clear above the capitals and below the descenders. Two lines set one under the other, as a citation and the
+        // sources below it are, can share that much box without a letter touching a letter, so a reach of less than
+        // a third of the line is not one thing drawn over another.
+        const least = Math.max(2, 0.3 * Math.min(line.height, box.height));
         if (across > 2 && down > least && across * down > width * height) [width, height] = [across, down];
       }
       return width > 0 ? { width: round(width), height: round(height) } : undefined;
@@ -636,7 +637,11 @@ export function layoutDiagnostics(
       "sources-overlap",
       hit.id,
       `The sources along the foot of the slide overlap ${over} by ${hit.width}x${hit.height}px.`,
-      "Cite fewer or shorter sources, shorten what is above them, or pick a template whose slots end above the foot. The sources keep to the foot and the slots keep to the template's frames, so the content has to give way.",
+      hit.part === "logo"
+        ? "Cite fewer or shorter sources, make the logo smaller (chrome.logo.size in brand.json), or move it to a top corner. The sources run the width of the slide along the foot, so the logo has to give way."
+        : hit.part
+          ? "Cite fewer or shorter sources, or move the brand's footer and slide number off the foot. The sources run the width of the slide along the foot."
+          : "Cite fewer or shorter sources, shorten what is above them, or pick a template whose slots end above the foot. The sources keep to the foot and the slots keep to the template's frames, so the content has to give way.",
     );
   }
 
