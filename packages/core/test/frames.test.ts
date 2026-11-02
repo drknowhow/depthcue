@@ -637,14 +637,18 @@ describe("explaining a number outside its range", () => {
 });
 
 describe("the operations vocabulary", () => {
-  it("lists the two frame operations after the ten that came before and scene.upgrade of 0.3, then the brand's three", () => {
-    expect(OP_NAMES).toHaveLength(15);
-    expect(OP_NAMES.slice(-5)).toEqual([
+  it("lists the two frame operations after the ten that came before and scene.upgrade of 0.3, then the brand's three and the four of a slot", () => {
+    expect(OP_NAMES).toHaveLength(19);
+    expect(OP_NAMES.slice(-9)).toEqual([
       "block.frame",
       "block.unframe",
       "brand.set",
       "style.set",
       "template.set",
+      "slot.add",
+      "slot.set",
+      "slot.rename",
+      "slot.remove",
     ]);
   });
 });

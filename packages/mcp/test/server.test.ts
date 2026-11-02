@@ -6,7 +6,9 @@ import {
   COMMENTS_FILE,
   commentOpsSchema,
   deckSchema,
+  ID_PATTERN,
   OP_NAMES,
+  opsSchema,
   REVIEW_FILE,
   sceneSchema,
 } from "@depthcue/core";
@@ -81,8 +83,9 @@ describe("the tool list", () => {
     // makes 10.9 KB. Schema 0.3 adds scene.upgrade to the operations schema and, to deck_get and deck_apply, the
     // markup, the text fields, tables, charts and the deck's colors, 0.7 KB in all: a block is an open object in the
     // operations schema, so the descriptions are the only place an agent learns them. The sixth, deck_export, is
-    // 1.12 KB, about half of it the six arguments an export takes, and the five were at 11,999. Raise it only for a
-    // reason of that size.
+    // 1.12 KB, about half of it the six arguments an export takes, and the five were at 11,999. The four slot
+    // operations fit by leaving the id pattern and each operation's own type out of deck_apply's copy of the schema,
+    // which the core checks anyway (see below). Raise it only for a reason of that size.
     expect(JSON.stringify(tools).length).toBeLessThan(13200);
     for (const tool of tools) expect(tool.description?.length).toBeLessThan(1100);
   });
@@ -93,6 +96,31 @@ describe("the tool list", () => {
     expect(schema.required).toEqual(["ops", "base_rev"]);
     expect(schema.properties.ops.items.oneOf).toHaveLength(OP_NAMES.length);
     expect(schema.additionalProperties).toBe(false);
+  });
+
+  it("leaves out of deck_apply's operations only the id patterns and each operation's own type", async () => {
+    // The tool list cannot carry the id pattern 33 times. A key the operations schema gains shows up here too.
+    const apply = (await client.listTools()).tools.find((tool) => tool.name === "deck_apply");
+    const schema = apply?.inputSchema as any;
+    const { description: _description, ...ops } = schema.properties.ops;
+    const { $schema: _dialect, $id: _id, title: _title, ...whole } = opsSchema as Record<string, unknown>;
+    const expected = JSON.stringify(whole)
+      .replaceAll(`,"pattern":${JSON.stringify(ID_PATTERN)}`, "")
+      .replaceAll(
+        '{"type":"object","additionalProperties":false,"required":["op"',
+        '{"additionalProperties":false,"required":["op"',
+      );
+    expect(ops).toEqual(JSON.parse(expected));
+    expect(JSON.stringify(ops)).not.toContain(ID_PATTERN);
+  });
+
+  it("refuses a malformed id through deck_apply, saying what the pattern the tool list leaves out asks for", async () => {
+    const result = await call("deck_apply", {
+      base_rev: await revision(),
+      ops: [{ op: "scene.remove", id: "Not An Id" }],
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("Ids use lowercase letters, digits and hyphens, start with a letter");
   });
 
   it("lists in deck_apply the keys that deck.set and scene.set accept, as the schemas have them", async () => {

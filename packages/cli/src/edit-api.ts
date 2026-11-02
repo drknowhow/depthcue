@@ -17,11 +17,19 @@ import {
   reviewRevision,
   revisionOf,
 } from "@depthcue/core";
+import {
+  addBrandFile,
+  brandFileBody,
+  brandFileLimit,
+  isBrandFileKind,
+  removeBrandFile,
+  tooLarge,
+} from "./brand/files.ts";
 import { applyCommentsToFolder, readFolderComments } from "./comments-api.ts";
 import { openDeck } from "./deck-api.ts";
 import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
-import { loadDeckDir } from "./loader.ts";
+import { brandHashEntries, loadDeckDir } from "./loader.ts";
 import { loadReviewDir, recordPersonWrite, saveReviewDir } from "./review-file.ts";
 import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
 
@@ -119,8 +127,9 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
       rev: diskRev,
     });
   }
+  // The editor sends the JSON files; the brand files' hashes are the disk's, which the edit cannot change.
   const next = loadDoc({
-    text: files,
+    text: { ...files, ...brandHashEntries(onDisk) },
     assets: onDisk.assets,
     ...(onDisk.brandFiles ? { brandFiles: onDisk.brandFiles } : {}),
   });
@@ -244,6 +253,70 @@ async function uploadAsset(request: IncomingMessage, response: ServerResponse, u
     renameSync(temporary, target);
   }
   return send(response, 200, { asset: `assets/${name}`, kind, bytes: bytes.length });
+}
+
+/**
+ * Adds a font, a logo or a background image to the deck's brand folder. The body is the file's bytes; `kind` says which
+ * of the three it is for, `name` what it was called, and `replace=1` with `baseRev` replaces a file of the same name
+ * that has other bytes. The checks and the name it is stored under are brand/files.ts's, which `depthcue brand add`
+ * shares. A person's upload is theirs, so the review takes it in as reviewed.
+ */
+async function uploadBrandFile(
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
+  ctx: EditContext,
+) {
+  const kind = url.searchParams.get("kind");
+  if (!isBrandFileKind(kind)) {
+    return send(response, 400, {
+      ok: false,
+      error: "bad-request",
+      message: "Name the kind of brand file: kind=font, kind=logo or kind=image.",
+    });
+  }
+  let bytes: Buffer;
+  try {
+    bytes = await readBody(request, brandFileLimit(kind));
+  } catch (error) {
+    if (error instanceof TooLarge) return send(response, 413, brandFileBody(tooLarge(kind)));
+    return send(response, 400, { ok: false, error: "bad-request", message: "The upload was interrupted." });
+  }
+  const baseRev = url.searchParams.get("baseRev");
+  const outcome = await addBrandFile(
+    ctx.folder,
+    {
+      kind,
+      name: url.searchParams.get("name") ?? kind,
+      bytes: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length),
+      replace: url.searchParams.get("replace") === "1",
+      ...(baseRev === null ? {} : { baseRev }),
+    },
+    "person",
+  );
+  return send(response, outcome.ok ? 200 : outcome.status, brandFileBody(outcome));
+}
+
+/** Removes a brand file, named as brand.json names it, against the deck's revision. Refused while the brand names it. */
+async function removeBrandFileRoute(request: IncomingMessage, response: ServerResponse, ctx: EditContext) {
+  if (!String(request.headers["content-type"]).startsWith("application/json")) {
+    return send(response, 415, { ok: false, error: "bad-request", message: "Send application/json." });
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse((await readBody(request, 64 * 1024)).toString("utf8"));
+  } catch {
+    return send(response, 400, { ok: false, error: "bad-request", message: "The body is not valid JSON." });
+  }
+  if (!isRecord(body) || typeof body.path !== "string" || typeof body.baseRev !== "string") {
+    return send(response, 400, {
+      ok: false,
+      error: "bad-request",
+      message: 'Send { path: "fonts/<name>", baseRev: string }.',
+    });
+  }
+  const outcome = await removeBrandFile(ctx.folder, { path: body.path, baseRev: body.baseRev }, "person");
+  return send(response, outcome.ok ? 200 : outcome.status, brandFileBody(outcome));
 }
 
 export const MAX_CUES_BYTES = 256 * 1024;
@@ -562,6 +635,10 @@ export async function handleEditApi(
     else if (route === "/_depthcue/api/save" && request.method === "POST") await save(request, response, ctx);
     else if (route === "/_depthcue/api/asset" && request.method === "POST") {
       await uploadAsset(request, response, url, ctx);
+    } else if (route === "/_depthcue/api/brand-file" && request.method === "POST") {
+      await uploadBrandFile(request, response, url, ctx);
+    } else if (route === "/_depthcue/api/brand-file/remove" && request.method === "POST") {
+      await removeBrandFileRoute(request, response, ctx);
     } else if (route === "/_depthcue/api/cues" && request.method === "GET") loadCues(response, url, ctx);
     else if (route === "/_depthcue/api/cues" && request.method === "POST")
       await saveCues(request, response, ctx);

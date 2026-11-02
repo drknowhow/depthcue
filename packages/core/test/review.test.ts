@@ -638,7 +638,7 @@ describe("reverting a change", () => {
     // Nothing was run: the deck is as it was, and a change that is not one is refused as it is by `revertChanges`.
     expect(now.deck.title).toBe("T");
     expect(refused(revertOps(review, now, ["deck/titel"]) as ReviewFailure).unknown).toEqual(["deck/titel"]);
-    expect(revertOps(review, base, "all")).toEqual({ ok: true, ops: [], reverted: [] });
+    expect(revertOps(review, base, "all")).toEqual({ ok: true, ops: [], reverted: [], left: [] });
   });
 
   it("puts the order back with the fewest moves", () => {

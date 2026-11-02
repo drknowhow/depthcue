@@ -8,7 +8,7 @@ import {
 } from "@depthcue/cli/comments-api";
 import { applyToFolder, type Detail, getOutline, getScene, openDeck } from "@depthcue/cli/deck-api";
 import { openRenderer, type Renderer, type SceneRender } from "@depthcue/cli/render";
-import { commentOpsSchema, type Diagnostic, opsSchema } from "@depthcue/core";
+import { commentOpsSchema, type Diagnostic, ID_PATTERN, opsSchema } from "@depthcue/core";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
@@ -65,8 +65,33 @@ const exportArgs = z.strictObject({
   posters: z.boolean().default(false).describe("pptx: clips as poster and link."),
 });
 
-/** The ops schema without its document-level keys, so it can sit inside a tool schema. */
-const { $schema: _dialect, $id: _id, title: _title, ...opsBody } = opsSchema as Record<string, unknown>;
+/**
+ * The ops schema as deck_apply carries it: without its document-level keys, so it can sit inside a tool schema, and
+ * without what the tool list cannot afford to repeat on every turn and the core checks anyway when the operations run:
+ * the id pattern on every id (a wrong id is refused with the pattern in the message), and each operation's
+ * `type: "object"`, which `items` already says. Nothing else is left out (see the test that compares the two).
+ */
+export const opsForTools = (() => {
+  const {
+    $schema: _dialect,
+    $id: _id,
+    title: _title,
+    ...body
+  } = JSON.parse(JSON.stringify(opsSchema)) as {
+    items: { oneOf: Array<Record<string, unknown>> };
+  } & Record<string, unknown>;
+  const strip = (node: unknown): void => {
+    if (Array.isArray(node)) for (const item of node) strip(item);
+    else if (typeof node === "object" && node !== null) {
+      const record = node as Record<string, unknown>;
+      if (record.pattern === ID_PATTERN) delete record.pattern;
+      for (const value of Object.values(record)) strip(value);
+    }
+  };
+  strip(body.items);
+  for (const variant of body.items.oneOf) delete variant.type;
+  return body;
+})();
 
 /**
  * What an agent may do to comments. It reads and answers: add, reply, resolve and reopen. Deleting is for the person
@@ -148,12 +173,12 @@ const TOOLS = [
   {
     name: "deck_apply",
     description:
-      "Edit the deck: `ops` apply atomically against `base_rev`, the `rev` from deck_get or your last edit. A bad op or stale base_rev writes nothing; read again and redo. `set` replaces each key it names whole (send whole arrays); null deletes one. deck.set keys: title, language, theme, palette, fonts, modules. scene.set keys: title, layout, template, lead, summary, sources, reading, steps, notes. scene.add and block.add take a whole scene or block. `after`: sibling id, null first, omitted last. block.frame and block.unframe pin and unpin a block. scene.upgrade makes a scene 0.3, escaping its text. To swap layout and template: set one, null the other, block.set each `slot`. brand.set makes ({id, name}) or edits the brand, style.set and template.set write one by id; null removes it. Ids never change.",
+      "Edit the deck: `ops` apply atomically against `base_rev`, the `rev` from deck_get or your last edit. A bad op or stale base_rev writes nothing; read again and redo. `set` replaces each key it names whole (send whole arrays); null deletes one. deck.set keys: title, language, theme, palette, fonts, modules. scene.set keys: title, layout, template, lead, summary, sources, reading, steps, notes. scene.add and block.add take a whole scene or block. `after`: sibling id, null first, omitted last. block.frame and block.unframe pin and unpin a block. scene.upgrade makes a scene 0.3, escaping its text. To swap layout and template: set one, null the other, block.set each `slot`. brand.set makes ({id, name}) or edits the brand. style.set and template.set take one whole (null removes it) or `set`. slot.add/set/rename/remove edit a brand template's slots (not a built-in's); rename and remove (`to` a slot, null pins) move its blocks in every scene. Other ids never change.",
     inputSchema: {
       type: "object",
       properties: {
         base_rev: { type: "string", description: "The deck revision you read. Get it from deck_get." },
-        ops: { ...opsBody, description: "Operations, applied in order as one transaction." },
+        ops: { ...opsForTools, description: "Applied in order, all or none." },
       },
       required: ["ops", "base_rev"],
       additionalProperties: false,

@@ -754,6 +754,10 @@ export const OP_NAMES = [
   "brand.set",
   "style.set",
   "template.set",
+  "slot.add",
+  "slot.set",
+  "slot.rename",
+  "slot.remove",
 ] as const;
 
 const object = { type: "object" } as const;
@@ -779,7 +783,9 @@ const op = <Name extends string, Properties extends object, Required extends rea
 /**
  * The command vocabulary. Shapes are checked here; the values inside `scene`, `block`, `set`, `style` and `template`
  * are checked against their own schemas on the document the operations produce, so errors point at the real file and
- * path. `brand.set` with `set: null` takes the brand off the deck; `style.set` and `template.set` with null remove one.
+ * path. `brand.set` with `set: null` takes the brand off the deck; `style.set` and `template.set` with null remove one,
+ * and with `set` instead change some of its fields (one of the two, which the operation checks). The slot operations
+ * change one slot of a template of the brand's.
  */
 export const opsSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
@@ -805,8 +811,12 @@ export const opsSchema = {
       /* @__PURE__ */ op("block.frame", { scene: id, id, frame }, ["scene", "id", "frame"]),
       /* @__PURE__ */ op("block.unframe", { scene: id, id }, ["scene", "id"]),
       /* @__PURE__ */ op("brand.set", { set: whole }, ["set"]),
-      /* @__PURE__ */ op("style.set", { id, style: whole }, ["id", "style"]),
-      /* @__PURE__ */ op("template.set", { id, template: whole }, ["id", "template"]),
+      /* @__PURE__ */ op("style.set", { id, style: whole, set: changes }, ["id"]),
+      /* @__PURE__ */ op("template.set", { id, template: whole, set: changes }, ["id"]),
+      /* @__PURE__ */ op("slot.add", { template: id, slot: object, after: position }, ["template", "slot"]),
+      /* @__PURE__ */ op("slot.set", { template: id, id, set: changes }, ["template", "id", "set"]),
+      /* @__PURE__ */ op("slot.rename", { template: id, id, to: id }, ["template", "id", "to"]),
+      /* @__PURE__ */ op("slot.remove", { template: id, id, to: position }, ["template", "id"]),
     ],
   },
 } as const;

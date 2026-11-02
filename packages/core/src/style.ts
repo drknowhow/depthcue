@@ -101,6 +101,17 @@ export function contrastRatio(a: string, b: string): number {
   return (light + 0.05) / (dark + 0.05);
 }
 
+/**
+ * Which way `moving` can go for `need` against `fixed`: lighter if white would reach it, darker if black would, and when
+ * both would, the way that is nearer by contrast, which is the side of `fixed` it is on already. Undefined when neither
+ * would, so `fixed` has to change; no color is that far from both for a need under 21 ** 0.5, about 4.58.
+ */
+export function contrastWay(moving: string, fixed: string, need: number): "lighter" | "darker" | undefined {
+  const at = luminance(fixed) + 0.05;
+  const [up, down] = [need * at <= 1.05, at / need >= 0.05];
+  return up && (!down || luminance(moving) > at - 0.05) ? "lighter" : down ? "darker" : undefined;
+}
+
 /** A ratio as people read it, rounded down so that one just under the minimum never prints as the minimum. */
 const shown = (ratio: number): string => `${Math.floor(ratio * 100) / 100}:1`;
 
@@ -135,17 +146,21 @@ function contrastProblems(
       const theirs = own(against);
       const path = mine ?? theirs ?? fallback;
       if (path === undefined) continue;
-      const lighter = luminance(colors[color]) > luminance(colors[against]);
-      const fore = `make "${color}" ${lighter ? "lighter" : "darker"}`;
-      const back = `make "${against}" ${lighter ? "darker" : "lighter"}`;
+      const [hex, ground] = [colors[color].toUpperCase(), colors[against].toUpperCase()];
+      // Each color the way it can reach the minimum. One that cannot, either way, leaves it to the other color.
+      const [toFore, toBack] = [contrastWay(hex, ground, need), contrastWay(ground, hex, need)];
+      const fore = toFore && `make "${color}" ${toFore}`;
+      const back = toBack && `make "${against}" ${toBack}`;
       const both = (mine === undefined) === (theirs === undefined);
-      const change = both ? `${fore}, or ${back},` : mine ? fore : back;
+      const change = (
+        both && fore && back ? `${fore}, or ${back},` : ((mine ? fore : back) ?? fore ?? back)
+      ) as string;
       out.push({
         severity: "error",
         code: "palette-low-contrast",
         file,
         path,
-        message: `${where}"${color}" (${colors[color]}) on "${against}" (${colors[against]}) has a contrast of ${shown(ratio)}, under the ${need}:1 that ${color === "action" ? "even large text" : "text"} needs.`,
+        message: `${where}"${color}" (${hex}) on "${against}" (${ground}) has a contrast of ${shown(ratio)}, under the ${need}:1 that ${color === "action" ? "even large text" : "text"} needs.`,
         fix: `${change.charAt(0).toUpperCase()}${change.slice(1)} until the two reach ${need}:1.`,
       });
     }

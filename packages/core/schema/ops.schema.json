@@ -340,8 +340,7 @@
         "additionalProperties": false,
         "required": [
           "op",
-          "id",
-          "style"
+          "id"
         ],
         "properties": {
           "op": {
@@ -356,6 +355,10 @@
               "object",
               "null"
             ]
+          },
+          "set": {
+            "type": "object",
+            "minProperties": 1
           }
         }
       },
@@ -364,8 +367,7 @@
         "additionalProperties": false,
         "required": [
           "op",
-          "id",
-          "template"
+          "id"
         ],
         "properties": {
           "op": {
@@ -380,6 +382,121 @@
               "object",
               "null"
             ]
+          },
+          "set": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "template",
+          "slot"
+        ],
+        "properties": {
+          "op": {
+            "const": "slot.add"
+          },
+          "template": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "slot": {
+            "type": "object"
+          },
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "template",
+          "id",
+          "set"
+        ],
+        "properties": {
+          "op": {
+            "const": "slot.set"
+          },
+          "template": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "set": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "template",
+          "id",
+          "to"
+        ],
+        "properties": {
+          "op": {
+            "const": "slot.rename"
+          },
+          "template": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "template",
+          "id"
+        ],
+        "properties": {
+          "op": {
+            "const": "slot.remove"
+          },
+          "template": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
           }
         }
       }
