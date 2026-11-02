@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "0.4",
+  "id": "launch-day",
+  "title": "Launch day",
+  "template": "full-image",
+  "blocks": [
+    {
+      "id": "launch-day-picture",
+      "type": "image",
+      "asset": "assets/horizon.svg",
+      "alt": "The harbor mouth at low water, with a long mole, moored boats and a pale sun over the sea.",
+      "slot": "picture"
+    },
+    {
+      "id": "launch-day-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Launch day for the Shore Path Guide, at the harbor",
+      "slot": "title"
+    }
+  ]
+}

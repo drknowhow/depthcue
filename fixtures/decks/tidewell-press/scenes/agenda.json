@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "0.4",
+  "id": "agenda",
+  "title": "Today",
+  "template": "agenda",
+  "blocks": [
+    { "id": "agenda-title", "type": "text", "role": "heading", "text": "Today", "slot": "title" },
+    { "id": "agenda-1", "type": "text", "role": "body", "text": "1. The season in numbers", "slot": "items" },
+    { "id": "agenda-2", "type": "text", "role": "body", "text": "2. What readers told us", "slot": "items" },
+    { "id": "agenda-3", "type": "text", "role": "body", "text": "3. One title, closely", "slot": "items" },
+    {
+      "id": "agenda-4",
+      "type": "text",
+      "role": "body",
+      "text": "4. How we print the next ones",
+      "slot": "items"
+    },
+    {
+      "id": "agenda-5",
+      "type": "text",
+      "role": "body",
+      "text": "5. Decisions for the winter list",
+      "slot": "items"
+    }
+  ]
+}

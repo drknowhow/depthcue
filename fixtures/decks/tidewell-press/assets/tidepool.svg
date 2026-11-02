@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-label="A tide pool seen from above: rings of water around a pale stone">
+  <rect width="1200" height="800" fill="#F4EFE4"/>
+  <circle cx="600" cy="400" r="330" fill="#D6CCB8"/>
+  <circle cx="600" cy="400" r="290" fill="#86B2B0"/>
+  <circle cx="600" cy="400" r="230" fill="#5E9AA0"/>
+  <circle cx="600" cy="400" r="160" fill="#1D5C63"/>
+  <circle cx="600" cy="400" r="90" fill="#F1E6CF"/>
+  <g fill="none" stroke="#F4EFE4" stroke-width="4" stroke-linecap="round" opacity="0.6">
+    <path d="M380 400a220 220 0 0 1 120-196M700 604a220 220 0 0 0 120-196M470 560a180 180 0 0 1-70-110"/>
+  </g>
+  <g fill="#8A2E3B">
+    <circle cx="260" cy="190" r="18"/>
+    <circle cx="960" cy="610" r="24"/>
+    <circle cx="990" cy="210" r="12"/>
+  </g>
+</svg>

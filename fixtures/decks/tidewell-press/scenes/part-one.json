@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "0.4",
+  "id": "part-one",
+  "title": "The season in numbers",
+  "template": "section",
+  "blocks": [
+    { "id": "part-one-kicker", "type": "text", "role": "caption", "text": "Part one", "slot": "kicker" },
+    {
+      "id": "part-one-title",
+      "type": "text",
+      "role": "heading",
+      "text": "The season in numbers",
+      "slot": "title"
+    },
+    {
+      "id": "part-one-lede",
+      "type": "text",
+      "role": "body",
+      "text": "What sold, how fast, and where the first printings ran out.",
+      "slot": "lede"
+    }
+  ]
+}

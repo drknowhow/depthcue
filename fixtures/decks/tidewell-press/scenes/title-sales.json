@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "0.4",
+  "id": "title-sales",
+  "title": "Two small titles carried the season",
+  "template": "statement",
+  "summary": {
+    "id": "title-sales-claim",
+    "text": "Two small titles carried the season: the shore guide and the tide-table reprint.",
+    "evidenceIds": ["title-sales-chart"]
+  },
+  "blocks": [
+    {
+      "id": "title-sales-chart",
+      "type": "chart",
+      "kind": "bar",
+      "title": "Copies sold by title, August to October",
+      "columns": [{ "label": "Title" }, { "label": "Copies" }],
+      "rows": [["Shore", 4200], ["Tides", 3100], ["Ledger", 1400], ["Marsh", 900], ["Others", 1600]],
+      "sourceIds": ["sales-ledger"],
+      "slot": "evidence"
+    }
+  ],
+  "sources": [{ "id": "sales-ledger", "title": "Tidewell sales ledger, August to October" }]
+}
