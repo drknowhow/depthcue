@@ -60,11 +60,11 @@ export const touchesEdge = (box: Box, slide: { w: number; h: number }): boolean 
   box.x + box.w >= (1 - BLEED) * slide.w ||
   box.y + box.h >= (1 - BLEED) * slide.h;
 /**
- * Logo heights as a share of the slide's height that `s`, `m` and `l` stand for. Depthcue's player (step 3) decides what
- * the three sizes measure; these are the heights of the logos on the corners of the layouts that ship with PowerPoint,
- * and the nearest one wins. This is the one place to change if the sizes the player draws turn out to differ.
+ * Logo heights as a share of the slide's height that `s`, `m` and `l` stand for, as the player draws them: 2, 3 and
+ * 4.4 em (`.dc-logo` in `player.css`), where a scene's em is 2.5% of a 16:9 stage's height. The picture's share is
+ * matched to the nearest. A test reads `player.css` and fails, naming this table, when the two part.
  */
-const SIZE_HEIGHTS: Readonly<Record<Size, number>> = { s: 0.05, m: 0.08, l: 0.12 };
+export const SIZE_HEIGHTS: Readonly<Record<Size, number>> = { s: 0.05, m: 0.075, l: 0.11 };
 
 export function nearestSize(heightShare: number): Size {
   const sizes = Object.keys(SIZE_HEIGHTS) as Size[];

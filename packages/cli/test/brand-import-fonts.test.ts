@@ -115,11 +115,20 @@ describe("readFonts", () => {
     ["a brace", "A{B}"],
     ["an angle bracket", "A<B"],
     ["a backslash", "A\\B"],
+    ["a line break", "A\nB"],
+    ["a tab", "A\tB"],
+    ["a delete character", "A\u007fB"],
     ["more than 64 characters", "F".repeat(65)],
   ])("refuses a family name with %s, which a brand cannot carry", (_, typeface) => {
     const { fonts, notes } = readFonts({ major: { typeface }, minor: { typeface: "Calibri" } });
     expect(fonts?.display.family).toBe("Calibri");
     expect(notes[0]).toMatch(/^The theme's heading font ".*" has a name a brand cannot carry/);
+    // The name is shown quoted as JSON, so a control character in it is written as an escape.
+    expect(notes[0]).toContain(JSON.stringify(typeface).replaceAll("\u007f", "\\u007f"));
+    const controls = [...(notes[0] ?? "")].filter(
+      (char) => (char.codePointAt(0) ?? 0) < 0x20 || char === "\u007f",
+    );
+    expect(controls).toEqual([]);
   });
 
   it("accepts a 64-character family name", () => {
