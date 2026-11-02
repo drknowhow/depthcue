@@ -61,7 +61,12 @@ export default defineConfig({
       // only works if editor.js may export more than main.ts does. Strict signatures would move those modules to a third
       // file.
       preserveEntrySignatures: "allow-extension",
-      output: { chunkFileNames: "[name].js" },
+      // Every module main.ts reaches without a dynamic import stays in editor.js. Left alone, the bundler moves the
+      // modules editor.js shares with a lazy part into a common chunk that editor.js must fetch before it runs.
+      output: {
+        chunkFileNames: "[name].js",
+        codeSplitting: { groups: [{ name: "editor", tags: ["$initial"] }] },
+      },
     },
   },
 });

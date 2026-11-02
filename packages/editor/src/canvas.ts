@@ -13,12 +13,13 @@ import {
 import { applyLook, h, renderScene } from "@depthcue/player";
 import { createBuildBadges } from "./buildbadges.ts";
 import { CHART_LABEL_MAX, wireBars } from "./chart.ts";
-import { type CommentPins, type CommentSurface, createCommentPins } from "./commentpins.ts";
+import type { CommentPins } from "./commentpins.ts";
 import { type CueBook, clock } from "./cues.ts";
 import { problemOf } from "./fields.ts";
 import { createFrameDrag } from "./framedrag.ts";
 import { drawGhosts, type GhostHooks } from "./ghosts.ts";
 import type { Grid, Spot } from "./grid.ts";
+import { lazyPins, type PinSurface } from "./lazypins.ts";
 import { frameOver, NUDGE, NUDGE_BIG, type Rect, slideIn } from "./pin.ts";
 import { drawRich, flowOfDom, pastePlain, rangeIn, runFormat } from "./richtext.ts";
 import { createSlotDrag } from "./slotdrag.ts";
@@ -48,8 +49,10 @@ export interface CanvasHooks {
   cues?: CueBook;
   /** Adds to an area of the slide that holds nothing yet, which the slide draws a place for. */
   ghosts?: GhostHooks;
+  /** Draws the empty slots of a template scene, with their hints, into the slide as it is drawn. */
+  slots?(scene: Scene, view: HTMLElement): void;
   /** The comments beside the deck. With them the slide draws a pin for each comment of the scene. */
-  comments?: CommentSurface;
+  comments?: PinSurface;
   /** What Ctrl+Z and Ctrl+Y do in a field of the slide. Without it the session's own undo and redo. */
   history?: { undo(): void; redo(): void };
 }
@@ -629,7 +632,9 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
   });
 
   // After the badges, so a thread opens over them, and before the toolbar, which the editor adds to the overlay later.
-  const notes = hooks.comments && createCommentPins(session, element, overlay, nodeOf, hooks.comments);
+  const notes =
+    hooks.comments &&
+    lazyPins(session, element, overlay, nodeOf, hooks.comments, (text) => hooks.hint(text, true));
 
   function focusBlock(id: string) {
     const node = nodeOf(id);
@@ -736,7 +741,8 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
         changed,
       });
       wireCues(scene, view);
-      if (hooks.ghosts) drawGhosts(scene, view, hooks.ghosts);
+      if (scene.template !== undefined) hooks.slots?.(scene, view);
+      else if (hooks.ghosts) drawGhosts(scene, view, hooks.ghosts);
       // A block that goes into its slot, or out of it, slides there from where it stood. Only a slide with a pin on
       // either side of the change can have one, so any other is drawn without measuring.
       const before =

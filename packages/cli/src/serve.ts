@@ -3,7 +3,9 @@ import { createReadStream, existsSync, realpathSync, statSync, watch } from "nod
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
+import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import { COMMENTS_FILE, pageLook, REVIEW_FILE } from "@depthcue/core";
 import { type EditContext, handleEditApi } from "./edit-api.ts";
 import { createLayoutChecker, type LayoutChecker } from "./edit-layout.ts";
@@ -11,7 +13,7 @@ import { crossOrigin, isRecord, readBody, sameToken, send as sendJson, TooLarge 
 import { createLeaseRelay, RELAY_PREFIX } from "./lease-relay.ts";
 import { loadDeckDir } from "./loader.ts";
 import { lookOfFiles } from "./look.ts";
-import type { PptxOptions } from "./pptx/index.ts";
+import type { PptxOptions, PptxSummary } from "./pptx/index.ts";
 
 export interface ServeOptions {
   /** The deck folder: deck.json, scenes/, assets/. */
@@ -263,6 +265,87 @@ export const extValue = (name: string) =>
     (char) => `%${(char.codePointAt(0) as number).toString(16).toUpperCase()}`,
   );
 
+/** The header the export call sends its report in, for the editor's Download PowerPoint dialog. Same origin only. */
+export const REPORT_HEADER = "X-Depthcue-Report";
+/** The most the header holds, percent-encoded. Browsers cap a response's headers, so a longer report is shortened. */
+export const REPORT_LIMIT = 32 * 1024;
+
+/**
+ * The export's summary as the report header: without `out`, with each folder of this computer it could name (the
+ * deck, the player, the folder beside the deck, the home folder) put as a label, and percent-encoded JSON. One over
+ * `limit` keeps the counts and as many lines as fit, in the order the dialog lists them, and says it is `shortened`.
+ */
+export function reportHeader(
+  summary: PptxSummary,
+  roots: ReadonlyArray<readonly [string, string]>,
+  limit = REPORT_LIMIT,
+): string {
+  const quote = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const flags = process.platform === "win32" ? "gi" : "g";
+  // Longest first, so a file URL goes whole before the path inside it, and the deck before the folder it is in.
+  const patterns = roots
+    .filter(([root]) => root.length > 3)
+    .flatMap(([root, label]) =>
+      [
+        ...new Set([root, root.replaceAll("\\", "/"), root.replaceAll("/", "\\"), pathToFileURL(root).href]),
+      ].map((form) => [form, label] as const),
+    )
+    .sort(([a], [b]) => b.length - a.length)
+    .map(([form, label]) => [new RegExp(quote(form), flags), label] as const);
+  const clean = (value: unknown): unknown =>
+    typeof value === "string"
+      ? patterns.reduce((text, [pattern, label]) => text.replace(pattern, label), value)
+      : Array.isArray(value)
+        ? value.map(clean)
+        : isRecord(value)
+          ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clean(item)]))
+          : value;
+  const { out: _out, ...rest } = summary;
+  const report = clean(rest) as Omit<PptxSummary, "out">;
+  const encode = (value: unknown) => encodeURIComponent(JSON.stringify(value));
+  const whole = encode(report);
+  if (whole.length <= limit) return whole;
+  const counts = {
+    slides: report.slides.length,
+    left: report.slides.reduce((total, slide) => total + slide.left.length, 0),
+    deck: report.deck.length,
+    fonts: report.fonts.length,
+    warnings: report.warnings.length,
+  };
+  const short = {
+    ...report,
+    shortened: true,
+    counts,
+    slides: [] as PptxSummary["slides"],
+    deck: [] as string[],
+    fonts: [] as PptxSummary["fonts"],
+    warnings: [] as PptxSummary["warnings"],
+  };
+  const fits = () => encode(short).length <= limit;
+  /** Adds one item, or takes it back and says so when it does not fit. */
+  const add = <T>(list: T[], item: T) => {
+    list.push(item);
+    if (fits()) return true;
+    list.pop();
+    return false;
+  };
+  // Lines go in until the first that does not fit, so what is there is a beginning, never a selection.
+  const filled = () => {
+    for (const slide of report.slides) {
+      const kept = { ...slide, left: [] as string[] };
+      if (!add(short.slides, kept)) return;
+      for (const line of slide.left) if (!add(kept.left, line)) return;
+    }
+    for (const line of report.deck) if (!add(short.deck, line)) return;
+    for (const font of report.fonts) if (!add(short.fonts, font)) return;
+    for (const warning of report.warnings) if (!add(short.warnings, warning)) return;
+  };
+  filled();
+  return fits()
+    ? encode(short)
+    : encode({ shortened: true, counts, slides: [], deck: [], fonts: [], warnings: [] });
+}
+
 /** The export's switches from a request body: the CLI's, by the same names, each true or false. */
 function pptxOptions(body: unknown): PptxOptions | string {
   if (!isRecord(body)) return 'Send the options as a JSON object, such as {"notes": false}.';
@@ -331,6 +414,12 @@ async function pptxCall(
       "Content-Disposition": `attachment; filename="${ascii}.pptx"; filename*=UTF-8''${extValue(name)}.pptx`,
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
+      [REPORT_HEADER]: reportHeader(result.summary, [
+        [ctx.folder, "<deck>"],
+        [playerDir, "<player>"],
+        [dirname(ctx.folder), "<beside the deck>"],
+        [homedir(), "~"],
+      ]),
     });
     response.end(result.bytes);
   } catch (error) {

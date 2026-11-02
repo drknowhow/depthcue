@@ -419,6 +419,8 @@ describe("right-clicking a block", () => {
       "Pin where it is",
       "Move earlier",
       "-",
+      "Style>",
+      "-",
       "Comment",
     ]);
     const keys = (name: string) =>
@@ -442,7 +444,8 @@ describe("right-clicking a block", () => {
     const found = [...menu().querySelectorAll(".ed-menu-item")];
     expect(found.length).toBeGreaterThan(5);
     for (const node of found) {
-      expect(node.getAttribute("role")).toBe("menuitem");
+      // The choices of the Style submenu are the one kind of item that is checked or not.
+      expect(node.getAttribute("role")).toBe(node.closest(".ed-menu-sub") ? "menuitemradio" : "menuitem");
       expect(node.tagName).toBe("BUTTON");
       expect(node.getAttribute("tabindex")).toBe("-1");
     }
@@ -532,6 +535,7 @@ describe("right-clicking the empty slide", () => {
       "Add a claim",
       "-",
       "Layout>",
+      "Change template…",
       "Lead>",
       "-",
     ]);
@@ -601,6 +605,9 @@ describe("right-clicking a scene in the strip", () => {
     expect(menu().getAttribute("aria-label")).toBe("Scene menu");
     // The first scene has nowhere earlier to go. The demo deck is below 0.3, so it can start using text styles.
     expect(labels()).toEqual([
+      "Change template…",
+      "-",
+      "Add scene from a template…",
       "Duplicate",
       "Delete",
       "-",
@@ -818,8 +825,9 @@ describe("using the menu from the keyboard", () => {
     const node = blockNode(PICTURE);
     node.focus();
     press(node, "F10", { shiftKey: true });
-    // The picture is no longer the last block, so it can move either way.
+    // The picture is no longer the last block, so it can move either way. Style and Comment are below the moves.
     press(document.activeElement as Element, "End");
+    press(document.activeElement as Element, "ArrowUp");
     press(document.activeElement as Element, "ArrowUp");
     press(document.activeElement as Element, "ArrowUp");
     expect(focused()).toBe("Move earlier");
@@ -959,7 +967,7 @@ describe("closing without choosing", () => {
     expect(labels()).toContain("Duplicate");
     context(row("opening"));
     expect(labels()).not.toContain("Cut");
-    expect(menu().querySelectorAll(".ed-menu-item")).toHaveLength(5);
+    expect(menu().querySelectorAll(".ed-menu-item")).toHaveLength(7);
   });
 });
 

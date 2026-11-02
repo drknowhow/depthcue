@@ -894,6 +894,151 @@ Found, not fixed (older than the brand work):
   of it and of the logo sizes (`brand-import-fonts.test.ts`, `brand-import-logo.test.ts`). `README.md` still says
   five MCP tools, for step 9.
 
+## Step 7 record: the editor uses a brand
+
+- **Room first.** The editor's script was 92,152 of 92,160 bytes. Four parts most sessions never open are now chunks
+  fetched on first use, each with its own row: the review drawer and its view (`reviewdrawer.js`, 1,982 of 3,072), the
+  storyboard (`storyboard.js`, 2,555 of 4,096), the comment pins and their thread (`commentpins.js`, 3,896 of 5,120)
+  and the cue editor (`cuespanel.js`, 1,473 of 2,560). `packages/editor/src/lazy.ts` holds them: a part is fetched
+  once, `mountEditor` takes others in its place so a test can hold one back or make it fail, a fetch that fails says
+  "Could not load ... Check that depthcue edit is still running, then try again." where the person is looking, the
+  editor goes on, and the next use tries again. What the person typed or chose is read after the part is in. Hide
+  pins chosen before the pins part arrives holds once it does. The review button says it is busy (`aria-busy`) while
+  its part loads, and a second press then does not cancel the first, so the drawer opens. The editor script is now
+  88,664 with all of step 7, which leaves 3,496 bytes, and 424 above the 3 KB step 8 needs.
+  `retemplate.ts` stays in the script: core's index exports it, and a chunk group that pulled it out pulled its
+  imports with it.
+- **The brand part.** Everything below is `branduse.js` (4,827 of 6,144), fetched with Depthcue's own templates and
+  styles, since the picker, the slots and the styles list them; the part fails when they do not arrive. The script
+  keeps only the hooks. It is fetched the first time a template scene is drawn (for its slots), a block's toolbar
+  draws its Style chip, a right-click menu offers Style, or the picker or Change template is opened. A deck with no
+  template scene opens without it. When it arrives after a block's toolbar is drawn, only the chip that waited for it
+  is drawn again, so a field the person is typing in keeps its text and selection, and the cue count beside it is
+  drawn again too. A right-click before it arrives shows "Loading the styles…" in the Style submenu, then fills the
+  menu in place, keeping the open submenu and the focused item; a failed fetch says so there once and the next
+  right-click tries again.
+- **Template picker.** "From a template…" in the strip, the scene menu and the command palette ("Add scene from a
+  template…"). A modal dialog named "Add a scene" lists the brand's templates under the brand's name, then "Built in"
+  (none when the brand sets `hideBuiltIn`; one the brand replaces is listed once, as the brand's), then the three
+  layouts. Each is a button named by its name and described by its description (`aria-labelledby`,
+  `aria-describedby`), with a picture of the slide the player draws in the deck's look, with the template's
+  background, chrome and its slots' hints. Arrow keys, Home and End move through them, Escape closes. A choice adds the
+  scene with `scene.add` after the scene on show and goes to it. The new scene starts with one text, in the first slot
+  that takes a heading, else one that takes text; a template with no slot for text gets it pinned near the top. A
+  refusal is said in the dialog, which stays open. Opening a dialog that is already open replaces it, and closing the
+  new one hands focus back where the first one would have.
+- **Change template.** On a template scene the scene bar shows the template's name in place of the three layout
+  buttons, so the bar is no wider, and pressing it opens the dialog. On a layout scene it is "Change template or
+  layout…" in the Scene popover. It is also "Change template…" on the slide's and the scene's right-click menus and in
+  the palette, and a layout chosen for a template scene from the right-click menu or the palette opens the dialog at
+  that layout instead of moving blocks unseen. The dialog lists every template and layout, the current one marked
+  "Now". Choosing one shows the slide as it will be, drawn by the player, under "Where each block goes" a line per
+  block that a slot takes, and, under "Fits no slot", each block that fits none by name, with what happens to it: a
+  block stays on the slide, pinned where it is now (its measured frame), to move or delete. A block is listed under
+  one of the two, never both. The claim goes as core moves it, never as a block: it stays
+  the scene's claim with its evidence links in a template with a claim slot; a layout that does not draw it leaves it
+  in the scene, and the dialog says it will not show; a template with no claim slot is refused by core
+  (`claim-without-slot`), so the change takes the claim off as the editor's own Remove does (out of the build order
+  too), and the dialog names the claim, each block it links to as evidence, and the templates that would keep it
+  ("To keep it, choose Statement, … or the layout Claim and evidence."). Required slots nothing fills are listed
+  under "Left empty", and a refusal about one block, such as a contrast, names the block first. The operations are
+  core's `retemplate`, the pins and that removal, applied as one step of Undo, so `depthcue apply` given them writes
+  the same files.
+- **Empty slots.** In the editor's canvas only, each empty slot of a template scene is a box at the slot's frame with
+  its hint, "Required" on a required one, and an Add button (a menu of kinds when the slot takes more than one; a clip
+  slot is off until the deck has a video). The boxes lie under the blocks (`z-index: -1` in an isolated scene), so a
+  block pinned over an empty slot, or a text inside a slide-sized picture slot, takes the click and the slot takes the
+  rest. A claim slot counts as filled when the scene has a claim. The add is `block.add` with the slot, as an agent
+  writes it. Hints come from the deck's templates and Depthcue's own (`templatesOf`), never from `/look.json`. The
+  strip's pictures, present mode, the exported page and the PowerPoint file never draw them, since only the canvas
+  calls the hook.
+- **Style menu.** The Style chip of a block's toolbar has the deck's styles for the block's kind after the text's own
+  size, alignment and color, so the late list never moves a control the person is aiming at. The block's right-click
+  menu has a Style submenu. Both list No style and each style for the kind (a brand override once; no Kicker on a
+  quote), each drawn by the player as a sample "Aa" in that style, without the brand's chrome, the current one
+  checked, and write `block.set` with `style`. A picture is 112 px wide, and its slide is that size too, so the sample
+  is drawn at its true size and not as a whole slide scaled down: 13 CSS px times the style's own size, never under 12,
+  the same for every kind, with the block across the picture and the slide's color round it, so the fill, edge,
+  border, radius, face and tone show. In Chrome each picture's sample is measured at 12 px or more, its block at more
+  than 80% of the picture's width and inside it, and No style, Callout, Quiet panel and Pull quote draw differently. After a choice the
+  checks move in place, so focus stays on the item chosen; the pictures are drawn again only when the kind, the
+  block's own color or the look they are drawn from changes, never while the person types. Once Depthcue's own are in,
+  a block whose kind has no style gets no list. Given several blocks, `styleOps` styles each one the style is for and
+  names the rest; the editor has no multiple selection yet, so it passes the one chosen block.
+- **Lock.** A brand with `lock` turns off the Colors and Fonts controls of the Deck panel, each with the reason core's
+  `checkBrandLock` gives for the refusal ("The brand "harbor" is locked, so the deck cannot set its own colors.").
+- **Chrome.** The canvas already drew the brand's chrome after step 3, so this step adds the tests: nothing in it can
+  be chosen, focused or dragged, a click on the footer chooses nothing or the block under it, and a drag snaps to the
+  slide's safe margin under the footer, not to the chrome (snap targets are the slide's lines and the scene's blocks).
+- **Fixed on the way: a branded deck that uses one of Depthcue's own styles did not open.** In a real browser the
+  editor read the deck, waited for the brand checks, read it again, and stopped: only that second read reaches a style
+  or template and finds Depthcue's own missing. `v0-4-brand` (its quote is a `callout`) said "The deck on disk does not
+  pass validation." The store now waits for each chunk a read asks for, at most two, on open, on reload and on draft
+  recovery (`store.ts`; `store-two-chunks.test.ts` fails with the old code). The unit tests had not caught it because
+  they run core's modules, which wait for nothing.
+- **Same files as an agent.** `packages/cli/test/editor-brand-use-e2e.test.ts`, in Chrome on copies of `v0-4-brand` and
+  `v0-3`: a scene from the picker, Change template with a block that fits no slot, a block added from an empty slot,
+  and a style from the menu each write the deck and scene files `depthcue apply` writes for the same operations,
+  byte for byte (`review.json` aside). A deck with no brand gets "Built in" and "Layouts", drawn in its own action
+  color and font pair, and its blocks get Depthcue's own styles. `v0-3` opened, browsed, with the picker, the Style
+  menu and Change template opened and closed, is byte for byte the same with the same file times. The brand part and
+  the built-ins chunk are each refused once (the message shows, the editor goes on, the next try opens the picker),
+  and so is the storyboard.
+- **Download PowerPoint.** "Download PowerPoint…" at the foot of the Deck popover and in the palette opens a dialog
+  from `pptxdownload.js` (2,738 of 4,096), a part of its own; the main script holds the button, the command and the
+  part's hook (185 bytes). The dialog offers "Each slide as one picture" (picture mode, off) and "Speaker notes" (on,
+  "Anyone with the file can read them."), and calls step 6's `POST /_depthcue/api/export.pptx` with the editor's
+  token and those two switches. The file is made from the deck on disk, so edits the autosave has not written yet are
+  saved first; a save that fails, or files that changed on disk, are said and nothing is sent. While the file is made
+  the dialog shows a progress bar and the seconds it has taken, Download is off and busy, and Cancel stops waiting.
+  The browser saves the file under the server's name (its RFC 8187 `filename*`, so `<deck folder>.pptx`), and the
+  dialog stays open with "Saved <name>, <size>, among your browser's downloads.", Save it again, and the export's
+  report: what has no PowerPoint form, slide by slide (overflow past an edge is one of those lines), the lines for
+  every slide, the fonts in the file and the ones a viewer needs installed, and the warnings. A refusal is said in
+  the dialog in plain words: the server's own message, the deck's first three errors under a 422, "This depthcue
+  edit cannot make PowerPoint files. …" for a server without the call, and "The editor could not reach the server.
+  …" when it is gone. The editor writes nothing into the deck folder. In Chrome (`editor-brand-use-e2e.test.ts`):
+  the Harbor deck's download equals `depthcue export --format pptx` beside the deck byte for byte, with the deck
+  folder unchanged, file times included; picture mode with an edit typed just before it equals `--pictures` part for
+  part (see Risks); and a refusal stays readable in the open dialog.
+- **The report comes in a header.** Step 6's call sent the file and nothing else, so the export call in `serve.ts`
+  (outside this step's files; the coordinator approved the change) now sends the summary `renderPptx` returns in an
+  `X-Depthcue-Report` header: percent-encoded JSON, without `out`, and with no folder of this computer in it. The
+  deck's folder is written `<deck>`, the player's `<player>`, the folder beside the deck `<beside the deck>` and the
+  home folder `~`, in either slash, as a file URL and, on Windows, in any case. A report over 32 KB encoded keeps the
+  counts and as many lines as fit, in the order the dialog lists them, with `shortened: true`, and the dialog then says
+  "The full report is longer; run depthcue export --json to see all of it." The call stays same-origin: no CORS header
+  is added, and it still needs the editor's token. A server without the header gets "This server sent no report with
+  the file." `editor-brand-use-report.test.ts` checks the header against the summary, the labels (a font error that
+  quotes a file's full path, a file URL, a path in upper case), a report of 400 slides cut to the limit and filled to
+  within one line, and the live call: the header, no `access-control-*` header and no path. In Chrome the dialog lists
+  every embedded family, every slide with something left out and each of its lines, as `depthcue export --json` gives
+  them; the screenshot `download` is that.
+- **Decisions.** The new scene goes after the scene on show; its first block is the template's heading slot's; the
+  template's name takes the layout buttons' place in the scene bar, so the top bar keeps its width at 1024 (beside
+  them it left the deck title 14 px wide); a layout chosen for a template scene opens Change template; the
+  scene menu starts with Change template; a chosen block's Style chip fetches the brand part (the second fetch that
+  `selectBlock` made is gone); the styles come after the text's own controls in the chip; No style is drawn as a plain
+  block; a claim a new template cannot hold is taken off, named with its links, rather than the change refused;
+  Download PowerPoint lives in the Deck popover and the palette (the top bar has no room at 1024), offers speaker
+  notes beside picture mode, saves unsaved edits before it asks, and stays open after the download with the report.
+- **Review fixes (of 812e364).** Each of the above that a review asked for has a test that fails on 812e364: two
+  real-browser clicks on a block over an empty slot (a pinned chart, a title in a slide-sized picture slot), the
+  claim's ops against core's and its links in the words, Left empty, the refusal's block name, focus in the Style list
+  after a choice, no redraw while typing, the right-click loading state, two presses on Review, the replaced dialog's
+  return, the picker's names, and the four changes a mutation pass found unguarded (Hide pins before the part, the
+  claim filling its slot, Kicker on a quote, the late cue count).
+- **Second review fixes.** The style pictures were a whole slide scaled to 80 px with the text about 5 px high, so
+  Callout, Card, Pull quote and Quiet panel could not be told apart; they are now drawn at their true size (Style menu,
+  above). Change template listed a block that fits no slot twice, once as pinned over the slide; it is now under
+  "Fits no slot" only. The report is sent (above).
+- **Risks.** Harbor's Quiet panel has Card's values, so their pictures are the same. Harbor has only a light logo, so on ink its word mark is dark on dark (the player's, from
+  step 3). Step 8 has 424 bytes of the main script beyond its 3 KB. Picture mode is not byte-stable: two exports of
+  `v0-3` with `--pictures`, one from the editor while its own Chrome ran, gave different PNGs for the chart slide
+  (same parts otherwise, the pictures alike to the eye); three CLI runs alone gave the same bytes. Two tests this step
+  does not change fail now and then in a full run: `edit-e2e`'s "moves freely while Alt is held", as step 6's record
+  describes, and `chart-module-e2e`'s "does not move the page when it hydrates" (2 px, about one run in five alone).
+
 ## Step 8a record: brand operations and uploads
 
 - **Slot operations.** `slot.add` (after a slot, or last), `slot.set` (a patch; null removes a field, `id` is refused
@@ -959,7 +1104,7 @@ Found, not fixed (older than the brand work):
   pattern on every id and each operation's `type: "object"`, which `items` says; the core refuses a bad id with what
   an id is, and a test compares the copy with the schema. The tool list is 13,142 of its 13,200 characters,
   `deck_apply`'s description 971 of 1,100.
-- **Sizes.** The editor's main script gains 1,277 bytes brotli from core (92,152 to 93,429 on step 6's editor), of
+- **Sizes.** The editor's main script gains 1,366 bytes brotli from core (88,664 to 90,030 on step 7's editor), of
   the 1,500 the brief allows; core runtime 44.2 KB gzip. No budget row moved.
 - **Outside the brief's files.** `cli/src/loader.ts` (hashing), `cli/src/brand/use.ts` (brand use now records the
   files it copies, so its own save is not stale), `cli/src/index.ts` (the flags of brand add and remove, and revert's

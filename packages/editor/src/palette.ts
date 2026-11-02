@@ -32,6 +32,8 @@ export interface Command {
   disabled?: string;
   /** Marks the choice that is in force, among the commands of a menu of choices. */
   checked?: boolean;
+  /** A small picture the menu draws before the label, such as a style's preview. */
+  icon?: (() => Node | undefined) | undefined;
   run(): void;
 }
 
