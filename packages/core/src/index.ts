@@ -163,6 +163,8 @@ export {
   LEASE_RUN_LIMIT_MS,
   REVOKE_TEXT,
 } from "./lease.ts";
+export type { LinkKind, LinkTarget } from "./links.ts";
+export { checkLinks, checkSceneLinks, linkUses, parseTarget, TARGET_RULE } from "./links.ts";
 export type { LookSource } from "./look.ts";
 export { lookOf, pageLook } from "./look.ts";
 export { checkReferences } from "./references.ts";

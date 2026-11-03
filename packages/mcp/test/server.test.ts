@@ -85,8 +85,9 @@ describe("the tool list", () => {
     // operations schema, so the descriptions are the only place an agent learns them. The sixth, deck_export, is
     // 1.12 KB, about half of it the six arguments an export takes, and the five were at 11,999. The four slot
     // operations fit by leaving the id pattern and each operation's own type out of deck_apply's copy of the schema,
-    // which the core checks anyway (see below). Raise it only for a reason of that size.
-    expect(JSON.stringify(tools).length).toBeLessThan(13200);
+    // which the core checks anyway (see below). Schema 0.5 adds the three link operations, 0.5 KB with their sentence.
+    // Raise it only for a reason of that size.
+    expect(JSON.stringify(tools).length).toBeLessThan(13800);
     for (const tool of tools) expect(tool.description?.length).toBeLessThan(1100);
   });
 
@@ -133,9 +134,10 @@ describe("the tool list", () => {
       new RegExp(`${op} keys: ([a-z, ]+)\\.`).exec(description ?? "")?.[1]?.split(", ") ?? [];
     const settable = (schema: { properties: object }, apart: string[]) =>
       Object.keys(schema.properties).filter((key) => !apart.includes(key));
-    // A deck's "brand" is written by brand.set, together with brand/brand.json, never by deck.set.
+    // A deck's "brand" is written by brand.set, together with brand/brand.json, and its "links" by the link
+    // operations, never by deck.set.
     expect(listed("deck.set").sort(), "update the deck.set keys in the deck_apply description").toEqual(
-      settable(deckSchema, ["$schema", "schemaVersion", "id", "scenes", "brand"]).sort(),
+      settable(deckSchema, ["$schema", "schemaVersion", "id", "scenes", "brand", "links"]).sort(),
     );
     expect(listed("scene.set").sort(), "update the scene.set keys in the deck_apply description").toEqual(
       settable(sceneSchema, ["$schema", "schemaVersion", "id", "blocks"]).sort(),

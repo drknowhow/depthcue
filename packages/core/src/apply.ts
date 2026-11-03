@@ -3,6 +3,7 @@ import { closest, explain } from "./diagnostics.ts";
 import { checkChanges, type Doc, revisionOf, sceneRevision } from "./doc.ts";
 import type { Frame } from "./frames.ts";
 import { escapeText } from "./inline.ts";
+import { linkUses, relink } from "./links.ts";
 import { own } from "./own.ts";
 import { canonicalJson } from "./revision.ts";
 import { ID_PATTERN, opsSchema, SCHEMA_VERSION } from "./schema.ts";
@@ -30,6 +31,9 @@ export type BrandChanges = Nullable<Omit<Brand, "schemaVersion" | "styles" | "$s
 /** A template to write. Its `id` and `schemaVersion` may be left out: the operation's id and 0.4. */
 export type NewTemplate = Omit<Template, "schemaVersion" | "id"> &
   Partial<Pick<Template, "schemaVersion" | "id">>;
+export type Link = NonNullable<Deck["links"]>[number];
+/** Fields of a link to change; its id never does. */
+export type LinkChanges = Nullable<Omit<Link, "id">>;
 /** Any block property except `id` and `type`; the result is checked against the block's own shape. */
 export type BlockChanges = Record<string, unknown>;
 /** A scene to add. `schemaVersion` may be left out. */
@@ -70,7 +74,13 @@ export type Op =
    * Removes a slot. Refused while a block is in it, unless `to` says where the blocks go: another slot, or null for out
    * of the slots, pinned where the slot was (a pinned block keeps its frame).
    */
-  | { op: "slot.remove"; template: string; id: string; to?: string | null };
+  | { op: "slot.remove"; template: string; id: string; to?: string | null }
+  /** Adds a link to the deck's library, at the end unless `after` says where. */
+  | { op: "link.add"; link: Link; after?: string | null }
+  /** Changes some fields of a link; every block and source that uses it follows. */
+  | { op: "link.set"; id: string; set: LinkChanges }
+  /** Removes a link. Refused while a block or a source uses it, unless `to` names the link they use instead. */
+  | { op: "link.remove"; id: string; to?: string };
 
 export type ApplyFailureCode =
   /** `baseRev` is not the document's current revision. Read it again and redo the edit. */
@@ -135,6 +145,7 @@ const REDIRECTS: Record<string, string> = {
   type: "A block's type never changes. Add a new block and remove the old one.",
   brand: 'Use brand.set: it writes brand/brand.json and the deck\'s "brand" together.',
   styles: "Use style.set, one style at a time.",
+  links: "Use link.add, link.set and link.remove.",
 };
 /** The properties `brand.set` may write. */
 export const BRAND_KEYS = [
@@ -586,6 +597,63 @@ function step(work: Work, op: Op, index: number): Diagnostic | undefined {
       blocksIn(work, template.id, op.id, (block) =>
         op.to ? { ...block, slot: op.to } : patch(block, { slot: null, frame: block.frame ?? gone.frame }),
       );
+      return undefined;
+    }
+    case "link.add": {
+      const links = place(index, "link", work.deck.links ?? [], op.link, op.after);
+      if (isProblem(links)) return links;
+      work.deck = { ...work.deck, links };
+      return undefined;
+    }
+    case "link.set": {
+      const links = work.deck.links ?? [];
+      const found = links.find((entry) => entry.id === op.id);
+      if (!found)
+        return unknownId(
+          index,
+          "/id",
+          op.id,
+          "link",
+          links.map((entry) => entry.id),
+        );
+      const bad = forbid(index, op.set, ["id"], "link.set");
+      if (bad) return bad;
+      work.deck = {
+        ...work.deck,
+        links: links.map((entry) => (entry === found ? patch(entry, op.set) : entry)),
+      };
+      return undefined;
+    }
+    case "link.remove": {
+      const links = work.deck.links ?? [];
+      const ids = links.map((entry) => entry.id);
+      if (!ids.includes(op.id)) return unknownId(index, "/id", op.id, "link", ids);
+      const used = Object.entries(work.scenes).filter(([, scene]) =>
+        linkUses(scene).some((use) => use.id === op.id),
+      );
+      if (op.to !== undefined) {
+        if (op.to === op.id || !ids.includes(op.to))
+          return op.to === op.id
+            ? problem(index, "/to", "bad-link-replacement", `"${op.id}" cannot replace itself.`)
+            : unknownId(
+                index,
+                "/to",
+                op.to,
+                "link",
+                ids.filter((id) => id !== op.id),
+              );
+        for (const [sceneId, scene] of used) work.scenes[sceneId] = relink(scene, op.id, op.to);
+      } else if (used.length > 0) {
+        return problem(
+          index,
+          "/id",
+          "link-in-use",
+          `"${op.id}" is used in ${used.map(([sceneId]) => sceneId).join(", ")}.`,
+          'Say which link they use instead with "to", or change them first.',
+        );
+      }
+      const rest = links.filter((entry) => entry.id !== op.id);
+      work.deck = patch(work.deck, { links: rest.length > 0 ? rest : null });
       return undefined;
     }
     case "deck.set": {

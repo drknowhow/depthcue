@@ -22,7 +22,8 @@
         "0.1",
         "0.2",
         "0.3",
-        "0.4"
+        "0.4",
+        "0.5"
       ]
     },
     "id": {
@@ -108,6 +109,40 @@
       "uniqueItems": true,
       "minItems": 1,
       "maxItems": 200
+    },
+    "links": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "target"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        }
+      }
     },
     "modules": {
       "type": "object",

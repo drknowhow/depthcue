@@ -7,13 +7,14 @@
  * `fonts`, a text block's `tone`, `size` and `align`, the `table` and `chart` blocks, and reads the text of text
  * blocks as markup (see inline.ts). 0.4 adds the deck's `brand`, a scene's `template`, a block's `slot` and `style`,
  * and the brand and template files; it reads text as 0.3 does. A file is read as the version it declares, so the text
- * of an older scene stays exactly as written.
+ * of an older scene stays exactly as written. 0.5 adds the deck's `links` and a block's or a source's `link`; it reads
+ * text as 0.4 does.
  */
-export const SCHEMA_VERSIONS = ["0.1", "0.2", "0.3", "0.4"] as const;
+export const SCHEMA_VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5"] as const;
 /** The version the tool writes into a new scene. 0.4 reads exactly as 0.3, so a new scene shows the same either way. */
 export const SCHEMA_VERSION = "0.4" as const;
 /** The versions a brand or a template file may declare: both came with 0.4. A test keeps this the tail of the list above. */
-export const BRAND_SCHEMA_VERSIONS = ["0.4"] as const;
+export const BRAND_SCHEMA_VERSIONS = ["0.4", "0.5"] as const;
 
 export const ID_PATTERN = "^[a-z][a-z0-9-]{1,63}$";
 export const ASSET_PATTERN = "^assets/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*$";
@@ -32,6 +33,8 @@ export const IMAGE_FILE_PATTERN =
 export const FAMILY_PATTERN = "^[^\"'\\\\;{}<>\\x00-\\x1f\\x7f]+$";
 export const LANGUAGE_PATTERN = "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$";
 export const URL_PATTERN = "^https?://[^\\s]+$";
+/** How big a deck's link library may be. */
+export const LINK_LIMITS = { links: 200, title: 160, target: 600, note: 300 } as const;
 /** What a deck says about a module: `off`, or the version it needs, such as `1` or `1.2`. */
 export const MODULE_SETTING_PATTERN = "^(off|[0-9]{1,4}(\\.[0-9]{1,4}){0,2})$";
 /** A color in a deck's palette: `#` and six hex digits. */
@@ -215,6 +218,7 @@ const textBlock = {
     frame,
     slot: id,
     style: id,
+    link: id,
   },
   allOf: [
     {
@@ -246,6 +250,7 @@ const imageBlock = {
     frame,
     slot: id,
     style: id,
+    link: id,
   },
 } as const;
 
@@ -276,6 +281,7 @@ const barChartBlock = {
     frame,
     slot: id,
     style: id,
+    link: id,
   },
 } as const;
 
@@ -293,6 +299,7 @@ const clipBlock = {
     frame,
     slot: id,
     style: id,
+    link: id,
   },
 } as const;
 
@@ -336,6 +343,7 @@ const tableBlock = {
     frame,
     slot: id,
     style: id,
+    link: id,
   },
 } as const;
 
@@ -370,6 +378,7 @@ const chartBlock = {
     frame,
     slot: id,
     style: id,
+    link: id,
   },
 } as const;
 
@@ -382,6 +391,7 @@ const source = {
     title: { type: "string", minLength: 1, maxLength: 160 },
     asset: assetPath,
     url: { type: "string", pattern: URL_PATTERN, maxLength: 500 },
+    link: id,
   },
 } as const;
 
@@ -465,6 +475,23 @@ const palette = {
   },
 } as const;
 
+/**
+ * A link in the deck's library. Its `target` is one text in a form `parseTarget` reads: an address (`https:`, `http:`,
+ * `mailto:`, `tel:`, `sms:`), a file of the deck (`assets/...`), a scene (`scene:<id>` or `scene:<id>#<step>`), or a
+ * place on the author's own disk (`path:...`). Which of these is well formed is checked by `checkLinks`.
+ */
+const linkEntry = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "title", "target"],
+  properties: {
+    id,
+    title: { type: "string", minLength: 1, maxLength: LINK_LIMITS.title },
+    target: { type: "string", minLength: 1, maxLength: LINK_LIMITS.target },
+    note: { type: "string", minLength: 1, maxLength: LINK_LIMITS.note },
+  },
+} as const;
+
 export const deckSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
   $id: "urn:depthcue:schema:0.4:deck",
@@ -486,6 +513,8 @@ export const deckSchema = {
     /** The id of the brand in the deck's `brand/` folder, whose `brand.json` must say the same id. */
     brand: id,
     scenes: { type: "array", items: id, uniqueItems: true, minItems: 1, maxItems: 200 },
+    /** Named links that text, blocks and sources point at by id, so one edit changes every use. */
+    links: { type: "array", maxItems: LINK_LIMITS.links, items: linkEntry },
     modules: {
       type: "object",
       propertyNames: id,
@@ -758,6 +787,9 @@ export const OP_NAMES = [
   "slot.set",
   "slot.rename",
   "slot.remove",
+  "link.add",
+  "link.set",
+  "link.remove",
 ] as const;
 
 const object = { type: "object" } as const;
@@ -817,6 +849,9 @@ export const opsSchema = {
       /* @__PURE__ */ op("slot.set", { template: id, id, set: changes }, ["template", "id", "set"]),
       /* @__PURE__ */ op("slot.rename", { template: id, id, to: id }, ["template", "id", "to"]),
       /* @__PURE__ */ op("slot.remove", { template: id, id, to: position }, ["template", "id"]),
+      /* @__PURE__ */ op("link.add", { link: object, after: position }, ["link"]),
+      /* @__PURE__ */ op("link.set", { id, set: changes }, ["id", "set"]),
+      /* @__PURE__ */ op("link.remove", { id, to: id }, ["id"]),
     ],
   },
 } as const;
