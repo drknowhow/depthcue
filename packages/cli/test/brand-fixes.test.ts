@@ -237,7 +237,7 @@ describe("chartPlaces", () => {
     ["left of the plot", { x: 100, y: 200, w: 110, h: 60 }],
     ["on the caption", { x: 100, y: 60, w: 400, h: 20 }],
   ])("gives the caption, a legend %s and the plot each its own place", (_, legend) => {
-    const places = chartPlaces({ frame, title: caption, legend, plot: wholePlot });
+    const places = chartPlaces({ frame, title: caption, ...(legend ? { legend } : {}), plot: wholePlot });
     expectApart(places);
     expect(places.title).toEqual({ x: 0, y: 0, w: 0.4667, h: 0.055 });
     // The plot gives way to the legend on one side only, and keeps most of the frame.

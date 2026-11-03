@@ -145,12 +145,15 @@ function layoutOf(part: string | undefined): Layout | undefined {
     const found = new RegExp(`<c:${name} val="([^"]*)"/>`).exec(layout)?.[1];
     return found === undefined ? undefined : Number(found);
   };
+  const w = value("w");
+  const h = value("h");
+  const target = /<c:layoutTarget val="([^"]*)"/.exec(layout)?.[1];
   return {
     x: value("x") as number,
     y: value("y") as number,
-    w: value("w"),
-    h: value("h"),
-    target: /<c:layoutTarget val="([^"]*)"/.exec(layout)?.[1],
+    ...(w === undefined ? {} : { w }),
+    ...(h === undefined ? {} : { h }),
+    ...(target === undefined ? {} : { target }),
   };
 }
 
