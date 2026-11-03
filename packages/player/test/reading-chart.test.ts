@@ -39,9 +39,10 @@ describe("a chart in the reading view", () => {
       charts.forEach((chart, at) => {
         const table = tables[at];
         expect(table?.caption, file).toBe(chart.title);
-        expect(table?.heads.map((head) => head?.replace(/ \(.*\)$/, "")), file).toEqual(
-          chart.columns.map((column) => column.label),
-        );
+        expect(
+          table?.heads.map((head) => head?.replace(/ \(.*\)$/, "")),
+          file,
+        ).toEqual(chart.columns.map((column) => column.label));
         expect(table?.rows, file).toHaveLength(chart.rows.length);
         expect(table?.rows[0]?.[0], file).toBe(String(chart.rows[0]?.[0] ?? ""));
       });

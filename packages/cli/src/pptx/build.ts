@@ -19,6 +19,7 @@ import {
   textFlow,
 } from "@depthcue/core";
 import PptxGenJS from "pptxgenjs";
+import { type ChartPlaces, chartPlaces } from "./chartlayout.ts";
 import type {
   Box,
   ColumnPlace,
@@ -31,7 +32,6 @@ import type {
   SlideMeasure,
   TextPlace,
 } from "./measure.ts";
-import { type ChartPlaces, chartPlaces } from "./chartlayout.ts";
 import { cannotEmbed, mp4Tracks } from "./media.ts";
 import { flowRuns, inch, plainRuns, pt, type Run, type RunContext, textFrame } from "./text.ts";
 

@@ -797,7 +797,9 @@ export async function measureSlide(): Promise<SlideMeasure> {
       };
       const ring = block.getAttribute("data-kind") === "donut";
       const ringBox = ring ? union([...svg.querySelectorAll("path.dc-mark")]) : undefined;
-      const listBox = ring ? union([...svg.querySelectorAll("rect.dc-mark, text:not(.dc-share)")]) : undefined;
+      const listBox = ring
+        ? union([...svg.querySelectorAll("rect.dc-mark, text:not(.dc-share)")])
+        : undefined;
       const legendBox = legend && visible(legend) ? boxOf(legend.getBoundingClientRect()) : listBox;
       const parts = [drawn, caption, reach(legend)].filter(
         (rect): rect is { left: number; top: number; right: number; bottom: number } => rect !== undefined,

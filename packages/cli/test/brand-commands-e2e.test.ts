@@ -169,7 +169,8 @@ describe("brand use on the fixture decks", () => {
       const deck = folder("demo", "demo");
       expect((await cli("brand", "use", join(fixtureOf("v0-4-brand"), "brand"), deck)).code).toBe(0);
       expect(existsSync(join(deck, "brand", "fonts", "HarborSans-Regular.woff2"))).toBe(true);
-      expect((await cli("check", deck)).out).toBe("0 errors, 0 warnings");
+      // Harbor has a light logo only, and a palette for ink: the one warning its decks get.
+      expect((await cli("check", deck)).out).toMatch(/no logo for dark slides[\s\S]*\n0 errors, 1 warning$/);
       // Harbor's faces are wider than the built-in pair the demo was laid out in: a layout scene that was full to the
       // edge is reported by the render as taller than the stage, which is what the render is for. The brand's colors,
       // logo and footer do not add a finding of their own.
@@ -392,7 +393,8 @@ describe("every built-in template, with sample content", () => {
         brand: "harbor",
         extra: brandFiles("v0-4-brand"),
       });
-      expect((await cli("check", dir)).out).toBe("0 errors, 0 warnings");
+      // Harbor has a light logo only, and a palette for ink: the one warning its decks get.
+      expect((await cli("check", dir)).out).toMatch(/no logo for dark slides[\s\S]*\n0 errors, 1 warning$/);
       expect(problems(await renderAll(dir))).toEqual([]);
     });
 

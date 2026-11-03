@@ -123,7 +123,7 @@ describe("importBrand of a template", () => {
     expect(whats.filter((what) => what.startsWith("Decoration"))).toEqual([]);
   });
 
-  it("passes the brand checks, with only the warnings about faces it has no files for", async () => {
+  it("passes the brand checks, with only the warnings about faces it has no files for and its one logo", async () => {
     const done = await importFixture(make);
     expect(
       done.diagnostics.map((diagnostic) => [
@@ -132,10 +132,15 @@ describe("importBrand of a template", () => {
         diagnostic.file,
         diagnostic.path,
       ]),
-    ).toEqual([
-      ["warning", "face-without-files", "brand.json", "/fonts/display"],
-      ["warning", "face-without-files", "brand.json", "/fonts/body"],
-    ]);
+    ).toEqual(
+      expect.arrayContaining([
+        ["warning", "face-without-files", "brand.json", "/fonts/display"],
+        ["warning", "face-without-files", "brand.json", "/fonts/body"],
+        // A template has the master's logo only, and the brand's ink colors want one for dark slides.
+        ["warning", "logo-without-dark", "brand.json", "/logos"],
+      ]),
+    );
+    expect(done.diagnostics).toHaveLength(3);
   });
 
   it("writes only the brand, the marker, and what the brand refers to", async () => {

@@ -11,7 +11,8 @@ export interface Edits {
 
 /** What the core said was wrong with a refused change, in one line. */
 export function problemOf(failure: ApplyFailure): string {
-  const first = failure.diagnostics[0];
+  // The error that refused it, not a warning the deck already had.
+  const first = failure.diagnostics.find((d) => d.severity === "error") ?? failure.diagnostics[0];
   if (!first) return "That change was refused.";
   return first.fix ? `${first.message} ${first.fix}` : first.message;
 }

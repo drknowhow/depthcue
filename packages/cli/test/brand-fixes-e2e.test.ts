@@ -24,7 +24,8 @@ let root: string;
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "depthcue-brand-fixes-e2e-"));
   try {
-    if (!existsSync(join(builtPlayerDir(), "app.js"))) throw new Error("The player is not built. Run pnpm build.");
+    if (!existsSync(join(builtPlayerDir(), "app.js")))
+      throw new Error("The player is not built. Run pnpm build.");
     const browser = await launchBrowser();
     await browser.close();
   } catch (error) {
@@ -144,12 +145,15 @@ function layoutOf(part: string | undefined): Layout | undefined {
     const found = new RegExp(`<c:${name} val="([^"]*)"/>`).exec(layout)?.[1];
     return found === undefined ? undefined : Number(found);
   };
+  const w = value("w");
+  const h = value("h");
+  const target = /<c:layoutTarget val="([^"]*)"/.exec(layout)?.[1];
   return {
     x: value("x") as number,
     y: value("y") as number,
-    w: value("w"),
-    h: value("h"),
-    target: /<c:layoutTarget val="([^"]*)"/.exec(layout)?.[1],
+    ...(w === undefined ? {} : { w }),
+    ...(h === undefined ? {} : { h }),
+    ...(target === undefined ? {} : { target }),
   };
 }
 
@@ -168,7 +172,12 @@ async function chartsOf(file: Awaited<ReturnType<typeof unzip>>) {
       const target = new RegExp(`Id="${id}"[^>]*Target="(?:/ppt|\\.\\.)/charts/([^"]*)"`).exec(rels)?.[1];
       const size = /<a:ext cx="(\d+)" cy="(\d+)"\/>/.exec(frame);
       const name = `ppt/charts/${target}`;
-      charts.push({ name, xml: await file.text(name), w: Number(size?.[1]) / 9525, h: Number(size?.[2]) / 9525 });
+      charts.push({
+        name,
+        xml: await file.text(name),
+        w: Number(size?.[1]) / 9525,
+        h: Number(size?.[2]) / 9525,
+      });
     }
   }
   return charts;
@@ -181,47 +190,53 @@ describe("native charts", () => {
   it.each([
     ["v0-4-brand", 1],
     ["charts", 8],
-  ])("give each chart's caption, legend and plot their own place in %s", async (deck, count) => {
-    if (skipReason !== undefined) return;
-    const charts = await chartsOf(await exported(deck));
-    expect(charts).toHaveLength(count);
-    const sides = new Set<string>();
-    for (const chart of charts) {
-      const at = (what: string) => `${deck} ${chart.name}: ${what}`;
-      const titlePart = /<c:title>[\s\S]*?<\/c:title>/.exec(chart.xml)?.[0];
-      const legendPart = /<c:legend>[\s\S]*?<\/c:legend>/.exec(chart.xml)?.[0];
-      const plot = layoutOf(/<c:plotArea>\s*(?:<c:layout\/>|<c:layout>[\s\S]*?<\/c:layout>)/.exec(chart.xml)?.[0]);
-      expect(plot?.target, at("plot")).toBe("outer");
-      const box = plot as Required<Layout>;
-      expect(box.w * box.h, at("plot area")).toBeGreaterThan(0.3);
-      expect(box.x + box.w, at("plot right")).toBeLessThanOrEqual(1 + EDGE);
-      expect(box.y + box.h, at("plot bottom")).toBeLessThanOrEqual(1 + EDGE);
-      /** Where the next part down may start: below the caption, then below a legend above the plot. */
-      let free = 0;
-      if (titlePart) {
-        const title = layoutOf(titlePart);
-        expect(title, at("caption")).toBeDefined();
-        free = (title as Layout).y + sizeOf(titlePart) / chart.h;
-      }
-      if (legendPart) {
-        const side = /<c:legendPos val="([^"]*)"/.exec(legendPart)?.[1] as string;
-        sides.add(side);
-        const legend = layoutOf(legendPart);
-        expect(legend, at("legend")).toBeDefined();
-        const corner = legend as Layout;
-        if (side === "t") {
-          expect(corner.y, at("legend under the caption")).toBeGreaterThanOrEqual(free - EDGE);
-          free = corner.y + sizeOf(legendPart) / chart.h;
-        } else {
-          expect(side, at("legend side")).toBe("r");
-          expect(corner.x, at("legend right of the plot")).toBeGreaterThanOrEqual(box.x + box.w - EDGE);
-          expect(corner.y, at("legend under the caption")).toBeGreaterThanOrEqual(free - EDGE);
+  ])(
+    "give each chart's caption, legend and plot their own place in %s",
+    async (deck, count) => {
+      if (skipReason !== undefined) return;
+      const charts = await chartsOf(await exported(deck));
+      expect(charts).toHaveLength(count);
+      const sides = new Set<string>();
+      for (const chart of charts) {
+        const at = (what: string) => `${deck} ${chart.name}: ${what}`;
+        const titlePart = /<c:title>[\s\S]*?<\/c:title>/.exec(chart.xml)?.[0];
+        const legendPart = /<c:legend>[\s\S]*?<\/c:legend>/.exec(chart.xml)?.[0];
+        const plot = layoutOf(
+          /<c:plotArea>\s*(?:<c:layout\/>|<c:layout>[\s\S]*?<\/c:layout>)/.exec(chart.xml)?.[0],
+        );
+        expect(plot?.target, at("plot")).toBe("outer");
+        const box = plot as Required<Layout>;
+        expect(box.w * box.h, at("plot area")).toBeGreaterThan(0.3);
+        expect(box.x + box.w, at("plot right")).toBeLessThanOrEqual(1 + EDGE);
+        expect(box.y + box.h, at("plot bottom")).toBeLessThanOrEqual(1 + EDGE);
+        /** Where the next part down may start: below the caption, then below a legend above the plot. */
+        let free = 0;
+        if (titlePart) {
+          const title = layoutOf(titlePart);
+          expect(title, at("caption")).toBeDefined();
+          free = (title as Layout).y + sizeOf(titlePart) / chart.h;
         }
+        if (legendPart) {
+          const side = /<c:legendPos val="([^"]*)"/.exec(legendPart)?.[1] as string;
+          sides.add(side);
+          const legend = layoutOf(legendPart);
+          expect(legend, at("legend")).toBeDefined();
+          const corner = legend as Layout;
+          if (side === "t") {
+            expect(corner.y, at("legend under the caption")).toBeGreaterThanOrEqual(free - EDGE);
+            free = corner.y + sizeOf(legendPart) / chart.h;
+          } else {
+            expect(side, at("legend side")).toBe("r");
+            expect(corner.x, at("legend right of the plot")).toBeGreaterThanOrEqual(box.x + box.w - EDGE);
+            expect(corner.y, at("legend under the caption")).toBeGreaterThanOrEqual(free - EDGE);
+          }
+        }
+        expect(box.y, at("plot under the caption and legend")).toBeGreaterThanOrEqual(free - EDGE);
       }
-      expect(box.y, at("plot under the caption and legend")).toBeGreaterThanOrEqual(free - EDGE);
-    }
-    if (deck === "charts") expect([...sides].sort()).toEqual(["r", "t"]);
-  }, 120_000);
+      if (deck === "charts") expect([...sides].sort()).toEqual(["r", "t"]);
+    },
+    120_000,
+  );
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -235,7 +250,10 @@ function busy(count: number): () => Promise<void> {
 const flag = new Int32Array(workerData);
 let x = 0;
 while (Atomics.load(flag, 0) === 0) for (let i = 0; i < 100000; i++) x = Math.sqrt(x + i);`;
-  const workers = Array.from({ length: count }, () => new Worker(code, { eval: true, workerData: flag.buffer }));
+  const workers = Array.from(
+    { length: count },
+    () => new Worker(code, { eval: true, workerData: flag.buffer }),
+  );
   return async () => {
     Atomics.store(flag, 0, 1);
     await Promise.all(workers.map((worker) => worker.terminate()));
