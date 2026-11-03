@@ -3,14 +3,17 @@ import {
   type BlockChanges,
   FONT_PAIRS,
   type FontPair,
+  LINK_LIMITS,
   type Op,
   PALETTE_COLORS,
   type PaletteColor,
+  parseTarget,
   type Scene,
   type SceneChanges,
   type Session,
   STEPS_MAX,
   styleOf,
+  TARGET_RULE,
   THEMES,
 } from "@depthcue/core";
 import { firstPartyManifests, h } from "@depthcue/player";
@@ -210,6 +213,48 @@ export function citePanel(host: PanelHost, sceneId: string, id: string): Panel {
     state(scene) {
       const n = cited(scene).size;
       return { badge: n > 0 ? String(n) : "", title: n > 0 ? `Cite a source, ${n} cited` : "Cite a source" };
+    },
+  };
+}
+
+/** The deck's saved links as choices, each with where it goes. */
+const linkOptions = (host: PanelHost) =>
+  (host.deck().links ?? []).map((entry) => ({ value: entry.id, label: `${entry.title} (${entry.target})` }));
+
+/**
+ * The link a block follows when it is clicked or read: one of the deck's saved links. The saved links themselves are
+ * made and changed in the Deck panel, so changing one there changes every block that follows it.
+ */
+export function linkPanel(host: PanelHost, sceneId: string, id: string): Panel {
+  const followed = (scene: Scene) => scene.blocks.find((candidate) => candidate.id === id)?.link;
+  const panel = form(
+    () => blockOf(host, sceneId, id) !== undefined,
+    () => [
+      ...((host.deck().links ?? []).length === 0
+        ? [h("p", { class: "ed-hint-text" }, "This deck has no saved links yet. Add them in the Deck panel.")]
+        : []),
+      selectField(host.edits, {
+        key: "link:block",
+        label: "Link to",
+        empty: "No link",
+        options: linkOptions(host),
+        read: () => blockOf(host, sceneId, id)?.link ?? "",
+        commit: (value) => blockSet(sceneId, id, { link: optional(value) }),
+      }),
+    ],
+  );
+  return {
+    name: "link",
+    label: "Link",
+    title: "Link this block to a saved link",
+    body: panel.body,
+    fill: panel.fill,
+    state(scene) {
+      const on = followed(scene);
+      return {
+        badge: on ? "1" : "",
+        title: on ? `Link this block, linked to ${on}` : "Link this block to a saved link",
+      };
     },
   };
 }
@@ -627,6 +672,15 @@ export function scenePanel(host: PanelHost, current: () => string): ScenePanel {
             update(source.id, ({ url: _url, ...rest }) => (value === "" ? rest : { ...rest, url: value })),
         }),
         selectField(host.edits, {
+          key: `panel:source:${source.id}:link`,
+          label: "Saved link",
+          empty: "No saved link",
+          options: linkOptions(host),
+          read: () => live().link ?? "",
+          commit: (value) =>
+            update(source.id, ({ link: _link, ...rest }) => (value === "" ? rest : { ...rest, link: value })),
+        }),
+        selectField(host.edits, {
           key: `panel:source:${source.id}:asset`,
           label: "File in the deck",
           empty: "No file",
@@ -888,6 +942,76 @@ export function deckPanel(host: PanelHost): DeckPanel {
     },
   );
 
+  const links = form(
+    () => true,
+    () => {
+      const list = () => deck().links ?? [];
+      const change = (id: string, set: Record<string, string | null>): Op => ({ op: "link.set", id, set });
+      const rows = list().map((entry) => {
+        const live = () => list().find((candidate) => candidate.id === entry.id) ?? entry;
+        const file = () => {
+          const target = parseTarget(live().target);
+          return target?.kind === "asset" ? target.asset : "";
+        };
+        return h(
+          "div",
+          { class: "ed-source", "data-link": entry.id },
+          textField(host.edits, {
+            key: `panel:link:${entry.id}:title`,
+            label: "Link title",
+            read: () => live().title,
+            commit: (value) => change(entry.id, { title: value }),
+          }),
+          textField(host.edits, {
+            key: `panel:link:${entry.id}:target`,
+            label: "Goes to",
+            hint: TARGET_RULE,
+            read: () => live().target,
+            commit: (value) => change(entry.id, { target: value }),
+          }),
+          selectField(host.edits, {
+            key: `panel:link:${entry.id}:file`,
+            label: "Or a file in the deck",
+            empty: "Choose a file",
+            options: [...host.assets()]
+              .sort()
+              .map((path) => ({ value: path, label: path.replace(/^assets\//, "") })),
+            read: file,
+            commit: (value) => change(entry.id, { target: value === "" ? live().target : value }),
+          }),
+          textField(host.edits, {
+            key: `panel:link:${entry.id}:note`,
+            label: "Note",
+            read: () => live().note ?? "",
+            commit: (value) => change(entry.id, { note: optional(value) }),
+          }),
+          actionButton("Remove link", () => host.run([{ op: "link.remove", id: entry.id }]), {
+            class: "ed-danger",
+            "data-field": `panel:link-remove:${entry.id}`,
+          }),
+        );
+      });
+      const addLink = () => {
+        const taken = list().map((entry) => entry.id);
+        const id = uniqueId("link", new Set(taken));
+        links.focusNext(`panel:link:${id}:title`);
+        host.run([{ op: "link.add", link: { id, title: "New link", target: "https://example.com" } }]);
+      };
+      return [
+        h(
+          "p",
+          { class: "ed-hint-text" },
+          "Saved links are used by blocks and sources. Change one here and every use follows.",
+        ),
+        ...rows,
+        actionButton("Add a link", addLink, {
+          disabled: list().length >= LINK_LIMITS.links,
+          "data-field": "panel:link:add",
+        }),
+      ];
+    },
+  );
+
   const moduleSettings = form(
     () => true,
     () => [
@@ -933,7 +1057,14 @@ export function deckPanel(host: PanelHost): DeckPanel {
     h("summary", {}, "Style"),
     style.body,
   );
-  const body = h("div", { class: "ed-tb-form" }, top.body, styleSection, moduleSettings.body);
+  const linksCount = h("span", { class: "ed-tb-n" });
+  const linksSection = h(
+    "details",
+    { class: "ed-tb-section", "data-section": "links" },
+    h("summary", {}, "Links", linksCount),
+    links.body,
+  );
+  const body = h("div", { class: "ed-tb-form" }, top.body, styleSection, linksSection, moduleSettings.body);
   return {
     name: "deck",
     label: "Deck",
@@ -942,6 +1073,8 @@ export function deckPanel(host: PanelHost): DeckPanel {
     fill(live, typing) {
       top.fill(live, typing);
       style.fill(live, typing);
+      links.fill(live, typing);
+      linksCount.textContent = (deck().links ?? []).length > 0 ? String((deck().links ?? []).length) : "";
       moduleSettings.fill(live, typing);
     },
     reveal() {

@@ -30,6 +30,7 @@ import {
   evidencePanel,
   hasAltPrompt,
   imagePanel,
+  linkPanel,
   type Panel,
   type PanelHost,
   panelHost,
@@ -520,6 +521,7 @@ export function createToolbar(
       ...(style ? [style] : []),
       framePanel(host, sceneId, block.id),
       citePanel(host, sceneId, block.id),
+      linkPanel(host, sceneId, block.id),
     ];
   }
 
