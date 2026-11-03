@@ -113,7 +113,9 @@ describe("depthcue brand import: a file that imports", () => {
     expect(text).toContain("Left out");
     expect(text).toContain("  Claim slots: PowerPoint has no placeholder for a claim");
     expect(text).toContain("Notes");
-    expect(text).toContain("Checks: 0 errors, 2 warnings");
+    // A template has one logo, the master's; the brand's ink colors make a dark one wanted.
+    expect(text).toContain("Checks: 0 errors, 3 warnings");
+    expect(text).toContain("  brand.json/logos  warning  The brand has no logo for dark slides");
     expect(text).toContain('  brand.json/fonts/display  warning  The deck carries no file for "Georgia"');
     expect(text).toContain("    fix: Add its files under the brand's fonts/");
     expect(result.lines.at(-1)).toMatch(
@@ -132,12 +134,13 @@ describe("depthcue brand import: a file that imports", () => {
       ],
     };
     const none = await writeFixture(make(), { fonts: {} });
+    // The one warning every import of these fixtures has: the master's logo has no dark partner.
     expect((await cli("brand", "import", none.file, "--out", none.out)).out).toContain(
-      "Checks: 0 errors, 0 warnings\n",
+      "Checks: 0 errors, 1 warning\n",
     );
     const one = await writeFixture(make(), { fonts: {}, layouts: [touching] });
     const result = await cli("brand", "import", one.file, "--out", one.out);
-    expect(result.out).toContain("Checks: 0 errors, 1 warning\n");
+    expect(result.out).toContain("Checks: 0 errors, 2 warnings\n");
     expect(result.out).toContain(
       '  templates/touch.json/slots/1/frame  warning  The slot "body" overlaps "title" (slot 1)',
     );
@@ -153,7 +156,7 @@ describe("depthcue brand import: a file that imports", () => {
     expect(report).toMatchObject({
       ok: true,
       errors: 0,
-      warnings: 2,
+      warnings: 3,
       source: { file: "Harbor.potx", kind: "potx" },
       brand: { id: "harbor", name: "Harbor" },
       preset: { name: "paper" },
@@ -166,9 +169,10 @@ describe("depthcue brand import: a file that imports", () => {
       "two-content",
     ]);
     expect(report.files).toContain("brand.json");
-    expect(report.diagnostics.map((diagnostic: { code: string }) => diagnostic.code)).toEqual([
+    expect(report.diagnostics.map((diagnostic: { code: string }) => diagnostic.code).sort()).toEqual([
       "face-without-files",
       "face-without-files",
+      "logo-without-dark",
     ]);
     expect(result.errors).toEqual([]);
   });
