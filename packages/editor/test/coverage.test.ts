@@ -107,9 +107,10 @@ beforeEach(async () => {
     TABLE,
     newBlock(scene, "chart"),
   ];
-  const result = store.session.apply(
-    added.map((block) => ({ op: "block.add" as const, scene: SCENE, block })),
-  );
+  const result = store.session.apply([
+    { op: "link.add" as const, link: { id: "docs", title: "The docs", target: "https://example.com" } },
+    ...added.map((block) => ({ op: "block.add" as const, scene: SCENE, block })),
+  ]);
   if (!result.ok) throw new Error("the extra blocks should be accepted");
   [blocks.text, blocks.image, blocks.clip, blocks.table, blocks.chart] = added.map((block) => block.id) as [
     string,
@@ -153,6 +154,10 @@ const scenePop = () => openTop(".ed-scene-tools [data-tb='scene']");
 const notesPop = () => openTop(".ed-quick [data-tb='notes']");
 const deckPop = () => openTop(".ed-actions [data-tb='deck']");
 const source = () => store.session.doc.scenes[SCENE]?.sources?.[0]?.id as string;
+const linked = (kind: "text" | "other", id: string) => {
+  choose(id, kind);
+  return openChip("link")?.querySelector("select[data-field='link:block']");
+};
 const cited = (kind: "text" | "other", id: string) => {
   choose(id, kind);
   return openChip("cite")?.querySelector("input[data-tb='source']");
@@ -408,6 +413,25 @@ const WAYS: Record<string, Entry> = {
     where: "Deck popover, one choice per module",
     reach: () => find(deckPop() as HTMLElement, "select[data-field^='panel:deck:module:']"),
   },
+  "deck.links": {
+    where: "Deck popover, Links section, Add a link",
+    reach: () => field(deckPop() as HTMLElement, "panel:link:add"),
+  },
+  "deck.links[].id": { never: NEVER_ID },
+  "deck.links[].title": {
+    where: "Deck popover, Links section, Link title",
+    reach: () => field(deckPop() as HTMLElement, "panel:link:docs:title"),
+  },
+  "deck.links[].target": {
+    where: "Deck popover, Links section, Goes to, or Or a file in the deck",
+    reach: () =>
+      field(deckPop() as HTMLElement, "panel:link:docs:target") &&
+      field(deckPop() as HTMLElement, "panel:link:docs:file"),
+  },
+  "deck.links[].note": {
+    where: "Deck popover, Links section, Note",
+    reach: () => field(deckPop() as HTMLElement, "panel:link:docs:note"),
+  },
   "deck.brand": {
     where: "Deck popover, Brand…: on a deck with no brand, the Brand panel's Start a brand writes its id",
     reach: () => find(deckPop() as HTMLElement, "[data-action='brand']"),
@@ -464,6 +488,10 @@ const WAYS: Record<string, Entry> = {
   "scene.sources[].asset": {
     where: "Scene popover, Sources, File",
     reach: () => field(scenePop() as HTMLElement, `panel:source:${source()}:asset`),
+  },
+  "scene.sources[].link": {
+    where: "Scene popover, Sources, Saved link",
+    reach: () => field(scenePop() as HTMLElement, `panel:source:${source()}:link`),
   },
   "scene.sources[].url": {
     where: "Scene popover, Sources, Link",
@@ -706,6 +734,30 @@ const WAYS: Record<string, Entry> = {
     where: "Table toolbar, Cite chip",
     reach: () => cited("other", blocks.table),
   },
+  "scene.blocks<text>.link": {
+    where: "Text toolbar, Link chip",
+    reach: () => linked("text", blocks.text),
+  },
+  "scene.blocks<image>.link": {
+    where: "Image toolbar, Link chip",
+    reach: () => linked("other", blocks.image),
+  },
+  "scene.blocks<bar-chart>.link": {
+    where: "Bar chart toolbar, Link chip",
+    reach: () => linked("other", "chart-demand"),
+  },
+  "scene.blocks<clip>.link": {
+    where: "Clip toolbar, Link chip",
+    reach: () => linked("other", blocks.clip),
+  },
+  "scene.blocks<table>.link": {
+    where: "Table toolbar, Link chip",
+    reach: () => linked("other", blocks.table),
+  },
+  "scene.blocks<chart>.link": {
+    where: "Chart toolbar, Link chip",
+    reach: () => linked("other", blocks.chart),
+  },
 };
 
 /**
@@ -715,12 +767,6 @@ const WAYS: Record<string, Entry> = {
  */
 const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
   ["scene.template", "BRANDS_AND_PPTX step 7, the template picker and Change template"],
-  ["deck.links", "the links plan, phase 3: the Links panel"],
-  ["scene.sources[].link", "the links plan, phase 3: the Sources section"],
-  ...["text", "image", "bar-chart", "clip", "table", "chart"].map((type): [string, string] => [
-    `scene.blocks<${type}>.link`,
-    "the links plan, phase 3: the block Link field",
-  ]),
   ...["text", "image", "bar-chart", "clip", "table", "chart"].flatMap(
     (type): Array<[string, string]> => [
       [`scene.blocks<${type}>.slot`, "BRANDS_AND_PPTX step 7, Change template"],
