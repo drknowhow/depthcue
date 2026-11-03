@@ -337,6 +337,7 @@ describe("the decks that were here before", () => {
     expect(refused.code).toBe(2);
     expect(refused.err).toContain(join(dir, "brand"));
     expect(snapshot(dir)).toEqual(before);
-    expect((await cli("check", dir)).out).toBe("0 errors, 0 warnings");
+    // Harbor has a light logo only, and a palette for ink: the one warning its decks get.
+    expect((await cli("check", dir)).out).toMatch(/no logo for dark slides[\s\S]*\n0 errors, 1 warning$/);
   });
 });

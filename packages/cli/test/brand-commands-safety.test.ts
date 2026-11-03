@@ -228,7 +228,8 @@ describe("a brand folder the reviewer still needs", () => {
     expect(reverted.code, reverted.out + reverted.err).toBe(0);
     expect(json(join(deck, "deck.json")).brand).toBe("harbor");
     expect(json(join(deck, "brand", "brand.json")).id).toBe("harbor");
-    expect((await cli("check", deck)).out).toBe("0 errors, 0 warnings");
+    // Harbor has a light logo only, and a palette for ink: the one warning its decks get.
+    expect((await cli("check", deck)).out).toMatch(/no logo for dark slides[\s\S]*\n0 errors, 1 warning$/);
 
     // The known limit: the record still describes the brand the revert took away, so the next use asks for --force.
     const next = await cli("brand", "use", tidewellBrand, deck);

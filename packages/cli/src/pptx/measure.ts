@@ -121,9 +121,13 @@ export type Item =
       kind: "chart";
       id: string;
       box: Box;
+      /** Where the page draws the plot with its axes: the drawing, or a donut's ring. */
       plot: Box;
       title?: TextPlace;
+      /** How the legend's words are set (its first entry). */
       legend?: TextPlace;
+      /** Where the legend is: the list above the drawing, or the list of a donut's parts beside its ring. */
+      legendBox?: Box;
       /** Series colors for positions 1 to 6, as the page draws them. */
       colors: string[];
       /** The numbers the page marks on its axes, so the native chart spans and steps alike. Empty when none was read. */
@@ -192,7 +196,11 @@ export interface SlideMeasure {
  */
 export async function measureSlide(): Promise<SlideMeasure> {
   void document.body.offsetWidth;
+  // A face the page asks for after `ready` has settled starts a new load: wait until every face has loaded.
   await document.fonts.ready;
+  while (document.fonts.status !== "loaded") {
+    await Promise.race([document.fonts.ready, new Promise((done) => setTimeout(done, 20))]);
+  }
   // The chrome's logo is waited for too: it is drawn for the slide master, not as a picture on the slide.
   const pictures = [...document.querySelectorAll<HTMLImageElement>(".dc-scene img:not(.dc-ghost img)")];
   await Promise.all(pictures.map((picture) => picture.decode().catch(() => undefined)));
@@ -777,6 +785,22 @@ export async function measureSlide(): Promise<SlideMeasure> {
         bottom: svgRect.top + viewBox.height * scale,
       };
       const caption = reach(title);
+      // Where the native chart's plot and legend go: the drawing and the legend above it, or a donut's ring and the
+      // list of its parts that the drawing has beside the ring.
+      const union = (elements: Element[]) => {
+        const rects = elements.map((element) => element.getBoundingClientRect()).filter((r) => r.width > 0);
+        if (rects.length === 0) return undefined;
+        const left = Math.min(...rects.map((r) => r.left));
+        const top = Math.min(...rects.map((r) => r.top));
+        const width = Math.max(...rects.map((r) => r.right)) - left;
+        return boxOf({ left, top, width, height: Math.max(...rects.map((r) => r.bottom)) - top });
+      };
+      const ring = block.getAttribute("data-kind") === "donut";
+      const ringBox = ring ? union([...svg.querySelectorAll("path.dc-mark")]) : undefined;
+      const listBox = ring
+        ? union([...svg.querySelectorAll("rect.dc-mark, text:not(.dc-share)")])
+        : undefined;
+      const legendBox = legend && visible(legend) ? boxOf(legend.getBoundingClientRect()) : listBox;
       const parts = [drawn, caption, reach(legend)].filter(
         (rect): rect is { left: number; top: number; right: number; bottom: number } => rect !== undefined,
       );
@@ -814,9 +838,10 @@ export async function measureSlide(): Promise<SlideMeasure> {
             kind: "chart",
             id,
             box: boxOf({ left, top: topEdge, width: right - left, height: bottomEdge - topEdge }),
-            plot,
+            plot: ringBox ?? plot,
             ...(title && visible(title) ? { title: placeOf(title) } : {}),
             ...(legend && visible(legend) ? { legend: placeOf(legend.querySelector("li") ?? legend) } : {}),
+            ...(legendBox ? { legendBox } : {}),
             colors: colorsOfFigure(block),
             ticks: { y: whole(yTicks), x: whole(xTicks) },
             axis: { ...axis, px: round(12 * scale) },

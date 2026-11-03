@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import JSZip from "jszip";
+import { type ChartPlaces, layChart } from "./chartlayout.ts";
 import { BULLET_MARK, CAPS_MARK } from "./text.ts";
 
 /** Every date the file holds. */
@@ -172,6 +173,8 @@ export interface Hints {
    * are numbered again and before the parts are tidied, so a shape added here is numbered with the rest.
    */
   edit?: (parts: Map<string, Uint8Array>) => void | Promise<void>;
+  /** Where chart N puts its title, legend and plot, at N - 1. */
+  charts?: readonly ChartPlaces[];
 }
 
 const CHART_PART = /^ppt\/charts\/chart(\d+)\.xml$/;
@@ -300,8 +303,10 @@ async function tidy(name: string, bytes: Uint8Array, whole: Whole): Promise<Uint
   if (/^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name)) {
     return cleanBytes(encode(tidyNotes(decode(bytes))));
   }
-  if (CHART_PART.test(name)) {
-    const tidied = tidyChart(decode(bytes));
+  const chart = CHART_PART.exec(name);
+  if (chart) {
+    const places = whole.hints.charts?.[Number(chart[1]) - 1];
+    const tidied = tidyChart(places ? layChart(decode(bytes), places) : decode(bytes));
     const workbook = workbookOf(name, whole.parts);
     if (workbook !== undefined && tidied.empty.length > 0) whole.empty.set(workbook, tidied.empty);
     return cleanBytes(encode(tidied.xml));

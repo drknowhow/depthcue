@@ -19,6 +19,7 @@ import {
   type FontReport,
   faceFiles,
   listFonts,
+  matchFontTags,
   planFonts,
   scanUsage,
   type Usage,
@@ -221,7 +222,9 @@ async function measureScenes(
   const server = await startServer({ folder, playerDir, port: 0 });
   let browser: Browser;
   try {
-    browser = await launchBrowser();
+    // Rasterized on the GPU, a slide's edges come out a shade apart from one run to the next; on the CPU they are the
+    // same every time, so the same deck gives the same pictures.
+    browser = await launchBrowser(["--disable-gpu-rasterization"]);
   } catch (error) {
     await server.close();
     throw new PptxError("no-browser", (error as Error).message);
@@ -307,6 +310,9 @@ function playerOf(request: PptxRequest): string {
   }
   return dir;
 }
+
+/** The parts whose runs name their faces: slides, layouts and masters. */
+const RUN_PARTS = /^ppt\/(?:slides|slideLayouts|slideMasters)\/[^/]+\.xml$/;
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -396,6 +402,7 @@ async function render(opened: Opened, request: PptxRequest & { out: string }): P
   const numbers = scenes.map((scene) => doc.deck.scenes.indexOf(scene.id) + 1);
   const bytes = await finishPackage(built.raw, {
     headers: built.headers,
+    charts: built.charts,
     edit: (parts) => {
       if (master) layouts = applyMaster(parts, { look, scenes, measures, pictures, numbers }).layouts;
       built.alts.forEach((alts, at) => {
@@ -409,8 +416,15 @@ async function render(opened: Opened, request: PptxRequest & { out: string }): P
       // The faces the slides draw in, embedded, and the slides naming each by the name PowerPoint knows it by.
       const fonts = planFonts(usageOf(parts), faceFiles(look, request.folder, join(playerDir, "fonts")));
       embedded = fonts.report;
+      const mono = new Set(
+        [...measures.map((measure) => measure.fonts.mono), look.faces?.mono?.family]
+          .filter((family): family is string => family !== undefined)
+          .map((family) => fonts.rename.get(family) ?? family),
+      );
       for (const [name, part] of parts) {
-        if (name.endsWith(".xml")) parts.set(name, encode(applyNames(decode(part), fonts)));
+        if (!name.endsWith(".xml")) continue;
+        const xml = applyNames(decode(part), fonts);
+        parts.set(name, encode(RUN_PARTS.test(name) ? matchFontTags(xml, fonts, mono) : xml));
       }
       for (const font of fonts.parts) parts.set(font.name, font.bytes);
       const listed = listFonts(

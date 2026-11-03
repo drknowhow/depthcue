@@ -51,6 +51,13 @@ const FIXTURE_BRAND_FILES = [
   "brand/logos/harbor.svg",
 ];
 
+/**
+ * The fixture's brand has a light logo only and a palette for ink, so every check of it warns of that
+ * (`logo-without-dark`). The tests of other checks leave that warning out; the brand check's own tests look at it.
+ */
+const besides = (diagnostics: Diagnostic[]): Diagnostic[] =>
+  diagnostics.filter((d) => d.code !== "logo-without-dark");
+
 const codes = (diagnostics: readonly Diagnostic[]): string[] => diagnostics.map((d) => d.code);
 const errors = (diagnostics: readonly Diagnostic[]): string[] =>
   codes(diagnostics.filter((d) => d.severity === "error"));
@@ -68,9 +75,12 @@ function brandFiles(changes: Record<string, unknown> = {}, extra: Partial<DeckFi
 // biome-ignore lint/suspicious/noExplicitAny: a hand edit of parsed JSON, which has no type to give it
 const json = (path: string): Record<string, any> => JSON.parse(loadDir(brandDir).text[path] as string);
 const checked = (changes: Record<string, unknown>, extra: Partial<DeckFiles> = {}): Diagnostic[] =>
-  loadDoc(brandFiles(changes, extra)).diagnostics;
+  besides(loadDoc(brandFiles(changes, extra)).diagnostics);
 
-const apply = (doc: Doc, ops: Op[]) => applyOps(doc, ops, revisionOf(doc));
+function apply(doc: Doc, ops: Op[]) {
+  const result = applyOps(doc, ops, revisionOf(doc));
+  return result.ok ? result : { ...result, diagnostics: besides(result.diagnostics) };
+}
 function applied(doc: Doc, ops: Op[]): Doc {
   const result = apply(doc, ops);
   if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
@@ -564,6 +574,34 @@ describe("a brand's own files", () => {
     expect(checked({ [BRAND_FILE]: noLogos })).toMatchObject([
       { code: "missing-logo", path: "/chrome/logo" },
     ]);
+  });
+
+  it("warns of a brand with no logo for dark slides when its slides can be ink", () => {
+    const darkless = (changes: Record<string, unknown>, extra: Partial<DeckFiles> = {}) =>
+      loadDoc(brandFiles(changes, extra)).diagnostics.filter((d) => d.code === "logo-without-dark");
+    // The fixture: a light logo only, placed by the chrome, and a palette for ink, on a paper deck.
+    expect(darkless({})).toEqual([
+      {
+        severity: "warning",
+        code: "logo-without-dark",
+        file: BRAND_FILE,
+        path: "/logos",
+        message: expect.stringMatching(/no logo for dark slides.*plate/),
+        fix: 'Add "dark" to "logos", a logo drawn for dark slides.',
+      },
+    ]);
+    const { ink: _, ...paperOnly } = brand.colors;
+    const inkDeck = { ...json("deck.json"), theme: "ink" };
+    // No palette for ink, but the deck itself is ink.
+    expect(darkless({ [BRAND_FILE]: { ...brand, colors: paperOnly }, "deck.json": inkDeck })).toHaveLength(1);
+    // Neither: the slides are paper, where the light logo is the one to draw.
+    expect(darkless({ [BRAND_FILE]: { ...brand, colors: paperOnly } })).toEqual([]);
+    // A dark logo, or no logo on the slides.
+    const withDark = { ...brand, logos: { ...brand.logos, dark: "logos/harbor-dark.svg" } };
+    const both = { brandFiles: [...FIXTURE_BRAND_FILES, "brand/logos/harbor-dark.svg"] };
+    expect(darkless({ [BRAND_FILE]: withDark }, both)).toEqual([]);
+    const { logo: __, ...noLogoChrome } = brand.chrome;
+    expect(darkless({ [BRAND_FILE]: { ...brand, chrome: noLogoChrome } })).toEqual([]);
   });
 
   it("warns of a face the deck does not carry, a body face with no bold, and chrome parts in one place", () => {
