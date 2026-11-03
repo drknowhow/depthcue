@@ -16,7 +16,7 @@ import { type BrandData, readBrand } from "./brandcheck.ts";
 import { checkData } from "./data.ts";
 import { explain } from "./diagnostics.ts";
 import { checkFrames } from "./frames.ts";
-import { checkLinks, checkSceneLinks } from "./links.ts";
+import { checkLinkAssets, checkLinks, checkSceneLinks } from "./links.ts";
 import { checkReferences } from "./references.ts";
 import { deckSchema, sceneSchema } from "./schema.ts";
 import { schemaValidator } from "./schemacheck.ts";
@@ -233,6 +233,7 @@ export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
   out.push(...manifestErrors, ...brandProblems);
   // The tones of the scenes are checked against the deck's colors only when those are sound.
   const deck = manifestErrors.length === 0 ? (manifest.data as Deck) : undefined;
+  if (deck) out.push(...checkLinkAssets(deck, assets, MANIFEST_FILE));
 
   const listed = new Set<string>();
   const ids = Array.isArray((manifest.data as { scenes?: unknown })?.scenes)

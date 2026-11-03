@@ -140,6 +140,8 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     language: source.deck.language,
     ...(source.look ? { look: source.look } : {}),
     number: position.scene + 1,
+    ...(source.deck.links ? { links: source.deck.links } : {}),
+    scenes: source.scenes,
   });
   const current = (): Scene => source.scenes[position.scene] as Scene;
 

@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseText, styleOf } from "@depthcue/core";
+import { type Deck, parseText, type Scene, styleOf } from "@depthcue/core";
 import JSZip from "jszip";
 import PptxGenJS from "pptxgenjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -888,13 +888,20 @@ const numbersMeasure = (): SlideMeasure => {
   };
 };
 
-async function buildSynthetic(notes = true) {
+async function buildSynthetic(
+  notes = true,
+  change?: (made: { deck: Deck; scenes: Scene[] }) => { deck: Deck; scenes: Scene[] },
+) {
   const opened = openDeck(syntheticDeck());
   if (!opened.ok) throw new Error(`the synthetic deck is not valid: ${JSON.stringify(opened.diagnostics)}`);
   const { doc } = opened;
-  const scenes = doc.deck.scenes.map((id) => doc.scenes[id]).filter((scene) => scene !== undefined);
-  const built = await buildPresentation({
+  const made = {
     deck: doc.deck,
+    scenes: doc.deck.scenes.map((id) => doc.scenes[id]).filter((scene) => scene !== undefined),
+  };
+  const { deck, scenes } = change ? change(made) : made;
+  const built = await buildPresentation({
+    deck,
     style: styleOf(doc.deck),
     scenes,
     measures: [wordsMeasure(), numbersMeasure()],
@@ -1023,6 +1030,34 @@ describe("a deck drawn from measurements", () => {
     const slide = part(parts, "ppt/slides/slide2.xml");
     expect(wordsIn(slide)).toEqual(expect.arrayContaining(["Sources", "1. ", "Quarterly order snapshot"]));
     expect(part(parts, "ppt/slides/_rels/slide2.xml.rels")).toContain('Target="https://example.com/orders"');
+  });
+
+  it("links a source by its library link: an address, a deck file and a slide of the file", async () => {
+    const { parts } = await buildSynthetic(true, ({ deck, scenes }) => ({
+      deck: {
+        ...deck,
+        schemaVersion: "0.5",
+        links: [
+          { id: "site", title: "The site", target: "https://example.org/q3" },
+          { id: "back", title: "Back", target: "scene:words" },
+        ],
+      },
+      scenes: scenes.map((scene) =>
+        scene.id === "numbers"
+          ? {
+              ...scene,
+              schemaVersion: "0.5",
+              sources: [
+                { id: "one", title: "First", link: "site" },
+                { id: "two", title: "Second", link: "back" },
+              ],
+            }
+          : scene,
+      ),
+    }));
+    const rels = part(parts, "ppt/slides/_rels/slide2.xml.rels");
+    expect(rels).toContain('Target="https://example.org/q3"');
+    expect(rels).toContain('Target="slide1.xml"');
   });
 
   it("puts the speaker notes in the file, and leaves them out on request", async () => {

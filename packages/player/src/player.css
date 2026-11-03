@@ -601,6 +601,21 @@
   font: 0.72em / 1.4 var(--dc-font-mono);
 }
 
+.dc-link-row {
+  margin: 0.5em 0 0;
+  font: 0.8em / 1.4 var(--dc-font-mono);
+}
+
+button.dc-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: copy;
+  text-decoration: underline dotted;
+}
+
 .dc-figure {
   margin: 0;
 }

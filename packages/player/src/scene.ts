@@ -1,6 +1,7 @@
-import type { Block, PageLook, PageSlot, PageStyle, PageTemplate, Scene } from "@depthcue/core";
+import type { Block, Deck, PageLook, PageSlot, PageStyle, PageTemplate, Scene } from "@depthcue/core";
 import { renderChart } from "./charts/draw.ts";
 import { h } from "./dom.ts";
+import { type Followed, followLink, linkElement } from "./links.ts";
 import { gatedIds } from "./model.ts";
 import { assetUrl, brandUrl, safeUrl } from "./safe.ts";
 import { renderTable, unitText } from "./table.ts";
@@ -18,6 +19,10 @@ export interface RenderContext {
   look?: PageLook;
   /** The scene's place in the deck, from 1, for the slide number the brand draws. */
   number?: number;
+  /** The deck's link library, which a block's or a source's `link` names. */
+  links?: Deck["links"];
+  /** The deck's scenes, which a link to a scene lands on. */
+  scenes?: readonly Scene[];
 }
 
 type Source = NonNullable<Scene["sources"]>[number];
@@ -83,6 +88,11 @@ export function renderChartTable(block: BarChart): HTMLTableElement {
 }
 
 function sourceLink(source: Source, ctx: RenderContext): HTMLElement {
+  const followed = source.link === undefined ? undefined : followLink(ctx, source.link);
+  if (followed) {
+    const node = linkElement({ ...followed, title: source.title }, "dc-source-link");
+    return node;
+  }
   const href =
     (source.url && safeUrl(source.url)) || (source.asset ? assetUrl(ctx.assetBase, source.asset) : undefined);
   return href
@@ -167,6 +177,8 @@ function renderBlock(
   }
   const citation = cite(scene, block);
   if (citation) node.append(citation);
+  const followed: Followed | undefined = block.link === undefined ? undefined : followLink(ctx, block.link);
+  if (followed) node.append(h("p", { class: "dc-link-row" }, linkElement(followed)));
   return node;
 }
 
