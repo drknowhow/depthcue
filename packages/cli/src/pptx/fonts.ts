@@ -530,7 +530,9 @@ export function matchFontTags(
         };
       return `<a:latin typeface="${name}"${fontAttributes(entry)}/>`;
     })
-    .replace(/<a:(?:ea|cs)\b[^>]*?\/>/g, (whole) => (TYPEFACE.exec(whole)?.[1]?.startsWith("+") ? whole : ""));
+    .replace(/<a:(?:ea|cs)\b[^>]*?\/>/g, (whole) =>
+      TYPEFACE.exec(whole)?.[1]?.startsWith("+") ? whole : "",
+    );
 }
 
 /** `presentation.xml`, its relationships and the content types, with the fonts listed. */

@@ -4,8 +4,22 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { importBrand } from "../src/brand-import/index.ts";
-import { type ChartParts, type ChartPlaces, chartPlaces, layChart, overlaps, type Rect } from "../src/pptx/chartlayout.ts";
-import { applyNames, type FaceFile, matchFontTags, planFonts, type Slot, type Usage } from "../src/pptx/fonts.ts";
+import {
+  type ChartParts,
+  type ChartPlaces,
+  chartPlaces,
+  layChart,
+  overlaps,
+  type Rect,
+} from "../src/pptx/chartlayout.ts";
+import {
+  applyNames,
+  type FaceFile,
+  matchFontTags,
+  planFonts,
+  type Slot,
+  type Usage,
+} from "../src/pptx/fonts.ts";
 import { unpackFont, writeSfnt } from "../src/pptx/sfnt.ts";
 import { MASTER, SVG_NS, writeFixture } from "./brand-import-fixtures.ts";
 
@@ -107,7 +121,9 @@ describe("matchFontTags", () => {
       '<a:latin typeface="IBM Plex Mono" panose="020B0509050203000203" pitchFamily="49" charset="0"/>',
     ]);
     // Only the tags change.
-    expect(out.replace(/<a:(?:latin|ea|cs)\b[^>]*\/>/g, "")).toBe(xml.replace(/<a:(?:latin|ea|cs)\b[^>]*\/>/g, ""));
+    expect(out.replace(/<a:(?:latin|ea|cs)\b[^>]*\/>/g, "")).toBe(
+      xml.replace(/<a:(?:latin|ea|cs)\b[^>]*\/>/g, ""),
+    );
   });
 
   it("writes a face with a file that is not embedded from its file, and one with no file by what the page draws it as", () => {
@@ -192,7 +208,12 @@ const boxes = (places: ChartPlaces) =>
   [places.title, places.legend, places.plot].filter((rect): rect is Rect => rect !== undefined);
 
 /** Smaller by a millionth of the frame on each side, for the sums of rounded edges. */
-const inset = (rect: Rect): Rect => ({ x: rect.x + 1e-6, y: rect.y + 1e-6, w: rect.w - 2e-6, h: rect.h - 2e-6 });
+const inset = (rect: Rect): Rect => ({
+  x: rect.x + 1e-6,
+  y: rect.y + 1e-6,
+  w: rect.w - 2e-6,
+  h: rect.h - 2e-6,
+});
 
 function expectApart(places: ChartPlaces) {
   const all = boxes(places);
@@ -266,29 +287,38 @@ describe("layChart", () => {
   const written = (legendPos: string) =>
     `<c:chartSpace><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>Ships</a:t></a:r></a:p></c:rich></c:tx><c:layout><c:manualLayout><c:xMode val="edge"/><c:yMode val="edge"/><c:x val="0.0128"/><c:y val="0.0640521701388889"/></c:manualLayout></c:layout><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/><c:plotArea><c:layout/><c:barChart/><c:catAx/><c:valAx/></c:plotArea><c:legend><c:legendPos val="${legendPos}"/><c:overlay val="0"/></c:legend><c:plotVisOnly val="1"/></c:chart></c:chartSpace>`;
 
-  it.each(["t", "r", "b", "l"])("writes each part where it was placed, with the legend at %s", (legendPos) => {
-    const places = chartPlaces({
-      frame,
-      title: caption,
-      legend: { x: 100, y: 64, w: 320, h: 20 },
-      plot: wholePlot,
-    });
-    const out = layChart(written(legendPos), places);
-    const read = placesOf(out);
-    expect(read.title).toEqual({ x: places.title?.x, y: places.title?.y, w: undefined, h: undefined, target: undefined });
-    expect(read.legend).toEqual({
-      x: places.legend?.x,
-      y: places.legend?.y,
-      w: undefined,
-      h: undefined,
-      target: undefined,
-    });
-    expect(read.plot).toEqual({ ...places.plot, target: "outer" });
-    // The legend keeps its side, and the part keeps the order the schema gives its elements.
-    expect(out).toContain(`<c:legendPos val="${legendPos}"/><c:layout>`);
-    expect(out.lastIndexOf("</c:layout><c:overlay")).toBeGreaterThan(out.indexOf("<c:legendPos"));
-    expect(out.match(/<c:layout\b/g)).toHaveLength(3);
-  });
+  it.each(["t", "r", "b", "l"])(
+    "writes each part where it was placed, with the legend at %s",
+    (legendPos) => {
+      const places = chartPlaces({
+        frame,
+        title: caption,
+        legend: { x: 100, y: 64, w: 320, h: 20 },
+        plot: wholePlot,
+      });
+      const out = layChart(written(legendPos), places);
+      const read = placesOf(out);
+      expect(read.title).toEqual({
+        x: places.title?.x,
+        y: places.title?.y,
+        w: undefined,
+        h: undefined,
+        target: undefined,
+      });
+      expect(read.legend).toEqual({
+        x: places.legend?.x,
+        y: places.legend?.y,
+        w: undefined,
+        h: undefined,
+        target: undefined,
+      });
+      expect(read.plot).toEqual({ ...places.plot, target: "outer" });
+      // The legend keeps its side, and the part keeps the order the schema gives its elements.
+      expect(out).toContain(`<c:legendPos val="${legendPos}"/><c:layout>`);
+      expect(out.lastIndexOf("</c:layout><c:overlay")).toBeGreaterThan(out.indexOf("<c:legendPos"));
+      expect(out.match(/<c:layout\b/g)).toHaveLength(3);
+    },
+  );
 
   it("writes only the plot area when the chart has no title or legend", () => {
     const bare = `<c:chartSpace><c:chart><c:autoTitleDeleted val="1"/><c:plotArea><c:layout/><c:pieChart/></c:plotArea><c:plotVisOnly val="1"/></c:chart></c:chartSpace>`;
@@ -311,14 +341,20 @@ describe("brand import of a .pptx whose logo is a megabyte of unclosed url(", ()
   const svgOf = (inside: string) => {
     const head = `<svg ${SVG_NS}>${inside}<!--`;
     const tail = "--></svg>";
-    return new TextEncoder().encode(`${head}${" ".repeat(Math.max(0, MEGABYTE - head.length - tail.length))}${tail}`);
+    return new TextEncoder().encode(
+      `${head}${" ".repeat(Math.max(0, MEGABYTE - head.length - tail.length))}${tail}`,
+    );
   };
 
   it.each([
     ["a fill", `<rect fill="${"url(".repeat(262_000)}"/>`, /url\(\) this cannot read/],
     ["a style attribute", `<rect style="${"url(".repeat(262_000)}"/>`, /a style longer than 64 KB/],
     ["a style sheet", `<style>${"url(".repeat(262_000)}</style>`, /a style longer than 64 KB/],
-    ["a style sheet just under the limit", `<style>${"url(".repeat(16_000)}</style>`, /url\(\) this cannot read/],
+    [
+      "a style sheet just under the limit",
+      `<style>${"url(".repeat(16_000)}</style>`,
+      /url\(\) this cannot read/,
+    ],
   ])("refuses it in %s in under 100 ms, and imports the rest", async (_, inside, problem) => {
     const bytes = svgOf(inside);
     expect(bytes.length).toBe(MEGABYTE);
@@ -333,7 +369,9 @@ describe("brand import of a .pptx whose logo is a megabyte of unclosed url(", ()
     const result = await importBrand({ file, out });
     if (!result.ok) throw new Error(`The import failed: ${result.code}: ${result.message}`);
     expect(result.report.logo).toBeNull();
-    const why = result.report.left.find((item) => item.what === 'The picture "Logo" on the slide master')?.why;
+    const why = result.report.left.find(
+      (item) => item.what === 'The picture "Logo" on the slide master',
+    )?.why;
     expect(why).toMatch(/its SVG has .*, which a logo may not$/);
     expect(why).toMatch(problem);
     // The one check of the logo's text, timed inside the import.

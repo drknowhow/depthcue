@@ -116,8 +116,9 @@ export function layChart(xml: string, places: ChartPlaces): string {
   let out = xml;
   const title = places.title;
   if (title) {
-    out = out.replace(/(<c:chart>\s*<c:title>[\s\S]*?)(<c:layout(?:\/>|>[\s\S]*?<\/c:layout>))/, (_w, head: string) =>
-      `${head}${manual(title, false)}`,
+    out = out.replace(
+      /(<c:chart>\s*<c:title>[\s\S]*?)(<c:layout(?:\/>|>[\s\S]*?<\/c:layout>))/,
+      (_w, head: string) => `${head}${manual(title, false)}`,
     );
   }
   out = out.replace(
