@@ -46,7 +46,8 @@ const NO_TEXT_CSS = `
 .dc-scene text { fill: transparent !important; }
 `;
 
-export async function launchBrowser(): Promise<Browser> {
+/** A headless Chrome, Edge or Chromium, with `args` added to its command line. */
+export async function launchBrowser(args: readonly string[] = []): Promise<Browser> {
   const { chromium } = await import("playwright-core");
   const attempts: Array<{ label: string; options: LaunchOptions }> = [];
   const custom = process.env.DEPTHCUE_BROWSER;
@@ -62,9 +63,10 @@ export async function launchBrowser(): Promise<Browser> {
   const failures: string[] = [];
   for (const { label, options } of attempts) {
     try {
+      const flags = [...(noSandbox ? ["--no-sandbox"] : []), ...args];
       return await chromium.launch({
         headless: true,
-        ...(noSandbox ? { args: ["--no-sandbox"] } : {}),
+        ...(flags.length > 0 ? { args: flags } : {}),
         ...options,
       });
     } catch (error) {

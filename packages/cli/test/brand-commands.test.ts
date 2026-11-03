@@ -169,10 +169,15 @@ describe("depthcue brand init", () => {
 
 describe("depthcue brand check", () => {
   it("passes the Harbor fixture's brand folder and its deck", async () => {
-    expect(await cli("brand", "check", harborBrand)).toMatchObject({ code: 0, out: "0 errors, 0 warnings" });
+    // Harbor has a light logo only, and a palette for ink: the one warning it gets.
+    const darkless = /no logo for dark slides[\s\S]*\n0 errors, 1 warning$/;
+    expect(await cli("brand", "check", harborBrand)).toMatchObject({
+      code: 0,
+      out: expect.stringMatching(darkless),
+    });
     expect(await cli("brand", "check", join(decks, "v0-4-brand"))).toMatchObject({
       code: 0,
-      out: "0 errors, 0 warnings",
+      out: expect.stringMatching(darkless),
     });
   });
 
@@ -230,10 +235,10 @@ describe("depthcue brand check", () => {
     expect(found).toMatchObject({
       ok: true,
       errors: 0,
-      warnings: 0,
+      warnings: 1,
       kind: "brand",
       brand: { id: "harbor", name: "Harbor Analytics" },
-      diagnostics: [],
+      diagnostics: [{ severity: "warning", code: "logo-without-dark", path: "/logos" }],
     });
     const deck = JSON.parse((await cli("brand", "check", join(decks, "v0-4-brand"), "--json")).out);
     expect(deck).toMatchObject({ ok: true, kind: "deck", brand: { id: "harbor" } });
