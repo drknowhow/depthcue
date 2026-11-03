@@ -18,6 +18,7 @@ import {
   cueMapPath,
   type DeckLook,
   type Diagnostic,
+  deckAssetRefs,
   EXPORT_FORMAT,
   type ExportData,
   type FontPair,
@@ -397,7 +398,7 @@ export function exportDeck(request: ExportRequest): ExportResult {
     const scene = doc.scenes[id] as Scene;
     return keepNotes ? scene : withoutNotes(scene);
   });
-  const used = new Set(scenes.flatMap(assetsOf));
+  const used = new Set([...scenes.flatMap(assetsOf), ...deckAssetRefs(doc.deck).map((ref) => ref.asset)]);
   // A clip's cue map sits beside its video. The page reads it from its own data, so it is embedded, not copied.
   const files: Record<string, unknown> = {};
   const cueMaps: string[] = [];

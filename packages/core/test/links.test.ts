@@ -48,7 +48,7 @@ describe("parseTarget", () => {
 
 describe("the link operations", () => {
   it("adds a link, raises the deck to 0.5 and lets a block use it", () => {
-    const added = ok(run(demoDoc(), [add("report", "assets/report.pdf")]));
+    const added = ok(run(demoDoc(), [add("report", "assets/report.csv")]));
     expect(added.doc.deck.schemaVersion).toBe("0.5");
     const used = ok(applyOps(added.doc, [use("report")], added.rev));
     expect(used.doc.scenes.opening?.schemaVersion).toBe("0.5");
@@ -63,6 +63,10 @@ describe("the link operations", () => {
   it("refuses a target that is not one of the forms", () => {
     const failed = run(demoDoc(), [add("bad", "javascript:alert(1)")]);
     expect(codes(failed)).toContain("bad-link-target");
+  });
+
+  it("refuses a link to a deck file that is not there", () => {
+    expect(codes(run(demoDoc(), [add("gone", "assets/missing.pdf")]))).toContain("missing-asset");
   });
 
   it("refuses a scene target that is not in the deck", () => {

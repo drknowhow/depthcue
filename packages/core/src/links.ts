@@ -111,6 +111,30 @@ export function checkLinks(deck: Deck, file: string): Diagnostic[] {
   return out;
 }
 
+/** The deck files the library's links name, with where each is named: they go into an export with the scenes' own. */
+export function deckAssetRefs(deck: Deck): Array<{ path: string; asset: string }> {
+  const refs: Array<{ path: string; asset: string }> = [];
+  (deck.links ?? []).forEach((entry, i) => {
+    const target = parseTarget(entry.target);
+    if (target?.kind === "asset") refs.push({ path: `/links/${i}/target`, asset: target.asset });
+  });
+  return refs;
+}
+
+/** Errors for a link to a deck file that is not in the deck. */
+export function checkLinkAssets(deck: Deck, assets: ReadonlySet<string>, file: string): Diagnostic[] {
+  return deckAssetRefs(deck)
+    .filter((ref) => !assets.has(ref.asset))
+    .map((ref) => ({
+      severity: "error" as const,
+      code: "missing-asset",
+      file,
+      path: ref.path,
+      message: `${ref.asset} does not exist.`,
+      fix: "Add the file to the deck folder, or point the link at an existing asset.",
+    }));
+}
+
 /** Where a scene points at a library link: a block's `link` or a source's `link`, with the path in the scene. */
 export function linkUses(scene: Scene): Array<{ id: string; path: string }> {
   const uses: Array<{ id: string; path: string }> = [];

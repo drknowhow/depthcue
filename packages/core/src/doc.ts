@@ -1,5 +1,6 @@
 import { BRAND_FILE, type BrandPart, kitOf, templateIdOf, templatePath } from "./brand.ts";
 import { readBrand } from "./brandcheck.ts";
+import { checkLinkAssets } from "./links.ts";
 import { canonicalJson, sha256Hex } from "./revision.ts";
 import { checkTones, colorsKey, styleOf } from "./style.ts";
 import type { Brand, Deck, Diagnostic, Scene, Template } from "./types.ts";
@@ -205,7 +206,10 @@ export function checkChanges(before: Doc, after: Doc): Diagnostic[] {
     return checkDoc(after);
   }
   const part = brandPartOf(after);
-  const out = after.deck === before.deck ? [] : checkManifest(after.deck, MANIFEST_FILE, after.brand);
+  const manifest = after.deck === before.deck ? [] : checkManifest(after.deck, MANIFEST_FILE, after.brand);
+  const out = manifest.some((d) => d.severity === "error")
+    ? manifest
+    : [...manifest, ...checkLinkAssets(after.deck, after.assets, MANIFEST_FILE)];
   const deck = out.some((d) => d.severity === "error") ? undefined : after.deck;
   const recolored =
     deck !== undefined && after.deck !== before.deck && colorsKey(before.deck) !== colorsKey(deck);

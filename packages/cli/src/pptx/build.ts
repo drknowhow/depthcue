@@ -14,6 +14,7 @@ import {
   chartFromBarChart,
   type Deck,
   type DeckStyle,
+  parseTarget,
   type Scene,
   type TableBlock,
   textFlow,
@@ -256,6 +257,40 @@ export function linkTo(from: string, target: string, flavor: typeof path = path)
 const fileLink = (page: Page, asset: string) =>
   linkTo(dirname(page.input.out), resolve(page.input.folder, asset));
 
+/** Where a hyperlink goes: an address, or a slide of this presentation. */
+type Hyper = { url?: string; slide?: number; tooltip?: string };
+
+/**
+ * A library link as a hyperlink: an address as it is, a deck file as `fileLink` writes it, a place on a disk the same
+ * way (relative to the deck folder when it is not absolute), and a scene as the first slide of that scene.
+ */
+function linkFor(page: Page, id: string): Hyper | undefined {
+  const entry = page.input.deck.links?.find((candidate) => candidate.id === id);
+  const target = entry && parseTarget(entry.target);
+  if (!entry || !target) return undefined;
+  const tooltip = entry.title;
+  switch (target.kind) {
+    case "address":
+      return { url: target.href, tooltip };
+    case "asset":
+      return { url: fileLink(page, target.asset), tooltip };
+    case "path":
+      return { url: linkTo(dirname(page.input.out), resolve(page.input.folder, target.path)), tooltip };
+    case "scene": {
+      const slide = page.input.scenes.findIndex((scene) => scene.id === target.scene) + 1;
+      return slide > 0 ? { slide, tooltip } : undefined;
+    }
+  }
+}
+
+/** A source's hyperlink: its library link when it has one that works, else its address or its file. */
+function sourceHyperlink(page: Page, source: NonNullable<Scene["sources"]>[number]): Hyper | undefined {
+  const linked = source.link === undefined ? undefined : linkFor(page, source.link);
+  if (linked) return linked;
+  const url = source.url ?? (source.asset ? fileLink(page, source.asset) : undefined);
+  return url === undefined ? undefined : { url };
+}
+
 /** A picture's bytes as the writer takes them: the file when PowerPoint can show it, else what the page drew. */
 function pictureData(page: Page, asset: string, picture: Picture): string | undefined {
   const mime = MIME[extname(asset).toLowerCase()];
@@ -271,7 +306,7 @@ function addPicture(
   asset: string,
   picture: Picture,
   alt: string,
-  link?: string,
+  link?: Hyper,
 ): boolean {
   const data = pictureData(page, asset, picture);
   const { w: width, h: height } = page.measure.slide;
@@ -331,7 +366,7 @@ function addPicture(
       : {}),
     altText: alt,
     objectName: block.id,
-    ...(link ? { hyperlink: { url: link, tooltip: asset } } : {}),
+    ...(link ? { hyperlink: { tooltip: asset, ...link } } : {}),
   });
   return true;
 }
@@ -707,7 +742,7 @@ function clipBlock(
     : cannotEmbed(page.input.folder, block.source);
   if (why === undefined && embedClip(page, block, item, poster)) return;
   const because = why === undefined ? "" : `, because ${why}`;
-  if (poster !== undefined && addPicture(page, block, poster, item.video, block.alt, link)) {
+  if (poster !== undefined && addPicture(page, block, poster, item.video, block.alt, { url: link })) {
     page.left.push(
       `"${block.id}": the video is shown as its poster and linked to ${block.source}; it is not embedded${because}.`,
     );
@@ -857,7 +892,7 @@ function sourcesText(page: Page, label: TextPlace, list: TextPlace, numbered: bo
   const runs: Run[] = [];
   const base = plainRuns("x", list.ink, page.context)[0] as Run;
   sources.forEach((source, at) => {
-    const target = source.url ?? (source.asset ? fileLink(page, source.asset) : undefined);
+    const target = sourceHyperlink(page, source);
     const options = { ...(base.options ?? {}) };
     delete options.lineSpacing;
     if (numbered) runs.push({ text: `${at + 1}. `, options: { ...options, align: list.ink.align } });
@@ -866,7 +901,7 @@ function sourcesText(page: Page, label: TextPlace, list: TextPlace, numbered: bo
       options: {
         ...options,
         align: list.ink.align,
-        ...(target ? { hyperlink: { url: target }, color: page.measure.link } : {}),
+        ...(target ? { hyperlink: target, color: page.measure.link } : {}),
       },
     });
     if (at < sources.length - 1) runs.push({ text: "   ", options: { ...options, align: list.ink.align } });
@@ -913,13 +948,13 @@ function footText(page: Page, label: TextPlace, list: TextPlace, flow: TextPlace
     return { ...run, options };
   });
   sources.forEach((source, at) => {
-    const target = source.url ?? (source.asset ? fileLink(page, source.asset) : undefined);
+    const target = sourceHyperlink(page, source);
     runs.push({ text: at === 0 ? " " : " · ", options: { ...listOptions } });
     runs.push({
       text: source.title,
       options: {
         ...listOptions,
-        ...(target ? { hyperlink: { url: target }, color: page.measure.link } : {}),
+        ...(target ? { hyperlink: target, color: page.measure.link } : {}),
       },
     });
   });
@@ -971,6 +1006,11 @@ function item(page: Page, entry: Item) {
   const block = page.blocks.get(entry.id);
   if (!block) return;
   page.placed.add(block.id);
+  if (block.link !== undefined && block.type !== "image") {
+    page.left.push(
+      `"${block.id}": its link is not carried to PowerPoint; only a picture and the sources keep theirs.`,
+    );
+  }
   switch (entry.kind) {
     case "text":
       if (block.type === "text") textBlock(page, block, entry.text);
@@ -978,7 +1018,14 @@ function item(page: Page, entry: Item) {
       return;
     case "image":
       if (block.type === "image") {
-        addPicture(page, block, block.asset, entry.picture, block.alt);
+        addPicture(
+          page,
+          block,
+          block.asset,
+          entry.picture,
+          block.alt,
+          block.link === undefined ? undefined : linkFor(page, block.link),
+        );
         if (block.caption && entry.caption) {
           addText(
             page,
