@@ -45,6 +45,18 @@ const EXPORT_TEXT = `export Writes a folder that opens by double-click: index.ht
        did not write, or one that has been changed since, is never replaced.
        Exit codes: 0 done, 1 the deck has errors, 2 the export could not run.`;
 
+const LINK_USAGE = `  depthcue link list <deck-folder> [--json]
+  depthcue link add <deck-folder> <id> <target> [--name <title>] [--note <text>] [--json]
+  depthcue link set <deck-folder> <id> [--name <title>] [--target <target>] [--note <text>] [--json]
+  depthcue link remove <deck-folder> <id> [--to <id>] [--json]
+  depthcue link check <deck-folder> [--online] [--json]`;
+
+const LINK_TEXT = `link   Manages the deck's saved links, which blocks and scene sources use by id. A target is an https:, http:,
+       mailto:, tel: or sms: address, a deck file (assets/...), another scene (scene:<id> or scene:<id>#<step>)
+       or a path on this machine (path:<path>). remove is refused while a link is in use, unless --to names
+       the link that takes its place. check reports bad targets, unknown scenes, missing files, unused links and
+       paths that are not there; --online also asks each web address whether it answers.`;
+
 const USAGE = `Usage:
   depthcue check <deck-folder> [--json]
   depthcue rev <deck-folder>
@@ -58,6 +70,7 @@ ${EXPORT_USAGE}
 ${BRAND_IMPORT_USAGE}
 ${BRAND_COMMANDS_USAGE}
 ${NEW_USAGE}
+${LINK_USAGE}
   depthcue comments list <deck-folder> [--all] [--json]
   depthcue comments apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue diff <deck-folder> [--json]
@@ -94,6 +107,8 @@ ${BRAND_COMMANDS_TEXT}
 
 ${NEW_TEXT}
 
+${LINK_TEXT}
+
 comments Lists the comments kept beside the deck in comments.json (the open ones; --all adds the resolved ones),
        with the ones people asked the agent to act on marked "ask". apply changes them the way apply changes
        the deck: operations all or none, against the comments' own revision, which list prints. The comments
@@ -122,6 +137,9 @@ const VALUE_FLAGS = [
   "format",
   "brand",
   "kind",
+  "target",
+  "note",
+  "to",
 ] as const;
 type ValueFlag = (typeof VALUE_FLAGS)[number];
 
@@ -132,6 +150,7 @@ interface Parsed {
   all: boolean;
   force: boolean;
   replace: boolean;
+  online: boolean;
   help: boolean;
   values: Partial<Record<ValueFlag, string>>;
   unknown: string[];
@@ -145,6 +164,7 @@ function parse(args: readonly string[]): Parsed {
     all: false,
     force: false,
     replace: false,
+    online: false,
     help: false,
     values: {},
     unknown: [],
@@ -173,6 +193,10 @@ function parse(args: readonly string[]): Parsed {
     }
     if (arg === "--replace") {
       parsed.replace = true;
+      continue;
+    }
+    if (arg === "--online") {
+      parsed.online = true;
       continue;
     }
     const flag = VALUE_FLAGS.find((name) => arg === `--${name}` || arg.startsWith(`--${name}=`));
@@ -723,7 +747,7 @@ export interface RunOptions {
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, noNotes, all, force, replace, help, values, unknown } = parse(rest);
+  const { positional, json, noNotes, all, force, replace, online, help, values, unknown } = parse(rest);
   const baseRev = values["base-rev"];
   const portText = values.port;
   const port = portText === undefined ? undefined : Number(portText);
@@ -731,7 +755,7 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   const renderFlags = values.out ?? values.step ?? values.width ?? values.height;
   // --name also names a brand (brand init) and a deck (new).
   const clipFlags =
-    (command === "brand" || command === "new" ? undefined : values.name) ??
+    (command === "brand" || command === "new" || command === "link" ? undefined : values.name) ??
     values.quality ??
     values.scale ??
     values.kine;
@@ -795,6 +819,34 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   if (clipFlags !== undefined) return usage("--name, --quality, --scale and --kine belong to clip build.");
   if (command !== "new" && values.brand !== undefined) return usage("--brand belongs to new.");
   if (force && command !== "brand") return usage("--force belongs to brand use.");
+  if (command !== "link") {
+    const linkOnly = values.target ?? values.note ?? values.to ?? (online ? "--online" : undefined);
+    if (linkOnly !== undefined) return usage("--target, --note, --to and --online belong to link.");
+  }
+  if (command === "link") {
+    const flags = {
+      json,
+      name: values.name,
+      target: values.target,
+      note: values.note,
+      to: values.to,
+      online,
+      stray:
+        force ||
+        replace ||
+        baseRev !== undefined ||
+        portText !== undefined ||
+        values.kind !== undefined ||
+        values.brand !== undefined ||
+        renderFlags !== undefined,
+    };
+    return import("./links/command.ts")
+      .then((links) => links.linkCommand(positional, flags, io, usage))
+      .catch((error: Error) => {
+        io.err(error.message);
+        return 2;
+      });
+  }
   if ((replace || values.kind !== undefined) && command !== "brand") {
     return usage(`${replace ? "--replace" : "--kind"} belongs to brand add.`);
   }
