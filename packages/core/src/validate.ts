@@ -16,6 +16,7 @@ import { type BrandData, readBrand } from "./brandcheck.ts";
 import { checkData } from "./data.ts";
 import { explain } from "./diagnostics.ts";
 import { checkFrames } from "./frames.ts";
+import { checkLinks, checkSceneLinks } from "./links.ts";
 import { checkReferences } from "./references.ts";
 import { deckSchema, sceneSchema } from "./schema.ts";
 import { schemaValidator } from "./schemacheck.ts";
@@ -58,6 +59,7 @@ export function checkManifest(data: unknown, file = MANIFEST_FILE, brand?: Brand
   const deck = data as Deck;
   return [
     ...checkDeckVersion(deck, file),
+    ...checkLinks(deck, file),
     ...checkBrandLock(deck, brand, file),
     ...checkPalette(deck, file, brand),
   ];
@@ -123,6 +125,7 @@ export function checkScenePart(
     ...checkReferences(data as Scene, file),
     ...checkFrames(data as Scene, file),
     ...checkSceneVersion(data as Scene, file),
+    ...(deck ? checkSceneLinks(data as Scene, deck, file) : []),
     ...checkData(data as Scene, file),
     ...(deck ? checkTones(data as Scene, styleOf(deck, part?.brand), file, kit) : []),
     ...(kit ? checkSceneBrand(data as Scene, kit, file) : []),

@@ -69,6 +69,9 @@ const everyOp = [
   { op: "slot.set", template: "plain", id: "aside", set: { max: 2, style: null } },
   { op: "slot.rename", template: "plain", id: "aside", to: "note" },
   { op: "slot.remove", template: "plain", id: "note", to: null },
+  { op: "link.add", link: { id: "report", title: "Report", target: "assets/report.pdf" }, after: null },
+  { op: "link.set", id: "report", set: { note: "The full report" } },
+  { op: "link.remove", id: "report", to: "summary" },
 ];
 const at = "2026-11-01T10:00:00.000Z";
 const everyCommentOp = [

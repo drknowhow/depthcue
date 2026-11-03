@@ -21,7 +21,8 @@
         "0.1",
         "0.2",
         "0.3",
-        "0.4"
+        "0.4",
+        "0.5"
       ]
     },
     "id": {
@@ -191,6 +192,10 @@
               "style": {
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "link": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             },
             "allOf": [
@@ -336,6 +341,10 @@
               "style": {
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "link": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             }
           },
@@ -436,6 +445,10 @@
               "style": {
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "link": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             }
           },
@@ -517,6 +530,10 @@
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
               },
               "style": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "link": {
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
@@ -642,6 +659,10 @@
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
               },
               "style": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "link": {
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
@@ -776,6 +797,10 @@
               "style": {
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "link": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             }
           }
@@ -811,6 +836,10 @@
             "type": "string",
             "pattern": "^https?://[^\\s]+$",
             "maxLength": 500
+          },
+          "link": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
           }
         }
       }

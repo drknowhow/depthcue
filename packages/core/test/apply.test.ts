@@ -160,7 +160,7 @@ describe("operation shapes", () => {
     expect(near.diagnostics[0]?.fix).toContain('Did you mean "scene.set"?');
     const far = failure(run(demoDoc(), [{ op: "slide.explode" }]));
     expect(far.diagnostics[0]?.fix).toBe(
-      "Use one of: deck.set, scene.add, scene.remove, scene.move, scene.set, scene.upgrade, block.add, block.remove, block.move, block.set, block.frame, block.unframe, brand.set, style.set, template.set, slot.add, slot.set, slot.rename, slot.remove.",
+      "Use one of: deck.set, scene.add, scene.remove, scene.move, scene.set, scene.upgrade, block.add, block.remove, block.move, block.set, block.frame, block.unframe, brand.set, style.set, template.set, slot.add, slot.set, slot.rename, slot.remove, link.add, link.set, link.remove.",
     );
   });
 

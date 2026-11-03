@@ -25,7 +25,7 @@ export const TEXT_STYLE_KEYS = ["tone", "size", "align"] as const;
 /** The properties of any block that came with 0.4: the template slot it sits in and the style it takes. */
 export const BLOCK_BRAND_KEYS = ["slot", "style"] as const;
 /** The properties of deck.json that came after 0.1, with the version each came with. */
-export const DECK_KEYS_BY_VERSION = { palette: "0.3", fonts: "0.3", brand: "0.4" } as const;
+export const DECK_KEYS_BY_VERSION = { palette: "0.3", fonts: "0.3", brand: "0.4", links: "0.5" } as const;
 
 type Part = { name: string; version: SchemaVersion; path: string };
 
@@ -44,6 +44,7 @@ function newerParts(block: Block): Part[] {
   }
   for (const key of BLOCK_BRAND_KEYS)
     if (block[key] !== undefined) out.push({ name: key, version: "0.4", path: `/${key}` });
+  if (block.link !== undefined) out.push({ name: "link", version: "0.5", path: "/link" });
   if (block.frame !== undefined) out.push({ name: "frame", version: "0.2", path: "/frame" });
   return out;
 }
@@ -53,12 +54,21 @@ export function blockNeeds(block: Block): SchemaVersion {
   return newerParts(block).reduce<SchemaVersion>((most, part) => newest(most, part.version), "0.1");
 }
 
-/** The oldest version that has everything the scene uses: its blocks, and a template, which came with 0.4. */
-export const sceneNeeds = (scene: Scene): SchemaVersion =>
-  (Array.isArray(scene.blocks) ? scene.blocks : []).reduce<SchemaVersion>(
+/**
+ * The oldest version that has everything the scene uses: its blocks, a template, which came with 0.4, and a source's
+ * link, which came with 0.5.
+ */
+export const sceneNeeds = (scene: Scene): SchemaVersion => {
+  const base: SchemaVersion = scene.sources?.some((source) => source?.link !== undefined)
+    ? "0.5"
+    : scene.template === undefined
+      ? "0.1"
+      : "0.4";
+  return (Array.isArray(scene.blocks) ? scene.blocks : []).reduce<SchemaVersion>(
     (most, block) => newest(most, blockNeeds(block)),
-    scene.template === undefined ? "0.1" : "0.4",
+    base,
   );
+};
 
 /** The oldest version that has everything deck.json uses. */
 export const deckNeeds = (deck: Deck): SchemaVersion =>
@@ -97,6 +107,10 @@ export function checkSceneVersion(scene: Scene, file: string): Diagnostic[] {
   const out: Diagnostic[] = [];
   if (scene.template !== undefined && declared < rank("0.4"))
     out.push(tooOld(file, "/template", "template", "0.4", scene.schemaVersion, '"template"'));
+  scene.sources?.forEach((source, i) => {
+    if (source.link !== undefined && declared < rank("0.5"))
+      out.push(tooOld(file, `/sources/${i}/link`, "link", "0.5", scene.schemaVersion, '"link"'));
+  });
   scene.blocks.forEach((block, i) => {
     for (const part of newerParts(block)) {
       if (part.name === "frame" || rank(part.version) <= declared) continue;
