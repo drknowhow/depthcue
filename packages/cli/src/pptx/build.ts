@@ -19,6 +19,7 @@ import {
   textFlow,
 } from "@depthcue/core";
 import PptxGenJS from "pptxgenjs";
+import { type ChartPlaces, chartPlaces } from "./chartlayout.ts";
 import type {
   Box,
   ColumnPlace,
@@ -83,6 +84,8 @@ export interface Built {
   headers: string[][];
   /** For each slide, the description of each embedded video by its name, which the writer has no option for. */
   alts: Array<Record<string, string>>;
+  /** Where each chart puts its title, legend and plot, in the order the charts are made, which is how they are numbered. */
+  charts: ChartPlaces[];
   fonts: FontUse[];
 }
 
@@ -110,6 +113,8 @@ interface Page {
   /** The tables on this slide whose first row is a header, which the package step marks so PowerPoint knows. */
   headers: string[];
   alts: Record<string, string>;
+  /** Where each chart of the file puts its parts, in the order the charts are made: the deck's, not the slide's. */
+  charts: ChartPlaces[];
 }
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
@@ -529,6 +534,20 @@ function chartBlock(
   if (item.title) useInk(page, item.title.ink);
   if (item.legend) useInk(page, item.legend.ink);
   const labels = series.length === 1 && names.length <= 8 && kind !== "donut" && !scatter;
+  const legend = kind === "donut" || series.length > 1;
+  const valueTitle = kind !== "donut" && axisTitle !== "" && !horizontal;
+  // The title, legend and plot go where the page draws them, each in its own room (`layChart` in the package step).
+  // PowerPoint sets an axis title beside the plot, where the page writes it above, so the plot leaves it that room.
+  const room = item.axis.px * 1.8;
+  page.charts.push(
+    chartPlaces({
+      frame: { x: x * 96, y: y * 96, w: w * 96, h: h * 96 },
+      ...(block.title && item.title ? { title: item.title.box } : {}),
+      ...(legend && item.legendBox ? { legend: item.legendBox } : {}),
+      plot: item.plot,
+      axisRoom: { left: valueTitle ? room : 0, bottom: scatter ? room : 0 },
+    }),
+  );
   const options: PptxGenJS.IChartOpts = {
     x,
     y,
@@ -547,10 +566,9 @@ function chartBlock(
           titleFontSize: pt(item.title?.ink.px ?? item.axis.px),
           titleColor: item.title?.ink.color ?? item.axis.color,
           titleBold: false,
-          titlePos: { x: 0, y: 0 },
         }
       : { showTitle: false }),
-    showLegend: kind === "donut" || series.length > 1,
+    showLegend: legend,
     legendPos: kind === "donut" ? "r" : "t",
     legendFontFace: item.legend?.ink.family ?? mono,
     legendFontSize: pt(item.legend?.ink.px ?? item.axis.px),
@@ -568,7 +586,7 @@ function chartBlock(
     dataLabelFontSize: axisSize,
     dataLabelColor: item.value.color,
     dataLabelFormatCode: valueCode,
-    ...(kind !== "donut" && axisTitle && !horizontal
+    ...(valueTitle
       ? {
           showValAxisTitle: true,
           valAxisTitle: axisTitle,
@@ -1026,6 +1044,7 @@ export async function buildPresentation(input: BuildInput): Promise<Built> {
   const slides: SlideReport[] = [];
   const headers: string[][] = [];
   const alts: Array<Record<string, string>> = [];
+  const charts: ChartPlaces[] = [];
   scenes.forEach((scene, at) => {
     const measure = measures[at] as SlideMeasure;
     const step = input.steps?.[at];
@@ -1045,6 +1064,7 @@ export async function buildPresentation(input: BuildInput): Promise<Built> {
       placed: new Set(),
       headers: [],
       alts: {},
+      charts,
     };
     const report: SlideReport = { scene: scene.id, title: scene.title, left: page.left };
     if (step) report.step = step.at;
@@ -1089,6 +1109,7 @@ export async function buildPresentation(input: BuildInput): Promise<Built> {
     slides,
     headers,
     alts,
+    charts,
     fonts: [...fonts.entries()]
       .map(([family, roles]) => ({ family, roles: [...roles].sort() }))
       .sort((a, b) => (a.family < b.family ? -1 : a.family > b.family ? 1 : 0)),

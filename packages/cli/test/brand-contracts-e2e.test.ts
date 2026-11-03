@@ -113,7 +113,9 @@ describe("a branded deck through the CLI", () => {
     const dir = copy();
     const check = await cli("check", dir);
     expect(check.code).toBe(0);
-    expect(check.lines.at(-1)).toBe("0 errors, 0 warnings");
+    // Harbor has a light logo only, and a palette for ink: the one warning its decks get.
+    expect(check.lines.at(-1)).toBe("0 errors, 1 warning");
+    expect(check.lines.join("\n")).toContain("no logo for dark slides");
     const { doc } = loadDoc(loadDeckDir(dir));
     expect(await rev(dir)).toBe(revisionOf(doc as NonNullable<typeof doc>));
   });

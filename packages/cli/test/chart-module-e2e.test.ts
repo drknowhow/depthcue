@@ -167,12 +167,29 @@ describe("the chart module in a real browser", () => {
   });
 
   it("does not move the page when it hydrates: the toolbar sits in room reserved from the start", async () => {
+    // The module arrives when the test lets it, not after a fixed wait a busy machine can outrun.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await page.route("**/chart.js", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await held;
+      await route.continue();
+    });
+    // Fonts as late as a busy machine gets them, which is when this test used to measure the figure too early.
+    await page.route("**/*.woff2", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
       await route.continue();
     });
     await page.goto(`${server.url}#/demand/2`);
     await page.locator(".dc-chart").waitFor();
+    // The deck's fonts set the figure's height, and on a busy machine they can still be loading here: measure once they
+    // are in, so what moves the page afterwards can only be the module.
+    await page.evaluate(async () => {
+      do await document.fonts.ready;
+      while (document.fonts.status !== "loaded");
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    });
     expect(await state()).toBe("pending");
     const measure = () =>
       page.evaluate(() => {
@@ -183,6 +200,7 @@ describe("the chart module in a real browser", () => {
         return { top: box.top, height: box.height, bottom: box.bottom, tools, table };
       });
     const before = await measure();
+    release();
     await page.waitForFunction(
       () =>
         document.querySelector("[data-id='chart-demand']")?.getAttribute("data-module-state") === "hydrated",
