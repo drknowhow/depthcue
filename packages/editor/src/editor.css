@@ -434,8 +434,8 @@ body {
 .ed-main {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   gap: var(--dc-space-3);
   min-width: 0;
   overflow: auto;
@@ -445,7 +445,54 @@ body {
 /* The slide takes the width it is given, unless the height runs out first: the top bar, the problem ribbon, the padding, the hint and the room for the quick bar are about 13.75rem. A short window scrolls the slide under the bar instead of shrinking it past 24rem. */
 .ed-canvas-host {
   position: relative;
-  width: min(100%, max(24rem, calc((100dvh - 13.75rem) * 16 / 9)));
+  width: calc(min(100%, max(24rem, calc((100dvh - 13.75rem) * 16 / 9))) * var(--ed-zoom, 1));
+  flex: none;
+}
+
+/* The bar for moving between slides and zooming, over the top right of the stage. */
+.ed-view {
+  position: absolute;
+  top: var(--dc-space-3);
+  right: var(--dc-space-5, 1.5rem);
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: var(--dc-space-1);
+  padding: var(--dc-space-1);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-lg);
+  background: var(--dc-bg);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 14%);
+}
+
+.ed-app .ed-view button {
+  min-width: 2rem;
+  padding-inline: var(--dc-space-2);
+}
+
+.ed-app .ed-view .ed-view-level {
+  min-width: 3.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ed-view-where {
+  min-width: 3.5rem;
+  text-align: center;
+  color: var(--dc-muted);
+  font-family: var(--dc-font-mono);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ed-view-rule {
+  align-self: stretch;
+  width: 1px;
+  margin: var(--dc-space-1);
+  background: var(--dc-line);
+}
+
+.ed-stage[data-side] .ed-view {
+  right: calc(var(--ed-side) + var(--dc-space-4));
 }
 
 .ed-app .ed-frame.dc-player {
