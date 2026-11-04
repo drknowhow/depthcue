@@ -232,6 +232,33 @@ export class FakeServer implements Api {
     return path;
   }
 
+  /** Where the saved deck names each file, for the library to show; a test can set it. */
+  uses: Record<string, Array<{ scene: string | null; path: string }>> = {};
+  listCalls = 0;
+  removed: string[] = [];
+  /** Makes the next removeAsset reject with this message, as the server does for a file the deck names. */
+  refuseRemove: string | undefined;
+
+  async listAssets() {
+    this.listCalls += 1;
+    return this.assets
+      .filter((path) => /\.(png|jpe?g|gif|webp|svg)$/i.test(path))
+      .map((asset) => ({
+        asset,
+        kind: asset.split(".").pop() as string,
+        bytes: 2048,
+        width: 640,
+        height: 480,
+        usedBy: this.uses[asset] ?? [],
+      }));
+  }
+
+  async removeAsset(asset: string): Promise<void> {
+    if (this.refuseRemove) throw new Error(this.refuseRemove);
+    this.removed.push(asset);
+    this.assets = this.assets.filter((path) => path !== asset);
+  }
+
   /** The sample deck has no brand folder, so a brand file is refused, as the server refuses one it cannot take. */
   async brandFile(path: string, _body: Blob | string): Promise<BrandFileAnswer> {
     this.brandCalls.push(path);

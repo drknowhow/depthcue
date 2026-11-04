@@ -4137,3 +4137,109 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The image library: the deck's pictures to add, put in place of an image, or delete when nothing uses them. */
+.ed-lib {
+  position: fixed;
+  inset: auto 0 5rem;
+  z-index: 20;
+  display: grid;
+  gap: var(--dc-space-2);
+  width: min(32rem, calc(100vw - 2 * var(--dc-space-4)));
+  max-height: min(30rem, calc(100dvh - 7rem));
+  margin-inline: auto;
+  padding: var(--dc-space-3);
+  overflow-y: auto;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-lg);
+  background: var(--dc-surface);
+  color: var(--dc-text);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 28%);
+  font-size: 0.875rem;
+}
+
+.ed-lib-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.ed-lib-note {
+  margin: 0;
+  min-height: 1.25em;
+}
+
+.ed-lib-note:empty {
+  display: none;
+}
+
+.ed-lib-list {
+  display: grid;
+  gap: var(--dc-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ed-lib-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--dc-space-2);
+}
+
+.ed-lib-pick {
+  display: grid;
+  flex: 1 1 14rem;
+  grid-template: "thumb name" auto "thumb meta" auto / 3rem minmax(0, 1fr);
+  gap: 0 var(--dc-space-2);
+  min-height: 3rem;
+  padding: var(--dc-space-1);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-bg);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ed-lib-pick:hover,
+.ed-lib-pick:focus-visible {
+  border-color: var(--dc-text);
+}
+
+.ed-lib-thumb {
+  grid-area: thumb;
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+  background: var(--dc-surface);
+}
+
+.ed-lib-name {
+  grid-area: name;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-lib-meta {
+  grid-area: meta;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.ed-lib-ask {
+  flex: 1 1 12rem;
+}
+
+.ed-lib-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--dc-space-2);
+}
+
+.ed-lib-danger {
+  color: var(--dc-danger, #b00020);
+}

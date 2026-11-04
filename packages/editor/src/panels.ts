@@ -64,12 +64,14 @@ export interface PanelHost {
   close(): void;
   /** Opens where the scene's sources are added and edited. */
   openSources(): void;
+  /** Opens the image library to choose a file for an image; `choose` gets its path. Left out where there is none. */
+  library?(choose: (asset: string) => void): void;
 }
 
 /** What the toolbar and the scene bar each bring to their panels; the rest is read from the session. */
 export function panelHost(
   session: Session,
-  parts: Pick<PanelHost, "edits" | "upload" | "problem" | "close" | "openSources">,
+  parts: Pick<PanelHost, "edits" | "upload" | "problem" | "close" | "openSources" | "library">,
 ): PanelHost {
   return {
     ...parts,
@@ -426,6 +428,15 @@ export function imagePanel(host: PanelHost, sceneId: string, id: string): ImageP
         read: () => image()?.asset ?? "",
         commit: (value) => imageFile(sceneId, id, value),
       }),
+      ...(host.library
+        ? [
+            actionButton(
+              "Choose from library",
+              () => host.library?.((asset) => void host.run([imageFile(sceneId, id, asset)])),
+              { "data-field": key("library"), title: "Pictures already in this deck" },
+            ),
+          ]
+        : []),
       fileButton(
         "Upload a new image",
         IMAGE_ACCEPT,

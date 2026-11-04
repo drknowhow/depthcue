@@ -28,7 +28,14 @@ import { applyCommentsToFolder, readFolderComments } from "./comments-api.ts";
 import { openDeck } from "./deck-api.ts";
 import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
-import { addImage, ImageRefused, listImages, MAX_ASSET_BYTES, TOO_LARGE_MESSAGE } from "./images.ts";
+import {
+  addImage,
+  ImageRefused,
+  listImages,
+  MAX_ASSET_BYTES,
+  removeImage,
+  TOO_LARGE_MESSAGE,
+} from "./images.ts";
 import { brandHashEntries, loadDeckDir } from "./loader.ts";
 import { loadReviewDir, recordPersonWrite, saveReviewDir } from "./review-file.ts";
 import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
@@ -210,6 +217,24 @@ function listAssets(response: ServerResponse, ctx: EditContext) {
     });
   }
   return send(response, 200, { assets: listImages(ctx.folder, opened.doc) });
+}
+
+/** Deletes an image the saved deck does not name. The editor has checked its own unsaved document before asking. */
+function removeAsset(response: ServerResponse, url: URL, ctx: EditContext) {
+  const opened = openDeck(ctx.folder);
+  if (!opened.ok) {
+    return send(response, 409, {
+      error: "invalid-deck",
+      message: "The deck has errors, so no image was removed.",
+    });
+  }
+  const outcome = removeImage(ctx.folder, opened.doc, url.searchParams.get("asset") ?? "");
+  if (outcome.ok) return send(response, 200, outcome);
+  return send(response, outcome.code === "in-use" ? 409 : 404, {
+    error: outcome.code,
+    message: outcome.message,
+    ...(outcome.usedBy ? { usedBy: outcome.usedBy } : {}),
+  });
 }
 
 /**
@@ -593,6 +618,8 @@ export async function handleEditApi(
     else if (route === "/_depthcue/api/assets" && request.method === "GET") listAssets(response, ctx);
     else if (route === "/_depthcue/api/asset" && request.method === "POST") {
       await uploadAsset(request, response, url, ctx);
+    } else if (route === "/_depthcue/api/asset/remove" && request.method === "POST") {
+      removeAsset(response, url, ctx);
     } else if (route === "/_depthcue/api/brand-file" && request.method === "POST") {
       await uploadBrandFile(request, response, url, ctx);
     } else if (route === "/_depthcue/api/brand-file/remove" && request.method === "POST") {
