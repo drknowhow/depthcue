@@ -20,6 +20,7 @@ import {
   revertInFolder,
 } from "./review-api.ts";
 import { builtEditorDir, builtPlayerDir, startServer } from "./serve.ts";
+import { installedVersion, upgradeCommand } from "./upgrade.ts";
 
 export type { Io };
 export { report, summary };
@@ -69,6 +70,13 @@ const ASSET_TEXT = `asset  Manages the images in the deck's assets folder. add c
        pixels and where the deck uses it. unused lists the ones nothing uses. remove deletes one, and is refused
        while a block, source or link names it. check warns about an image a scene uses that is over 4 MB.`;
 
+const UPGRADE_USAGE = `  depthcue --version
+  depthcue upgrade [--yes]`;
+
+const UPGRADE_TEXT = `upgrade Says whether a newer depthcue is on npm. With --yes it runs npm install -g depthcue@latest; without, it
+       prints that command. --version prints the installed version. Close depthcue edit and depthcue-mcp first.`;
+type ValueFlag = (typeof VALUE_FLAGS)[number];
+
 const USAGE = `Usage:
   depthcue check <deck-folder> [--json]
   depthcue rev <deck-folder>
@@ -89,6 +97,8 @@ ${ASSET_USAGE}
   depthcue diff <deck-folder> [--json]
   depthcue diff <deck-folder> accept <change-id...> | --all [--json]
   depthcue diff <deck-folder> revert <change-id...> | --all [--json]
+${UPGRADE_USAGE}
+  depthcue --help
 
 check  Checks deck.json, every scene file, every reference and every asset.
 rev    Prints the deck's revision, a hash of its content. Pass it back as --base-rev.
@@ -136,6 +146,8 @@ diff   Lists what changed since the deck was last reviewed, one entry per proper
        puts them back as they were, written as a new revision, so nothing in the history is rewritten.
        --all means every change; accept --all also starts a review from the deck as it is.
 
+${UPGRADE_TEXT}
+
 Exit codes: 0 done, 1 errors found, edit rejected or a clip did not build, 2 could not run, 3 stale revision.`;
 
 const VALUE_FLAGS = [
@@ -156,7 +168,6 @@ const VALUE_FLAGS = [
   "note",
   "to",
 ] as const;
-type ValueFlag = (typeof VALUE_FLAGS)[number];
 
 interface Parsed {
   positional: string[];
@@ -166,6 +177,7 @@ interface Parsed {
   force: boolean;
   replace: boolean;
   online: boolean;
+  yes: boolean;
   help: boolean;
   values: Partial<Record<ValueFlag, string>>;
   unknown: string[];
@@ -180,6 +192,7 @@ function parse(args: readonly string[]): Parsed {
     force: false,
     replace: false,
     online: false,
+    yes: false,
     help: false,
     values: {},
     unknown: [],
@@ -192,6 +205,10 @@ function parse(args: readonly string[]): Parsed {
     }
     if (arg === "--help") {
       parsed.help = true;
+      continue;
+    }
+    if (arg === "--yes") {
+      parsed.yes = true;
       continue;
     }
     if (arg === "--all") {
@@ -764,7 +781,26 @@ export interface RunOptions {
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
   const [command, ...rest] = argv;
-  const { positional, json, noNotes, all, force, replace, online, help, values, unknown } = parse(rest);
+  if (command === "--version" || command === "-v" || command === "version") {
+    io.out(installedVersion());
+    return 0;
+  }
+  if (command === "--help" || command === "-h" || command === "help") {
+    io.out(USAGE);
+    return 0;
+  }
+  const { positional, json, noNotes, all, force, replace, online, yes, help, values, unknown } = parse(rest);
+  if (command === "upgrade") {
+    if (positional.length > 0 || unknown.length > 0 || help) {
+      io.err(`upgrade takes only --yes.\n\n${UPGRADE_USAGE}`);
+      return 2;
+    }
+    return upgradeCommand(yes, io);
+  }
+  if (yes) {
+    io.err(`--yes belongs to upgrade.\n\n${UPGRADE_USAGE}`);
+    return 2;
+  }
   const baseRev = values["base-rev"];
   const portText = values.port;
   const port = portText === undefined ? undefined : Number(portText);
