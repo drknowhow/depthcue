@@ -554,25 +554,19 @@ describe("the Decorative checkbox", () => {
     expect(problems).toEqual([]);
   });
 
-  it("explains in words why a picture with no alt text cannot be unmarked", async () => {
+  it("unmarks a picture with no alt text by starting its alt text as a name to write over", async () => {
     const { page, folder } = await openDeck("decorative");
     await image(page, "decorative-image").click();
     await tool(page, "edit").click();
     const box = page.locator("[data-field='image:decorative']");
     expect(await box.isChecked()).toBe(true);
     await box.click();
-    // The schema asks for alt text on a picture that is not decorative, so the change is refused with the reason in words,
-    // the checkbox stays checked and nothing is written. Alt text first, then the mark off, is the way through.
-    await expect
-      .poll(() =>
-        page
-          .locator("[role=alert]:not([hidden])")
-          .allTextContents()
-          .then((t) => t.join(" ")),
-      )
-      .toContain("alt");
-    expect(imageOn(folder, "decorative", "decorative-image")?.decorative).toBe(true);
-    expect(await box.isChecked()).toBe(true);
+    // The schema asks for alt text on a picture that is not decorative, so the mark comes off with a placeholder that
+    // the alt text field, no longer held, is there to replace. Nothing is refused, so the person is never stuck.
+    await expect.poll(() => imageOn(folder, "decorative", "decorative-image")?.decorative).toBeUndefined();
+    expect(imageOn(folder, "decorative", "decorative-image")?.alt).toBeTruthy();
+    expect(await box.isChecked()).toBe(false);
+    expect(await page.locator("[data-field='image:alt']").isDisabled()).toBe(false);
     expect(problems).toEqual([]);
   });
 });

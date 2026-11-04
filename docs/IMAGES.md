@@ -277,11 +277,12 @@ Dimitri approved the recommended answer to each:
   background from the popover is decorative.
 - **Deviations.** (1) The frame handles are the four corners, so the aspect lock is for corners; Shift had no earlier
   meaning in `framedrag`, so there is no conflict. (2) Fit box writes with `block.frame`, one op, one undo step. (3)
-  Unchecking Decorative on a picture with no alt text is refused by the schema with its reason in words and the box stays
-  checked, as for any invalid edit; in the Background section unchecking fills the alt field with the file's name and
-  focuses it. (4) The Background section also has focus fields, so every `scene.background` key has a control for
-  `coverage.test.ts`. (5) Crop writes `focus` only when the marker moved. (6) The scene's Layout buttons are in the top
-  bar, so the Background section lives in the Scene popover.
+  Unchecking Decorative on a picture with no alt text writes the file's name as a placeholder alt text, which the
+  advice flags until it is replaced; the alt field is held only while the box is checked, so a person is never stuck
+  between a held field and a refused uncheck. The Background section does the same and focuses the alt field. (4) The
+  Background section also has focus fields, so every `scene.background` key has a control for `coverage.test.ts`. (5)
+  Crop writes `focus` only when the marker moved. (6) The scene's Layout buttons are in the top bar, so the Background
+  section lives in the Scene popover.
 - **Tests.** `packages/cli/test/images-controls-e2e.test.ts` (real Chrome, 29 tests, not in a test group): the toggle,
   reset and its one undo, crop mode by double click and button, handle and inside drags, Enter as one undo step, Escape,
   a click outside, keyboard crop with handle names, the focus marker, the aspect lock with and without Shift, Fit box,
@@ -290,5 +291,8 @@ Dimitri approved the recommended answer to each:
 - **Size.** Main editor script 94,860 to 95,666 bytes Brotli (+806) against a limit raised from 95,232 to 95,744
   (the 93.5 KB the plan allows); editor styles 15,263 to 15,455 against a limit lowered from 27,648 to 27,136 by the
   same 512 bytes; the new chunk 3,836 of its 4,096; the player and the exported page script are unchanged.
-- **For close-out.** The disabled alt field while Decorative is checked could instead write a placeholder alt on
-  uncheck; it did not fit the byte allowance. Step 6 should re-measure the editor script.
+- **Review fixes.** Crop mode takes its window from the crop as the player draws it (`.dc-crop`'s inner box), so on a
+  picture that fills its box the window runs past the box at the crop's own proportions instead of squeezing the whole
+  file into the box. Its handles can then sit past the box's edge, and off the stage for a very tall or wide crop;
+  the keyboard reaches them all. A picture with no crop is measured the same way, fitted or filling around the middle.
+- **For close-out.** Step 6 should re-measure the editor script, which is within 100 bytes of its limit.

@@ -461,7 +461,15 @@ export function imagePanel(host: PanelHost, sceneId: string, id: string): ImageP
           label: "Decorative",
           items: [{ id: "decorative", label: "No alt text needed" }],
           read: () => (image()?.decorative ? ["decorative"] : []),
-          commit: (ids) => blockSet(sceneId, id, { decorative: ids.length > 0 ? true : null }),
+          // Without the mark the schema wants alt text, so an empty one starts as the file's name, to be written over.
+          commit: (ids) =>
+            blockSet(
+              sceneId,
+              id,
+              ids.length > 0
+                ? { decorative: true }
+                : { decorative: null, alt: image()?.alt || placeholderAlt(image()?.asset ?? "") },
+            ),
         }),
         textField(host.edits, {
           key: key("caption"),

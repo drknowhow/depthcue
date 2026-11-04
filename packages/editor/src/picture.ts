@@ -102,31 +102,17 @@ function lookAt(node: HTMLElement, block: Image) {
   const img = node.querySelector("img");
   if (!img?.naturalWidth) return undefined;
   const cover = block.fit ? block.fit === "cover" : Boolean(node.closest("[data-role=picture]"));
-  const box = node.querySelector(".dc-crop");
-  const inner = box?.firstElementChild;
-  if (box && inner) {
-    const a = box.getBoundingClientRect();
-    const b = inner.getBoundingClientRect();
-    const left = Math.max(a.left, b.left);
-    const top = Math.max(a.top, b.top);
-    const r = {
-      left,
-      top,
-      width: Math.min(a.right, b.right) - left,
-      height: Math.min(a.bottom, b.bottom) - top,
-    };
-    return { img, cover, r, crop: block.crop ?? FULL };
-  }
+  // The player draws the crop at its own proportions inside `.dc-crop`: within the box when it fits, past the box when
+  // it fills it. That drawn crop is the window, so a picture that fills its box is not squeezed into the box.
+  const inner = node.querySelector(".dc-crop")?.firstElementChild;
+  if (inner) return { img, cover, r: inner.getBoundingClientRect(), crop: block.crop ?? FULL };
+  // Without a crop, the whole file is drawn fitted to its box, or filling it around the middle in a picture slot.
   const b = img.getBoundingClientRect();
   const { naturalWidth: nw, naturalHeight: nh } = img;
-  if (getComputedStyle(img).objectFit === "cover") {
-    // A picture in a slot is cut to its box around the middle.
-    const wide = nw / nh > b.width / b.height;
-    const w = wide ? ((b.width / b.height) * nh * 100) / nw : 100;
-    const ch = wide ? 100 : ((b.height / b.width) * nw * 100) / nh;
-    return { img, cover, r: b, crop: { x: (100 - w) / 2, y: (100 - ch) / 2, w, h: ch } };
-  }
-  const scale = Math.min(b.width / nw, b.height / nh);
+  const scale = (getComputedStyle(img).objectFit === "cover" ? Math.max : Math.min)(
+    b.width / nw,
+    b.height / nh,
+  );
   const width = nw * scale;
   const height = nh * scale;
   const r = { left: b.left + (b.width - width) / 2, top: b.top + (b.height - height) / 2, width, height };
