@@ -1284,6 +1284,10 @@ body {
   align-items: baseline;
 }
 
+.ed-pptx-option[hidden] {
+  display: none;
+}
+
 .ed-pptx-option small {
   grid-column: 2;
   color: var(--dc-muted);

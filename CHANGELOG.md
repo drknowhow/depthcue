@@ -4,6 +4,14 @@ Notable changes to Depthcue, newest first. Nothing has been released yet, so eve
 
 ## Unreleased
 
+### Export button
+
+The editor bar has an Export button. It opens one dialog where a person picks PowerPoint, PDF or HTML (a zip of the
+offline page) and whether the speaker notes and the comments go in. PowerPoint gets the comments as PowerPoint comments
+on each scene's first slide, the PDF gets a notes and comments section after the last page, and the zip gets
+`comments.html` and `comments.json` beside the page. The page itself never carries comments. The live server has two new
+calls, `/_depthcue/api/export.pdf` and `/_depthcue/api/export.html`, and the PowerPoint call takes `comments`.
+
 ### Tables, charts, text styles and a deck style
 
 A deck can now hold a table, six kinds of chart and formatted text, and it can have its own colors and fonts. The
