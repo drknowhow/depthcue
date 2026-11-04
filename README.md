@@ -46,7 +46,8 @@ depthcue --help
 
 This gives the `depthcue` command and the `depthcue-mcp` server. It needs Node 22.12 or later, and Chrome or Edge for
 `render`, PDF and PowerPoint export. Each [GitHub Release](https://github.com/drknowhow/depthcue/releases) also
-carries the same package as a `.tgz` that `npm install -g` accepts.
+carries the same package as a `.tgz` that `npm install -g` accepts. `depthcue --version` prints the version, and
+`depthcue upgrade` checks npm for a newer one (`--yes` installs it).
 
 ## Try it
 

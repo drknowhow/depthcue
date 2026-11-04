@@ -4,6 +4,11 @@ Notable changes to Depthcue, newest first. Nothing has been released yet, so eve
 
 ## Unreleased
 
+### Version and upgrade
+
+`depthcue --version` prints the installed version, `depthcue --help` prints the usage and exits 0, and `depthcue upgrade`
+says whether a newer version is on npm. `depthcue upgrade --yes` installs it with `npm install -g depthcue@latest`.
+
 ### Export button
 
 The editor bar has an Export button. It opens one dialog where a person picks PowerPoint, PDF or HTML (a zip of the
