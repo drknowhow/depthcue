@@ -130,14 +130,20 @@ const fieldNames = (node) =>
 
 const cell = (text) => text.replaceAll("|", "\\|");
 
-/** A table of an object schema's fields: name, whether it is required, and what it holds. */
+/**
+ * A table of an object schema's fields: name, whether it is required, and what it holds. A field that `else` requires
+ * when `if` asks for a flag set to true, as an image's alt text is, is required unless that flag is true.
+ */
 export function fieldTable(node) {
   const required = new Set(node.required ?? []);
+  const flags = Object.entries(node.if?.properties ?? {}).filter(([, test]) => test.const === true);
+  const flag = flags.length === 1 ? flags[0][0] : undefined;
+  const unless = new Set(flag ? (node.else?.required ?? []) : []);
+  const needed = (name) =>
+    required.has(name) ? "yes" : unless.has(name) ? `unless \`${flag}\` is true` : "no";
   const rows = Object.entries(node.properties ?? {})
     .filter(([name]) => name !== "$schema")
-    .map(
-      ([name, child]) => `| \`${name}\` | ${required.has(name) ? "yes" : "no"} | ${cell(describe(child))} |`,
-    );
+    .map(([name, child]) => `| \`${name}\` | ${needed(name)} | ${cell(describe(child))} |`);
   return ["| Field | Required | Holds |", "| --- | --- | --- |", ...rows].join("\n");
 }
 
