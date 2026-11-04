@@ -19,3 +19,4 @@ site/.astro/
 
 # Impeccable design-skill state; local to one checkout.
 .impeccable/
+release/

@@ -1,0 +1,51 @@
+name: release
+
+# A tag such as v0.1.0 builds the npm package, installs it in an empty folder to prove it works, publishes it to npm and
+# attaches the same file to a GitHub Release. Re-running with a tag that is already on npm fails at publish, on purpose.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      - name: Make the package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node tools/build-release.mjs --version "$VERSION"
+          cd release/depthcue && npm pack
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Install it in an empty folder and use it
+        run: |
+          WORK="$(mktemp -d)"
+          cd "$WORK" && npm init -y >/dev/null
+          npm install "$GITHUB_WORKSPACE/release/depthcue/depthcue-${VERSION}.tgz"
+          npx depthcue check "$GITHUB_WORKSPACE/fixtures/decks/demo"
+          npx depthcue export "$GITHUB_WORKSPACE/fixtures/decks/demo" --format pptx --out "$WORK/demo.pptx"
+          test -s "$WORK/demo.pptx"
+      - name: Publish to npm
+        run: npm publish "release/depthcue/depthcue-${VERSION}.tgz" --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: GitHub Release
+        run: |
+          gh release create "$GITHUB_REF_NAME" "release/depthcue/depthcue-${VERSION}.tgz" \
+            --title "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

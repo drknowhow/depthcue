@@ -37,7 +37,18 @@ by hand, and read afterwards as a document.
 - **Deliver offline.** `depthcue export` writes a folder that opens by double-click, with [no server and no
   network](docs/export.md).
 
-## Try it
+## Install
+
+```sh
+npm install -g depthcue
+depthcue --help
+```
+
+This gives the `depthcue` command and the `depthcue-mcp` server. It needs Node 22.12 or later, and Chrome or Edge for
+`render`, PDF and PowerPoint export. Each [GitHub Release](https://github.com/drknowhow/depthcue/releases) also
+carries the same package as a `.tgz` that `npm install -g` accepts.
+
+## Try it from source
 
 You need Node 22.12 or later and pnpm 10. `render` also needs Chrome or Edge; set `DEPTHCUE_BROWSER` to use another
 Chromium.
