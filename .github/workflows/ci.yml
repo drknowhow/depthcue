@@ -5,9 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to the same pull request makes the older run pointless.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
-  verify:
+  checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -16,5 +22,30 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Lint, typecheck, generated files, build, test, budgets, smoke
-        run: pnpm verify
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm check:generated
+      - run: pnpm build
+      - run: pnpm budgets
+      - run: pnpm smoke
+
+  # The test files run in four groups of about five minutes each; tools/test-groups.mjs says which file is where.
+  test:
+    name: test (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [editor, brand, panels, rest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The browser tests serve the built player and editor.
+      - run: pnpm build
+      - run: node tools/test-groups.mjs ${{ matrix.group }} --reporter=agent --reporter=github-actions
