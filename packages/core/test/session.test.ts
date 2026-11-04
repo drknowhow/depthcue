@@ -158,4 +158,31 @@ describe("session history", () => {
     expect(session.redo()).toBe(true);
     expect(session.doc.assets.has("assets/new-photo.png")).toBe(true);
   });
+
+  it("drops a deleted file from every history state, leaving other files and the revision alone", () => {
+    const session = createSession(demoDoc());
+    session.addAssets(["assets/gone.png", "assets/kept.png"]);
+    session.apply([title("One")]);
+    session.apply([title("Two")]);
+    session.undo();
+    const [rev, dirty] = [session.rev, session.dirty];
+    const seen: SessionEvent["type"][] = [];
+    session.subscribe((event) => seen.push(event.type));
+
+    session.dropAsset("assets/gone.png");
+    session.dropAsset("assets/gone.png");
+    expect(seen).toEqual(["assets"]);
+    expect(session.rev).toBe(rev);
+    expect(session.dirty).toBe(dirty);
+    expect(session.doc.assets.has("assets/gone.png")).toBe(false);
+    expect(session.doc.assets.has("assets/kept.png")).toBe(true);
+
+    expect(session.undo()).toBe(true);
+    expect(session.doc.assets.has("assets/gone.png")).toBe(false);
+    expect(session.doc.assets.has("assets/kept.png")).toBe(true);
+    expect(session.redo()).toBe(true);
+    expect(session.redo()).toBe(true);
+    expect(session.doc.assets.has("assets/gone.png")).toBe(false);
+    expect(session.doc.assets.has("assets/kept.png")).toBe(true);
+  });
 });

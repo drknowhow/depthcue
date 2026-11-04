@@ -520,8 +520,7 @@ export async function openStore(
 
     async removeAsset(asset) {
       await api.removeAsset(asset);
-      // The session can add files but not take one off, and the present document's set is the one the pickers read.
-      (session.doc.assets as Set<string>).delete(asset);
+      session.dropAsset(asset);
     },
 
     brandFile(send) {
