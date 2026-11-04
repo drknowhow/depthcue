@@ -66,12 +66,14 @@ export interface PanelHost {
   openSources(): void;
   /** Opens the image library to choose a file for an image; `choose` gets its path. Left out where there is none. */
   library?(choose: (asset: string) => void): void;
+  /** Runs `then` with the picture tools, once they are in. Left out where a panel has no use for them. */
+  picture?: ((then: (module: typeof import("./picture.ts")) => void) => void) | undefined;
 }
 
 /** What the toolbar and the scene bar each bring to their panels; the rest is read from the session. */
 export function panelHost(
   session: Session,
-  parts: Pick<PanelHost, "edits" | "upload" | "problem" | "close" | "openSources" | "library">,
+  parts: Pick<PanelHost, "edits" | "upload" | "problem" | "close" | "openSources" | "library" | "picture">,
 ): PanelHost {
   return {
     ...parts,
@@ -118,7 +120,7 @@ const blockSet = (sceneId: string, id: string, set: BlockChanges): Op => ({
   set,
 });
 
-const assetOptions = (host: PanelHost, pattern: RegExp) =>
+export const assetOptions = (host: PanelHost, pattern: RegExp) =>
   [...host.assets()]
     .filter((path) => pattern.test(path))
     .sort()
@@ -420,43 +422,55 @@ export function imagePanel(host: PanelHost, sceneId: string, id: string): ImageP
 
   const panel = form(
     () => image() !== undefined,
-    () => [
-      selectField(host.edits, {
-        key: key("asset"),
-        label: "Image file",
-        options: assetOptions(host, IMAGE_FILE),
-        read: () => image()?.asset ?? "",
-        commit: (value) => imageFile(sceneId, id, value),
-      }),
-      ...(host.library
-        ? [
-            actionButton(
-              "Choose from library",
-              () => host.library?.((asset) => void host.run([imageFile(sceneId, id, asset)])),
-              { "data-field": key("library"), title: "Pictures already in this deck" },
-            ),
-          ]
-        : []),
-      fileButton(
-        "Upload a new image",
-        IMAGE_ACCEPT,
-        key("upload"),
-        (file) => void replaceImage(host, sceneId, id, file),
-      ),
-      textField(host.edits, {
+    () => {
+      // A decorative picture needs no alt text, so that field waits; what was written in it stays.
+      const alt = textField(host.edits, {
         key: key("alt"),
         label: "Alt text",
         hint: "What the image shows, for people who cannot see it.",
         read: () => image()?.alt ?? "",
         commit: (value) => blockSet(sceneId, id, { alt: value }),
-      }),
-      textField(host.edits, {
-        key: key("caption"),
-        label: "Caption",
-        read: () => image()?.caption ?? "",
-        commit: (value) => blockSet(sceneId, id, { caption: optional(value) }),
-      }),
-    ],
+      });
+      if (image()?.decorative) alt.querySelector("input")?.setAttribute("disabled", "");
+      return [
+        selectField(host.edits, {
+          key: key("asset"),
+          label: "Image file",
+          options: assetOptions(host, IMAGE_FILE),
+          read: () => image()?.asset ?? "",
+          commit: (value) => imageFile(sceneId, id, value),
+        }),
+        ...(host.library
+          ? [
+              actionButton(
+                "Choose from library",
+                () => host.library?.((asset) => void host.run([imageFile(sceneId, id, asset)])),
+                { "data-field": key("library"), title: "Pictures already in this deck" },
+              ),
+            ]
+          : []),
+        fileButton(
+          "Upload a new image",
+          IMAGE_ACCEPT,
+          key("upload"),
+          (file) => void replaceImage(host, sceneId, id, file),
+        ),
+        alt,
+        checkField(host.edits, {
+          key: "image",
+          label: "Decorative",
+          items: [{ id: "decorative", label: "No alt text needed" }],
+          read: () => (image()?.decorative ? ["decorative"] : []),
+          commit: (ids) => blockSet(sceneId, id, { decorative: ids.length > 0 ? true : null }),
+        }),
+        textField(host.edits, {
+          key: key("caption"),
+          label: "Caption",
+          read: () => image()?.caption ?? "",
+          commit: (value) => blockSet(sceneId, id, { caption: optional(value) }),
+        }),
+      ];
+    },
   );
 
   return {
@@ -744,7 +758,29 @@ export function scenePanel(host: PanelHost, current: () => string): ScenePanel {
     h("summary", {}, "Sources", sourcesCount),
     sources.body,
   );
-  const body = h("div", { class: "ed-tb-form" }, title.body, stepsSection, sourcesSection);
+  // The picture behind the slide is a part of its own, drawn the first time the section is opened.
+  let background: { fill(scene: Scene, typing: boolean): void } | undefined;
+  const backgroundSection = h(
+    "details",
+    { class: "ed-tb-section", "data-section": "background" },
+    h("summary", {}, "Background"),
+  );
+  backgroundSection.addEventListener("toggle", () => {
+    if (!backgroundSection.open || background) return;
+    host.picture?.((module) => {
+      const section = module.backgroundSection(host, current);
+      background = section;
+      backgroundSection.append(section.body);
+    });
+  });
+  const body = h(
+    "div",
+    { class: "ed-tb-form" },
+    title.body,
+    stepsSection,
+    sourcesSection,
+    host.picture && backgroundSection,
+  );
 
   const count = (n: number) => (n > 0 ? String(n) : "");
 
@@ -757,6 +793,7 @@ export function scenePanel(host: PanelHost, current: () => string): ScenePanel {
       title.fill(live, typing);
       steps.fill(live, typing);
       sources.fill(live, typing);
+      background?.fill(live, typing);
       stepsCount.textContent = count(live.steps?.length ?? 0);
       sourcesCount.textContent = count(live.sources?.length ?? 0);
     },

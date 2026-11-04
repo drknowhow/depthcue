@@ -2,7 +2,7 @@ import { LEADS, type Op, type Session, templatesOf } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { popoverChip } from "./chip.ts";
 import { type Edits, problemOf } from "./fields.ts";
-import { panelHost, scenePanel } from "./panels.ts";
+import { type PanelHost, panelHost, scenePanel } from "./panels.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL } from "./templates.ts";
 
 type Shape = readonly [tag: "rect" | "path", attributes: Readonly<Record<string, string>>];
@@ -55,6 +55,10 @@ export interface SceneBarHooks {
   change?(layout?: Layout): void;
   /** Opens Save as template for the scene on show. */
   save?(): void;
+  /** Runs `then` with the picture tools, which draw the Background section, once they are in. */
+  picture?: PanelHost["picture"];
+  /** Opens the image library to choose the background's file. `back` puts the keyboard where it was. */
+  library?(choose: (asset: string) => void, back: () => void): void;
 }
 
 export interface SceneBar {
@@ -155,6 +159,11 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
     problem: hooks.problem,
     close: () => popover.close(),
     openSources: () => open("sources"),
+    picture: hooks.picture,
+    library(choose) {
+      popover.close();
+      hooks.library?.(choose, () => popover.chip.button.focus());
+    },
   });
   const panel = scenePanel(host, () => current);
   const popover = popoverChip(panel);

@@ -163,6 +163,18 @@ export function newClaim(scene: Scene): NonNullable<Scene["summary"]> {
 }
 
 /** The kinds of image the upload accepts. */
+/** The picture commands by id, as the toolbar, the menu and the palette call them. */
+export const PICTURE = {
+  crop: "Crop",
+  fill: "Fill",
+  fit: "Fit",
+  reset: "Reset picture",
+  fitbox: "Fit box to picture",
+  bg: "Use as slide background",
+  nobg: "Remove background",
+} as const;
+export type PictureAction = keyof typeof PICTURE;
+
 export const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 export const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
 export const VIDEO_FILE = /\.(mp4|webm)$/i;

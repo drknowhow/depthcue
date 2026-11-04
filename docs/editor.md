@@ -38,6 +38,12 @@ the files as they are. Keep mine as copy hands you your version as a file first 
   See [Tables and charts](tables-and-charts.md). On an old bar chart, drag a bar to change its value, or choose a bar
   and use the arrow keys (Shift moves five steps). Labels are typed in place.
 - **Images.** Drop or paste a file on the image. Alt text is flagged until you write it.
+  A chosen image's toolbar has Crop, Fill (pressed when the picture fills its box) and Reset picture. Crop, or a double
+  click, shows the whole file dimmed around the crop with a handle on each edge and corner; drag a handle to resize,
+  drag inside to move the picture, and on a filled picture drag the Focus point. Enter or a click outside applies, in
+  one Undo step; Escape cancels. With the keyboard, Tab moves between the handles and arrows move 1 percent (Shift 10).
+  A pinned image keeps its shape when you drag a corner; hold Shift to change it. Edit has a Decorative checkbox. The
+  Scene popover has a Background section for the slide's picture, its scrim and color.
 - **Adding.** The quick bar at the foot of the stage has Text, Chart, Table, Image, Clip and Claim, a Notes popover
   for the speaker notes and the reading version, and Build order. `T`, `C` and `I` add a text, a chart or an image
   from the keyboard. An area of the slide that holds nothing shows a dashed place; click it to add there.
@@ -114,6 +120,8 @@ greyed, with the reason.
 - **A block.** Cut, Copy, Paste (after this block), Duplicate and Delete; Pin where it is, or Put back in layout; Comment;
   Move earlier and Move later. The claim has Paste, Delete and Comment.
 - **A text.** Size, Align and Color as submenus, with the choice the text has now ticked.
+- **An image.** Crop, Fit, Fill, Reset picture, Fit box to picture (a pinned image) and Use as slide background. Remove
+  background is in the menu of any block on a slide that has one.
 - **A chart.** Edit data, and a Chart type submenu of the six kinds with the current one ticked. A kind the data cannot
   take is greyed, with the reason.
 - **A cell of a table.** Insert row above and below, Insert column left and right, Delete row, Delete column, Show or

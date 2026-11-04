@@ -11,6 +11,8 @@ import {
   type Layout,
   LEAD_LABEL,
   type NewBlockKind,
+  PICTURE,
+  type PictureAction,
   SIZE_LABEL,
   TONE_LABEL,
 } from "./templates.ts";
@@ -29,6 +31,9 @@ export interface CommandSources {
   /** What the toolbar of a block does. */
   togglePin(id: string): void;
   remove(id: string): void;
+  /** What the picture commands do to an image, or to the slide's background; `sized` says whether its box can be fitted. */
+  picture?(action: PictureAction, id: string): void;
+  sized?(id: string): boolean;
   /** Opens the box that writes a comment on a block, or the claim. */
   comment(id: string): void;
   /** What Cut, Copy and Duplicate do to a block. A command is listed only when the editor supplies what it calls. */
@@ -335,6 +340,30 @@ export function listCommands(from: CommandSources): Command[] {
         });
       }
     }
+  }
+  // A picture's own commands, and Remove background wherever the slide has one.
+  const picture = from.picture;
+  const image = block?.type === "image" ? block : undefined;
+  const shown: PictureAction[] = image
+    ? [
+        "crop",
+        "fit",
+        "fill",
+        ...(image.fit || image.crop || image.focus ? (["reset"] as const) : []),
+        ...(image.frame && from.sized?.(image.id) ? (["fitbox"] as const) : []),
+        "bg",
+      ]
+    : [];
+  if (scene.background) shown.push("nobg");
+  for (const id of picture ? shown : []) {
+    add({
+      id: `picture-${id}`,
+      title: PICTURE[id],
+      group: "Picture",
+      targets: ["block", "slide"],
+      section: "picture",
+      run: () => picture?.(id, chosen ?? ""),
+    });
   }
   // How the chosen text looks: its size, alignment and color, each a submenu of the right-click menu.
   const setStyle = from.setTextStyle;

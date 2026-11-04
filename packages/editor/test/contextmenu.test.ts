@@ -419,6 +419,11 @@ describe("right-clicking a block", () => {
       "Pin where it is",
       "Move earlier",
       "-",
+      "Crop",
+      "Fit",
+      "Fill",
+      "Use as slide background",
+      "-",
       "Style>",
       "-",
       "Comment",
@@ -827,11 +832,10 @@ describe("using the menu from the keyboard", () => {
     const node = blockNode(PICTURE);
     node.focus();
     press(node, "F10", { shiftKey: true });
-    // The picture is no longer the last block, so it can move either way. Style and Comment are below the moves.
+    // The picture is no longer the last block, so it can move either way. The picture items, Style and Comment are
+    // below the moves.
     press(document.activeElement as Element, "End");
-    press(document.activeElement as Element, "ArrowUp");
-    press(document.activeElement as Element, "ArrowUp");
-    press(document.activeElement as Element, "ArrowUp");
+    for (let up = 0; up < 7; up++) press(document.activeElement as Element, "ArrowUp");
     expect(focused()).toBe("Move earlier");
     press(document.activeElement as Element, " ");
     expect(open()).toBe(false);
