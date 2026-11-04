@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -75,7 +75,11 @@ describe("the PDF", () => {
     const result = await renderPdf({ folder });
     if (!result.ok) throw new Error("the deck has errors");
     expect(result.bytes.subarray(0, 5).toString()).toBe("%PDF-");
-    expect(result.summary).toEqual({ scenes: 4, notes: true, comments: undefined });
+    expect(result.summary).toEqual({
+      scenes: JSON.parse(readFileSync(join(folder, "deck.json"), "utf8")).scenes.length,
+      notes: true,
+      comments: undefined,
+    });
   }, 120_000);
 
   it("is longer with the comments than without", async (test) => {
