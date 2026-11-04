@@ -280,6 +280,13 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       openDownload();
     }),
   );
+  const exportButton = button("export", "Export…", () =>
+    withPart(
+      parts.exporter,
+      (module) => module.openExport(root, store),
+      () => showProblem(notLoaded("the export dialog")),
+    ),
+  );
   const present = h(
     "a",
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
@@ -388,6 +395,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       reviewButton,
       commentsButton,
       resolvedButton,
+      exportButton,
       present,
     ),
   );

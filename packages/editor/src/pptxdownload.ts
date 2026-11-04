@@ -34,7 +34,7 @@ export interface DownloadIO {
   token: string;
 }
 
-const browserIO = (): DownloadIO => ({
+export const browserIO = (): DownloadIO => ({
   send: (...args) => fetch(...args),
   save(file, name) {
     const href = URL.createObjectURL(file);
@@ -72,16 +72,16 @@ export function reportOf(header: string | null): ExportReport | undefined {
   }
 }
 
-const sizeOf = (bytes: number) =>
+export const sizeOf = (bytes: number) =>
   bytes < 1024 * 1024
     ? `${Math.max(1, Math.round(bytes / 1024))} KB`
     : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
-const NO_SERVER =
+export const NO_SERVER =
   "The editor could not reach the server. Check that depthcue edit is still running, then try again.";
 
 /** Why the server made no file, in plain words: its own message, and the deck's first errors when that is the cause. */
-async function refusalOf(response: Response): Promise<string[]> {
+export async function refusalOf(response: Response): Promise<string[]> {
   if (response.status === 404) {
     return [
       "This depthcue edit cannot make PowerPoint files. Update Depthcue, start depthcue edit again, then try again.",
@@ -107,7 +107,7 @@ async function refusalOf(response: Response): Promise<string[]> {
 }
 
 /** The report, read after the download: what has no PowerPoint form, slide by slide, the fonts, and the warnings. */
-function reportView(report: ExportReport | undefined): HTMLElement[] {
+export function reportView(report: ExportReport | undefined): HTMLElement[] {
   if (!report) {
     return [
       h(

@@ -247,7 +247,15 @@ function sendFile(request: IncomingMessage, response: ServerResponse, path: stri
 /** The live server's PowerPoint export: the open deck's file, as `depthcue export --format pptx` makes it. */
 export const PPTX_ROUTE = "/_depthcue/api/export.pptx";
 const PPTX_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-const PPTX_STATUS: Record<string, number> = { "no-browser": 503 };
+const PPTX_STATUS: Record<string, number> = { "no-browser": 503, "bad-comments": 422 };
+
+/** The editor's other two exports, which take only notes and comments. */
+export const PDF_ROUTE = "/_depthcue/api/export.pdf";
+export const HTML_ROUTE = "/_depthcue/api/export.html";
+const PAGE_EXPORTS = {
+  [PDF_ROUTE]: { type: "application/pdf", ext: "pdf" },
+  [HTML_ROUTE]: { type: "application/zip", ext: "zip" },
+} as const;
 
 /**
  * Where the endpoint's file is said to be, which the links to the deck's files are written relative to: beside the
@@ -347,18 +355,21 @@ export function reportHeader(
 }
 
 /** The export's switches from a request body: the CLI's, by the same names, each true or false. */
-function pptxOptions(body: unknown): PptxOptions | string {
+function pptxOptions(body: unknown, keys: readonly string[] = PPTX_KEYS): PptxOptions | string {
   if (!isRecord(body)) return 'Send the options as a JSON object, such as {"notes": false}.';
   const options: PptxOptions = {};
   for (const [key, value] of Object.entries(body)) {
-    if (key !== "notes" && key !== "pictures" && key !== "steps" && key !== "posters") {
-      return `There is no option "${key}". The options are notes, pictures, steps and posters.`;
+    if (!keys.includes(key)) {
+      return `There is no option "${key}". The options are ${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}.`;
     }
     if (typeof value !== "boolean") return `"${key}" takes true or false.`;
-    options[key] = value;
+    options[key as keyof PptxOptions] = value;
   }
   return options;
 }
+
+const PPTX_KEYS = ["notes", "pictures", "steps", "posters", "comments"] as const;
+const PAGE_KEYS = ["notes", "comments"] as const;
 
 /**
  * Answers the PowerPoint export call: the same token and origin checks as the editor's other calls, a POST with the
@@ -370,6 +381,7 @@ async function pptxCall(
   ctx: EditContext,
   playerDir: string,
   queue: { last: Promise<unknown> },
+  page?: (typeof PAGE_EXPORTS)[keyof typeof PAGE_EXPORTS],
 ): Promise<void> {
   const refusal = sameToken(request.headers["x-depthcue-token"] as string | undefined, ctx.token)
     ? crossOrigin(request, ctx.origins())
@@ -383,7 +395,10 @@ async function pptxCall(
   let options: PptxOptions | string;
   try {
     const body = await readBody(request, 4096);
-    options = pptxOptions(body.length === 0 ? {} : JSON.parse(body.toString("utf8")));
+    options = pptxOptions(
+      body.length === 0 ? {} : JSON.parse(body.toString("utf8")),
+      page ? PAGE_KEYS : PPTX_KEYS,
+    );
   } catch (error) {
     if (error instanceof TooLarge) {
       return sendJson(response, 413, { error: "too-large", message: "The options are at most 4 KB." });
@@ -392,6 +407,7 @@ async function pptxCall(
   }
   if (typeof options === "string") return sendJson(response, 400, { error: "bad-request", message: options });
   const chosen = options;
+  if (page) return pageCall(response, ctx, playerDir, queue, page, chosen);
   const job = queue.last.then(async () => {
     const { renderPptx } = await import("./pptx/index.ts");
     return renderPptx({ folder: ctx.folder, out: pptxOutOf(ctx.folder), playerDir, ...chosen });
@@ -425,6 +441,53 @@ async function pptxCall(
   } catch (error) {
     const { PptxError } = await import("./pptx/index.ts");
     if (error instanceof PptxError) {
+      return sendJson(response, PPTX_STATUS[error.code] ?? 500, {
+        error: error.code,
+        message: error.message,
+      });
+    }
+    return sendJson(response, 500, { error: "server", message: (error as Error).message });
+  }
+}
+
+/** The PDF or the zipped page, made from the deck on disk and sent, as the PowerPoint call sends its file. */
+async function pageCall(
+  response: ServerResponse,
+  ctx: EditContext,
+  playerDir: string,
+  queue: { last: Promise<unknown> },
+  page: (typeof PAGE_EXPORTS)[keyof typeof PAGE_EXPORTS],
+  options: PptxOptions,
+): Promise<void> {
+  const job = queue.last.then(async () => {
+    const { renderPdf, renderHtmlZip } = await import("./export-pages.ts");
+    const make = page.ext === "pdf" ? renderPdf : renderHtmlZip;
+    return make({ folder: ctx.folder, playerDir, ...options });
+  });
+  queue.last = job.catch(() => undefined);
+  try {
+    const result = await job;
+    if (!result.ok) {
+      return sendJson(response, 422, {
+        error: "deck-invalid",
+        message: "The deck has errors, so there is no file. Fix them and export again.",
+        diagnostics: result.diagnostics,
+      });
+    }
+    const name = basename(ctx.folder);
+    const file = page.ext === "zip" ? `${name}-export` : name;
+    const ascii = file.replace(/[^A-Za-z0-9._-]/g, "_");
+    response.writeHead(200, {
+      "Content-Type": page.type,
+      "Content-Length": String(result.bytes.length),
+      "Content-Disposition": `attachment; filename="${ascii}.${page.ext}"; filename*=UTF-8''${extValue(file)}.${page.ext}`,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    response.end(result.bytes);
+  } catch (error) {
+    const { PageExportError } = await import("./export-pages.ts");
+    if (error instanceof PageExportError) {
       return sendJson(response, PPTX_STATUS[error.code] ?? 500, {
         error: error.code,
         message: error.message,
@@ -494,6 +557,11 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     // The PowerPoint file of the open deck, sent and never written: guarded as the write calls are.
     if (edit && url.pathname === PPTX_ROUTE) {
       void pptxCall(request, response, edit, playerDir, exports);
+      return undefined;
+    }
+    const pageExport = edit ? PAGE_EXPORTS[url.pathname as keyof typeof PAGE_EXPORTS] : undefined;
+    if (edit && pageExport) {
+      void pptxCall(request, response, edit, playerDir, exports, pageExport);
       return undefined;
     }
     // The write calls check their own methods, token and origin; everything else stays read-only. The route is

@@ -9,11 +9,13 @@ import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } fr
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { type Diagnostic, type Doc, lookOf, type Scene } from "@depthcue/core";
 import type { Browser } from "playwright-core";
+import { loadCommentsDir } from "../comments-file.ts";
 import { openDeck } from "../deck-api.ts";
 import { within as inside, realish } from "../export.ts";
 import { launchBrowser } from "../render.ts";
 import { builtPlayerDir, startServer } from "../serve.ts";
 import { buildPresentation, type FontUse, type SlideReport } from "./build.ts";
+import { addComments } from "./comments.ts";
 import {
   applyNames,
   type FontReport,
@@ -71,6 +73,8 @@ export interface PptxOptions {
   steps?: boolean;
   /** Every clip as its poster and a link, none embedded (`--posters`). */
   posters?: boolean;
+  /** Put the deck's comments in the file as PowerPoint comments, on each scene's first slide. Default false. */
+  comments?: boolean;
 }
 
 export interface PptxRequest extends PptxOptions {
@@ -99,6 +103,8 @@ export interface PptxSummary {
   deck: string[];
   /** Warnings the deck has. Errors stop the export, so these are all there is. */
   warnings: Diagnostic[];
+  /** How many comments went in, when they were asked for. */
+  comments?: number;
 }
 
 export type PptxResult = { ok: true; summary: PptxSummary } | { ok: false; diagnostics: Diagnostic[] };
@@ -399,6 +405,8 @@ async function render(opened: Opened, request: PptxRequest & { out: string }): P
 
   let layouts: string[] = [];
   let embedded: FontReport[] = [];
+  let commented = 0;
+  const commentsFile = request.comments === true ? loadCommentsDir(request.folder).file : null;
   const numbers = scenes.map((scene) => doc.deck.scenes.indexOf(scene.id) + 1);
   const bytes = await finishPackage(built.raw, {
     headers: built.headers,
@@ -437,6 +445,20 @@ async function render(opened: Opened, request: PptxRequest & { out: string }): P
       parts.set("ppt/presentation.xml", encode(listed.presentation));
       parts.set("ppt/_rels/presentation.xml.rels", encode(listed.rels));
       parts.set("[Content_Types].xml", encode(listed.types));
+      if (commentsFile) {
+        // A scene's comments go on its first slide, which with `--steps` is the one before any step.
+        const first = new Map<string, number>();
+        built.slides.forEach((slide, at) => {
+          if (!first.has(slide.scene)) first.set(slide.scene, at + 1);
+        });
+        commented = addComments(
+          parts,
+          [...first].map(([scene, slide]) => ({
+            slide,
+            comments: commentsFile.comments.filter((comment) => comment.scene === scene),
+          })),
+        );
+      }
     },
   });
 
@@ -482,6 +504,7 @@ async function render(opened: Opened, request: PptxRequest & { out: string }): P
       slides: built.slides,
       deck,
       warnings: opened.diagnostics,
+      ...(request.comments === true ? { comments: commented } : {}),
     },
   };
 }

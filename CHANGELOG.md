@@ -4,6 +4,14 @@ Notable changes to Depthcue, newest first. Nothing has been released yet, so eve
 
 ## Unreleased
 
+### Export button
+
+The editor bar has an Export button. It opens one dialog where a person picks PowerPoint, PDF or HTML (a zip of the
+offline page) and whether the speaker notes and the comments go in. PowerPoint gets the comments as PowerPoint comments
+on each scene's first slide, the PDF gets a notes and comments section after the last page, and the zip gets
+`comments.html` and `comments.json` beside the page. The page itself never carries comments. The live server has two new
+calls, `/_depthcue/api/export.pdf` and `/_depthcue/api/export.html`, and the PowerPoint call takes `comments`.
+
 ### Images: crop, fit, focus, backgrounds and a library
 
 A picture can be cropped, shown whole or made to fill its box around a point you choose, marked decorative, and put
