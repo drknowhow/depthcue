@@ -486,7 +486,7 @@
     {
       "id": "agent-line-2",
       "type": "text",
-      "text": "eb9d45889adffe19",
+      "text": "80b967e3d956d739",
       "x": 900,
       "y": 318,
       "anchor": "left",
@@ -509,7 +509,7 @@
     {
       "id": "agent-line-3",
       "type": "text",
-      "text": "**$** depthcue apply demo ops.json --base-rev eb9d45889adffe19",
+      "text": "**$** depthcue apply demo ops.json --base-rev 80b967e3d956d739",
       "x": 900,
       "y": 371.2,
       "anchor": "left",
@@ -532,7 +532,7 @@
     {
       "id": "agent-line-4",
       "type": "text",
-      "text": "Applied. Revision eb9d45889adffe19 -> 42dc15472b8e9db9",
+      "text": "Applied. Revision 80b967e3d956d739 -> 2d8695108cc7cff1",
       "x": 900,
       "y": 409.2,
       "anchor": "left",
@@ -578,7 +578,7 @@
     {
       "id": "agent-line-6",
       "type": "text",
-      "text": "**$** depthcue apply demo ops.json --base-rev eb9d45889adffe19",
+      "text": "**$** depthcue apply demo ops.json --base-rev 80b967e3d956d739",
       "x": 900,
       "y": 500.40000000000003,
       "anchor": "left",
@@ -601,7 +601,7 @@
     {
       "id": "agent-line-7",
       "type": "text",
-      "text": "ops  error  The deck is at revision 42dc15472b8e9db9, not",
+      "text": "ops  error  The deck is at revision 2d8695108cc7cff1, not",
       "x": 900,
       "y": 538.4000000000001,
       "anchor": "left",
@@ -624,7 +624,7 @@
     {
       "id": "agent-line-8",
       "type": "text",
-      "text": "  eb9d45889adffe19. It changed after you read it.",
+      "text": "  80b967e3d956d739. It changed after you read it.",
       "x": 900,
       "y": 576.4000000000001,
       "anchor": "left",
@@ -1022,7 +1022,7 @@
     {
       "id": "render-line-2",
       "type": "text",
-      "text": "4 scenes rendered, 0 errors, 0 warnings",
+      "text": "7 scenes rendered, 0 errors, 0 warnings",
       "x": 900,
       "y": 878,
       "anchor": "left",
@@ -1625,7 +1625,7 @@
     {
       "id": "deliver-line-2",
       "type": "text",
-      "text": "Exported 4 scenes to demo-export",
+      "text": "Exported 7 scenes to demo-export",
       "x": 900,
       "y": 278,
       "anchor": "left",
@@ -1671,7 +1671,7 @@
     {
       "id": "deliver-line-4",
       "type": "text",
-      "text": "  19 files, 258.0 KB: 3 assets, 0 cue maps, notes kept",
+      "text": "  23 files, 392.3 KB: 4 assets, 0 cue maps, notes kept",
       "x": 900,
       "y": 354,
       "anchor": "left",

@@ -342,6 +342,8 @@ export async function measureLayout(): Promise<LayoutMeasure> {
   const clipped: LayoutMeasure["clipped"] = [];
   for (const element of scene.querySelectorAll<HTMLElement>("*")) {
     if (!visible(element)) continue;
+    // A picture's clipping box hides the rest of the file on purpose; that is what a crop and a cover are.
+    if (element.matches(".dc-crop, .dc-crop-in")) continue;
     const style = getComputedStyle(element);
     if (style.overflowX !== "visible" && element.scrollWidth > element.clientWidth + 1) {
       clipped.push({ id: owner(element), axis: "x", by: element.scrollWidth - element.clientWidth });

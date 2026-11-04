@@ -296,3 +296,195 @@ Dimitri approved the recommended answer to each:
   file into the box. Its handles can then sit past the box's edge, and off the stage for a very tall or wide crop;
   the keyboard reaches them all. A picture with no crop is measured the same way, fitted or filling around the middle.
 - **For close-out.** Step 6 should re-measure the editor script, which is within 100 bytes of its limit.
+
+## Step 5 record: the image library
+
+- **What was built.** The quick bar's Image button, the `I` key and "Add an image here" open a popover of the deck's
+  pictures when it has any; a deck with none still goes straight to the file chooser. The Edit popover gains "Choose from
+  library". Each picture shows a lazy thumbnail, its name, its size in pixels, its file size, and "Used on N slides" or
+  "Not used". Choosing one adds a block or replaces the image's file through the usual operations, so Undo works.
+- **Delete.** Offered only when neither the saved deck nor the open document names the file. It asks inside the popover
+  and goes through a new `POST /_depthcue/api/asset/remove`, which answers 409 when the file is in use.
+- **Several files.** Dropping or pasting several pictures on an image adds one block each, up to the scene's limit of
+  12 blocks, as one undo step. One picture still replaces the image's file. The ghost file buttons and the stage
+  background do not take several files. One earlier toolbar test was changed to match.
+- **One lazy chunk.** The library is `imagelib.js`, 1.7 KB Brotli against a 4 KB budget row. The PR recorded the main
+  editor script at 91.6 to 92.4 KB, its limit moved from 92 to 93 KB, the styles limit from 28 to 27 KB, and the
+  styles at 14.5 to 14.7 KB. Those are PR #87's own numbers.
+- **Known gap.** `Session` could not drop a file from `doc.assets`, so a delete changed the present document's set in
+  place, and an undo state older than the delete still listed the file. PR #90 adds `Session.dropAsset`.
+
+## Step 6 record: close-out
+
+- **Demo deck.** Three new scenes and one changed scene, all written with `depthcue apply` (`scene.add`, `scene.set`,
+  `block.set`), so the deck stayed valid at each step. `opening` has a scene background: the street photo under a 72
+  percent scrim, focus at 70 and 55, with alt text. `field` (a text-media scene) shows one shop, cropped from the photo
+  to `{ x: 55, y: 32, w: 36, h: 58 }`. `shopfront` is on the `full-image` template, with the photo in its picture slot as
+  a fill with `focus` at 72 and 58. `next` has a decorative picture, the sky strip of the photo (`h: 30`), beside a list.
+  `demand`, the scene the video quotes, is unchanged and is still the second scene.
+- **The photo.** There is no network download in this plan and no image generator in the repository, so
+  `tools/make-demo-photo.mjs` draws a street of shops at dusk from SVG in headless Chrome, with grain and a vignette, and
+  saves a 1600 by 1000 JPEG (103 KB). It is an illustration, not a photograph. `depthcue asset add` named it
+  `assets/shopfront-photo-5a6b7ae8.jpg`. `image-low-resolution` does not fire on any scene (`depthcue render` reports
+  0 errors and 0 warnings).
+- **Video.** Any change to the deck moves its revision, which the video's terminal text quotes, so the footage,
+  `demo.json` and the video were made again (`pnpm demo:capture`, `demo:scene`, `demo:render`) with Kinescript 1.7.1 from
+  `Y:\Projects\Kinescript`. `tools/demo.test.mjs` passes. The editor's scene strip in the footage now shows more scenes.
+- **A fix the demo needed.** `depthcue render` reported every cropped or filled picture as "cut off", because its
+  clipping box (`.dc-crop`) and stage (`.dc-crop-in`) have `overflow: hidden` and the cut-off check compares scroll
+  size with box size. The `images` fixture reported it too, and nothing had asserted otherwise. `layout.ts` now
+  skips those two classes, and `images-player-e2e.test.ts` asserts it on the fixture. No code was added to the editor,
+  the player or the exported page script.
+- **Tests read a frozen copy.** Ten test files read the demo deck for its revision, its four scenes or its slide count,
+  and failed with the new one. `fixtures/decks/demo-0-3` holds the demo deck as it was before this step (its revision is
+  still `eb9d45889adffe19`), and those tests name it. The step 7 record of [CONTENT_RANGE.md](CONTENT_RANGE.md) did the
+  same for the sample deck.
+- **Guides.** The Pictures sections of [the editor guide](editor.md#pictures),
+  [placing blocks](placement.md#pictures-in-a-frame) and [the export guide](export.md#pictures), and a Pictures section in
+  the site's deck-format guide, whose field tables are written from the schema when the site is built. `pnpm
+  check:generated` covers the schema files and passes. The agent example in the editor guide was run on a copy of the
+  demo deck and quotes that run. The README, the plan, the changelog and the site's front page were brought up to date,
+  including their count of MCP tools, which said five and is seven. This file stays out of the site, in `LEFT_OFF`.
+- **Test groups.** `rest` took 472 s on the last run on main and the other three 245 to 283 s. Six files moved out of
+  it into the other groups. See Results.
+
+## Results
+
+Sizes were taken with `pnpm build` and then `pnpm budgets` (exact bytes from the same functions, `tools/budgets.mjs`), on
+commit b7c4890 (the commit before #84, in a throwaway worktree) and on this branch after merging main at 0dc9b0b. Tests
+are `vitest run --maxWorkers=3 --hookTimeout=60000` on the same two trees.
+
+### What each PR delivered
+
+| PR      | Step  | What a person or an agent got                                                                                                                      |
+| ------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #84     | 1     | Schema 0.6: `fit`, `crop`, `focus`, `decorative`, a scene `background`; `image-crop-outside`; the version rules.                                   |
+| #85     | 2     | `deck_asset`, `depthcue asset add`, `list`, `unused` and `remove`, a header reader for image sizes, `asset-unused` and `asset-large`.              |
+| #86     | CI    | A checks job and four parallel test groups, in place of one job of about 20 minutes.                                                               |
+| #88     | 3     | The player draws crop, fit, focus and backgrounds; the exports keep them; `image-low-resolution`; PowerPoint crop, background and decorative mark. |
+| #87     | 5     | The editor's image library, delete for an unused file, several dropped files at once.                                                              |
+| #89     | 4     | Crop mode, Fit and Fill, Reset, Decorative, Fit box to picture, Use as slide background, the Background section.                                   |
+| #90     | fixes | `Session.dropAsset`, plus the brand-player and brand-define test steadiers.                                                                        |
+| this PR | 6     | Demo deck and video, guides, changelog, this record, the walkthrough, rebalanced test groups.                                                      |
+
+### Sizes
+
+Bytes, brotli unless noted.
+
+| Measure                    | Metric | Before (b7c4890) | Now    | Limit now | Limit before |
+| -------------------------- | ------ | ---------------- | ------ | --------- | ------------ |
+| core runtime               | gzip   | 47,294           | 47,881 | 61,440    | 61,440       |
+| player script              | brotli | 12,443           | 12,833 | 122,880   | 122,880      |
+| player styles              | brotli | 5,930            | 6,171  | 30,720    | 30,720       |
+| module chart               | brotli | 1,431            | 1,431  | 3,072     | 3,072        |
+| module clip                | brotli | 977              | 974    | 3,072     | 3,072        |
+| module table               | brotli | 618              | 618    | 3,072     | 3,072        |
+| lease script               | brotli | 2,153            | 2,152  | 3,072     | 3,072        |
+| broadcast script           | brotli | 805              | 805    | 1,024     | 1,024        |
+| presenter script           | brotli | 1,834            | 1,834  | 2,304     | 2,304        |
+| exported page script       | brotli | 15,813           | 16,204 | 16,384    | 16,384       |
+| core code in the player    | brotli | 5,492            | 5,568  | 6,144     | 6,144        |
+| editor script              | brotli | 93,331           | 95,739 | 95,744    | 94,208       |
+| editor brand checks        | brotli | 3,416            | 3,423  | 6,144     | 6,144        |
+| editor built-ins           | brotli | 1,983            | 1,983  | 4,096     | 4,096        |
+| editor review drawer       | brotli | 2,868            | 2,869  | 3,072     | 3,072        |
+| editor storyboard          | brotli | 2,559            | 2,562  | 4,096     | 4,096        |
+| editor comment pins        | brotli | 3,885            | 3,894  | 5,120     | 5,120        |
+| editor cue editor          | brotli | 1,480            | 1,474  | 2,560     | 2,560        |
+| editor brand use           | brotli | 4,990            | 4,997  | 6,144     | 6,144        |
+| editor brand define        | brotli | 14,944           | 14,891 | 16,384    | 16,384       |
+| editor PowerPoint download | brotli | 2,739            | 2,739  | 4,096     | 4,096        |
+| editor image library       | brotli | -                | 1,723  | 4,096     | -            |
+| editor picture tools       | brotli | -                | 3,682  | 4,096     | -            |
+| editor styles              | brotli | 14,834           | 15,455 | 27,136    | 28,672       |
+
+### Tests
+
+| Tree             | Files | Passed | Failed | Skipped | Wall  |
+| ---------------- | ----- | ------ | ------ | ------- | ----- |
+| Before (b7c4890) | 202   | 5,068  | 0      | 13      | 292 s |
+| Now              | 216   | 5,295  | 0      | 14      | 318 s |
+
+### Bench
+
+`tools/trial/bench.mjs`, 50 scenes, 20 runs, same PC. Before is the committed `docs/trial/bench.json` (2026-10-31); now is a run on this branch (2026-11-04), not committed. Milliseconds, p50 / p95.
+
+| Measure        | 2026-10-31 | Now       |
+| -------------- | ---------- | --------- |
+| Cold open      | 195 / 210  | 213 / 224 |
+| Scene change   | 58 / 66    | 63 / 70   |
+| Frame interval | 17 / 17    | 18 / 18   |
+
+The two runs are three days apart on a PC that was also running other builds, so a few milliseconds either way is not a finding.
+
+### Where the result differs from the plan
+
+- **The editor script limit went 92, 93 and then 93.5 KB, against the plan's "at most 1 KB in all".** The main script was
+  93,331 bytes before step 1 and is 95,739 now: 2,408 bytes more, 5 under its 95,744 limit. The plan counted on the
+  chunks taking the code. Step 1 used 421 bytes. Step 4 used 806, for the buttons, menu entries, the aspect lock and the
+  calls that load its chunk, and step 5 and the fixes used the rest. The limit moved to 93 KB in #87 and to 93.5 KB, the
+  plan's own ceiling, in #89, and the editor styles limit was lowered each time. The two chunks hold 5.4 KB of editor code.
+  The next editor feature needs a raise or another split of the main script.
+- **A fix PR was needed (#90).** `Session.dropAsset` takes a deleted file out of the undo history, which the library's
+  delete had done by casting a set that history documents share, and two browser tests that flaked on CI were steadied.
+  The plan says bugs found on the way get their own fix, and this is that. The plan's six steps were kept.
+- **The background section is in the Scene popover, not the Layout popover.** The plan said "the scene's Layout popover";
+  the Layout buttons are in the top bar and have no popover. The section has the file, scrim, scrim color, focus,
+  Decorative, alt text and Remove.
+- **Crop mode on a filled picture shows the crop past the box.** The window is drawn at the crop's own proportions, so on
+  a filled picture it can run past the box and, for a very tall or wide crop, off the stage.
+- **The aspect lock is for corner handles,** since a pinned block has only corner handles. Fit box to picture is one
+  `block.frame`.
+- **Clearing Decorative on a picture with no alt text writes the file's name as a placeholder alt text,** which the
+  advice flags, instead of refusing.
+- **No static scrim check,** as the plan said. The measured `background-low-contrast` check covers scene backgrounds.
+- **Step 2 has no record in this file.** Its behavior is in PR #85 and the `depthcue asset` help text.
+- **The demo's photo is drawn, not photographed.** See the step 6 record.
+- **`depthcue render` needed a fix** for cropped and filled pictures; see the step 6 record.
+
+### Left for later
+
+- The brand's chrome on a template scene that has its own background keeps what the layout drew: a logo plate chosen for
+  the template's own ground. See the step 3 record.
+- Crop-mode handles that fall outside the stage for a very tall or very wide crop of a filled picture, which only the
+  keyboard reaches.
+- Zooming into part of a picture as a build step (decision 4).
+- Adding an image from a URL in `deck_asset` (decision 3).
+- Rotation and flipping, opacity, color filters, crop shapes, labels and hotspots, and animated GIFs, as the plan listed.
+
+### Walkthrough
+
+Driven by a script on a copy of the demo deck, in Chrome at 1440 by 900 and 1024 by 768 (the files end in `-1440` and
+`-1024`), with no console error and no page error. Every screenshot was looked at. The files are not committed.
+
+- `01-toolbar-cropped-photo`: the `field` slide with the cropped photo chosen and its toolbar: Crop, Fill, Reset picture.
+- `02-image-library`: the library popover from the Image button, with thumbnails, sizes in pixels, file sizes and use counts.
+- `03-crop-mode`: crop mode on the cropped photo, with the whole file dimmed and a handle on each edge and corner.
+- `04-fill`: the same picture after Fill, now cut to fill its box.
+- `05-fit-again`: after Undo, the picture fits again.
+- `06-menu-image`: the right-click menu on an image, with Crop, Fit, Fill, Reset picture and Use as slide background.
+- `07-focused-slot-picture`: the `shopfront` slide, a fill in the full-image template's picture slot, held on the shop by `focus`.
+- `08-crop-mode-focus-point`: crop mode on that picture, with the Focus point marker.
+- `09-decorative-edit-popover`: the Edit popover of the decorative picture, with "No alt text needed" ticked.
+- `10-scene-background-section`: the Scene popover's Background section on the opening slide.
+- `11-opening-in-editor`: the opening slide in the editor, text over the background with its scrim.
+- `12-player-background`, `13-player-cropped-photo`, `14-player-focused-slot`, `15-player-decorative`: the four slides in the player.
+
+PowerPoint was checked by exporting the demo deck (`--format pptx`) and reading its slide XML: slide 4 has
+`<a:srcRect l="55000" r="9000" t="31997" b="10001"/>`, which is the crop; slide 5 has `t="21980" b="15920"`, the fill cut
+around its focus; slide 7 has the decorative extension and an empty `descr`; every slide has a `<p:bg>`. `pnpm check:pptx-pages`
+opened all 27 files, the demo-0-3 deck and the images deck among them, in LibreOffice with one page per slide.
+
+### Findings
+
+- **The editor script has 5 bytes left** (95,739 of 95,744). The next editor feature has to move code into a lazy chunk
+  or argue for a new limit before it starts.
+- **Crop mode on a filled picture can put handles past the stage.** The keyboard reaches them; dimming outside the box
+  would make the edge easier to see. Left for a later change.
+- **PowerPoint itself was not opened for this deck.** The crop, background and decorative mark were read back from the
+  slide XML and the file opened in LibreOffice. PR #69 showed PowerPoint can refuse a file LibreOffice opens, so the first
+  export someone opens in PowerPoint is still a check.
+- **Two CI tests were flaky during the campaign** (the brand-player pixel comparison and the brand-define hook). #90
+  steadied both; only later CI runs on main can show they stay steady.
+- **The demo photo is an SVG drawing saved as JPEG.** It exercises crop, focus and scrim, but not a real photo's noise or
+  EXIF orientation.

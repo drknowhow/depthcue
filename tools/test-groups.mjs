@@ -8,11 +8,16 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const GROUPS = {
-  editor: ["packages/cli/test/edit-e2e.test.ts"],
+  editor: [
+    "packages/cli/test/edit-e2e.test.ts",
+    "packages/cli/test/edit-style-e2e.test.ts",
+    "packages/cli/test/images-pptx-e2e.test.ts",
+  ],
   brand: [
     "packages/cli/test/brand-commands-e2e.test.ts",
     "packages/cli/test/export-pptx-e2e.test.ts",
     "packages/cli/test/brand-player-e2e.test.ts",
+    "packages/cli/test/images-controls-e2e.test.ts",
   ],
   panels: [
     "packages/cli/test/edit-chart-e2e.test.ts",
@@ -21,6 +26,8 @@ export const GROUPS = {
     "packages/cli/test/editor-brand-use-e2e.test.ts",
     "packages/cli/test/edit-table-e2e.test.ts",
     "packages/cli/test/pptx-extras-e2e.test.ts",
+    "packages/cli/test/editor-brand-use-report.test.ts",
+    "packages/cli/test/brand-fixes-e2e.test.ts",
   ],
 };
 

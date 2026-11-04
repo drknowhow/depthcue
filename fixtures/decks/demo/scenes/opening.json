@@ -1,11 +1,16 @@
 {
-  "schemaVersion": "0.3",
+  "schemaVersion": "0.6",
   "id": "opening",
   "title": "Why channel B now leads",
   "layout": "title",
   "lead": "human",
   "blocks": [
-    { "id": "opening-title", "type": "text", "role": "heading", "text": "Channel B now leads demand" },
+    {
+      "id": "opening-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Channel B now leads demand"
+    },
     {
       "id": "opening-sub",
       "type": "text",
@@ -17,5 +22,14 @@
   "reading": {
     "text": "This deck explains why channel B overtook channel A in the latest quarter, how the comparison was made, and which numbers to check before acting on it."
   },
-  "notes": "Open with the answer, then show the evidence."
+  "notes": "Open with the answer, then show the evidence.",
+  "background": {
+    "asset": "assets/shopfront-photo-5a6b7ae8.jpg",
+    "scrim": 72,
+    "focus": {
+      "x": 70,
+      "y": 55
+    },
+    "alt": "A street of shops at dusk, with one shop lit."
+  }
 }

@@ -1333,7 +1333,7 @@ describe("a deck with no brand", () => {
     expect(await sameStage(c, a, b, "demand twice")).toBeUndefined();
   }, 90_000);
 
-  for (const name of ["v0-1", "v0-2", "v0-3", "demo", "charts"]) {
+  for (const name of ["v0-1", "v0-2", "v0-3", "demo-0-3", "charts"]) {
     it(`${name} is drawn the same with the look the server sends as without it`, async () => {
       const deck = copyDeck(name, name);
       const opened = openDeck(deck);

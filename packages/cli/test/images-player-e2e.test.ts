@@ -285,3 +285,17 @@ describe("the low-resolution check on a real page", () => {
     expect(small.diagnostics.map((d) => d.code)).not.toContain("image-low-resolution");
   }, 120_000);
 });
+
+describe("the cut-off check on a real page", () => {
+  it("does not call a covered or cropped picture cut off, since its box clips the file on purpose", async () => {
+    const renderer = await openRenderer(copyDeck());
+    closers.push(() => renderer.close());
+    for (const scene of ["cover", "cover-bottom", "crop", "slot"]) {
+      const result = await renderer.render(scene, { screenshot: false });
+      expect(
+        result.diagnostics.filter((d) => d.code === "clipped"),
+        scene,
+      ).toEqual([]);
+    }
+  }, 120_000);
+});

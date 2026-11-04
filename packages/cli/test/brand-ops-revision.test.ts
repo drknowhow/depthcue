@@ -81,7 +81,7 @@ describe("the revision", () => {
       "v0-1": "ec4e0cd5c59ef06a",
       "v0-2": "5ba3679835bdb955",
       "v0-3": "b2c39f24e9089ee9",
-      demo: "eb9d45889adffe19",
+      "demo-0-3": "eb9d45889adffe19",
       charts: "468152e3f5f8027b",
     };
     for (const [name, rev] of Object.entries(before)) {

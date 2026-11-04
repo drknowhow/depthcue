@@ -605,7 +605,7 @@ describe("the report", () => {
   }, 180_000);
 
   it("crops a picture at the slide's edge, keeping the rest of it for PowerPoint's Crop", async () => {
-    const deck = copyDeck("demo", "cropped");
+    const deck = copyDeck("demo-0-3", "cropped");
     keepScenes(deck, ["crop"]);
     const lines = [1, 2, 3, 4]
       .map((n) => `- Line ${n} of the method, which is long enough to wrap once.`)
@@ -638,7 +638,7 @@ describe("the report", () => {
   }, 180_000);
 
   it("crops a picture past the left and top edges at the corner, and says how far the content runs there", async () => {
-    const deck = copyDeck("demo", "corner");
+    const deck = copyDeck("demo-0-3", "corner");
     keepScenes(deck, ["corner"]);
     writeJson(join(deck, "scenes", "corner.json"), {
       schemaVersion: "0.3",
@@ -764,7 +764,7 @@ describe("the report", () => {
 
 describe("--pictures", () => {
   it("makes each slide one 1920x1080 picture of the scene, with its notes and a hidden title for the outline", async () => {
-    const deck = copyDeck("demo");
+    const deck = copyDeck("demo-0-3");
     const out = join(root, "pictures.pptx");
     const summary = await exported(deck, out, "--pictures");
     expect(summary.pictures).toBe(true);
@@ -800,7 +800,7 @@ describe("--pictures", () => {
 
 describe("--steps", () => {
   it("makes one slide per build step, from the scene as it opens to every step taken", async () => {
-    const deck = copyDeck("demo");
+    const deck = copyDeck("demo-0-3");
     const out = join(root, "steps.pptx");
     const summary = await exported(deck, out, "--steps");
     expect(summary.steps).toBe(true);
@@ -883,7 +883,7 @@ describe("a chart in a wide, short slot", () => {
 describe("a clip", () => {
   /** The demo deck with one scene: an MP4 clip and its poster. */
   function clipDeck(): string {
-    const deck = copyDeck("demo", "clip-deck");
+    const deck = copyDeck("demo-0-3", "clip-deck");
     keepScenes(deck, ["clip-scene"]);
     copyFileSync(tinyMp4, join(deck, "assets", "tiny.mp4"));
     writeFileSync(join(deck, "assets", "tiny.png"), solidPng(320, 180, [40, 90, 200]));
@@ -1023,7 +1023,7 @@ function call(
 
 describe("the export call on the live server", () => {
   it("sends the same bytes the CLI writes, and writes nothing into the deck folder", async () => {
-    const deck = copyDeck("demo", "live-deck");
+    const deck = copyDeck("demo-0-3", "live-deck");
     const editor = join(root, "editor");
     mkdirSync(editor);
     const before = filesUnder(deck);

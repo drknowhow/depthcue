@@ -4,6 +4,63 @@ Notable changes to Depthcue, newest first. Nothing has been released yet, so eve
 
 ## Unreleased
 
+### Images: crop, fit, focus, backgrounds and a library
+
+A picture can be cropped, shown whole or made to fill its box around a point you choose, marked decorative, and put
+behind a whole slide with a scrim. An agent can add the image file and set the same properties. The guides are
+[the editor](docs/editor.md#pictures), [placing blocks](docs/placement.md#pictures-in-a-frame) and
+[the export](docs/export.md#pictures). The build record is [docs/IMAGES.md](docs/IMAGES.md).
+
+A person can:
+
+- Crop a picture with handles on its edges and corners, move the picture under the crop, and choose the focus point that
+  stays in view when a filled picture is cut. Enter or a click outside applies the crop as one step of Undo, and `Esc`
+  cancels. The keyboard does all of it, and each handle has a spoken name.
+- Switch a picture between Fit and Fill, reset it, and tick Decorative for a picture that carries no information.
+- Resize a pinned picture by a corner and keep its shape (Shift frees it), and use Fit box to picture.
+- Put a picture behind the whole slide from the right-click menu or the Scene popover's Background section, with a
+  scrim, a scrim color and a focus point, and take it off again.
+- Open an image library from the Image button, the `I` key or Edit's "Choose from library": thumbnails with each
+  file's size, its size in pixels and the slides that use it, with add, replace and delete for a file nothing uses.
+  Dropping several pictures adds one block each.
+
+An agent can:
+
+- Add an image file with the new `deck_asset` tool (or `depthcue asset add`), list what uses each file, and remove one
+  that nothing names. `depthcue asset unused` lists files nothing names.
+- Set `fit`, `crop`, `focus` and `decorative` on an image block and `background` on a scene with `block.set` and
+  `scene.set`. No operation was added.
+- Rely on new checks: `image-crop-outside` (error), `asset-unused` (info), `asset-large` (warning, over 4 MB) and, from
+  `depthcue render`, `image-low-resolution` (warning). Text over a scene background gets the measured
+  `background-low-contrast` check, whose fix names the scene's scrim.
+
+The schema is 0.6. Decks and scenes written for 0.1 to 0.5 load and draw as they did, and a scene moves to 0.6 only
+when it gains one of the new fields. A picture that is not decorative still needs alt text.
+
+Changed:
+
+- The player draws crop and focus with a clipping box and CSS container units, so no browser feature beyond those is
+  needed. An export copies a scene's background file. In PowerPoint a crop is the picture's own source rectangle, a
+  focused fill is cut around the focus, a scene background is the slide's background with the scrim laid over it, and a
+  decorative picture gets PowerPoint's decorative mark.
+- `depthcue render` no longer reports a cropped or filled picture as cut off, since its box clips the file on purpose.
+- The demo deck has three more slides and a scene background, and the demo video was recorded again from it.
+  Tests that need the old demo deck read `fixtures/decks/demo-0-3`.
+- CI runs four test groups, and the groups were rebalanced.
+- Sizes. The editor script is 93.5 KB (was 91.1), and its limit went from 92 to 93.5 KB, the most the plan allowed. Its
+  styles are 15.1 KB (was 14.5). The two new chunks are 1.7 KB (image library) and 3.6 KB (crop mode and the
+  background section), each against 4 KB. The player script is 12.5 KB (was 12.2) and its styles 6.0 KB (was 5.8). The
+  exported page script is 15.8 KB (was 15.4) of 16 KB. The core runtime is 46.8 KB gzip (was 46.2).
+- Tests. @@TESTS@@
+
+Not done:
+
+- The brand's logo plate on a template scene that has its own background still shows the template's plate.
+- In crop mode on a very tall or very wide crop of a filled picture, a handle can lie outside the slide. Only the
+  keyboard reaches it.
+- Zooming into part of a picture as a build step, and adding an image from a URL with `deck_asset`.
+- Rotation, flipping, opacity, color filters, crop shapes, and controls for animated GIFs.
+
 ### Tables, charts, text styles and a deck style
 
 A deck can now hold a table, six kinds of chart and formatted text, and it can have its own colors and fonts. The

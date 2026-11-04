@@ -29,6 +29,24 @@ show in the export, in print and to a screen reader the way they do in `depthcue
 relative path, so the page keeps its look from a folder with no network. The pairs weigh 192 KB (editorial),
 252 KB (modern), 293 KB (classic) and 262 KB (technical). See [Style](style.md).
 
+## Pictures
+
+An image's `crop`, `fit` and `focus`, a scene's `background` and a decorative picture all travel with the export.
+
+- **Folder.** The page draws a picture with the same code as `depthcue serve`, so a crop, a fit and a focus look the
+  same, and no browser feature beyond CSS container units is needed. Every file a scene names is copied, which includes
+  a scene's background. A file nothing names stays out and is listed. The reading version leaves a decorative picture
+  out, and shows a background that has alt text as the first picture of its scene.
+- **PowerPoint** (`--format pptx`). A cropped picture is a picture with PowerPoint's own source rectangle, so
+  PowerPoint's Crop tool starts from it. A picture that fills its box and has a `focus` is cut around that point and not
+  around the center. A picture that fits shows whole. A scene's background becomes that slide's background, one JPEG
+  with the scrim already laid over the picture, placed at the focus. PowerPoint cannot change the scrim afterward,
+  and the background replaces any color the slide had. A decorative picture gets an empty description and
+  PowerPoint's own "decorative" mark. With `--pictures` each slide is one picture of the drawn scene, so all of this is
+  as drawn.
+- **Not carried over.** On a scene that uses a brand template and has its own background, the brand's logo plate stays
+  as the template drew it for the template's own ground, and may sit badly on the new picture.
+
 ## Why the page is built this way
 
 Chrome will not load a module script from a page opened as a file, and it will not answer `fetch` for another
@@ -77,7 +95,7 @@ a `message`.
   page. See [the control lease](lease.md).
 - **No single-file form.** The folder has several files, and videos stay as separate files because inlining them
   would double their size. A zip form for sharing is planned.
-- **No PDF or PowerPoint.** Those are separate exports, planned for 0.7.
+- **No PDF.** PowerPoint is a separate export, `--format pptx`; see Pictures above for what it does with them.
 
 ## What it costs
 
