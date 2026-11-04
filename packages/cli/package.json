@@ -28,6 +28,10 @@
       "types": "./dist/link.d.ts",
       "default": "./dist/link.js"
     },
+    "./images": {
+      "types": "./dist/images.d.ts",
+      "default": "./dist/images.js"
+    },
     "./layout": {
       "types": "./dist/layout.d.ts",
       "default": "./dist/layout.js"

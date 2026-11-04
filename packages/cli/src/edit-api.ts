@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import {
@@ -29,6 +28,7 @@ import { applyCommentsToFolder, readFolderComments } from "./comments-api.ts";
 import { openDeck } from "./deck-api.ts";
 import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
+import { addImage, ImageRefused, listImages, MAX_ASSET_BYTES, TOO_LARGE_MESSAGE } from "./images.ts";
 import { brandHashEntries, loadDeckDir } from "./loader.ts";
 import { loadReviewDir, recordPersonWrite, saveReviewDir } from "./review-file.ts";
 import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
@@ -45,7 +45,6 @@ export interface EditContext {
 }
 
 export const MAX_SAVE_BYTES = 8 * 1024 * 1024;
-export const MAX_ASSET_BYTES = 15 * 1024 * 1024;
 
 const plain = (d: Diagnostic) => ({
   code: d.code,
@@ -180,79 +179,37 @@ function deck(response: ServerResponse, ctx: EditContext) {
   });
 }
 
-type ImageKind = "png" | "jpg" | "gif" | "webp" | "svg";
-
-/** The image type from the bytes themselves; the file name and the declared type are not trusted. */
-export function sniffImage(bytes: Buffer): ImageKind | undefined {
-  if (
-    bytes.length >= 8 &&
-    bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-  ) {
-    return "png";
-  }
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpg";
-  if (bytes.length >= 6 && ["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString("latin1")))
-    return "gif";
-  if (
-    bytes.length >= 12 &&
-    bytes.subarray(0, 4).toString("latin1") === "RIFF" &&
-    bytes.subarray(8, 12).toString("latin1") === "WEBP"
-  ) {
-    return "webp";
-  }
-  const head = bytes.subarray(0, 2048).toString("utf8").trimStart().toLowerCase();
-  if (head.startsWith("<svg") || (head.startsWith("<?xml") && head.includes("<svg"))) {
-    const all = bytes.toString("utf8").toLowerCase();
-    // An image shown in <img> cannot run script, but an exported deck may be opened some other way. Keep it inert.
-    if (/<script|<foreignobject|\son[a-z]+\s*=|javascript:|<iframe|<embed|<object/.test(all))
-      return undefined;
-    return "svg";
-  }
-  return undefined;
-}
-
-const EXTENSION: Record<ImageKind, string> = { png: "png", jpg: "jpg", gif: "gif", webp: "webp", svg: "svg" };
-
-/** A safe file name from what the visitor called it: lower case letters, digits and hyphens. */
-export function assetName(original: string, kind: ImageKind, bytes: Buffer): string {
-  const stem =
-    original
-      .replace(/\.[A-Za-z0-9]+$/, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 40) || "image";
-  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 8);
-  return `${stem}-${hash}.${EXTENSION[kind]}`;
-}
-
 async function uploadAsset(request: IncomingMessage, response: ServerResponse, url: URL, ctx: EditContext) {
   let bytes: Buffer;
   try {
     bytes = await readBody(request, MAX_ASSET_BYTES);
   } catch (error) {
     if (error instanceof TooLarge) {
-      return send(response, 413, { error: "too-large", message: "Images can be up to 15 MB." });
+      return send(response, 413, { error: "too-large", message: TOO_LARGE_MESSAGE });
     }
     return send(response, 400, { error: "bad-request", message: "The upload was interrupted." });
   }
-  const kind = sniffImage(bytes);
-  if (!kind) {
-    return send(response, 415, {
-      error: "unsupported",
-      message: "Only PNG, JPEG, GIF, WebP and plain SVG images can be added. SVG with script is refused.",
+  try {
+    return send(response, 200, addImage(ctx.folder, bytes, url.searchParams.get("name") ?? "image"));
+  } catch (error) {
+    if (error instanceof ImageRefused) {
+      const status = error.code === "too-large" ? 413 : error.code === "unsupported" ? 415 : 500;
+      return send(response, status, { error: error.code, message: error.message });
+    }
+    throw error;
+  }
+}
+
+/** Every image in the deck's assets folder with its size and where the deck names it. */
+function listAssets(response: ServerResponse, ctx: EditContext) {
+  const opened = openDeck(ctx.folder);
+  if (!opened.ok) {
+    return send(response, 409, {
+      error: "invalid-deck",
+      message: "The deck has errors, so its images cannot be listed.",
     });
   }
-  const name = assetName(url.searchParams.get("name") ?? "image", kind, bytes);
-  const dir = join(ctx.folder, "assets");
-  mkdirSync(dir, { recursive: true });
-  const target = join(dir, name);
-  if (!existsSync(target)) {
-    const temporary = `${target}.depthcue-${process.pid}.tmp`;
-    writeFileSync(temporary, bytes);
-    renameSync(temporary, target);
-  }
-  return send(response, 200, { asset: `assets/${name}`, kind, bytes: bytes.length });
+  return send(response, 200, { assets: listImages(ctx.folder, opened.doc) });
 }
 
 /**
@@ -633,6 +590,7 @@ export async function handleEditApi(
   try {
     if (route === "/_depthcue/api/deck" && request.method === "GET") deck(response, ctx);
     else if (route === "/_depthcue/api/save" && request.method === "POST") await save(request, response, ctx);
+    else if (route === "/_depthcue/api/assets" && request.method === "GET") listAssets(response, ctx);
     else if (route === "/_depthcue/api/asset" && request.method === "POST") {
       await uploadAsset(request, response, url, ctx);
     } else if (route === "/_depthcue/api/brand-file" && request.method === "POST") {
