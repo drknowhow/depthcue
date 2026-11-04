@@ -43,6 +43,21 @@ describe("renderScene", () => {
     expect(image?.getAttribute("alt")).toBeTruthy();
   });
 
+  it("gives a decorative image an empty alt, on the slide and in the reading version, alt text or not", () => {
+    for (const alt of [{}, { alt: "Waves" }]) {
+      const scene = sceneWith({
+        schemaVersion: "0.6",
+        layout: "text-media",
+        blocks: [
+          { id: "h", type: "text", role: "heading", text: "Hi" },
+          { id: "i", type: "image", asset: "assets/sea.png", decorative: true, ...alt },
+        ],
+      });
+      expect(renderScene(scene, ctx).querySelector("img")?.getAttribute("alt")).toBe("");
+      expect(renderReading(deck, [scene], ctx).querySelector("img")?.getAttribute("alt")).toBe("");
+    }
+  });
+
   it("turns deck text into text, never into markup", () => {
     const hostile = '<img src=x onerror="globalThis.pwned=1"><script>globalThis.pwned=1</script>';
     const section = renderScene(

@@ -337,10 +337,14 @@ export function linkShape(xml: string, name: string, ph: string): string {
   });
 }
 
-/** Adds a description to the slide's shape named `name`, which the writer has no option for on a video. */
+/**
+ * Adds a description to the slide's shape named `name`, which the writer has no option for on a video. An empty one
+ * empties the description of a decorative picture, where the writer puts the file's name for an empty alt text.
+ */
 export function describeShape(xml: string, name: string, text: string): string {
-  const named = new RegExp(`(<p:cNvPr id="\\d+" name="${regexText(escapeXml(name))}")(?![^>]*\\bdescr=)`);
-  return xml.replace(named, `$1 descr="${escapeXml(text)}"`);
+  const shape = `(<p:cNvPr id="\\d+" name="${regexText(escapeXml(name))}")`;
+  if (text === "") return xml.replace(new RegExp(`${shape} descr="[^"]*"`), '$1 descr=""');
+  return xml.replace(new RegExp(`${shape}(?![^>]*\\bdescr=)`), `$1 descr="${escapeXml(text)}"`);
 }
 
 /** The slide's own footer and number, filling the layout's: the words, and the field PowerPoint numbers each slide by. */

@@ -145,6 +145,51 @@ const fullBrand = {
   lock: true,
   hideBuiltIn: ["templates"],
 };
+/** 0.6 scenes: a background picture, described or decorative, and images cropped and focused or decorative. */
+const imageScenes = [
+  {
+    schemaVersion: "0.6",
+    id: "harbor",
+    title: "The harbor",
+    layout: "title",
+    background: {
+      asset: "assets/sea.jpg",
+      scrim: 40,
+      color: "text",
+      focus: { x: 30, y: 70 },
+      alt: "The sea.",
+    },
+    blocks: [
+      {
+        id: "harbor-photo",
+        type: "image",
+        asset: "assets/harbor.jpg",
+        alt: "Boats in the harbor.",
+        fit: "cover",
+        crop: { x: 10, y: 5, w: 80, h: 60 },
+        focus: { x: 50, y: 40 },
+      },
+      { id: "harbor-texture", type: "image", asset: "assets/paper.png", decorative: true },
+    ],
+  },
+  {
+    schemaVersion: "0.6",
+    id: "quiet",
+    title: "Quiet",
+    template: "section",
+    background: { asset: "assets/sea.jpg", scrim: 0, decorative: true },
+    blocks: [
+      {
+        id: "quiet-photo",
+        type: "image",
+        asset: "assets/a.png",
+        alt: "A",
+        decorative: false,
+        fit: "contain",
+      },
+    ],
+  },
+];
 const imageTemplate = {
   schemaVersion: "0.4",
   id: "photo",
@@ -325,7 +370,7 @@ function* variants(schema: object, samples: readonly unknown[], seeded: number, 
 
 const CASES: ReadonlyArray<[name: string, schema: object, samples: () => unknown[], seeded: number]> = [
   ["deck.json", deckSchema, () => fixtureDecks, 3000],
-  ["a scene", sceneSchema, () => fixtureScenes, 4000],
+  ["a scene", sceneSchema, () => [...fixtureScenes, ...imageScenes], 4000],
   ["operations", opsSchema, () => [everyOp, ...everyOp.map((op) => [op])], 4000],
   ["comments.json", commentsSchema, () => [comments, { format: "depthcue-comments/1", comments: [] }], 3000],
   ["comment operations", commentOpsSchema, () => [everyCommentOp, ...everyCommentOp.map((op) => [op])], 3000],

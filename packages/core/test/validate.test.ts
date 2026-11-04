@@ -34,9 +34,9 @@ describe("scene structure", () => {
   });
 
   it("lists the allowed properties when nothing is close", () => {
-    const found = first(checkScene(scene({ background: "red" }), "scenes/a.json"));
+    const found = first(checkScene(scene({ music: "jazz" }), "scenes/a.json"));
     expect(found.fix).toBe(
-      "Allowed here: $schema, schemaVersion, id, title, layout, template, lead, summary, blocks, sources, reading, steps, notes.",
+      "Allowed here: $schema, schemaVersion, id, title, layout, template, background, lead, summary, blocks, sources, reading, steps, notes.",
     );
   });
 
@@ -45,12 +45,18 @@ describe("scene structure", () => {
     expect(found.fix).toContain('Did you mean "claim-evidence"?');
   });
 
-  it("requires alt text on images", () => {
+  it("requires alt text on images, and says a decorative picture may leave it out", () => {
     const image = scene({ blocks: [{ id: "pic", type: "image", asset: "assets/a.png" }] });
-    expect(first(checkScene(image, "scenes/a.json"))).toMatchObject({
-      code: "missing-property",
-      message: 'Missing "alt".',
-    });
+    expect(checkScene(image, "scenes/a.json")).toEqual([
+      {
+        severity: "error",
+        code: "missing-property",
+        file: "scenes/a.json",
+        path: "/blocks/0",
+        message: 'Missing "alt": a picture needs alt text unless it is decorative.',
+        fix: 'Add "alt" that says what the picture shows, for someone who cannot see it, or set "decorative": true if it carries no information.',
+      },
+    ]);
   });
 
   it("names the allowed block types for an unknown one", () => {

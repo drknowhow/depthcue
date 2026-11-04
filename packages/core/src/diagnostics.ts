@@ -134,6 +134,13 @@ function explainOne(error: RawError, data: Json, root: Json): Explained {
   switch (keyword) {
     case "required": {
       const name = String(params.missingProperty);
+      // Alt text is required in an `else`: a picture needs it unless it is marked decorative.
+      if (error.schemaPath.endsWith("/else/required") && name === "alt")
+        return {
+          code: "missing-property",
+          message: 'Missing "alt": a picture needs alt text unless it is decorative.',
+          fix: 'Add "alt" that says what the picture shows, for someone who cannot see it, or set "decorative": true if it carries no information.',
+        };
       return { code: "missing-property", message: `Missing "${name}".`, fix: `Add "${name}".` };
     }
     case "additionalProperties": {

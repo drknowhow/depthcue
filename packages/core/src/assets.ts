@@ -7,9 +7,14 @@ export interface AssetRef {
   asset: string;
 }
 
-/** Every asset a scene names, with where it names it: image files, clip sources and posters, and source files. */
+/**
+ * Every asset a scene names, with where it names it: its background picture, image files, clip sources and posters,
+ * and source files.
+ */
 export function assetRefs(scene: Scene): AssetRef[] {
   const refs: AssetRef[] = [];
+  const background = scene.background?.asset;
+  if (background) refs.push({ path: "/background/asset", asset: background });
   scene.blocks.forEach((block, i) => {
     if (block.type === "image") refs.push({ path: `/blocks/${i}/asset`, asset: block.asset });
     if (block.type === "clip") {

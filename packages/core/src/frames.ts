@@ -23,11 +23,29 @@ export const hasFrames = (scene: Scene): boolean => scene.blocks.some((block) =>
 /**
  * Facts about frames the schema cannot state: a frame lies on the slide, and only a scene that declares
  * schema 0.2 has any. A frame that holds text and reaches into the safe margin is a warning, not an error: a
- * person may want it there. Expects a scene that already passed the structure check.
+ * person may want it there. An image's crop, a frame on its picture, lies inside the picture. Expects a scene that
+ * already passed the structure check.
  */
 export function checkFrames(scene: Scene, file: string): Diagnostic[] {
   const out: Diagnostic[] = [];
   scene.blocks.forEach((block, i) => {
+    const crop = block.type === "image" ? block.crop : undefined;
+    if (crop) {
+      for (const [at, size, end, way] of [
+        ["x", "w", crop.x + crop.w, "across"],
+        ["y", "h", crop.y + crop.h, "down"],
+      ] as const) {
+        if (end <= 100 + SLACK) continue;
+        out.push({
+          severity: "error",
+          code: "image-crop-outside",
+          file,
+          path: `/blocks/${i}/crop/${size}`,
+          message: `The crop runs to ${round(end)}% ${way} the picture; the picture ends at 100%.`,
+          fix: `Make ${size} at most ${round(100 - crop[at])}, or make ${at} smaller. The crop is in percent of the picture's own width and height.`,
+        });
+      }
+    }
     const frame = block.frame;
     if (!frame) return;
     if (scene.schemaVersion === "0.1") {
