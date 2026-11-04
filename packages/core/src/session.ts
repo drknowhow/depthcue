@@ -159,13 +159,12 @@ export function createSession(initial: Doc, options: { historyLimit?: number } =
       emit("assets", present.rev);
     },
     dropAsset(path) {
-      if (![present, ...past, ...future].some((snapshot) => snapshot.doc.assets.has(path))) return;
-      every((snapshot) => {
-        if (!snapshot.doc.assets.has(path)) return snapshot;
-        const assets = new Set(snapshot.doc.assets);
-        assets.delete(path);
-        return { rev: snapshot.rev, doc: { ...snapshot.doc, assets } };
-      });
+      // Every state lists the files the present one does (`addAssets` and this change them all), so it is asked alone.
+      if (!present.doc.assets.has(path)) return;
+      every((snapshot) => ({
+        rev: snapshot.rev,
+        doc: { ...snapshot.doc, assets: new Set([...snapshot.doc.assets].filter((name) => name !== path)) },
+      }));
       emit("assets", present.rev);
     },
     brandFile(path, hash, revs) {
