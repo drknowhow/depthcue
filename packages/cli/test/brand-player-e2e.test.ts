@@ -280,10 +280,11 @@ interface Difference {
 
 /**
  * The most pixels two pictures of one page may differ in and still be the same page. Drawing a page twice in Chrome can
- * move a few edge pixels of text, by a rounding; a changed color or font changes hundreds at least. A count in pixels,
+ * move a few edge pixels of text, by a rounding (88 of 921,600, by 1 step, on a Linux runner, between two pages that were
+ * drawn the same); a changed color or font changes thousands, and by more than a step. A count in pixels,
  * and not a share of the picture, so a change of color too small to see cannot hide in the picture's size.
  */
-const FEW_PIXELS = 64;
+const FEW_PIXELS = 256;
 /** How many times a pair is photographed again, after a face that arrived late repainted, before it is called different. */
 const RETAKES = 3;
 

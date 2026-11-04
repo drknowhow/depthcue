@@ -95,14 +95,15 @@ beforeEach(async (test) => {
     const path = new URL(response.url()).pathname;
     if (path.startsWith("/_depthcue/editor/")) fetched.push(`${path} ${response.status()}`);
   });
-});
+  // A new browser context on a shared CI runner has taken longer than the 10 s hook default; a real hang still fails.
+}, 60_000);
 
 afterEach(async () => {
   await context?.close();
   await server?.close();
   server = undefined;
   rmSync(root, { recursive: true, force: true });
-});
+}, 60_000);
 
 // ---- decks on disk ---------------------------------------------------------------------------------------------------
 
