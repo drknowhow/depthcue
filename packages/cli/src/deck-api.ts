@@ -11,6 +11,7 @@ import {
   sceneRevision,
   slotMax,
 } from "@depthcue/core";
+import { largeImageDiagnostics } from "./images.ts";
 import { loadDeckDir } from "./loader.ts";
 import { recordAgentWrite } from "./review-file.ts";
 import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
@@ -25,7 +26,10 @@ export type OpenResult =
 /** Reads a deck folder into a Doc. Fails, with every error, when the deck is not valid. */
 export function openDeck(folder: string): OpenResult {
   const { doc, diagnostics } = loadDoc(loadDeckDir(folder));
-  return doc ? { ok: true, doc, diagnostics } : { ok: false, diagnostics };
+  // A file's size is a fact about the folder, not the JSON, so it is checked here and not in core's validate.
+  return doc
+    ? { ok: true, doc, diagnostics: [...diagnostics, ...largeImageDiagnostics(folder, doc)] }
+    : { ok: false, diagnostics };
 }
 
 const blockSummary = (block: Block) => ({

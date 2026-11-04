@@ -7,8 +7,8 @@ import { createDepthcueServer } from "./server.ts";
 
 const USAGE = `Usage: depthcue-mcp <deck-folder>
 
-Serves one deck folder to an MCP client over stdio, with six tools: deck_get, deck_apply, deck_comment, deck_render,
-deck_present and deck_export.
+Serves one deck folder to an MCP client over stdio, with seven tools: deck_get, deck_apply, deck_comment, deck_render,
+deck_present, deck_asset and deck_export.
 Set DEPTHCUE_BROWSER to a Chromium executable if Chrome or Edge is not installed.`;
 
 const folder = process.argv[2];

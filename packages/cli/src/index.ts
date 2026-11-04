@@ -7,6 +7,7 @@ import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./cl
 import { applyCommentsToFolder, listComments, readFolderComments } from "./comments-api.ts";
 import { applyToFolder, openDeck } from "./deck-api.ts";
 import { ExportError, exportDeck } from "./export.ts";
+import { largeImageDiagnostics } from "./images.ts";
 import { writeLink } from "./link.ts";
 import { loadDeckDir } from "./loader.ts";
 import { openRenderer, type RenderOptions } from "./render.ts";
@@ -57,6 +58,17 @@ const LINK_TEXT = `link   Manages the deck's saved links, which blocks and scene
        the link that takes its place. check reports bad targets, unknown scenes, missing files, unused links and
        paths that are not there; --online also asks each web address whether it answers.`;
 
+const ASSET_USAGE = `  depthcue asset add <deck-folder> <file...> [--json]
+  depthcue asset list <deck-folder> [--json]
+  depthcue asset unused <deck-folder> [--json]
+  depthcue asset remove <deck-folder> <asset> [--json]`;
+
+const ASSET_TEXT = `asset  Manages the images in the deck's assets folder. add copies PNG, JPEG, GIF, WebP or plain SVG files in under
+       a name made from the file's name and its content, and prints the path to put in an image block's asset
+       (each up to 15 MB; adding the same file again changes nothing). list shows every image with its size in
+       pixels and where the deck uses it. unused lists the ones nothing uses. remove deletes one, and is refused
+       while a block, source or link names it. check warns about an image a scene uses that is over 4 MB.`;
+
 const USAGE = `Usage:
   depthcue check <deck-folder> [--json]
   depthcue rev <deck-folder>
@@ -71,6 +83,7 @@ ${BRAND_IMPORT_USAGE}
 ${BRAND_COMMANDS_USAGE}
 ${NEW_USAGE}
 ${LINK_USAGE}
+${ASSET_USAGE}
   depthcue comments list <deck-folder> [--all] [--json]
   depthcue comments apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue diff <deck-folder> [--json]
@@ -108,6 +121,8 @@ ${BRAND_COMMANDS_TEXT}
 ${NEW_TEXT}
 
 ${LINK_TEXT}
+
+${ASSET_TEXT}
 
 comments Lists the comments kept beside the deck in comments.json (the open ones; --all adds the resolved ones),
        with the ones people asked the agent to act on marked "ask". apply changes them the way apply changes
@@ -213,7 +228,9 @@ function parse(args: readonly string[]): Parsed {
 }
 
 function check(folder: string, json: boolean, io: Io): number {
-  const diagnostics = checkDeckFiles(loadDeckDir(folder));
+  const { doc, diagnostics } = loadDoc(loadDeckDir(folder));
+  // Whether a file is too large is known from the folder, not from the JSON the core check reads.
+  if (doc) diagnostics.push(...largeImageDiagnostics(folder, doc));
   report(io, diagnostics, json);
   if (!json) io.out(summary(diagnostics));
   return count(diagnostics, "error") === 0 ? 0 : 1;
@@ -842,6 +859,25 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
     };
     return import("./links/command.ts")
       .then((links) => links.linkCommand(positional, flags, io, usage))
+      .catch((error: Error) => {
+        io.err(error.message);
+        return 2;
+      });
+  }
+  if (command === "asset") {
+    const stray =
+      force ||
+      replace ||
+      online ||
+      all ||
+      noNotes ||
+      baseRev !== undefined ||
+      portText !== undefined ||
+      values.kind !== undefined ||
+      values.brand !== undefined ||
+      renderFlags !== undefined;
+    return import("./assets/command.ts")
+      .then((assets) => assets.assetCommand(positional, { json, stray }, io, usage))
       .catch((error: Error) => {
         io.err(error.message);
         return 2;

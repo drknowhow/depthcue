@@ -73,9 +73,17 @@ async function call(name: string, args: Record<string, unknown> = {}): Promise<R
 const revision = async () => (await call("deck_get")).json.rev as string;
 
 describe("the tool list", () => {
-  it("offers exactly six tools, and keeps their definitions small", async () => {
+  it("offers exactly seven tools, and keeps their definitions small", async () => {
     const { tools } = await client.listTools();
-    const names = ["deck_get", "deck_apply", "deck_comment", "deck_render", "deck_present", "deck_export"];
+    const names = [
+      "deck_get",
+      "deck_apply",
+      "deck_comment",
+      "deck_render",
+      "deck_present",
+      "deck_asset",
+      "deck_export",
+    ];
     expect(tools.map((tool) => tool.name)).toEqual(names);
     expect(TOOL_NAMES).toEqual(names);
     // Every tool definition is in the agent's context on every turn. The cap was 9000 for four tools; the fifth,
@@ -86,8 +94,8 @@ describe("the tool list", () => {
     // 1.12 KB, about half of it the six arguments an export takes, and the five were at 11,999. The four slot
     // operations fit by leaving the id pattern and each operation's own type out of deck_apply's copy of the schema,
     // which the core checks anyway (see below). Schema 0.5 adds the three link operations, 0.5 KB with their sentence.
-    // Raise it only for a reason of that size.
-    expect(JSON.stringify(tools).length).toBeLessThan(13800);
+    // The seventh, deck_asset, is 1.3 KB: its description and five arguments. Raise it only for a reason of that size.
+    expect(JSON.stringify(tools).length).toBeLessThan(15100);
     for (const tool of tools) expect(tool.description?.length).toBeLessThan(1100);
   });
 
@@ -891,7 +899,7 @@ describe("the built binary", () => {
     const remote = new Client({ name: "stdio-test", version: "0.0.0" });
     await remote.connect(stdio);
     try {
-      expect((await remote.listTools()).tools).toHaveLength(6);
+      expect((await remote.listTools()).tools).toHaveLength(7);
       const outline = (await remote.callTool({ name: "deck_get", arguments: {} })) as {
         content: Array<{ text: string }>;
       };
