@@ -948,6 +948,16 @@ describe("the placeholder a slot becomes", () => {
     );
     expect(describeShape(described, "clip & more", "again")).toBe(described);
   });
+
+  it("empties the description the writer gave a decorative picture, and only that shape's", () => {
+    const xml =
+      '<p:cNvPr id="3" name="sea" descr="preencoded.png"><a:hlinkClick/></p:cNvPr><p:cNvPr id="4" name="photo" descr="preencoded.png">';
+    const emptied = describeShape(xml, "sea", "");
+    expect(emptied).toBe(
+      '<p:cNvPr id="3" name="sea" descr=""><a:hlinkClick/></p:cNvPr><p:cNvPr id="4" name="photo" descr="preencoded.png">',
+    );
+    expect(describeShape(emptied, "sea", "")).toBe(emptied);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

@@ -94,8 +94,9 @@ describe("the tool list", () => {
     // 1.12 KB, about half of it the six arguments an export takes, and the five were at 11,999. The four slot
     // operations fit by leaving the id pattern and each operation's own type out of deck_apply's copy of the schema,
     // which the core checks anyway (see below). Schema 0.5 adds the three link operations, 0.5 KB with their sentence.
-    // The seventh, deck_asset, is 1.3 KB: its description and five arguments. Raise it only for a reason of that size.
-    expect(JSON.stringify(tools).length).toBeLessThan(15100);
+    // Schema 0.6 names the image fields and the scene background in deck_get and deck_apply, 0.2 KB. The seventh tool,
+    // deck_asset, is 1.3 KB: its description and five arguments. Raise it only for a reason of that size.
+    expect(JSON.stringify(tools).length).toBeLessThan(15300);
     for (const tool of tools) expect(tool.description?.length).toBeLessThan(1100);
   });
 

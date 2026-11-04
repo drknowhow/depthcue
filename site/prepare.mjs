@@ -47,6 +47,8 @@ const LEFT_OFF = {
     "It is the build record of the content-range work, with decisions the user guides do not need.",
   "docs/EDITOR_REMAKE.md":
     "It is the build record of the editor remake, with internals and decisions that the user guides do not need.",
+  "docs/IMAGES.md":
+    "It is the plan and build record of the images work, with decisions the user guides do not need.",
   "docs/RESEARCH.md": "It quotes forum posts by handle. Remove those before it is public.",
   "docs/TRIAL.md":
     "It compares Depthcue with two other projects from single runs. Check the claims for fairness before it is public.",

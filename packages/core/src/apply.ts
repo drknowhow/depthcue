@@ -23,7 +23,16 @@ export type DeckChanges = Nullable<
 export type SceneChanges = Nullable<
   Pick<
     Scene,
-    "title" | "layout" | "template" | "lead" | "summary" | "sources" | "reading" | "steps" | "notes"
+    | "title"
+    | "layout"
+    | "template"
+    | "background"
+    | "lead"
+    | "summary"
+    | "sources"
+    | "reading"
+    | "steps"
+    | "notes"
   >
 >;
 /** What `brand.set` may write. The id is given once, when the brand is made, and never changes. */
@@ -129,6 +138,7 @@ export const SCENE_KEYS = [
   "title",
   "layout",
   "template",
+  "background",
   "lead",
   "summary",
   "sources",

@@ -63,7 +63,8 @@ function evidence(scene: Scene, ctx: RenderContext): HTMLElement[] {
         h(
           "figure",
           { class: "dc-figure" },
-          src && h("img", { src, alt: block.alt, loading: "lazy", decoding: "async" }),
+          src &&
+            h("img", { src, alt: block.decorative ? "" : block.alt, loading: "lazy", decoding: "async" }),
           block.caption && h("figcaption", {}, block.caption),
         ),
       );
