@@ -166,6 +166,26 @@ export function resized(frame: Frame, corner: Corner, dx: number, dy: number): F
   return fitted({ x: left, y: top, w: right - left, h: bottom - top });
 }
 
+/**
+ * A resized frame pulled back to the shape `start` had, with the opposite corner left where it was. The larger of the
+ * two changes wins, so the corner follows the pointer along its longer way; the frame stays on the slide.
+ */
+export function keepShape(start: Frame, now: Frame, corner: Corner): Frame {
+  const west = corner.endsWith("w");
+  const north = corner.startsWith("n");
+  const room = Math.min(
+    (west ? start.x + start.w : 100 - start.x) / start.w,
+    (north ? start.y + start.h : 100 - start.y) / start.h,
+  );
+  const s = Math.min(room, Math.max(now.w / start.w, now.h / start.h));
+  return fitted({
+    x: west ? start.x + start.w * (1 - s) : start.x,
+    y: north ? start.y + start.h * (1 - s) : start.y,
+    w: start.w * s,
+    h: start.h * s,
+  });
+}
+
 /** `resized`, with the two edges that move pulled onto the nearest lines. */
 export function snapResize(
   frame: Frame,

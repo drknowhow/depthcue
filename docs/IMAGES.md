@@ -245,3 +245,54 @@ Dimitri approved the recommended answer to each:
   chosen for the template's ground), and the editor does not offer the fields yet (step 4).
 - **Size.** Player script 12,463 to 12,833 bytes Brotli (+370), player styles 5,930 to 6,171 (+241): +611 bytes of
   the 1 KB. The exported page script is 15,864 to 16,204 of its 16,384 limit.
+
+## Step 4 record: the editor's controls on the slide
+
+- **What was built.** A chosen image's toolbar has Crop, Fill and Reset picture. Crop is also a double click, a
+  right-click and palette command. The right-click menu and Ctrl K gain Crop, Fit, Fill, Reset picture (when the
+  picture has a fit, crop or focus), Fit box to picture (a pinned picture whose file has loaded), Use as slide
+  background, and Remove background (only on a slide that has one). The Edit popover has a Decorative checkbox. The
+  Scene popover has a Background section: file (library or upload), scrim, scrim color, focus, Decorative, alt text and
+  Remove. A pinned image keeps its shape when a corner is dragged, and Shift frees it. Everything goes through
+  `block.set`, `block.frame` and `scene.set`; there are no new operations.
+- **One lazy chunk.** `packages/editor/src/picture.ts` (loaded through `lazy.ts`, `PARTS.picture`) holds crop mode, the
+  focus marker, Fit box, Use and Remove background, and the Background section. The main script has only the buttons,
+  the menu and palette entries, `keepShape` (the aspect lock) and the calls that load the chunk. Its pure maths
+  (`resizeCrop`, `panCrop`, `fitBox`) is unit tested in `packages/editor/test/picture.test.ts`.
+- **Crop mode.** The crop window stays where the picture was drawn; the whole file is drawn around it, dimmed by a
+  box-shadow and clipped to the stage. Eight handles resize the crop with the file held still, and dragging inside
+  moves the file under the window. Values are percent of the file, rounded to hundredths, inside 0..100 and at least
+  `FRAME_MIN` (5) a side, so `image-crop-outside` cannot fire. A crop of the whole file is written as null. On a
+  picture whose effective fit is cover, a "Focus point" marker is shown and written in the same `block.set`. Enter, a
+  click outside, or pressing Crop again applies; Escape cancels; any other change to the deck cancels. Keys: Tab goes
+  round the window, the eight handles and the marker; arrows move 1 percent, Shift 10. Each part has a name ("Top edge
+  of the crop", "Top-left corner of the crop", "Focus point") and a live region says what changed and when the mode
+  ends.
+- **Decisions that mattered.** Fit and Fill is one toggle whose `aria-pressed` is the effective fit (a picture slot
+  defaults to cover); a value equal to the default is written as null. Reset writes `crop`, `focus` and `fit` as null for
+  the keys that are set. Fit box keeps the width, takes the height from the cropped shape, and shrinks both when the
+  box would leave the slide. Use as slide background moves the picture in one apply batch: `scene.background` with the
+  file, a 40 percent scrim, and the alt text, decorative mark and focus carried over, plus the block's removal (steps
+  and summary references cleaned by `removeBlock`); crop and fit are dropped because a background has neither. A new
+  background from the popover is decorative.
+- **Deviations.** (1) The frame handles are the four corners, so the aspect lock is for corners; Shift had no earlier
+  meaning in `framedrag`, so there is no conflict. (2) Fit box writes with `block.frame`, one op, one undo step. (3)
+  Unchecking Decorative on a picture with no alt text writes the file's name as a placeholder alt text, which the
+  advice flags until it is replaced; the alt field is held only while the box is checked, so a person is never stuck
+  between a held field and a refused uncheck. The Background section does the same and focuses the alt field. (4) The
+  Background section also has focus fields, so every `scene.background` key has a control for `coverage.test.ts`. (5)
+  Crop writes `focus` only when the marker moved. (6) The scene's Layout buttons are in the top bar, so the Background
+  section lives in the Scene popover.
+- **Tests.** `packages/cli/test/images-controls-e2e.test.ts` (real Chrome, 29 tests, not in a test group): the toggle,
+  reset and its one undo, crop mode by double click and button, handle and inside drags, Enter as one undo step, Escape,
+  a click outside, keyboard crop with handle names, the focus marker, the aspect lock with and without Shift, Fit box,
+  Decorative, Use and Remove background, the Background section, and the editor and `depthcue apply` writing the same
+  scene files. `coverage.test.ts` no longer lists the five step 4 prefixes as pending.
+- **Size.** Main editor script 94,860 to 95,666 bytes Brotli (+806) against a limit raised from 95,232 to 95,744
+  (the 93.5 KB the plan allows); editor styles 15,263 to 15,455 against a limit lowered from 27,648 to 27,136 by the
+  same 512 bytes; the new chunk 3,836 of its 4,096; the player and the exported page script are unchanged.
+- **Review fixes.** Crop mode takes its window from the crop as the player draws it (`.dc-crop`'s inner box), so on a
+  picture that fills its box the window runs past the box at the crop's own proportions instead of squeezing the whole
+  file into the box. Its handles can then sit past the box's edge, and off the stage for a very tall or wide crop;
+  the keyboard reaches them all. A picture with no crop is measured the same way, fitted or filling around the middle.
+- **For close-out.** Step 6 should re-measure the editor script, which is within 100 bytes of its limit.
