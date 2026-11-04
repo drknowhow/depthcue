@@ -48,7 +48,7 @@ This gives the `depthcue` command and the `depthcue-mcp` server. It needs Node 2
 `render`, PDF and PowerPoint export. Each [GitHub Release](https://github.com/drknowhow/depthcue/releases) also
 carries the same package as a `.tgz` that `npm install -g` accepts.
 
-## Try it from source
+## Try it
 
 You need Node 22.12 or later and pnpm 10. `render` also needs Chrome or Edge; set `DEPTHCUE_BROWSER` to use another
 Chromium.

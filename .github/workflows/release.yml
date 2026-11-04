@@ -1,7 +1,8 @@
 name: release
 
-# A tag such as v0.1.0 builds the npm package, installs it in an empty folder to prove it works, publishes it to npm and
-# attaches the same file to a GitHub Release. Re-running with a tag that is already on npm fails at publish, on purpose.
+# A tag such as v0.1.0 builds the packages (not the docs site), packs the npm package and installs it in an empty
+# folder to prove it works. Then it publishes to npm and attaches the same file to a GitHub Release. Re-running with a
+# tag that is already on npm fails at publish, on purpose.
 on:
   push:
     tags: ["v*"]
@@ -22,9 +23,7 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm build
+      - run: pnpm -r --filter "./packages/*" build
       - name: Make the package
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
