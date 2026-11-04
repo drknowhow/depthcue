@@ -363,6 +363,14 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     upload: (file) => store.upload(file),
     change: (layout) => openChange(layout && { layout }),
     save: saveTemplate,
+    picture: (then) => toolbar.withPicture(then),
+    library: (choose, back) =>
+      openLibrary(
+        "replace",
+        choose,
+        (file) => void store.upload(file).then(choose, (error: Error) => showProblem(error.message)),
+        back,
+      ),
   });
   const bar = h(
     "header",
@@ -565,6 +573,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       claim: () => adder.claim(),
       hasVideo: () => adder.hasVideo(),
       togglePin: (id) => toolbar.togglePin(id),
+      picture: toolbar.picture,
+      sized: (id) => Boolean(canvas.nodeOf(id)?.querySelector("img")?.naturalWidth),
       remove: (id) => toolbar.remove(id),
       comment: (id) => void canvas.comments?.compose(id),
       cut: (id) => void clip.cut(id),
@@ -968,7 +978,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     "click",
     (event) => {
       const target = event.target;
-      if (target instanceof Element && !target.closest("[data-id], .ed-toolbar, .ed-build, .ed-comments"))
+      if (
+        target instanceof Element &&
+        !target.closest("[data-id], .ed-toolbar, .ed-build, .ed-comments, .ed-crop")
+      )
         selectBlock(undefined);
     },
     true,

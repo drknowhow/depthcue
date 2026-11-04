@@ -46,6 +46,7 @@ export const PARTS = {
   cues: part(() => import("./cuespanel.ts")),
   pptx: part(() => import("./pptxdownload.ts")),
   library: part(() => import("./imagelib.ts")),
+  picture: part(() => import("./picture.ts")),
   // The picker, the slots and the styles list Depthcue's own templates and styles too, so they wait for those as well.
   brand: part(() =>
     Promise.all([import("./branduse.ts"), loadBuiltIns()]).then(([module]) => {

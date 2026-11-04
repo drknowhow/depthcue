@@ -90,6 +90,8 @@ const down = (node: Element, x: number, y: number, init: MouseEventInit = {}) =>
   node.dispatchEvent(pointer("pointerdown", x, y, init));
 const move = (x: number, y: number, init: MouseEventInit = {}) =>
   window.dispatchEvent(pointer("pointermove", x, y, init));
+/** A drag with Shift held, which frees a picture's proportions. */
+const free = (x: number, y: number, init: MouseEventInit = {}) => move(x, y, { shiftKey: true, ...init });
 const up = (x: number, y: number) => window.dispatchEvent(pointer("pointerup", x, y));
 const pressEscape = (node: Element) => {
   const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
@@ -618,7 +620,7 @@ describe("resizing from a corner", () => {
   it("moves the corner that is dragged and keeps the opposite one", () => {
     chosen();
     down(handle("se"), 640, 558);
-    move(800, 648);
+    free(800, 648);
     expect(cssFrame(PICTURE)).toEqual([10, 52, 40, 20]);
     up(800, 648);
     expect(frameOf(PICTURE)).toEqual({ x: 10, y: 52, w: 40, h: 20 });
@@ -627,7 +629,7 @@ describe("resizing from a corner", () => {
   it("works from the top left, where the frame also moves", () => {
     chosen();
     down(handle("nw"), 160, 468);
-    move(96, 378);
+    free(96, 378);
     up(96, 378);
     expect(frameOf(PICTURE)).toEqual({ x: 6, y: 42, w: 34, h: 20 });
   });
@@ -635,12 +637,12 @@ describe("resizing from a corner", () => {
   it("works from the top right and the bottom left", () => {
     chosen();
     down(handle("ne"), 640, 468);
-    move(720, 378);
+    free(720, 378);
     up(720, 378);
     expect(frameOf(PICTURE)).toEqual({ x: 10, y: 42, w: 35, h: 20 });
     store.session.undo();
     down(handle("sw"), 160, 558);
-    move(96, 648);
+    free(96, 648);
     up(96, 648);
     expect(frameOf(PICTURE)).toEqual({ x: 6, y: 52, w: 34, h: 20 });
   });
@@ -648,7 +650,7 @@ describe("resizing from a corner", () => {
   it("stops at the smallest size a frame may have", () => {
     chosen();
     down(handle("se"), 640, 558);
-    move(-4000, -4000);
+    free(-4000, -4000);
     up(-4000, -4000);
     expect(frameOf(PICTURE)).toEqual({ x: 10, y: 52, w: 5, h: 5 });
   });
@@ -657,7 +659,7 @@ describe("resizing from a corner", () => {
     chosen();
     down(handle("se"), 640, 558);
     // The right edge comes to 95.9, within reach of the right safe margin at 96; the top edge at 52 is not looked at.
-    move(640 + 895, 558);
+    free(640 + 895, 558);
     expect(cssFrame(PICTURE)).toEqual([10, 52, 86, 10]);
     expect(guides()).toEqual(["x"]);
     up(640 + 895, 558);
@@ -667,9 +669,52 @@ describe("resizing from a corner", () => {
   it("is off while Alt is held", () => {
     chosen();
     down(handle("se"), 640, 558);
-    move(640 + 895, 558, { altKey: true });
+    free(640 + 895, 558, { altKey: true });
     expect(cssFrame(PICTURE)).toEqual([10, 52, 85.9, 10]);
     up(640 + 895, 558);
+  });
+
+  it("keeps a picture's shape as a corner moves, and Shift frees it", () => {
+    chosen();
+    down(handle("se"), 640, 558);
+    // The pointer goes 160 px across and 10 px down: the longer way wins and the height follows the width.
+    move(800, 568);
+    expect(cssFrame(PICTURE)).toEqual([10, 52, 40, 13.3]);
+    up(800, 568);
+    expect(frameOf(PICTURE)).toEqual({ x: 10, y: 52, w: 40, h: 13.3 });
+    store.session.undo();
+    down(handle("se"), 640, 558);
+    free(800, 568);
+    up(800, 568);
+    expect(frameOf(PICTURE)).toEqual({ x: 10, y: 52, w: 40, h: 11.1 });
+  });
+
+  it("keeps the opposite corner of a picture where it was, from the top left, and stays on the slide", () => {
+    chosen();
+    down(handle("nw"), 160, 468);
+    move(96, 468);
+    up(96, 468);
+    // 64 px is 4 percent of the slide across; the frame grows by that much, keeps its shape (3 to 1) and keeps
+    // its bottom right corner where it was.
+    expect(frameOf(PICTURE)).toEqual({ x: 6, y: 50.7, w: 34, h: 11.3 });
+    store.session.undo();
+    down(handle("se"), 640, 558);
+    move(4000, 4000);
+    up(4000, 4000);
+    const frame = frameOf(PICTURE);
+    expect((frame?.x ?? 0) + (frame?.w ?? 0)).toBeLessThanOrEqual(100);
+    expect((frame?.y ?? 0) + (frame?.h ?? 0)).toBeLessThanOrEqual(100);
+    expect(Math.round(((frame?.w ?? 0) / (frame?.h ?? 1)) * 10) / 10).toBe(3);
+  });
+
+  it("leaves the proportions of other blocks free", () => {
+    laidOut({ [TEXT]: [160, 90, 480, 180] });
+    pin(TEXT, { x: 10, y: 10, w: 30, h: 20 });
+    blockNode(TEXT).click();
+    down(handle("se"), 640, 270);
+    move(800, 280);
+    up(800, 280);
+    expect(frameOf(TEXT)).toEqual({ x: 10, y: 10, w: 40, h: 21.1 });
   });
 
   it("is one undo step", () => {

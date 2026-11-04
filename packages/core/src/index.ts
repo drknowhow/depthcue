@@ -212,6 +212,7 @@ export {
 } from "./review.ts";
 export {
   ASSET_PATTERN,
+  BACKGROUND_COLORS,
   BLOCK_KINDS,
   BRAND_LIMITS,
   BRAND_SCHEMA_VERSIONS,

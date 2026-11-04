@@ -39,7 +39,7 @@ import {
 import { nudged } from "./pin.ts";
 import { restingBox } from "./snap.ts";
 import { tablePanel } from "./tablepanel.ts";
-import { describeBlock, ROLE_LABEL, type TextRole } from "./templates.ts";
+import { describeBlock, PICTURE, type PictureAction, ROLE_LABEL, type TextRole } from "./templates.ts";
 import { stylePanel } from "./textpanel.ts";
 
 /** How far the toolbar floats from the block it belongs to, in pixels. */
@@ -113,7 +113,7 @@ export interface ToolbarHooks {
   /** The cues of the clips, which are kept in files beside the videos. */
   cues: CueBook;
   /** Where the editor of a clip's cues and the Style menu are fetched from, the first time they are wanted. */
-  parts?: Pick<Parts, "cues" | "brand">;
+  parts?: Pick<Parts, "cues" | "brand" | "picture">;
 }
 
 export interface Toolbar {
@@ -143,6 +143,10 @@ export interface Toolbar {
    * its first control. False when the block is not the one chosen or has no such chip.
    */
   openPanel(id: string, name: string): boolean;
+  /** Runs `then` with the picture tools, fetched the first time they are wanted; says so when they do not arrive. */
+  withPicture(then: (module: NonNullable<Parts["picture"]["ready"]>) => void): void;
+  /** Does a picture command to an image of the scene on show: crop mode, fit, fill, reset, or a slide background. */
+  picture(action: PictureAction, id: string): void;
   /** Moves the keyboard into the toolbar. False when there is no toolbar to go to. */
   focus(): boolean;
   destroy(): void;
@@ -179,6 +183,8 @@ export function createToolbar(
   let label: HTMLElement | undefined;
   let chips: Chip[] = [];
   let moves: HTMLButtonElement[] = [];
+  /** An image's Crop, Fill and Reset buttons. */
+  let picTools: HTMLButtonElement[] = [];
   /** A chart's Add bar and Sort buttons, which are built only for a chart. */
   let barTools: { add: HTMLButtonElement; sort: HTMLButtonElement } | undefined;
   /** The Layout and Free buttons, which a text and a block have and the claim does not. */
@@ -212,6 +218,12 @@ export function createToolbar(
       },
     }),
   });
+
+  /** Crop mode, the focus point and the other picture tools are a part of their own, fetched the first time they are used. */
+  const withPicture: Toolbar["withPicture"] = (then) =>
+    withPart(parts.picture, then, () => hooks.problem(notLoaded("the picture tools")));
+  const picture = (action: PictureAction, id: string) =>
+    withPicture((module) => module.run({ session, canvas, hooks, scene: sceneId }, action, id));
 
   /** The video of a clip is on the slide only while the clip is drawn, so it is looked for each time it is needed. */
   const videoFor = (id: string) => videoOf(canvas.nodeOf(id));
@@ -537,8 +549,10 @@ export function createToolbar(
 
   function build(target: Target) {
     closePop();
+    parts.picture.ready?.end();
     role = count = label = undefined;
     moves = [];
+    picTools = [];
     barTools = undefined;
     placement = undefined;
     formatBar?.destroy();
@@ -594,9 +608,21 @@ export function createToolbar(
       label = h("span", { class: "ed-tb-label" }, describeBlock(target.block, 28));
       moves = [moveButton(id, -1), moveButton(id, 1)];
       barTools = target.block.type === "bar-chart" ? barButtons(id) : undefined;
+      if (target.block.type === "image") {
+        picTools = (["crop", "fill", "reset"] as const).map((action) => {
+          const node: HTMLButtonElement = actionButton(
+            PICTURE[action],
+            () =>
+              picture(action === "fill" && node.getAttribute("aria-pressed") === "true" ? "fit" : action, id),
+            { "data-tb": action },
+          );
+          return node;
+        });
+      }
       controls.push(
         label,
         ...(barTools ? [barTools.add, barTools.sort] : []),
+        ...picTools,
         ...moves,
         placementToggle(id),
         ...chips.map((chip) => chip.wrap),
@@ -630,6 +656,13 @@ export function createToolbar(
       showCount(target.scene.summary?.text.length ?? 0, SUMMARY_LIMIT);
     } else if (label) {
       label.textContent = describeBlock(target.block, 28);
+      if (target.block.type === "image") {
+        const { id, fit, crop, focus } = target.block;
+        // A picture slot fills its box unless the block says otherwise.
+        const cover = fit ? fit === "cover" : canvas.nodeOf(id)?.closest("[data-role=picture]");
+        picTools[1]?.setAttribute("aria-pressed", String(Boolean(cover)));
+        picTools[2]?.toggleAttribute("disabled", !(fit || crop || focus));
+      }
     }
     if (barTools && target.kind === "block" && target.block.type === "bar-chart") {
       const full = target.block.data.length >= CHART_ROWS_MAX;
@@ -685,6 +718,7 @@ export function createToolbar(
   }
 
   function hide() {
+    parts.picture.ready?.end();
     closePop();
     element.hidden = true;
     shown = undefined;
@@ -702,6 +736,12 @@ export function createToolbar(
     if (open && !(event.target instanceof Node && element.contains(event.target))) closePop();
   };
   document.addEventListener("pointerdown", onPointerDown);
+  // A double click on a picture is the same as Crop.
+  const onDouble = (event: MouseEvent) => {
+    const id = (event.target as Element).closest<HTMLElement>("[data-id]")?.dataset.id;
+    if (id && blockIn(id)?.type === "image") picture("crop", id);
+  };
+  canvas.element.addEventListener("dblclick", onDouble);
   // The slide scales with the room it has, so a resized window or an opened panel moves every block.
   const resized = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => soon());
   resized?.observe(canvas.element);
@@ -736,6 +776,8 @@ export function createToolbar(
     togglePin,
     nudge,
     replaceImage: replaceImageOf,
+    withPicture,
+    picture,
     openPanel(id, name) {
       const chip = shown?.id === id ? chips.find((candidate) => candidate.panel.name === name) : undefined;
       if (!chip) return false;
@@ -749,6 +791,7 @@ export function createToolbar(
     },
     destroy() {
       document.removeEventListener("pointerdown", onPointerDown);
+      canvas.element.removeEventListener("dblclick", onDouble);
       formatBar?.destroy();
       resized?.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);

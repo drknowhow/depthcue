@@ -71,7 +71,7 @@
       "name": "editor script",
       "file": "packages/editor/dist/editor.js",
       "metric": "brotli",
-      "limitBytes": 95232
+      "limitBytes": 95744
     },
     {
       "name": "editor brand checks",
@@ -134,10 +134,16 @@
       "limitBytes": 4096
     },
     {
+      "name": "editor picture tools",
+      "file": "packages/editor/dist/picture.js",
+      "metric": "brotli",
+      "limitBytes": 4096
+    },
+    {
       "name": "editor styles",
       "file": "packages/editor/dist/editor.css",
       "metric": "brotli",
-      "limitBytes": 27648
+      "limitBytes": 27136
     }
   ]
 }

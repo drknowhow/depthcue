@@ -4243,3 +4243,108 @@ body {
 .ed-lib-danger {
   color: var(--dc-danger, #b00020);
 }
+
+/* Crop mode: the whole file drawn where the picture is, dimmed outside the crop window, which has a handle on each edge and corner. */
+.ed-crop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+
+.ed-crop-file {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+
+.ed-crop-win {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--dc-action);
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.55);
+  cursor: move;
+}
+
+.ed-crop-h,
+.ed-crop-focus {
+  position: absolute;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--dc-action);
+  border-radius: 2px;
+  background: var(--dc-bg);
+}
+
+.ed-crop-h::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.ed-crop-h[data-h^="n"] {
+  top: 0;
+}
+
+.ed-crop-h[data-h^="s"] {
+  top: 100%;
+}
+
+.ed-crop-h[data-h="e"],
+.ed-crop-h[data-h="w"] {
+  top: 50%;
+}
+
+.ed-crop-h[data-h$="w"],
+.ed-crop-h[data-h="w"] {
+  left: 0;
+}
+
+.ed-crop-h[data-h$="e"],
+.ed-crop-h[data-h="e"] {
+  left: 100%;
+}
+
+.ed-crop-h[data-h="n"],
+.ed-crop-h[data-h="s"] {
+  left: 50%;
+}
+
+.ed-crop-h[data-h="n"],
+.ed-crop-h[data-h="s"] {
+  cursor: ns-resize;
+}
+
+.ed-crop-h[data-h="e"],
+.ed-crop-h[data-h="w"] {
+  cursor: ew-resize;
+}
+
+.ed-crop-h[data-h="nw"],
+.ed-crop-h[data-h="se"] {
+  cursor: nwse-resize;
+}
+
+.ed-crop-h[data-h="ne"],
+.ed-crop-h[data-h="sw"] {
+  cursor: nesw-resize;
+}
+
+.ed-crop-focus {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  cursor: grab;
+}
+
+.ed-crop-win:focus-visible,
+.ed-crop-h:focus-visible,
+.ed-crop-focus:focus-visible {
+  outline: 3px solid var(--dc-action);
+  outline-offset: 2px;
+}

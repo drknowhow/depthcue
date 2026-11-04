@@ -1730,10 +1730,13 @@ describe("pinning in a real browser", () => {
     if (!spot) throw new Error("the handle should be drawn");
     const x = spot.x + spot.width / 2;
     const y = spot.y + spot.height / 2;
+    // A pinned picture keeps its shape unless Shift is held, and this resize changes the shape.
+    await page.keyboard.down("Shift");
     await page.mouse.move(x, y);
     await page.mouse.down();
     await page.mouse.move(x - slide.width * 0.05, y - slide.height * 0.03, { steps: 12 });
     await page.mouse.up();
+    await page.keyboard.up("Shift");
     await saved();
     const resized = frameOnDisk("method", "method-diagram");
     expect(resized?.x).toBeCloseTo(start.x, 0);
