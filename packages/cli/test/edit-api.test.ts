@@ -552,6 +552,34 @@ describe("adding images", () => {
     );
     expect((await call("/_depthcue/api/assets", { method: "POST" })).status).toBe(404);
   });
+
+  const remove = (asset: string, init: Call = {}) =>
+    call(`/_depthcue/api/asset/remove?asset=${encodeURIComponent(asset)}`, { method: "POST", ...init });
+
+  it("removes an image the deck does not name, and refuses one it does", async () => {
+    const stored = await upload(png(40, 30), "spare.png");
+    const asset = stored.json.asset as string;
+    const used = await remove("assets/method.svg");
+    expect(used.status).toBe(409);
+    expect(String(used.json.message)).toContain("assets/method.svg");
+    expect(existsSync(join(folder, "assets", "method.svg"))).toBe(true);
+    const gone = await remove(asset);
+    expect(gone.status).toBe(200);
+    expect(gone.json).toMatchObject({ ok: true, asset });
+    expect(existsSync(join(folder, asset))).toBe(false);
+    expect((await remove(asset)).status).toBe(404);
+    expect((await remove("deck.json")).status).toBe(404);
+    expect((await remove("assets/../deck.json")).status).toBe(404);
+  });
+
+  it("will not remove an image without the token, from another origin, or with a GET", async () => {
+    const stored = await upload(png(40, 30), "keep.png");
+    const asset = stored.json.asset as string;
+    expect((await remove(asset, { token: false })).status).toBe(403);
+    expect((await remove(asset, { headers: { Origin: "http://evil.example" } })).status).toBe(403);
+    expect((await call(`/_depthcue/api/asset/remove?asset=${asset}`)).status).toBe(404);
+    expect(existsSync(join(folder, asset))).toBe(true);
+  });
 });
 
 describe("clip cues", () => {

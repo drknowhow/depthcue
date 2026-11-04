@@ -1,6 +1,7 @@
 import {
   type ApplyResult,
   addBlock,
+  type Block,
   type BlockKind,
   type BlockType,
   kindOf,
@@ -39,11 +40,22 @@ export interface AdderHooks {
   added(id: string): void;
 }
 
+/** The picture an image takes: a file to upload, or the path of one the deck has, as the image library gives it. */
+export type Picture = File | string;
+
+/** How many blocks a scene holds, as the scene schema allows. */
+export const SCENE_BLOCKS = 12;
+
 export interface Adder {
-  /** Adds a block of `kind` to an area of the slide. An image takes the file to upload. */
-  add(slot: SlotName, kind: NewBlockKind, file?: File): Promise<void>;
+  /** Adds a block of `kind` to an area of the slide. An image takes the file to upload, or a file the deck has. */
+  add(slot: SlotName, kind: NewBlockKind, file?: Picture): Promise<void>;
   /** Adds a block of `kind` where a person pointing at the slide would expect it: see `slotFor`. */
-  quick(kind: NewBlockKind, file?: File): Promise<void>;
+  quick(kind: NewBlockKind, file?: Picture): Promise<void>;
+  /**
+   * Adds an image block for each file, one after another in the area `quick` would pick, as one undo step. A slide
+   * holds 12 blocks, so the ones past that are left out, and the answer says how many. Never rejects.
+   */
+  many(files: readonly File[]): Promise<void>;
   /** Adds a block of a kind a template's slot takes, a text by its role, into the slot `slot` of a template scene. */
   into(slot: string, kind: BlockKind, file?: File): Promise<void>;
   /** Gives the slide a claim to fill in. */
@@ -92,7 +104,7 @@ export function createAdder(session: Session, hooks: AdderHooks): Adder {
 
   async function put(
     kind: NewBlockKind,
-    file: File | undefined,
+    file: Picture | undefined,
     slot?: SlotName,
     into?: string,
     role?: TextRole,
@@ -104,7 +116,7 @@ export function createAdder(session: Session, hooks: AdderHooks): Adder {
     if (kind === "image") {
       if (!file) return;
       try {
-        asset = await hooks.upload(file);
+        asset = typeof file === "string" ? file : await hooks.upload(file);
       } catch (error) {
         hooks.problem(error instanceof Error ? error.message : "The upload failed.");
         return;
@@ -118,21 +130,7 @@ export function createAdder(session: Session, hooks: AdderHooks): Adder {
     if (!target) return;
     const made = newBlock(target, kind, asset);
     const block = role && made.type === "text" ? { ...made, role } : made;
-    // A template scene puts the block in a slot of its template; a layout scene, in an area of its layout.
-    const templates = templatesOf(session.doc);
-    const template =
-      target.template !== undefined && Object.hasOwn(templates, target.template)
-        ? templates[target.template]
-        : undefined;
-    const at = template
-      ? (into ?? templateSlot(template, target, kindOf(block), anchor))
-      : (slot ?? slotFor(target, kind, anchor));
-    const placed: Placed =
-      at === undefined
-        ? { ok: false, message: "This slide has no place for that." }
-        : template
-          ? { ok: true, ops: [{ op: "block.add", scene: target.id, block: { ...block, slot: at } }] }
-          : addBlock(target, at as SlotName, block, anchor);
+    const placed = place(target, [block], kind, slot, into, anchor);
     if (!placed.ok) {
       hooks.problem(placed.message);
       return;
@@ -142,7 +140,84 @@ export function createAdder(session: Session, hooks: AdderHooks): Adder {
     if (result.ok) hooks.added(block.id);
   }
 
+  /** The operations that add `blocks`, in order, where one of `kind` goes: see `slotFor` and `templateSlot`. */
+  function place(
+    target: Scene,
+    blocks: readonly Block[],
+    kind: NewBlockKind,
+    slot?: SlotName,
+    into?: string,
+    anchor?: string,
+  ): Placed {
+    const [first] = blocks as [Block, ...Block[]];
+    // A template scene puts the block in a slot of its template; a layout scene, in an area of its layout.
+    const templates = templatesOf(session.doc);
+    const template =
+      target.template !== undefined && Object.hasOwn(templates, target.template)
+        ? templates[target.template]
+        : undefined;
+    const at = template
+      ? (into ?? templateSlot(template, target, kindOf(first), anchor))
+      : (slot ?? slotFor(target, kind, anchor));
+    if (at === undefined) return { ok: false, message: "This slide has no place for that." };
+    // The first goes where the core puts it; each one after it goes right after the one before.
+    const chain = (rest: readonly Block[], within?: string): Op[] =>
+      rest.map((block, i) => ({
+        op: "block.add",
+        scene: target.id,
+        block: within === undefined ? block : { ...block, slot: within },
+        after: (i === 0 ? first : (rest[i - 1] as Block)).id,
+      }));
+    if (template) {
+      const [head, ...rest] = blocks;
+      const ops: Op[] = [
+        { op: "block.add", scene: target.id, block: { ...(head as Block), slot: at } },
+        ...chain(rest, at),
+      ];
+      return { ok: true, ops };
+    }
+    const placed = addBlock(target, at as SlotName, first, anchor);
+    return placed.ok ? { ok: true, ops: [...placed.ops, ...chain(blocks.slice(1))] } : placed;
+  }
+
+  async function many(files: readonly File[]) {
+    hooks.problem(undefined);
+    const anchor = hooks.block();
+    const room = SCENE_BLOCKS - (session.doc.scenes[hooks.scene()]?.blocks.length ?? SCENE_BLOCKS);
+    const take = files.slice(0, Math.max(0, room));
+    const leftOut = files.length - take.length;
+    const sent = await Promise.allSettled(take.map((file) => hooks.upload(file)));
+    const assets = sent.flatMap((one) => (one.status === "fulfilled" ? [one.value] : []));
+    const failed = take.length - assets.length;
+    const target = session.doc.scenes[hooks.scene()];
+    const said: string[] = [];
+    if (leftOut > 0) {
+      said.push(
+        `${leftOut} ${leftOut === 1 ? "picture was" : "pictures were"} left out: a slide holds at most ${SCENE_BLOCKS} blocks.`,
+      );
+    }
+    if (failed > 0) said.push(`${failed} could not be uploaded.`);
+    if (target && assets.length > 0) {
+      // Each block is named against the ones before it, so no two share an id.
+      let grown = target;
+      const blocks = assets.map((asset) => {
+        const block = newBlock(grown, "image", asset);
+        grown = { ...grown, blocks: [...grown.blocks, block] };
+        return block;
+      });
+      const placed = place(target, blocks, "image", undefined, undefined, anchor);
+      if (!placed.ok) said.unshift(placed.message);
+      else {
+        const result = hooks.act(placed.ops);
+        if (result.ok) hooks.added((blocks.at(-1) as Block).id);
+        else said.unshift(problemOf(result));
+      }
+    }
+    hooks.problem(said.length > 0 ? said.join(" ") : undefined);
+  }
+
   return {
+    many,
     hasVideo: () => firstVideo() !== undefined,
     claim() {
       const target = session.doc.scenes[hooks.scene()];

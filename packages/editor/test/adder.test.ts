@@ -410,3 +410,73 @@ describe("a scene drawn by a template", () => {
     expect(sceneNow().blocks).toHaveLength(1);
   });
 });
+
+describe("adding several pictures at once", () => {
+  const files = (count: number) =>
+    Array.from({ length: count }, (_, i) => new File(["x"], `shot-${i}.png`, { type: "image/png" }));
+  const imagesIn = (id: string) =>
+    session.doc.scenes[id]?.blocks.filter((block) => block.type === "image") ?? [];
+  const filler = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      op: "block.add" as const,
+      scene: "words",
+      block: text(`more-${i}`),
+    }));
+
+  it("adds one image block for each file, with distinct ids, as one undo step", async () => {
+    const before = session.doc.scenes.hollow?.blocks.length as number;
+    await adder.many(files(3));
+    expect(uploads).toHaveLength(3);
+    expect(imagesIn("hollow")).toHaveLength(3);
+    expect(new Set(session.doc.scenes.hollow?.blocks.map((block) => block.id)).size).toBe(before + 3);
+    expect(added).toHaveLength(1);
+    expect(session.undo()).toBe(true);
+    expect(session.doc.scenes.hollow?.blocks).toHaveLength(before);
+  });
+
+  it("keeps to the 12 blocks a slide holds and says how many it left out", async () => {
+    scene = "words";
+    expect(session.apply(filler(10)).ok).toBe(true);
+    expect(session.doc.scenes.words?.blocks).toHaveLength(11);
+    await adder.many(files(4));
+    expect(session.doc.scenes.words?.blocks).toHaveLength(12);
+    expect(uploads).toHaveLength(1);
+    expect(problems.at(-1)).toContain("3 pictures were left out");
+  });
+
+  it("says so when the slide is full, and changes nothing", async () => {
+    scene = "words";
+    expect(session.apply(filler(11)).ok).toBe(true);
+    const rev = session.rev;
+    await adder.many(files(2));
+    expect(session.rev).toBe(rev);
+    expect(uploads).toHaveLength(0);
+    expect(problems.at(-1)).toContain("2 pictures were left out");
+  });
+
+  it("goes on with the files that arrived when one cannot be uploaded", async () => {
+    let calls = 0;
+    adder = createAdder(session, {
+      scene: () => scene,
+      block: () => chosen,
+      act: (ops) => session.apply(ops),
+      problem: (message) => problems.push(message),
+      upload: async () => {
+        if (++calls === 2) throw new Error("no");
+        return "assets/method.svg";
+      },
+      added: (id) => added.push(id),
+    });
+    await adder.many(files(3));
+    expect(imagesIn("hollow")).toHaveLength(2);
+    expect(problems.at(-1)).toContain("1 could not be uploaded");
+  });
+
+  it("takes a file the deck already has as the picture of a new block", async () => {
+    await adder.quick("image", "assets/method.svg");
+    expect(uploads).toHaveLength(0);
+    expect(imagesIn("hollow").map((block) => (block.type === "image" ? block.asset : ""))).toEqual([
+      "assets/method.svg",
+    ]);
+  });
+});
