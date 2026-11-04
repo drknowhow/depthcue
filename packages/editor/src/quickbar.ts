@@ -15,6 +15,8 @@ export interface QuickBarHooks {
   upload(file: File): Promise<string>;
   /** Adds a block of a kind where the chosen block is, or in the first free area. An image comes with its file. */
   add(kind: NewBlockKind, file?: File): void;
+  /** The Image button or the I key was pressed: opens the image library and answers true when the deck has pictures. */
+  library?(): boolean;
   /** Gives the slide a claim. */
   claim(): void;
   /** Whether the deck has a video a clip could play. */
@@ -33,6 +35,8 @@ export interface QuickBar {
   readonly element: HTMLElement;
   /** Opens the file chooser that adds an image, as the Image button does. */
   pickImage(): void;
+  /** Puts the keyboard on the Image button. */
+  focusImage(): void;
   /** Shows whether the Comment tool is on, which the M key and Escape change without the button. */
   setCommenting(on: boolean): void;
   /** Brings the bar up to date with the scene being edited. `typing` is true while a keystroke in the notes is applied. */
@@ -82,6 +86,10 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
         const picker = fileButton(label, IMAGE_ACCEPT, "quick:image", (file) => hooks.add("image", file));
         const input = picker.querySelector("input") as HTMLInputElement;
         imageInput = input;
+        // A deck with pictures opens the library first; one without goes straight to the file chooser.
+        input.addEventListener("click", (event) => {
+          if (hooks.library?.()) event.preventDefault();
+        });
         // The key goes on the input, which is what the keyboard reaches, and is drawn beside the label.
         return withKey(picker, KEYS.image, input);
       }
@@ -152,6 +160,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
   return {
     element,
     pickImage: () => imageInput?.click(),
+    focusImage: () => imageInput?.focus({ preventScroll: true }),
     setCommenting: (on) => comment.setAttribute("aria-pressed", String(on)),
     destroy: notes.destroy,
     render(sceneId, typing = false) {

@@ -43,6 +43,31 @@ keyboard back to the block.
 Auto layout in the top bar appears while the slide has a pinned block. It puts every pinned block of the slide back in
 its slot, as one step of Undo.
 
+## Pictures in a frame
+
+A picture shows in its box in one of two ways. **Fit** (`contain`) shows the whole picture, with empty room at the sides
+if its shape differs from the box. **Fill** (`cover`) fills the box and cuts the picture to it. A picture in a template's
+picture slot fills by default; any other picture fits. The Fill button in a picture's toolbar switches between the two,
+and is pressed when the picture fills.
+
+- **Crop.** The Crop button, a double click on the picture, or Crop in the right-click menu shows the whole file dimmed
+  around the part that shows. Drag a handle on an edge or a corner to change the part, or drag inside it to move the
+  picture under it. Enter or a click outside keeps the crop as one step of Undo, and `Esc` drops it. With the keyboard,
+  Tab goes from handle to handle and the arrow keys move one percent (Shift ten). A crop is `{ x, y, w, h }` in percent of
+  the file, at least 5 on a side, and never leaves the picture. Reset picture takes off the crop, the focus and the
+  fit. PowerPoint's own Crop is the same rectangle.
+- **Focus.** When a picture fills its box and the box is not the picture's shape, some of the picture is cut. Crop mode
+  then shows a Focus point you can drag: the spot that stays in view, as a percent of the cropped picture. It is the
+  center when you have not moved it, and it does nothing to a picture that fits.
+- **Fit box to picture.** On a pinned picture, this command in the right-click menu and the palette keeps the frame's
+  width and changes its height to the cropped picture's shape, and shrinks both if the box would leave the slide. It is
+  one `block.frame`, so one step of Undo. It appears once the picture's file has loaded.
+- **Shape lock.** A pinned picture keeps its shape when you drag a corner. Hold Shift to change the shape; the
+  picture is then cut or letterboxed as its Fit or Fill says. Other blocks resize freely, as before.
+
+On a picture that fills its box, crop mode draws the crop window at the crop's own proportions, so it can run past the
+box. For a very tall or very wide crop its handles can then lie outside the slide, where only the keyboard reaches them.
+
 ## What pinning changes
 
 A frame is the block's position and size as percentages of a 16 by 9 slide: `x` and `y` from 0 to 100, `w` and `h`
@@ -73,9 +98,10 @@ margin or one too small for its content, the ribbon's Fix button sends it back t
 
 An agent places blocks in areas by default. To pin or unpin one, it uses the `block.frame` and `block.unframe`
 operations through `deck_apply` or `depthcue apply`; `deck_get` shows each pinned block's frame. A pinned block that
-an agent edits keeps its frame.
+an agent edits keeps its frame. An image block takes `fit`, `crop` and `focus` through `block.set`; see
+[the editor](editor.md#pictures).
 
-Frames came with schema version 0.2. A 0.1 deck loads unchanged, and a scene is rewritten as 0.2 only when it gets a
+Frames came with schema version 0.2, and `fit`, `crop` and `focus` with 0.6. A 0.1 deck loads unchanged, and a scene is rewritten as 0.2 only when it gets a
 frame. Slides are 16 by 9 only; other shapes would need their own frames.
 
 ## Related guides

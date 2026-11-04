@@ -8,13 +8,14 @@
  * blocks as markup (see inline.ts). 0.4 adds the deck's `brand`, a scene's `template`, a block's `slot` and `style`,
  * and the brand and template files; it reads text as 0.3 does. A file is read as the version it declares, so the text
  * of an older scene stays exactly as written. 0.5 adds the deck's `links` and a block's or a source's `link`; it reads
- * text as 0.4 does.
+ * text as 0.4 does. 0.6 adds an image block's `fit`, `crop`, `focus` and `decorative`, and a scene's `background`; it
+ * reads text as 0.4 does.
  */
-export const SCHEMA_VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5"] as const;
+export const SCHEMA_VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"] as const;
 /** The version the tool writes into a new scene. 0.4 reads exactly as 0.3, so a new scene shows the same either way. */
 export const SCHEMA_VERSION = "0.4" as const;
 /** The versions a brand or a template file may declare: both came with 0.4. A test keeps this the tail of the list above. */
-export const BRAND_SCHEMA_VERSIONS = ["0.4", "0.5"] as const;
+export const BRAND_SCHEMA_VERSIONS = ["0.4", "0.5", "0.6"] as const;
 
 export const ID_PATTERN = "^[a-z][a-z0-9-]{1,63}$";
 export const ASSET_PATTERN = "^assets/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*$";
@@ -143,8 +144,10 @@ export const ROLE_KINDS: Readonly<Record<(typeof SLOT_ROLES)[number], readonly s
 };
 /** Where a slot's blocks sit in its frame, as a PowerPoint placeholder's anchor. Left out, at the top. */
 export const VALIGNS = ["top", "middle", "bottom"] as const;
-/** The palette colors a template's background may take. */
+/** The palette colors a template's or a scene's background may take. */
 export const BACKGROUND_COLORS = ["bg", "surface", "text", "action", "evidence"] as const;
+/** How a picture takes its box: whole inside it (`contain`), or filling it and cut to it (`cover`). */
+export const IMAGE_FITS = ["contain", "cover"] as const;
 export const FONT_STYLES = ["normal", "italic"] as const;
 export const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 /** What a brand may hide of Depthcue's own: its templates, its styles, or both. */
@@ -195,6 +198,19 @@ const frame = {
   properties: { x: percent, y: percent, w: extent, h: extent },
 } as const;
 const assetPath = { type: "string", pattern: ASSET_PATTERN, maxLength: 200 } as const;
+/** The point of a picture, in percent of its width and height, kept in view when `cover` cuts it. Left out, the center. */
+const focus = {
+  type: "object",
+  additionalProperties: false,
+  required: ["x", "y"],
+  properties: { x: percent, y: percent },
+} as const;
+const alt = { type: "string", minLength: 1, maxLength: BRAND_LIMITS.alt } as const;
+/** A picture that carries no information, marked `decorative`, may leave its alt text out; any other needs it. */
+const altUnlessDecorative = {
+  if: { properties: { decorative: { const: true } }, required: ["decorative"] },
+  else: { properties: { alt: {} }, required: ["alt"] },
+} as const;
 const schemaVersion = { enum: SCHEMA_VERSIONS } as const;
 const schemaRef = { type: "string", maxLength: 300 } as const;
 
@@ -236,22 +252,32 @@ const textBlock = {
   ],
 } as const;
 
+/**
+ * An image block. `fit` is how the picture takes its box: left out, `contain`, but `cover` in a template's picture
+ * slot. `crop` is the part of the file that shows, in percent of the file's own width and height, as PowerPoint's
+ * crop is; that it stays inside the picture is a sum, which `checkFrames` checks.
+ */
 const imageBlock = {
   type: "object",
   additionalProperties: false,
-  required: ["id", "type", "asset", "alt"],
+  required: ["id", "type", "asset"],
   properties: {
     id,
     type: { const: "image" },
     asset: assetPath,
-    alt: { type: "string", minLength: 1, maxLength: 250 },
+    alt,
+    decorative: { type: "boolean" },
     caption: { type: "string", minLength: 1, maxLength: TEXT_LIMITS.caption },
+    fit: { enum: IMAGE_FITS },
+    crop: frame,
+    focus,
     sourceIds: idList,
     frame,
     slot: id,
     style: id,
     link: id,
   },
+  ...altUnlessDecorative,
 } as const;
 
 const barChartBlock = {
@@ -416,6 +442,24 @@ export const sceneSchema = {
     title: { type: "string", minLength: 1, maxLength: 120 },
     layout: { enum: LAYOUTS },
     template: id,
+    /**
+     * A picture from the deck's assets behind the whole slide, with `color` (left out, `bg`) laid over it at `scrim`
+     * percent so text on it can be read, as a template's background image is. It replaces the template's.
+     */
+    background: {
+      type: "object",
+      additionalProperties: false,
+      required: ["asset", "scrim"],
+      properties: {
+        asset: assetPath,
+        scrim: percent,
+        color: { enum: BACKGROUND_COLORS },
+        focus,
+        decorative: { type: "boolean" },
+        alt,
+      },
+      ...altUnlessDecorative,
+    },
     lead: { enum: LEADS },
     summary: {
       type: "object",

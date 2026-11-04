@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { type Block, FONT_PAIRS, memoryDraftStore, PALETTE_COLORS } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Editor, mountEditor } from "../src/app.ts";
+import { PARTS } from "../src/lazy.ts";
 import { type EditorStore, openStore } from "../src/store.ts";
 import { newBlock } from "../src/templates.ts";
 import { FakeServer } from "./helpers.ts";
@@ -121,6 +122,8 @@ beforeEach(async () => {
   ];
   host = document.createElement("div");
   document.body.replaceChildren(host);
+  // The picture tools are a part of their own, which a session that used them has fetched.
+  await PARTS.picture.load();
   editor = mountEditor(host, store);
   editor.select(SCENE);
   await vi.waitFor(() => expect(store.comments.state.ready).toBe(true));
@@ -259,6 +262,24 @@ const threading = () => {
 };
 /** The tool that starts a comment by pressing a block, which is where the scene, the block and the point come from. */
 const pressing = () => find(host, "[data-quick='comment']") && find(host, ".ed-comment-catch");
+
+/** Opens the Background section of the Scene popover on a scene that has a background, and finds a field of it. */
+const backgroundField = (name: string) => {
+  const image = [...store.session.doc.assets]
+    .sort()
+    .find((path) => /\.(png|jpe?g|webp|svg)$/.test(path)) as string;
+  const background =
+    name === "alt"
+      ? { asset: image, scrim: 40, alt: "A picture" }
+      : { asset: image, scrim: 40, decorative: true };
+  const result = store.session.apply([{ op: "scene.set", id: SCENE, set: { background } }]);
+  if (!result.ok) throw new Error("the background should be accepted");
+  const pop = scenePop() as HTMLElement;
+  const section = find(pop, "details[data-section='background']") as HTMLDetailsElement;
+  section.open = true;
+  section.dispatchEvent(new Event("toggle"));
+  return field(section, `bg:${name}`);
+};
 
 /** What a comment is made of, and how each part is reached. The operations below are the same controls. */
 const COMMENT_WAYS: Record<string, Entry> = {
@@ -586,6 +607,66 @@ const WAYS: Record<string, Entry> = {
     where: "Image toolbar, Cite chip",
     reach: () => cited("other", blocks.image),
   },
+  "scene.blocks<image>.decorative": {
+    where: "Image toolbar, Edit chip, Decorative",
+    reach: () => {
+      choose(blocks.image, "other");
+      return field(openChip("edit") as HTMLElement, "image:decorative");
+    },
+  },
+  "scene.blocks<image>.fit": {
+    where:
+      "Image toolbar, Fill (pressed while the picture fills its box); Fit and Fill in the menu and palette",
+    reach: () => {
+      choose(blocks.image, "other");
+      return find(host, ".ed-toolbar [data-tb='fill'][aria-pressed]");
+    },
+  },
+  ...Object.fromEntries(
+    ["", ".x", ".y", ".w", ".h"].map((part): [string, Entry] => [
+      `scene.blocks<image>.crop${part}`,
+      {
+        where:
+          "Image toolbar, Crop (or a double click on the picture): crop mode, with a handle on each edge and corner",
+        reach: () => {
+          choose(blocks.image, "other");
+          return find(host, ".ed-toolbar [data-tb='crop']");
+        },
+      },
+    ]),
+  ),
+  ...Object.fromEntries(
+    ["", ".x", ".y"].map((part): [string, Entry] => [
+      `scene.blocks<image>.focus${part}`,
+      {
+        where:
+          "Crop mode on a picture that fills its box: the Focus point, dragged or moved with the arrow keys",
+        reach: () => {
+          choose(blocks.image, "other");
+          return find(host, ".ed-toolbar [data-tb='crop']");
+        },
+      },
+    ]),
+  ),
+  ...Object.fromEntries(
+    [
+      ["", "asset"],
+      [".asset", "asset"],
+      [".scrim", "scrim"],
+      [".color", "color"],
+      [".focus", "focus-x"],
+      [".focus.x", "focus-x"],
+      [".focus.y", "focus-y"],
+      [".decorative", "decorative"],
+      [".alt", "alt"],
+    ].map(([part, name]): [string, Entry] => [
+      `scene.background${part}`,
+      {
+        where: "Scene popover, Background section: file, scrim, color, focus, decorative and alt text",
+        reach: () => backgroundField(name as string),
+      },
+    ]),
+  ),
 
   "scene.blocks<bar-chart>.id": { never: NEVER_ID },
   "scene.blocks<bar-chart>.type": { never: NEVER_KIND },
@@ -762,7 +843,7 @@ const WAYS: Record<string, Entry> = {
 
 /**
  * Properties a schema added that the editor cannot edit yet, by the step that adds their controls: for schema 0.4, the
- * steps of docs/BRANDS_AND_PPTX.md. The step that adds a control takes its prefix out of this list and gives each
+ * steps of docs/BRANDS_AND_PPTX.md, and for 0.6, those of docs/IMAGES.md. The step that adds a control takes its prefix out of this list and gives each
  * property a way in WAYS. A block type added later fails "has a way" above until it is listed here or given a way.
  */
 const PENDING: ReadonlyArray<[prefix: string, step: string]> = [

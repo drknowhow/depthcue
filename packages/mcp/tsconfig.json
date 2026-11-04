@@ -9,7 +9,9 @@
       "@depthcue/cli/render": ["../cli/src/render.ts"],
       "@depthcue/cli/link": ["../cli/src/link.ts"],
       "@depthcue/cli/export": ["../cli/src/export.ts"],
-      "@depthcue/cli/pptx": ["../cli/src/pptx/index.ts"]
+      "@depthcue/cli/pptx": ["../cli/src/pptx/index.ts"],
+      "@depthcue/cli/images": ["../cli/src/images.ts"],
+      "@depthcue/cli": ["../cli/src/index.ts"]
     }
   },
   "include": ["src", "test", "../player/src/css.d.ts"]

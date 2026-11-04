@@ -29,11 +29,13 @@ import {
 } from "@depthcue/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyToFolder } from "../src/deck-api.ts";
-import { assetName, keptAgent, NO_REVIEW, sniffImage } from "../src/edit-api.ts";
+import { keptAgent, NO_REVIEW } from "../src/edit-api.ts";
 import type { LayoutAnswer, LayoutChecker } from "../src/edit-layout.ts";
+import { assetName, sniffImage } from "../src/images.ts";
 import { loadDeckDir } from "../src/loader.ts";
 import { loadReviewDir } from "../src/review-file.ts";
 import { type RunningServer, startServer } from "../src/serve.ts";
+import { png } from "./images-fixtures.ts";
 
 const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 
@@ -529,6 +531,54 @@ describe("adding images", () => {
     files["scenes/opening.json"] = JSON.stringify(scene);
     const saved = await call("/_depthcue/api/save", json({ baseRev: revisionOf(readDeck()), files }));
     expect(saved.status).toBe(200);
+  });
+
+  it("returns the picture's size with the upload", async () => {
+    const stored = await upload(png(120, 80), "sized.png");
+    expect(stored.status).toBe(200);
+    expect(stored.json).toMatchObject({ kind: "png", width: 120, height: 80 });
+  });
+
+  it("lists the images with their size and where they are used, and needs the token", async () => {
+    const stored = await upload(png(120, 80), "sized.png");
+    const listed = await call("/_depthcue/api/assets");
+    expect(listed.status).toBe(200);
+    const assets = listed.json.assets as Array<{ asset: string; width?: number; usedBy: unknown[] }>;
+    expect(assets.find((a) => a.asset === stored.json.asset)).toMatchObject({ width: 120, usedBy: [] });
+    expect(assets.find((a) => a.asset === "assets/method.svg")?.usedBy).toHaveLength(1);
+    expect((await call("/_depthcue/api/assets", { token: false })).status).toBe(403);
+    expect((await call("/_depthcue/api/assets", { headers: { Origin: "http://evil.example" } })).status).toBe(
+      403,
+    );
+    expect((await call("/_depthcue/api/assets", { method: "POST" })).status).toBe(404);
+  });
+
+  const remove = (asset: string, init: Call = {}) =>
+    call(`/_depthcue/api/asset/remove?asset=${encodeURIComponent(asset)}`, { method: "POST", ...init });
+
+  it("removes an image the deck does not name, and refuses one it does", async () => {
+    const stored = await upload(png(40, 30), "spare.png");
+    const asset = stored.json.asset as string;
+    const used = await remove("assets/method.svg");
+    expect(used.status).toBe(409);
+    expect(String(used.json.message)).toContain("assets/method.svg");
+    expect(existsSync(join(folder, "assets", "method.svg"))).toBe(true);
+    const gone = await remove(asset);
+    expect(gone.status).toBe(200);
+    expect(gone.json).toMatchObject({ ok: true, asset });
+    expect(existsSync(join(folder, asset))).toBe(false);
+    expect((await remove(asset)).status).toBe(404);
+    expect((await remove("deck.json")).status).toBe(404);
+    expect((await remove("assets/../deck.json")).status).toBe(404);
+  });
+
+  it("will not remove an image without the token, from another origin, or with a GET", async () => {
+    const stored = await upload(png(40, 30), "keep.png");
+    const asset = stored.json.asset as string;
+    expect((await remove(asset, { token: false })).status).toBe(403);
+    expect((await remove(asset, { headers: { Origin: "http://evil.example" } })).status).toBe(403);
+    expect((await call(`/_depthcue/api/asset/remove?asset=${asset}`)).status).toBe(404);
+    expect(existsSync(join(folder, asset))).toBe(true);
   });
 });
 

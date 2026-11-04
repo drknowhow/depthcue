@@ -26,7 +26,7 @@ import {
   scanUsage,
   type Usage,
 } from "./fonts.ts";
-import { applyMaster, describeShape } from "./master.ts";
+import { applyMaster, applySceneBackgrounds, describeShape } from "./master.ts";
 import { measureSlide, type SlideMeasure } from "./measure.ts";
 import { finishPackage, inspectOutput, ownLabelFace } from "./package.ts";
 
@@ -413,6 +413,7 @@ async function render(opened: Opened, request: PptxRequest & { out: string }): P
     charts: built.charts,
     edit: (parts) => {
       if (master) layouts = applyMaster(parts, { look, scenes, measures, pictures, numbers }).layouts;
+      applySceneBackgrounds(parts, { look, scenes, measures, pictures });
       built.alts.forEach((alts, at) => {
         const name = `ppt/slides/slide${at + 1}.xml`;
         const slide = parts.get(name);

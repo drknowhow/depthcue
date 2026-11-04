@@ -11,7 +11,7 @@ import {
   type Session,
   withBrandFile,
 } from "@depthcue/core";
-import type { Api, BrandFileAnswer, DeckPayload } from "./api.ts";
+import type { Api, BrandFileAnswer, DeckPayload, ListedAsset } from "./api.ts";
 import { loadBrandChecks, loadBuiltIns, waitedForBrandChecks, waitedForBuiltIns } from "./brandchecks.ts";
 import { type CommentBook, createCommentBook } from "./commentbook.ts";
 import { createHistory, type History } from "./history.ts";
@@ -90,6 +90,10 @@ export interface EditorStore {
   discardDraft(): Promise<void>;
   dismissNotice(): void;
   upload(file: File): Promise<string>;
+  /** The images in the deck's folder, for the image library. Rejects with a message the person can read. */
+  listAssets(): Promise<ListedAsset[]>;
+  /** Deletes an image the saved deck does not name, and takes it off the document's list of files. */
+  removeAsset(asset: string): Promise<void>;
   /**
    * Adds a file to the brand folder or removes one: `send` gets the revision on disk and names the call, as
    * `Api.brandFile` takes it. It runs as a save does, one at a time with saves, and a good answer is taken in with no
@@ -510,6 +514,13 @@ export async function openStore(
       const asset = await api.uploadAsset(file, file.name);
       session.addAssets([asset]);
       return asset;
+    },
+
+    listAssets: () => api.listAssets(),
+
+    async removeAsset(asset) {
+      await api.removeAsset(asset);
+      session.dropAsset(asset);
     },
 
     brandFile(send) {

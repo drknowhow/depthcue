@@ -530,7 +530,7 @@ async function expectDeckInFile(folder: string, file: string, notes: boolean) {
 // The decks.
 // ---------------------------------------------------------------------------------------------------------------------
 
-const DECKS = ["demo", "charts", "v0-3"] as const;
+const DECKS = ["demo-0-3", "charts", "v0-3"] as const;
 
 /**
  * One export of a deck, made once for the tests that only read it. The tests that need an export of their own, such as
@@ -661,7 +661,7 @@ describe.each(DECKS)("export --format pptx of the %s deck", (name) => {
 });
 
 describe("the demo deck", () => {
-  const folder = decks("demo");
+  const folder = decks("demo-0-3");
   const shared = sharedExport(folder);
 
   it("draws the slides' panels and the quote and title marks as shapes, not as pictures", async () => {
@@ -737,7 +737,7 @@ describe("the demo deck", () => {
     const { io, lines } = capture();
     const code = await run(["export", folder, "--format", "pptx"], io);
     expect(code).toBe(0);
-    const out = join(root, "demo.pptx");
+    const out = join(root, "demo-0-3.pptx");
     expect(existsSync(out)).toBe(true);
     expect(lines[0]).toBe(`Exported 4 slides to ${out}`);
     expect(lines[1]).toMatch(/^ {2}\d+\.\d KB, notes kept$/);
@@ -747,11 +747,11 @@ describe("the demo deck", () => {
     expect(lines.some((line) => line.startsWith("  every slide: Scene changes"))).toBe(true);
     expect(lines).toContain("  fonts a viewer needs installed to see it as drawn:");
     expect(lines.some((line) => /^ {6}Space Grotesk \(/.test(line))).toBe(true);
-    expect(readdirSync(root)).toEqual(["demo.pptx"]);
+    expect(readdirSync(root)).toEqual(["demo-0-3.pptx"]);
   }, 120_000);
 
   it("reports as data with --json", async () => {
-    const out = join(root, "demo.pptx");
+    const out = join(root, "demo-0-3.pptx");
     const { code, lines } = await exportPptx(folder, out, "--json");
     expect(code).toBe(0);
     expect(lines).toHaveLength(1);
@@ -931,7 +931,7 @@ function solidPng(width: number, height: number, [red, green, blue]: [number, nu
 /** A copy of the demo deck with a clip scene added and built the way an author would build it. */
 async function deckWithClip(folderName = "clip-deck"): Promise<string> {
   const deck = join(root, folderName);
-  cpSync(decks("demo"), deck, { recursive: true });
+  cpSync(decks("demo-0-3"), deck, { recursive: true });
   const deckFile = join(deck, "deck.json");
   const manifest = JSON.parse(readFileSync(deckFile, "utf8"));
   writeFileSync(deckFile, JSON.stringify({ ...manifest, scenes: [...manifest.scenes, "clip-scene"] }));
@@ -1064,7 +1064,7 @@ describe("a chart with an empty cell", () => {
 describe("words the deck wrote with characters XML cannot hold", () => {
   it("break the line at a vertical tab, drop the rest, and leave the notes a paragraph to a line", async () => {
     const deck = join(root, "odd-deck");
-    cpSync(decks("demo"), deck, { recursive: true });
+    cpSync(decks("demo-0-3"), deck, { recursive: true });
     const deckFile = join(deck, "deck.json");
     const manifest = JSON.parse(readFileSync(deckFile, "utf8"));
     writeFileSync(deckFile, JSON.stringify({ ...manifest, scenes: [...manifest.scenes, "odd"] }));
@@ -1110,7 +1110,7 @@ describe("words the deck wrote with characters XML cannot hold", () => {
 describe("a pinned scene", () => {
   it("puts each pinned block at its frame, over the template's blocks", async () => {
     const deck = join(root, "pinned-deck");
-    cpSync(decks("demo"), deck, { recursive: true });
+    cpSync(decks("demo-0-3"), deck, { recursive: true });
     const deckFile = join(deck, "deck.json");
     const manifest = JSON.parse(readFileSync(deckFile, "utf8"));
     writeFileSync(deckFile, JSON.stringify({ ...manifest, scenes: [...manifest.scenes, "pinned"] }));
@@ -1167,7 +1167,7 @@ describe("a pinned scene", () => {
 // ---------------------------------------------------------------------------------------------------------------------
 
 describe("a file that is already there", () => {
-  const folder = decks("demo");
+  const folder = decks("demo-0-3");
 
   it("is replaced when Depthcue wrote it and nobody has changed it", async () => {
     const out = join(root, "deck.pptx");
@@ -1227,7 +1227,7 @@ describe("a file that is already there", () => {
 describe("the deck folder", () => {
   it("is not changed by the export", async () => {
     const deck = join(root, "deck");
-    cpSync(decks("demo"), deck, { recursive: true });
+    cpSync(decks("demo-0-3"), deck, { recursive: true });
     const listing = () => readdirSync(deck, { recursive: true }).map(String).sort();
     const before = listing();
     const contents = before.map((name) =>

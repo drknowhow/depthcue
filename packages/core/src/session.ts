@@ -38,6 +38,12 @@ export interface Session {
    */
   addAssets(paths: readonly string[]): void;
   /**
+   * Takes a file off under assets/ once it is deleted, in the present document and in every undo and redo state, so
+   * undoing cannot bring a name back that no file answers to. Like `addAssets` it leaves the revision, the history and
+   * the dirty flag alone, and it gives each document a set of its own rather than changing one they may share.
+   */
+  dropAsset(path: string): void;
+  /**
    * Takes in a brand file the server added or replaced (`hash`) or removed (null), as an upload's answer names it, in
    * the present document and in every undo and redo state. The revisions change with it. A session saved at the
    * revision the disk had before (`prevRev`) is saved at the one after (`rev`), so the upload alone leaves it clean,
@@ -149,6 +155,15 @@ export function createSession(initial: Doc, options: { historyLimit?: number } =
       every((snapshot) => ({
         rev: snapshot.rev,
         doc: { ...snapshot.doc, assets: new Set([...snapshot.doc.assets, ...paths]) },
+      }));
+      emit("assets", present.rev);
+    },
+    dropAsset(path) {
+      // Every state lists the files the present one does (`addAssets` and this change them all), so it is asked alone.
+      if (!present.doc.assets.has(path)) return;
+      every((snapshot) => ({
+        rev: snapshot.rev,
+        doc: { ...snapshot.doc, assets: new Set([...snapshot.doc.assets].filter((name) => name !== path)) },
       }));
       emit("assets", present.rev);
     },

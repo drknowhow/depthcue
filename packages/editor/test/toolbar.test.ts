@@ -876,12 +876,32 @@ describe("a picture dropped or pasted on the slide", () => {
     expect(image()).toMatchObject({ asset: "assets/shot.png", alt: "shot" });
   });
 
-  it("uses the first picture among the files dropped", async () => {
+  it("uses the one picture among the files dropped, and leaves out what is not a picture", async () => {
     const notes = new File(["x"], "notes.txt", { type: "text/plain" });
-    dropOn(figure(), [notes, picture("a.png"), picture("b.png")]);
+    dropOn(figure(), [notes, picture("a.png")]);
     await flush();
     expect(image().asset).toBe("assets/a.png");
     expect(server.uploads).toEqual(["assets/a.png"]);
+  });
+
+  it("adds an image block for each of several pictures dropped, and leaves this image as it was", async () => {
+    const before = method()?.blocks.length as number;
+    const notes = new File(["x"], "notes.txt", { type: "text/plain" });
+    dropOn(figure(), [notes, picture("a.png"), picture("b.png")]);
+    await flush();
+    expect(image()).toMatchObject(original());
+    expect(server.uploads).toEqual(["assets/a.png", "assets/b.png"]);
+    expect(method()?.blocks).toHaveLength(before + 2);
+    expect(store.session.undo()).toBe(true);
+    expect(method()?.blocks).toHaveLength(before);
+  });
+
+  it("adds one block for each of several pictures pasted", async () => {
+    const before = method()?.blocks.length as number;
+    pasteInto(figure(), [picture("a.png"), picture("b.png")]);
+    await flush();
+    expect(method()?.blocks).toHaveLength(before + 2);
+    expect(image()).toMatchObject(original());
   });
 
   it("recognizes a picture by its extension when the browser gives no type", async () => {

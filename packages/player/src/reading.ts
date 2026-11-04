@@ -49,6 +49,11 @@ function fallbackText(scene: Scene, ctx: RenderContext): HTMLElement[] {
 
 function evidence(scene: Scene, ctx: RenderContext): HTMLElement[] {
   const out: HTMLElement[] = [];
+  const back = scene.background;
+  const backSrc = back && !back.decorative && assetUrl(ctx.assetBase, back.asset);
+  if (backSrc) {
+    out.push(h("figure", { class: "dc-figure" }, h("img", { src: backSrc, alt: back.alt, loading: "lazy" })));
+  }
   for (const block of readingOrder(scene, ctx)) {
     if (block === "claim") continue;
     if (block.type === "bar-chart") {
@@ -57,7 +62,7 @@ function evidence(scene: Scene, ctx: RenderContext): HTMLElement[] {
       // A chart of any kind reads as its data: its title, a column per series and a row per point.
       const table = block.type === "chart" ? chartTable(block) : block;
       out.push(h("figure", { class: "dc-figure" }, renderTable(table, ctx.language)));
-    } else if (block.type === "image") {
+    } else if (block.type === "image" && !block.decorative) {
       const src = assetUrl(ctx.assetBase, block.asset);
       out.push(
         h(

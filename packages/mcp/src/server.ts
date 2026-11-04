@@ -7,6 +7,14 @@ import {
   summarize,
 } from "@depthcue/cli/comments-api";
 import { applyToFolder, type Detail, getOutline, getScene, openDeck } from "@depthcue/cli/deck-api";
+import {
+  addImage,
+  ImageRefused,
+  listImages,
+  MAX_ASSET_BYTES,
+  readImageFile,
+  removeImage,
+} from "@depthcue/cli/images";
 import { openRenderer, type Renderer, type SceneRender } from "@depthcue/cli/render";
 import { commentOpsSchema, type Diagnostic, ID_PATTERN, opsSchema } from "@depthcue/core";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -63,6 +71,22 @@ const exportArgs = z.strictObject({
   pictures: z.boolean().default(false).describe("pptx: each slide one picture."),
   steps: z.boolean().default(false).describe("pptx: a slide per build step."),
   posters: z.boolean().default(false).describe("pptx: clips as poster and link."),
+});
+
+const assetArgs = z.strictObject({
+  action: z.enum(["add", "list", "remove"]),
+  path: z.string().min(1).optional().describe("add: absolute path of a local image file."),
+  data: z
+    .string()
+    .max(Math.ceil((MAX_ASSET_BYTES * 4) / 3) + 8)
+    .optional()
+    .describe("add: the image bytes as base64, with `name`. Use path for a file on disk."),
+  name: z.string().min(1).max(200).optional().describe("add with data: what to call the file."),
+  asset: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("remove: the path from add or list, such as assets/x-1a2b3c4d.png."),
 });
 
 /**
@@ -166,14 +190,14 @@ const TOOLS = [
   {
     name: "deck_get",
     description:
-      "Read the deck. view 'outline' (default): `rev` (base_rev for deck_apply), scenes (id, title, layout or template, lead, counts), `comments` (open count, tasks), `templates` (id, name), `styles` (ids), `brand`; detailed adds slots. view 'scene' adds a scene's open comments, view 'comments' all comments. A block's `frame` {x,y,w,h} pins it: percent of the 16:9 slide, x+w and y+h within 100. Template scene blocks name a `slot`; `style` names a style for the block's kind. 0.3+ text is markup: **bold**, *italic*, [label](https: or mailto: URL), [label]{tone}, \\ escapes, `- ` or `1. ` body lines; other strings are literal. Text takes tone (text, muted, action, evidence), size (s-xl), align (start, center, end). table and chart hold `columns`, `rows`; a chart's first column is its categories. palette colors are #rrggbb.",
+      "Read the deck. view 'outline' (default): `rev` (base_rev for deck_apply), scenes (id, title, layout or template, lead, counts), `comments` (open count, tasks), `templates` (id, name), `styles` (ids), `brand`; detailed adds slots. view 'scene' adds a scene's open comments, view 'comments' all comments. A block's `frame` {x,y,w,h} pins it: percent of the 16:9 slide, x+w and y+h within 100. Template scene blocks name a `slot`; `style` names a style for the block's kind. 0.3+ text is markup: **bold**, *italic*, [label](https: or mailto: URL), [label]{tone}, \\ escapes, `- ` or `1. ` body lines; other strings are literal. Text takes tone (text, muted, action, evidence), size (s-xl), align (start, center, end). table and chart hold `columns`, `rows`; a chart's first column is its categories. palette colors are #rrggbb. An image takes fit (contain|cover), crop {x,y,w,h} (percent of the file: the part shown), focus {x,y} and decorative (true: alt optional); a scene's background is {asset, scrim, color, focus, decorative, alt}.",
     inputSchema: jsonSchema(getArgs),
     annotations: { title: "Read the deck", readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   },
   {
     name: "deck_apply",
     description:
-      "Edit the deck: `ops` apply atomically against `base_rev`, the `rev` from deck_get or your last edit. A bad op or stale base_rev writes nothing; read again and redo. `set` replaces each key it names whole (send whole arrays); null deletes one. deck.set keys: title, language, theme, palette, fonts, modules. scene.set keys: title, layout, template, lead, summary, sources, reading, steps, notes. scene.add and block.add take a whole scene or block. `after`: sibling id, null first, omitted last. block.frame and block.unframe pin and unpin a block. scene.upgrade makes a scene 0.3, escaping its text. To swap layout and template: set one, null the other, block.set each `slot`. brand.set makes ({id, name}) or edits the brand. style.set and template.set take one whole (null removes it) or `set`. slot.add/set/rename/remove edit a brand template's slots (not a built-in's); rename and remove (`to` a slot, null pins) move its blocks in every scene. link.add/set/remove edit the deck's links; link.remove `to` moves uses. Other ids never change.",
+      "Edit the deck: `ops` apply atomically against `base_rev`, the `rev` from deck_get or your last edit. A bad op or stale base_rev writes nothing; read again and redo. `set` replaces each key it names whole (send whole arrays); null deletes one. deck.set keys: title, language, theme, palette, fonts, modules. scene.set keys: title, layout, template, background, lead, summary, sources, reading, steps, notes. scene.add and block.add take a whole scene or block. `after`: sibling id, null first, omitted last. block.frame and block.unframe pin and unpin a block. scene.upgrade makes a scene 0.3, escaping its text. To swap layout and template: set one, null the other, block.set each `slot`. brand.set makes ({id, name}) or edits the brand. style.set and template.set take one whole (null removes it) or `set`. slot.add/set/rename/remove edit a brand template's slots (not a built-in's); rename and remove (`to` a slot, null pins) move its blocks in every scene. link.add/set/remove edit the deck's links; link.remove `to` moves uses. Other ids never change.",
     inputSchema: {
       type: "object",
       properties: {
@@ -236,6 +260,19 @@ const TOOLS = [
     },
   },
   {
+    name: "deck_asset",
+    description:
+      "Add, list or remove the deck's image files. add: `path` (absolute; a regular PNG, JPEG, GIF, WebP or plain SVG file up to 15 MB) or `data` (base64) with `name`. It returns `asset` (such as assets/x-1a2b3c4d.png), width, height and bytes; put `asset` in an image block with deck_apply. The same file added twice gives the same path. list: every image with width, height, bytes and `usedBy` (empty means unused). remove: `asset`, refused while anything names it. None of these changes the deck revision.",
+    inputSchema: jsonSchema(assetArgs),
+    annotations: {
+      title: "Add images to the deck",
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
+  {
     name: "deck_export",
     description:
       "Write the deck for people: format 'pptx', a PowerPoint file (text, tables, charts editable; a brand's master, layouts and fonts), or 'folder', a page that opens offline. Never replaces what the export did not write or what changed since. A deck with errors writes nothing. Returns what each slide could not carry over.",
@@ -292,10 +329,10 @@ export interface DepthcueServer {
 }
 
 /**
- * An MCP server over one deck folder. Six tools, because every tool an agent can see costs it tokens on every
+ * An MCP server over one deck folder. Seven tools, because every tool an agent can see costs it tokens on every
  * turn: deck_get reads, deck_apply edits, deck_comment answers the person's comments, deck_render checks the result
  * with a screenshot and measurements, deck_present drives the deck while the presenter has handed over control, and
- * deck_export writes the PowerPoint file or the offline page. The browser starts on the first render and is kept
+ * deck_asset adds, lists and removes image files, and deck_export writes the PowerPoint file or the offline page. The browser starts on the first render and is kept
  * until `close()`; an export starts its own.
  */
 export function createDepthcueServer(folder: string, version = "0.0.0"): DepthcueServer {
@@ -431,6 +468,47 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
     });
   }
 
+  function asset(raw: unknown): CallToolResult {
+    const parsed = assetArgs.safeParse(raw ?? {});
+    if (!parsed.success) return failure(complaint(parsed.error));
+    const { action, path, data, name, asset: target } = parsed.data;
+    const allowed: readonly string[] =
+      action === "add" ? ["path", "data", "name"] : action === "remove" ? ["asset"] : [];
+    const stray = Object.entries({ path, data, name, asset: target }).find(
+      ([key, value]) => value !== undefined && !allowed.includes(key),
+    );
+    if (stray) return failure(`${action} does not take \`${stray[0]}\`.`);
+    if (action === "add") {
+      if ((path === undefined) === (data === undefined)) {
+        return failure("add needs exactly one of `path` or `data`.");
+      }
+      if (data !== undefined && name === undefined) return failure("add with `data` needs `name`.");
+      if (path !== undefined && name !== undefined) {
+        return failure("`name` goes with `data`; a file keeps its own name.");
+      }
+      try {
+        const read =
+          path !== undefined
+            ? readImageFile(path)
+            : { bytes: Buffer.from(data as string, "base64"), name: name as string };
+        return text({ ok: true, ...addImage(folder, read.bytes, read.name) });
+      } catch (error) {
+        if (error instanceof ImageRefused) return failure(`${error.message} (${error.code})`);
+        throw error;
+      }
+    }
+    const opened = openDeck(folder);
+    if (!opened.ok) {
+      return failure(
+        `The deck has errors, so its images cannot be read. Fix these first: ${compact(opened.diagnostics.filter((d) => d.severity === "error").map(plain))}`,
+      );
+    }
+    if (action === "list") return text({ ok: true, assets: listImages(folder, opened.doc) });
+    if (target === undefined) return failure("remove needs `asset`.");
+    const outcome = removeImage(folder, opened.doc, target);
+    return outcome.ok ? text(outcome) : failure(compact(outcome));
+  }
+
   async function render(raw: unknown): Promise<CallToolResult> {
     const parsed = renderArgs.safeParse(raw ?? {});
     if (!parsed.success) return failure(complaint(parsed.error));
@@ -560,6 +638,7 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
       if (name === "deck_comment") return comment(args);
       if (name === "deck_render") return await render(args);
       if (name === "deck_present") return await present.run(args);
+      if (name === "deck_asset") return asset(args);
       if (name === "deck_export") return await exported(args);
       return failure(`There is no tool "${name}". The tools are: ${TOOL_NAMES.join(", ")}.`);
     } catch (error) {

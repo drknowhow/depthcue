@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "0.6",
+  "id": "decorative",
+  "title": "Decorative",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "decorative-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "A picture that only decorates"
+    },
+    {
+      "id": "decorative-image",
+      "type": "image",
+      "asset": "assets/grid.png",
+      "decorative": true,
+      "frame": {
+        "x": 60,
+        "y": 30,
+        "w": 30,
+        "h": 50
+      }
+    }
+  ]
+}

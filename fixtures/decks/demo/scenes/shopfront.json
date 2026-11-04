@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "0.6",
+  "id": "shopfront",
+  "title": "Pick-up counters",
+  "template": "full-image",
+  "lead": "human",
+  "blocks": [
+    {
+      "id": "shopfront-photo",
+      "type": "image",
+      "asset": "assets/shopfront-photo-5a6b7ae8.jpg",
+      "alt": "A street of shops at dusk. The shop on the right has a striped awning and a lit window.",
+      "slot": "picture",
+      "focus": {
+        "x": 72,
+        "y": 58
+      }
+    },
+    {
+      "id": "shopfront-title",
+      "type": "text",
+      "role": "heading",
+      "text": "Pick-up counters are where channel B orders land",
+      "slot": "title"
+    }
+  ],
+  "reading": {
+    "text": "The street with the shop in the last scene. Channel B orders land at the pick-up counter."
+  }
+}

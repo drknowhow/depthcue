@@ -292,7 +292,7 @@ function chromeShapes(
   return out;
 }
 
-function background(ground: string, imageRel?: string): string {
+export function background(ground: string, imageRel?: string): string {
   return imageRel
     ? `<p:bg><p:bgPr><a:blipFill dpi="0" rotWithShape="1"><a:blip r:embed="${imageRel}"/><a:srcRect/><a:stretch><a:fillRect/></a:stretch></a:blipFill><a:effectLst/></p:bgPr></p:bg>`
     : `<p:bg><p:bgPr>${fill(ground)}<a:effectLst/></p:bgPr></p:bg>`;
@@ -337,10 +337,66 @@ export function linkShape(xml: string, name: string, ph: string): string {
   });
 }
 
-/** Adds a description to the slide's shape named `name`, which the writer has no option for on a video. */
+/**
+ * A scene's own background (`scene.background`) becomes its slide's background: the picture the page composed with the
+ * scrim laid over it, as one JPEG, in place of the color the slide had. It is the slide's, not its layout's, so scenes
+ * of one template can each have their own. Picture mode (`--pictures`) draws the whole page as one picture and is left
+ * alone.
+ */
+export function applySceneBackgrounds(
+  parts: Parts,
+  input: { look: DeckLook; scenes: readonly Scene[]; measures: readonly SlideMeasure[]; pictures: boolean },
+): void {
+  if (input.pictures) return;
+  let types: string | undefined;
+  input.scenes.forEach((scene, at) => {
+    const behind = input.measures[at]?.backdrop;
+    const name = `ppt/slides/slide${at + 1}.xml`;
+    const relsName = `ppt/slides/_rels/slide${at + 1}.xml.rels`;
+    const bytes = parts.get(name);
+    if (!scene.background || !behind || !bytes) return;
+    parts.set(`ppt/media/depthcue-slide${at + 1}.jpeg`, dataBytes(behind));
+    const links = decode(parts.get(relsName) ?? encode(rels([])));
+    parts.set(
+      relsName,
+      encode(
+        links.replace(
+          "</Relationships>",
+          `${relationship("rIdSceneBg", "image", `../media/depthcue-slide${at + 1}.jpeg`)}</Relationships>`,
+        ),
+      ),
+    );
+    const xml = decode(bytes)
+      .replace(/<p:bg>[\s\S]*?<\/p:bg>/, "")
+      .replace(
+        /(<p:cSld\b[^>]*>)/,
+        `$1${background(input.measures[at]?.ground ?? input.look.colors.bg, "rIdSceneBg")}`,
+      );
+    parts.set(name, encode(xml));
+    types = decode(parts.get("[Content_Types].xml") as Uint8Array);
+    if (!types.includes('Extension="jpeg"')) {
+      types = types.replace(/(<Types\b[^>]*>)/, '$1<Default Extension="jpeg" ContentType="image/jpeg"/>');
+      parts.set("[Content_Types].xml", encode(types));
+    }
+  });
+}
+
+/**
+ * Adds a description to the slide's shape named `name`, which the writer has no option for on a video. An empty one
+ * empties the description of a decorative picture, where the writer puts the file's name for an empty alt text.
+ */
 export function describeShape(xml: string, name: string, text: string): string {
-  const named = new RegExp(`(<p:cNvPr id="\\d+" name="${regexText(escapeXml(name))}")(?![^>]*\\bdescr=)`);
-  return xml.replace(named, `$1 descr="${escapeXml(text)}"`);
+  const shape = `(<p:cNvPr id="\\d+" name="${regexText(escapeXml(name))}")`;
+  if (text === "") {
+    // A decorative picture: an empty description, and PowerPoint's own mark (Alt Text > Mark as decorative).
+    const mark = `<a:extLst><a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"><adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/></a:ext></a:extLst>`;
+    return xml.replace(
+      new RegExp(`${shape}(?: descr="[^"]*")?((?: [\\w:]+="[^"]*")*)(?:/>|>([\\s\\S]*?)</p:cNvPr>)`),
+      (_all, head: string, rest: string, inner = "") =>
+        `${head} descr=""${rest}>${inner.includes("adec:decorative") ? inner : inner + mark}</p:cNvPr>`,
+    );
+  }
+  return xml.replace(new RegExp(`${shape}(?![^>]*\\bdescr=)`), `$1 descr="${escapeXml(text)}"`);
 }
 
 /** The slide's own footer and number, filling the layout's: the words, and the field PowerPoint numbers each slide by. */
@@ -412,14 +468,19 @@ function planLayouts(input: MasterInput): { layouts: LayoutPlan[]; layoutOf: num
       layoutOf.push(known);
       return;
     }
-    const measure = measures[at] as SlideMeasure;
-    const fills = firstInSlots(scene, template);
+    // A scene's own background belongs to its slide, not to the layout its template shares: the layout is read from the
+    // first scene of the template without one, or from the first when all have one.
+    const planAt = scenes.findIndex((other) => other.template === id && other.background === undefined);
+    const from = planAt < 0 ? scene : (scenes[planAt] as Scene);
+    const measure = measures[planAt < 0 ? at : planAt] as SlideMeasure;
+    const own = from.background !== undefined;
+    const fills = firstInSlots(from, template);
     const slots = template.slots.map((slot, index): SlotPlan => {
       const block = fills.get(slot.id);
       const place =
         block === undefined
           ? undefined
-          : block === scene.summary?.id
+          : block === from.summary?.id
             ? claimInk(measure)
             : textInk(measure, block);
       return {
@@ -429,15 +490,15 @@ function planLayouts(input: MasterInput): { layouts: LayoutPlan[]; layoutOf: num
         ...(place ? { ink: place.ink } : {}),
       };
     });
-    const ground = measure.ground ?? look.colors.bg;
+    const ground = own ? look.colors.bg : (measure.ground ?? look.colors.bg);
     layouts.push({
       name: template.name,
       template,
       chrome: template.chrome ?? "full",
       ground,
-      ...(measure.backdrop ? { backdrop: measure.backdrop } : {}),
-      strong: !sameColor(ground, look.colors.bg) || measure.backdrop !== undefined,
-      ...(measure.chrome ? { measured: measure.chrome } : {}),
+      ...(measure.backdrop && !own ? { backdrop: measure.backdrop } : {}),
+      strong: !sameColor(ground, look.colors.bg) || (measure.backdrop !== undefined && !own),
+      ...(measure.chrome && !own ? { measured: measure.chrome } : {}),
       slots,
       picture: false,
     });

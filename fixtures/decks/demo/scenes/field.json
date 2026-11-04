@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "0.6",
+  "id": "field",
+  "title": "One shop, one evening",
+  "layout": "text-media",
+  "lead": "human",
+  "blocks": [
+    {
+      "id": "field-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "One shop, one evening"
+    },
+    {
+      "id": "field-body",
+      "type": "text",
+      "role": "body",
+      "text": "We stood outside one shop on the evening of the last count. Most people who stopped came for a pick-up, and pick-ups are channel B orders."
+    },
+    {
+      "id": "field-photo",
+      "type": "image",
+      "asset": "assets/shopfront-photo-5a6b7ae8.jpg",
+      "alt": "A shop with a striped awning and a lit window, two people standing outside it at dusk.",
+      "caption": "The shop, cropped from the street photo.",
+      "crop": {
+        "x": 55,
+        "y": 32,
+        "w": 36,
+        "h": 58
+      }
+    }
+  ],
+  "reading": {
+    "text": "A photo of one shop at dusk, with a striped awning and a lit window and two people outside it. Most people who stopped there came for a pick-up, which is a channel B order."
+  },
+  "notes": "This is an example, not a count. Say so."
+}

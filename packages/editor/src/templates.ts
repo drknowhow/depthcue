@@ -162,6 +162,18 @@ export function newClaim(scene: Scene): NonNullable<Scene["summary"]> {
   };
 }
 
+/** The picture commands by id, as the toolbar, the menu and the palette call them. */
+export const PICTURE = {
+  crop: "Crop",
+  fill: "Fill",
+  fit: "Fit",
+  reset: "Reset picture",
+  fitbox: "Fit box to picture",
+  bg: "Use as slide background",
+  nobg: "Remove background",
+} as const;
+export type PictureAction = keyof typeof PICTURE;
+
 /** The kinds of image the upload accepts. */
 export const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 export const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
@@ -176,7 +188,7 @@ export function blockLabel(block: Block, scene?: Pick<Scene, "schemaVersion">): 
     case "text":
       return scene ? shownText(scene, block) : block.text;
     case "image":
-      return block.alt;
+      return block.alt ?? placeholderAlt(block.asset);
     case "clip":
       return block.alt;
     case "bar-chart":

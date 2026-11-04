@@ -176,6 +176,16 @@ describe("fieldTable", () => {
       ].join("\n"),
     );
   });
+
+  it("says a field is required unless a flag is true when `else` requires it", () => {
+    const table = fieldTable({
+      properties: { alt: { type: "boolean" }, decorative: { type: "boolean" } },
+      if: { properties: { decorative: { const: true } }, required: ["decorative"] },
+      else: { properties: { alt: {} }, required: ["alt"] },
+    });
+    expect(table).toContain("| `alt` | unless `decorative` is true | true or false |");
+    expect(table).toContain("| `decorative` | no | true or false |");
+  });
 });
 
 describe("the generated reference, from the real schemas", () => {

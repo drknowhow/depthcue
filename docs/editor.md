@@ -37,7 +37,8 @@ the files as they are. Keep mine as copy hands you your version as a file first 
 - **Charts.** The Data chip opens the chart's rows and series in a grid, and the right-click menu changes the kind.
   See [Tables and charts](tables-and-charts.md). On an old bar chart, drag a bar to change its value, or choose a bar
   and use the arrow keys (Shift moves five steps). Labels are typed in place.
-- **Images.** Drop or paste a file on the image. Alt text is flagged until you write it.
+- **Images.** Drop or paste a file on the image, or open the library from the quick bar's Image button. Alt text is
+  flagged until you write it, or mark the picture Decorative. Crop, fit and focus are in [Pictures](#pictures).
 - **Adding.** The quick bar at the foot of the stage has Text, Chart, Table, Image, Clip and Claim, a Notes popover
   for the speaker notes and the reading version, and Build order. `T`, `C` and `I` add a text, a chart or an image
   from the keyboard. An area of the slide that holds nothing shows a dashed place; click it to add there.
@@ -50,6 +51,37 @@ the files as they are. Keep mine as copy hands you your version as a file first 
   the scene's title, steps and sources.
 
 Every property in the deck's schema can be edited here, and a test fails when one has no control.
+
+## Pictures
+
+A chosen image's toolbar has Crop, Fill and Reset picture, and its Edit popover has the file, the alt text, the caption
+and a Decorative checkbox. A scene's picture behind the whole slide is in the Scene popover.
+
+- **Library.** The quick bar's Image button, the `I` key and "Add an image here" open a popover of the pictures in
+  the deck's `assets/` folder, when it has any; a deck with none goes straight to the file chooser. Each picture shows
+  a thumbnail, its name, its size in pixels, its file size and "Used on 2 slides" or "Not used". Press one to add it as
+  a new block, or, from Edit's "Choose from library", to replace the chosen image's file. Delete appears on a picture
+  that no slide names, asks inside the popover, and deletes the file from the folder. The library is loaded the
+  first time it is opened.
+- **Several files.** Dropping or pasting several pictures adds one image block each, up to the scene's limit of 12
+  blocks, as one step of Undo. One picture dropped on an image replaces its file.
+- **Fit and Fill.** Fill is pressed when the picture fills its box and is cut to it, which is the default in a
+  picture slot. Otherwise the whole picture shows. See [Placing blocks](placement.md#pictures-in-a-frame).
+- **Crop and focus.** Crop, or a double click, shows the whole file dimmed around the crop with a handle on each edge
+  and corner. Drag a handle to resize, drag inside to move the picture, and on a filled picture drag the Focus point.
+  Enter or a click outside applies, as one step of Undo, and `Esc` cancels. With the keyboard, Tab moves between the
+  handles and the arrow keys move 1 percent (Shift 10); each handle has a spoken name, such as "Top edge of the crop".
+- **Reset picture** takes off the crop, the focus and the fit.
+- **Pinned pictures.** A corner drag keeps the picture's shape; hold Shift to change it. Fit box to picture sizes the
+  frame to the cropped picture.
+- **Decorative.** Tick it ("No alt text needed") for a picture that carries no information, such as a texture. The alt text may then be empty,
+  the reading version leaves the picture out, and a screen reader skips it. Clearing the tick on a picture with no alt
+  text puts the file's name there as a placeholder, and the problem ribbon flags it until you write a real one.
+- **Slide background.** Use as slide background in a picture's right-click menu moves it behind the whole slide: it
+  becomes the scene's `background` with a 40 percent scrim, and its alt text, decorative mark and focus come along. Its
+  crop and fit are dropped, because a background has neither. The Scene popover's Background section has the file, the
+  scrim, the scrim color, the focus, the Decorative checkbox, the alt text and Remove. Remove background is in the
+  right-click menu of any block on a slide that has one.
 
 ## Formatting text
 
@@ -114,6 +146,8 @@ greyed, with the reason.
 - **A block.** Cut, Copy, Paste (after this block), Duplicate and Delete; Pin where it is, or Put back in layout; Comment;
   Move earlier and Move later. The claim has Paste, Delete and Comment.
 - **A text.** Size, Align and Color as submenus, with the choice the text has now ticked.
+- **An image.** Crop, Fit, Fill, Reset picture, Fit box to picture (a pinned image) and Use as slide background. Remove
+  background is in the menu of any block on a slide that has one.
 - **A chart.** Edit data, and a Chart type submenu of the six kinds with the current one ticked. A kind the data cannot
   take is greyed, with the reason.
 - **A cell of a table.** Insert row above and below, Insert column left and right, Delete row, Delete column, Show or
@@ -202,6 +236,77 @@ writing markup into a scene that is older than 0.3. Otherwise the markup is kept
 on a block upgrades its scene by itself. Table and chart blocks are in
 [Tables and charts](tables-and-charts.md#for-an-agent), and the palette, fonts and block styles are in
 [Style](style.md#for-an-agent).
+
+Pictures are in a scene of schema 0.6. `fit`, `crop`, `focus` and `decorative` on an image block, and `background` on a
+scene, move the scene to 0.6 when they are first set. The file comes first: `deck_asset` (or `depthcue asset add`) copies
+a PNG, JPEG, GIF, WebP or plain SVG file into `assets/` under a name made from its own name and its content, and prints
+the path to put in the block. This was run on a copy of the demo deck:
+
+```sh
+depthcue asset add my-deck street.jpg
+```
+
+```
+assets/street-5a6b7ae8.jpg  1600x1000  103 KB
+```
+
+A crop that leaves the picture is refused, with the number to change:
+
+```
+scenes/method.json/blocks/3/crop/w  error  The crop runs to 110% across the picture; the picture ends at 100%.
+  fix: Make w at most 40, or make x smaller. The crop is in percent of the picture's own width and height.
+Rejected (invalid-deck); nothing was written. 1 error, 0 warnings
+```
+
+This adds a scene with a cropped picture and puts a picture behind the first scene, under a 72 percent scrim:
+
+```json
+[
+  {
+    "op": "scene.add",
+    "after": "trend",
+    "scene": {
+      "schemaVersion": "0.6",
+      "id": "street",
+      "title": "The street",
+      "layout": "text-media",
+      "blocks": [
+        {
+          "id": "street-heading",
+          "type": "text",
+          "role": "heading",
+          "text": "Where the orders are picked up"
+        },
+        {
+          "id": "street-photo",
+          "type": "image",
+          "asset": "assets/street-5a6b7ae8.jpg",
+          "alt": "A shop with a striped awning and a lit window, at dusk.",
+          "crop": { "x": 55, "y": 32, "w": 36, "h": 58 }
+        }
+      ]
+    }
+  },
+  {
+    "op": "scene.set",
+    "id": "opening",
+    "set": {
+      "background": {
+        "asset": "assets/street-5a6b7ae8.jpg",
+        "scrim": 72,
+        "alt": "A street of shops at dusk, with one shop lit."
+      }
+    }
+  }
+]
+```
+
+`apply` printed `Applied. Revision a1c3904f80c25491 -> 07388600f5c75750` and the three files it wrote, and `check`
+printed `0 errors, 0 warnings`. `depthcue asset remove` refuses a file that anything names, and says how many times it
+is used; `depthcue asset unused` lists the files nothing names. A picture with `"decorative": true` needs no `alt`.
+`depthcue render` adds two checks that need a drawn page: `image-low-resolution` when a picture would be drawn at more
+than 1.5 times its own pixels, and, for text over a scene background, `background-low-contrast`, whose fix names the
+scene's scrim.
 
 ## Related guides
 

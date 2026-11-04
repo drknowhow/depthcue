@@ -21,6 +21,13 @@ tables", into v0.1. Data binding to CSV or JSON, provenance for cells and a lint
 claim stay in 0.4. The user guides are [tables and charts](tables-and-charts.md) and [style](style.md); the build
 record is [CONTENT_RANGE.md](CONTENT_RANGE.md).
 
+**Images, 2026-11-04.** A picture can be cropped, shown whole or made to fill its box around a point you choose, marked
+decorative, and put behind a whole slide with a scrim. An agent adds the image file with `deck_asset` or
+`depthcue asset` and sets the same properties with the same operations. The editor has an image library and a crop mode,
+and the PowerPoint export keeps each of these. The schema is 0.6, and older decks load unchanged. The user guide is
+the Pictures section of [the editor](editor.md#pictures), with [placing blocks](placement.md#pictures-in-a-frame) and
+[the export](export.md#pictures); the build record is [IMAGES.md](IMAGES.md).
+
 ## Thesis
 
 Depthcue is an open-source format and player for explanations that an agent can write, a human can repair, and both

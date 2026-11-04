@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   contrastRatio,
   type LayoutMeasure,
+  LOW_RESOLUTION_RATIO,
   layoutDiagnostics,
   type Rgba,
   requiredContrast,
@@ -398,5 +399,67 @@ describe("layoutDiagnostics", () => {
     );
     expect(found).toMatchObject({ code: "image-failed", path: "/blocks/0" });
     expect(found?.message).toContain("./assets/gone.png");
+  });
+
+  describe("image-low-resolution", () => {
+    const shown = (drawnW: number, drawnH: number, shownW = 400, shownH = 300) => ({
+      id: "intro",
+      src: "./assets/photo.png",
+      ok: true,
+      scale: { shownW, shownH, drawnW, drawnH },
+    });
+    const lowOf = (image: ReturnType<typeof shown>) =>
+      layoutDiagnostics(scene, measure({ images: [image] })).filter((d) => d.code === "image-low-resolution");
+
+    it("keeps its limit named: 1.5 times the pixels of the part that shows", () => {
+      expect(LOW_RESOLUTION_RATIO).toBe(1.5);
+    });
+
+    it("warns, at the block, when the box is more than 1.5 times wider or taller than the shown pixels", () => {
+      const [wide] = lowOf(shown(601, 300));
+      expect(wide).toMatchObject({ severity: "warning", code: "image-low-resolution", path: "/blocks/0" });
+      expect(wide?.message).toContain("601x300px");
+      expect(wide?.message).toContain("400x300px");
+      expect(wide?.fix).toContain("401x200px");
+      expect(lowOf(shown(400, 451))).toHaveLength(1);
+    });
+
+    it("is quiet at the limit, below it, and for a picture with no measure (a vector, the logo, one not shown)", () => {
+      expect(lowOf(shown(600, 450))).toEqual([]);
+      expect(lowOf(shown(200, 150))).toEqual([]);
+      const { scale: _scale, ...vector } = shown(900, 900);
+      expect(lowOf(vector as ReturnType<typeof shown>)).toEqual([]);
+    });
+
+    it("measures against the crop's pixels, which the caller has already taken from the file", () => {
+      // 1000 pixels of the file, 150 shown: drawn 300 wide is twice what is there.
+      expect(lowOf(shown(300, 200, 150, 100))).toHaveLength(1);
+      expect(lowOf(shown(300, 200, 1000, 700))).toEqual([]);
+    });
+  });
+
+  describe("background-low-contrast on a scene's background", () => {
+    const line = (ratioOver: number) => ({
+      id: "intro",
+      text: "one two",
+      ratio: ratioOver,
+      fontPx: 18,
+      weight: 400,
+    });
+    const backed = { ...scene, background: { asset: "assets/sea.png", scrim: 10, alt: "The sea" } } as Scene;
+
+    it("fires for a scene background with a low scrim, naming the scene's scrim in the fix", () => {
+      const [found] = layoutDiagnostics(backed, measure({ picture: [line(2.1)] }));
+      expect(found).toMatchObject({ severity: "error", code: "background-low-contrast", path: "/blocks/0" });
+      expect(found?.message).toContain("scene's background picture");
+      expect(found?.fix).toContain("scrim: 40");
+      expect(found?.fix).not.toContain("template's scrim");
+    });
+
+    it("still names the template's picture for a scene without one, and passes a strong enough ratio", () => {
+      const [template] = layoutDiagnostics(scene, measure({ picture: [line(2.1)] }));
+      expect(template?.message).toContain("template's picture");
+      expect(layoutDiagnostics(backed, measure({ picture: [line(4.6)] }))).toEqual([]);
+    });
   });
 });

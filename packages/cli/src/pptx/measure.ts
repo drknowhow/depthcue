@@ -594,13 +594,33 @@ export async function measureSlide(): Promise<SlideMeasure> {
       };
     }
     const src = element instanceof HTMLImageElement ? (element.getAttribute("src") ?? "") : element.poster;
-    const cut = cover && (drawn.width > inner.width + 0.5 || drawn.height > inner.height + 0.5);
+    // A picture with a crop, fit or focus lies whole inside a stage the size of its cropped part (the player's
+    // `.dc-crop-in`), which a clipping box (`.dc-crop`) cuts again when it fills the box. What shows is the two
+    // rectangles' overlap; the source rectangle follows from it, as for a cover cut.
+    const stage = element.closest<HTMLElement>(".dc-crop-in");
+    const frame = stage?.parentElement;
+    let clip: { left: number; top: number; width: number; height: number } | undefined;
+    if (stage && frame) {
+      const a = stage.getBoundingClientRect();
+      const b = frame.getBoundingClientRect();
+      const edge = px(getComputedStyle(frame).borderTopWidth);
+      const left = Math.max(a.left, b.left + edge);
+      const top = Math.max(a.top, b.top + edge);
+      clip = {
+        left,
+        top,
+        width: Math.min(a.right, b.right - edge) - left,
+        height: Math.min(a.bottom, b.bottom - edge) - top,
+      };
+    } else if (cover && (drawn.width > inner.width + 0.5 || drawn.height > inner.height + 0.5)) {
+      clip = inner;
+    }
     const place: Picture = {
-      box: boxOf(rect),
+      box: boxOf(frame ? frame.getBoundingClientRect() : rect),
       picture: boxOf(drawn),
       natural,
       src,
-      ...(cut ? { clip: boxOf(inner) } : {}),
+      ...(clip ? { clip: boxOf(clip) } : {}),
     };
     // PowerPoint shows PNG, JPEG and GIF everywhere. Anything else is drawn here, at twice the size it has on the slide
     // and at most 4096 pixels a side, in its own proportions.
@@ -885,7 +905,8 @@ export async function measureSlide(): Promise<SlideMeasure> {
       const img = block.querySelector<HTMLImageElement>("img");
       if (!img || !visible(img)) return;
       const caption = block.querySelector("figcaption");
-      panelOf("Picture frame", img, img.getBoundingClientRect());
+      const frame = img.closest<HTMLElement>(".dc-crop") ?? img;
+      panelOf("Picture frame", frame, frame.getBoundingClientRect());
       items.push(
         withCite(
           {
@@ -1030,7 +1051,15 @@ export async function measureSlide(): Promise<SlideMeasure> {
         const fit = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
         const w = image.naturalWidth * fit;
         const h = image.naturalHeight * fit;
-        drawing.drawImage(image, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+        // `background-position` is the scene background's focus, in percent; a template's picture is centered.
+        const [at = "50%", up = "50%"] = getComputedStyle(behind).backgroundPosition.split(" ");
+        drawing.drawImage(
+          image,
+          (canvas.width - w) * (Number.parseFloat(at) / 100),
+          (canvas.height - h) * (Number.parseFloat(up) / 100),
+          w,
+          h,
+        );
         const scrim = getComputedStyle(behind, "::after");
         drawing.globalAlpha = Number(scrim.opacity) || 0;
         drawing.fillStyle = scrim.backgroundColor;

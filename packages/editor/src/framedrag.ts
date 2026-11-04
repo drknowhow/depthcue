@@ -6,6 +6,7 @@ import {
   type Corner,
   frameOver,
   type Guide,
+  keepShape,
   nudged,
   type Rect,
   resized,
@@ -71,7 +72,8 @@ const paint = (node: HTMLElement, frame: Frame) => {
  * Moving and resizing a pinned block on the slide. A press on the block, or on its grip, moves it, and the four corner
  * handles of the chosen block resize it from the opposite corner. While the pointer is down the block is only drawn at
  * its new place, with guide lines where it has snapped to something; one `block.frame` goes to the session when the
- * pointer is let go, so a whole drag is one undo step, and Escape puts the block back. Alt turns snapping off.
+ * pointer is let go, so a whole drag is one undo step, and Escape puts the block back. Alt turns snapping off. A
+ * picture keeps its shape as its corner moves, and Shift frees it.
  */
 export function createFrameDrag(
   session: Session,
@@ -179,9 +181,13 @@ export function createFrameDrag(
       result = event.altKey ? { frame: moved, guides: [] } : snapMove(moved, targets);
     } else {
       const corner = g.corner as Corner;
-      result = event.altKey
-        ? { frame: resized(g.start, corner, px, py), guides: [] }
-        : snapResize(g.start, corner, px, py, targets);
+      // A picture keeps its shape unless Shift is held, as it would be distorted otherwise.
+      const keeps = !event.shiftKey && scene()?.blocks.find((block) => block.id === g.id)?.type === "image";
+      result = keeps
+        ? { frame: keepShape(g.start, resized(g.start, corner, px, py), corner), guides: [] }
+        : event.altKey
+          ? { frame: resized(g.start, corner, px, py), guides: [] }
+          : snapResize(g.start, corner, px, py, targets);
     }
     g.frame = result.frame;
     const node = nodeOf(g.id);

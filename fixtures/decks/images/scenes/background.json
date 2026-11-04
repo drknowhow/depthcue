@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.6",
+  "id": "background",
+  "title": "Background",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "background-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Text on a picture"
+    },
+    {
+      "id": "background-body",
+      "type": "text",
+      "role": "body",
+      "text": "The scene's own background sits behind this."
+    }
+  ],
+  "background": {
+    "asset": "assets/grid.png",
+    "scrim": 0,
+    "focus": {
+      "x": 50,
+      "y": 50
+    },
+    "alt": "A grid of nine colored squares"
+  }
+}
