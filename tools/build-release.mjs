@@ -63,6 +63,7 @@ const manifest = {
   },
   engines: { node: ">=22.12" },
   repository: { type: "git", url: "git+https://github.com/drknowhow/depthcue.git" },
+  funding: { type: "github", url: "https://github.com/sponsors/drknowhow" },
   dependencies: {
     ...Object.fromEntries(Object.entries(outside).sort(([a], [b]) => a.localeCompare(b))),
     ...Object.fromEntries(bundled.map((name) => [`@depthcue/${name}`, version])),

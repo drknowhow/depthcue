@@ -4,6 +4,8 @@ import type { Io } from "./report.ts";
 
 const PACKAGE = "depthcue";
 const LATEST_URL = `https://registry.npmjs.org/${PACKAGE}/latest`;
+const REPO_URL = "https://github.com/drknowhow/depthcue";
+const SPONSOR_URL = "https://github.com/sponsors/drknowhow";
 
 /** The version of the installed package. A checkout that is not a release says 0.0.0. */
 export function installedVersion(): string {
@@ -92,6 +94,6 @@ export async function upgradeCommand(yes: boolean, io: Io, deps: UpgradeDeps = r
     io.err(`npm exited ${code}, so depthcue was not upgraded.`);
     return 2;
   }
-  io.out(`Installed ${PACKAGE}@latest.`);
+  io.out(`Upgraded depthcue ${current} -> ${latest}.\nRepository: ${REPO_URL}\nSponsor: ${SPONSOR_URL}`);
   return 0;
 }

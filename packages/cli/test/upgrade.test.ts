@@ -67,8 +67,11 @@ describe("depthcue upgrade", () => {
 
   it("installs with --yes", async () => {
     const installs: number[] = [];
-    expect(await upgradeCommand(true, capture().io, deps("0.1.0", "0.2.0", installs))).toBe(0);
+    const { io, out } = capture();
+    expect(await upgradeCommand(true, io, deps("0.1.0", "0.2.0", installs))).toBe(0);
     expect(installs).toHaveLength(1);
+    expect(out.join("\n")).toContain("0.1.0 -> 0.2.0");
+    expect(out.join("\n")).toContain("https://github.com/sponsors/drknowhow");
   });
 
   it("does not touch a checkout", async () => {
