@@ -196,3 +196,52 @@ Dimitri approved the recommended answer to each:
 - **Size.** The main editor script was 93,331 bytes Brotli before this step (91.1 KB of its 92 KB limit) and is
   93,752 after it: 421 bytes of the 1 KB this plan allows, which leaves 456 bytes under the limit. The player script
   grew 20 bytes.
+
+## Step 3 record: the player and the exports draw them
+
+- **How crop, fit and focus are drawn.** An image with none of `fit`, `crop` and `focus` is the `<img>` in its figure,
+  as before (`scene.ts` `renderBlock`). With any of them the img sits in a stage inside a clipping box:
+  `span.dc-crop` (`container-type: size`, clips) holds `span.dc-crop-in` (the stage, `data-fit` when the block names a
+  fit) holds the img. The box carries the crop as unitless numbers (`--cx --cy --cw --ch`, the whole file when there is
+  no crop), the focus (`--gx --gy`), and `--a`, the cropped part's width over its height, which `watchAspect` sets from
+  the file's natural size once it loads. The stylesheet does the rest in container units, so no browser needs
+  `object-view-box`: the stage is `min(100cqw, 100cqh * a)` wide for contain and `max(...)` for cover, is placed in the
+  box at `focus` percent of the room left over (50 for contain, so focus changes nothing there), and the img is
+  `10000% / cw` wide and `10000% / ch` tall inside it, shifted by `-cx / cw` and `-cy / ch`. A picture slot's cover is
+  `.dc-slot[data-role="picture"] .dc-crop-in:not([data-fit])`, so a block that names a fit replaces it and a block with
+  only a focus keeps it. Outside a slot or a frame the box has the cropped part's own shape and at most 62cqh of
+  height, as a plain img does, so cover and contain look alike there. A pinned block's ghost gets the same `--a`.
+- **Scene background.** `backdrop()` draws it as the template's: `assets/` through `assetUrl`, the scrim at `--scrim`
+  percent from the stylesheet, `background-position` from `focus`, `data-image` and `data-bg` on the section (the
+  scene's `color`, `bg` when left out), and it replaces the template's picture.
+- **Background alt.** A non-decorative background's backdrop is `role="img"` with `aria-label` set to the alt, instead
+  of `aria-hidden`; it is the section's first child, so a reader meets it first. A decorative one stays `aria-hidden`.
+  The reading version leaves decorative images out (blocks and background) and shows a non-decorative background as the
+  first figure of its scene, with the alt, at the whole file.
+- **Export.** `assetRefs` already named the background, so `depthcue export` copies it; `images-export.test.ts` proves
+  it with a deck whose only picture is a background and an unnamed file that stays out.
+- **Layout checks.** `background-low-contrast` now says "scene's background picture" and names the scene's scrim when
+  the scene has one (the measure itself is unchanged: it photographs `.dc-backdrop`). `image-low-resolution` (warning)
+  uses `LOW_RESOLUTION_RATIO = 1.5`: for each visible raster image in a block (not SVG, not the brand's logo) the page
+  reports the pixels of the file that show (natural size times crop fraction) and the size they are drawn at on a
+  1920-px-wide slide, from the stage for a cropped picture and from the box and `object-fit` for a plain one; it
+  warns when either direction is over 1.5 times, with the pixels needed in the fix.
+- **PowerPoint.** The page is the measure, so the crop needed no new maths: `pictureOf` reads the img whole (it is
+  drawn at the scale of the crop) and cuts it to the overlap of the stage and the clipping box, and `addPicture`'s
+  existing source rectangle follows from that, for contain and for a focused cover alike. A scene background becomes
+  that slide's `<p:bg>` (the page's composed JPEG, scrim included, at the focus) through `applySceneBackgrounds`, which
+  runs with or without a master; it replaces the color the slide had. On a template scene the layout is planned from
+  the template's first scene without its own background, so one scene's picture never lands in the layout the others
+  share. `describeShape` with an empty text writes the decorative extension inside `p:cNvPr` (after any link) as well as
+  `descr=""`. Picture mode is untouched and writes no background part.
+- **Fixture and tests.** `fixtures/decks/images` is nine scenes on one 1,284-byte 300 by 300 PNG, a 3 by 3 grid of
+  distinct colors written by `tools/make-images-fixture.mjs`. `packages/player/test/images.test.ts` (elements and
+  numbers), `packages/cli/test/images-player-e2e.test.ts` (real Chrome: the color at the middle of the box says which
+  part of the file is there, for a crop, a focused cover at the top and at the bottom, contain, a slot with and without
+  a fit, a background's focus and alt, its contrast, the low-resolution warning), `images-pptx-e2e.test.ts` (the XML:
+  `srcRect`, `p:bg`, the decorative extension, a template scene), `images-export.test.ts`, and additions to
+  `layout.test.ts`. None depends on text size.
+- **Not done.** The brand chrome on a template scene with its own background keeps what the layout drew (a logo plate
+  chosen for the template's ground), and the editor does not offer the fields yet (step 4).
+- **Size.** Player script 12,463 to 12,833 bytes Brotli (+370), player styles 5,930 to 6,171 (+241): +611 bytes of
+  the 1 KB. The exported page script is 15,864 to 16,204 of its 16,384 limit.

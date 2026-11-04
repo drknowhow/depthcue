@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "0.6",
+  "id": "contain",
+  "title": "Contain",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "contain-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Contain"
+    },
+    {
+      "id": "contain-image",
+      "type": "image",
+      "asset": "assets/grid.png",
+      "alt": "A grid of nine colored squares",
+      "frame": {
+        "x": 20,
+        "y": 30,
+        "w": 60,
+        "h": 30
+      },
+      "fit": "contain"
+    }
+  ]
+}

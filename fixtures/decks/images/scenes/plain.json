@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "0.6",
+  "id": "plain",
+  "title": "Plain",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "plain-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "A plain picture"
+    },
+    {
+      "id": "plain-image",
+      "type": "image",
+      "asset": "assets/grid.png",
+      "alt": "A grid of nine colored squares"
+    }
+  ]
+}
