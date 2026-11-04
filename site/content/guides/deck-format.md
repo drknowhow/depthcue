@@ -31,6 +31,27 @@ This is the demo's second scene:
 - `steps` are the clicks inside a scene. Each reveals items by id, in order.
 - `notes` are speaker notes for the presenter view. An export keeps them unless you pass `--no-notes`.
 
+## Pictures
+
+An image block names a file under `assets/` and says how it shows. This is the demo's fourth scene, with a picture
+cropped to one shop:
+
+<!-- include: fixtures/decks/demo/scenes/field.json -->
+
+- `crop` is the part of the file that shows, `{ x, y, w, h }` in percent of the file's own width and height. `w` and
+  `h` are at least 5, and the crop stays inside the picture.
+- `fit` is `contain` (the whole picture shows) or `cover` (the picture fills its box and is cut to it). A picture in a
+  template's picture slot covers by default; any other picture contains.
+- `focus` is `{ x, y }`, in percent of the cropped picture: the point `cover` keeps in view. Left out, the center.
+- `decorative: true` marks a picture that carries no information. Its `alt` may then be left out. Every other picture
+  needs `alt`.
+
+A scene can put a picture behind the whole slide with `background`: `{ asset, scrim, color, focus, decorative, alt }`. The
+`scrim` is the percent of a palette `color` laid over the picture, so text on it stays readable. A scene's background
+replaces its template's. Each of these needs schema 0.6, and a scene is saved as 0.6 only when it uses one.
+`depthcue asset add` and the `deck_asset` tool copy an image into `assets/` and print the path to use. See [the
+editor guide](../../../docs/editor.md#pictures) for the same controls by hand and an agent example.
+
 ## Ids and revisions
 
 Every scene, block, source and step has an id, and an id never changes. An edit names what it changes by id, so a

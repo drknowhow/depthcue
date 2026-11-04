@@ -155,7 +155,7 @@ describe("brand use on the fixture decks", () => {
   });
 
   drawn("puts a brand in the demo deck, which then draws clean", async () => {
-    const deck = folder("demo", "demo");
+    const deck = folder("demo", "demo-0-3");
     expect(problems(await renderAll(deck))).toEqual([]);
     const brand = await initBrand();
     expect((await cli("brand", "use", brand, deck)).code).toBe(0);
@@ -166,7 +166,7 @@ describe("brand use on the fixture decks", () => {
   drawn(
     "puts the Harbor brand, with its fonts and logo, in the demo deck, whose own scenes then draw in its fonts",
     async () => {
-      const deck = folder("demo", "demo");
+      const deck = folder("demo", "demo-0-3");
       expect((await cli("brand", "use", join(fixtureOf("v0-4-brand"), "brand"), deck)).code).toBe(0);
       expect(existsSync(join(deck, "brand", "fonts", "HarborSans-Regular.woff2"))).toBe(true);
       // Harbor has a light logo only, and a palette for ink: the one warning its decks get.
@@ -181,7 +181,7 @@ describe("brand use on the fixture decks", () => {
   );
 
   it("refuses a copied file that was changed since, naming it, and replaces it with --force", async () => {
-    const deck = folder("demo", "demo");
+    const deck = folder("demo", "demo-0-3");
     const harbor = join(fixtureOf("v0-4-brand"), "brand");
     expect((await cli("brand", "use", harbor, deck)).code).toBe(0);
     const font = join(deck, "brand", "fonts", "OFL.txt");
@@ -211,7 +211,7 @@ describe("brand use on the fixture decks", () => {
   });
 
   it("shows a template change in the review and restores the file when it is reverted", async () => {
-    const deck = folder("demo", "demo");
+    const deck = folder("demo", "demo-0-3");
     expect((await cli("brand", "use", join(fixtureOf("v0-4-brand"), "brand"), deck)).code).toBe(0);
     // The brand itself is the agent's first change; accepting it makes the template edit the only one left.
     expect((await cli("diff", deck)).out).toContain("deck/template:cover  agent");
@@ -235,7 +235,7 @@ describe("brand use on the fixture decks", () => {
   });
 
   it("leaves the decks that have no brand as they were", async () => {
-    for (const name of ["charts", "demo", "v0-1", "v0-2", "v0-3"]) {
+    for (const name of ["charts", "demo-0-3", "v0-1", "v0-2", "v0-3"]) {
       const deck = folder(name, name);
       const files = JSON.stringify(readJson(join(deck, "deck.json")));
       const checked = await cli("check", deck);

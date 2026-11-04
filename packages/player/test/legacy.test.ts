@@ -35,7 +35,7 @@ function open(name: string) {
   return loaded.doc;
 }
 
-describe.each(["v0-1", "v0-2", "v0-3", "demo", "charts"])("the old deck %s", (name) => {
+describe.each(["v0-1", "v0-2", "v0-3", "demo-0-3", "charts"])("the old deck %s", (name) => {
   const doc = open(name);
   const look = lookOf(doc);
 

@@ -8,7 +8,7 @@ both can present. A deck is typed JSON with stable ids, so it can be generated, 
 by hand, and read afterwards as a document.
 
 **Status: 0.1, before release.** Nothing is published to npm yet, so you run it from a clone. The deck schema is
-0.3 (decks written for 0.1 and 0.2 still load) and can still change. [The plan](docs/PLAN.md) has the thesis, the architecture and the roadmap to 1.0.
+0.6 (decks written for 0.1 to 0.5 still load) and can still change. [The plan](docs/PLAN.md) has the thesis, the architecture and the roadmap to 1.0.
 
 ## What works today
 
@@ -20,15 +20,17 @@ by hand, and read afterwards as a document.
   agent changed. Its changes go through the same operations an agent uses and save by themselves. See
   [the editor](docs/editor.md), [placing blocks](docs/placement.md), and
   [comments and review](docs/comments-and-review.md).
-- **Edit by agent.** `depthcue-mcp` is an MCP server with five tools: `deck_get`, `deck_apply`, `deck_comment`,
-  `deck_render` and `deck_present`. An edit is one transaction against a revision. A stale revision is rejected,
-  never merged. A person's comments sit beside the deck, never in it, and an agent can answer them with `deck_comment`.
+- **Edit by agent.** `depthcue-mcp` is an MCP server with seven tools: `deck_get`, `deck_apply`, `deck_comment`,
+  `deck_render`, `deck_present`, `deck_asset` and `deck_export`. An edit is one transaction against a revision. A stale
+  revision is rejected, never merged. A person's comments sit beside the deck, never in it, and an agent can answer them with `deck_comment`.
 - **Present.** Keyboard navigation, a reading view for the audience, and a [presenter window](docs/presenter.md)
   with notes, a timer and a preview of the next move. A person can [hand control to an agent](docs/lease.md) and
   take it back at once.
 - **Blocks.** Text with bold, italic, links, lists and colored words, tables you can type or paste into, six kinds of
-  chart (bar, stacked bar, line, area, scatter and donut), images, and [Kinescript clips](docs/clips.md) with cue
-  chips that jump to a moment. See [tables and charts](docs/tables-and-charts.md).
+  chart (bar, stacked bar, line, area, scatter and donut), images you can crop, fit and focus, a picture behind a whole
+  slide, and [Kinescript clips](docs/clips.md) with cue
+  chips that jump to a moment. See [tables and charts](docs/tables-and-charts.md) and
+  [pictures in the editor](docs/editor.md#pictures).
 - **Style.** Two presets (Paper and Ink), seven palette colors and four font pairs, set for the whole deck, and a
   tone, size and alignment for each text. A color that would make text hard to read is refused. See
   [style](docs/style.md).
@@ -78,8 +80,8 @@ bundled demo, trimmed:
 ```
 fixtures/decks/demo/
   deck.json
-  scenes/opening.json  demand.json  trend.json  method.json
-  assets/method.svg  report.csv  quarters.csv
+  scenes/opening.json  demand.json  trend.json  field.json  shopfront.json  method.json  next.json
+  assets/method.svg  report.csv  quarters.csv  shopfront-photo-5a6b7ae8.jpg
 ```
 
 ```json

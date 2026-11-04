@@ -962,7 +962,7 @@ describe("the revision", () => {
   it("is the same as before brands for every deck without one", () => {
     // Computed by main before schema 0.4 (c530c7b). A change here means every saved base_rev goes stale.
     expect(revisionOf(demoDoc())).toBe("ec4e0cd5c59ef06a");
-    const demo = loadDoc(loadDir(brandDir.replace("v0-4-brand", "demo"))).doc as Doc;
+    const demo = loadDoc(loadDir(brandDir.replace("v0-4-brand", "demo-0-3"))).doc as Doc;
     expect(revisionOf(demo)).toBe("eb9d45889adffe19");
   });
 

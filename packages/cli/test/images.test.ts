@@ -28,7 +28,7 @@ import {
 } from "../src/images.ts";
 import { gif, jpeg, png, svg, webpExtended, webpLossless, webpLossy } from "./images-fixtures.ts";
 
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/demo-0-3", import.meta.url));
 const made: string[] = [];
 const temp = () => {
   const dir = mkdtempSync(join(tmpdir(), "depthcue-images-"));

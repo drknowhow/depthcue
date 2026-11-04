@@ -9,7 +9,7 @@ import { temporaryFolders } from "./brand-import-fixtures.ts";
 import { jpeg, png } from "./images-fixtures.ts";
 
 const make = temporaryFolders();
-const demo = fileURLToPath(new URL("../../../fixtures/decks/demo", import.meta.url));
+const demo = fileURLToPath(new URL("../../../fixtures/decks/demo-0-3", import.meta.url));
 
 async function cli(...args: string[]) {
   const lines: string[] = [];

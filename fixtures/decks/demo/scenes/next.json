@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "0.6",
+  "id": "next",
+  "title": "What to check next",
+  "layout": "text-media",
+  "lead": "human",
+  "blocks": [
+    {
+      "id": "next-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Check these before acting"
+    },
+    {
+      "id": "next-body",
+      "type": "text",
+      "role": "body",
+      "text": "- Does the gap hold for the next quarter?\n- Do returns change the shares once they are counted?\n- Which shops drive channel B's gain?"
+    },
+    {
+      "id": "next-mood",
+      "type": "image",
+      "asset": "assets/shopfront-photo-5a6b7ae8.jpg",
+      "decorative": true,
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 100,
+        "h": 30
+      }
+    }
+  ],
+  "reading": {
+    "text": "Three things to check before acting: whether the gap holds next quarter, whether returns change the shares, and which shops drive channel B's gain."
+  }
+}
