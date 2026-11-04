@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "0.6",
+  "id": "images-fixture",
+  "title": "Pictures: crop, fit, focus and backgrounds",
+  "language": "en",
+  "theme": "paper",
+  "scenes": [
+    "plain",
+    "crop",
+    "cover",
+    "cover-bottom",
+    "contain",
+    "slot",
+    "slot-contain",
+    "background",
+    "decorative"
+  ]
+}

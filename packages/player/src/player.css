@@ -253,6 +253,12 @@
     max-height: 62cqh;
   }
 
+  .dc-scene :is(.dc-pinned.dc-figure, .dc-slot > .dc-figure) .dc-crop {
+    flex: none;
+    max-height: 62cqh;
+    aspect-ratio: var(--a, 1);
+  }
+
   /* The slots follow one another here, as the pinned blocks do, and the type goes by the stage and not by a slot's height. */
   .dc-slot {
     position: static;
@@ -634,6 +640,71 @@ button.dc-link {
 
 .dc-figure figcaption {
   margin-top: 0.75em;
+}
+
+/*
+ * A picture with a fit, crop or focus (scene.ts `cropped`): a box clips a stage the size of the cropped part, and the
+ * whole file sits in the stage, scaled and shifted so the crop fills it. Contain fits the stage inside the box, cover
+ * fills the box with it and slides it to `--gx`/`--gy`. Container units, so any current browser draws it.
+ */
+.dc-crop {
+  display: block;
+  container-type: size;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-height: 62cqh;
+  aspect-ratio: var(--a, 1);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-surface);
+}
+
+.dc-crop-in {
+  --w: min(100cqw, 100cqh * var(--a, 1));
+  --fx: 50;
+  --fy: 50;
+  position: absolute;
+  overflow: hidden;
+  width: var(--w);
+  height: calc(var(--w) / var(--a, 1));
+  left: calc((100cqw - var(--w)) * var(--fx) / 100);
+  top: calc((100cqh - var(--w) / var(--a, 1)) * var(--fy) / 100);
+}
+
+.dc-crop-in[data-fit="cover"],
+.dc-slot[data-role="picture"] .dc-crop-in:not([data-fit]) {
+  --w: max(100cqw, 100cqh * var(--a, 1));
+  --fx: var(--gx, 50);
+  --fy: var(--gy, 50);
+}
+
+.dc-figure .dc-crop .dc-crop-in > img {
+  position: absolute;
+  width: calc(10000% / var(--cw));
+  height: calc(10000% / var(--ch));
+  max-width: none;
+  max-height: none;
+  left: calc(var(--cx) / var(--cw) * -100%);
+  top: calc(var(--cy) / var(--ch) * -100%);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  object-fit: fill;
+}
+
+.dc-slot > .dc-figure .dc-crop,
+.dc-pinned.dc-figure .dc-crop {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  aspect-ratio: auto;
+}
+
+.dc-slot[data-role="picture"] > .dc-figure .dc-crop {
+  border: 0;
+  border-radius: 0;
+  background: none;
 }
 
 .dc-placeholder {

@@ -130,10 +130,11 @@ function renderBlock(
       break;
     case "image": {
       const src = assetUrl(ctx.assetBase, block.asset);
+      const img = src && h("img", { src, alt: block.decorative ? "" : block.alt, decoding: "async" });
       node = h(
         "figure",
         { class: "dc-figure" },
-        src && h("img", { src, alt: block.decorative ? "" : block.alt, decoding: "async" }),
+        img && (block.fit || block.crop || block.focus ? cropped(img, block) : img),
         block.caption && h("figcaption", {}, block.caption),
       );
       break;
@@ -201,6 +202,7 @@ function ghost(node: HTMLElement): HTMLElement {
   for (const name of ["data-id", "data-gated", "data-revealed"]) copy.removeAttribute(name);
   copy.setAttribute("aria-hidden", "true");
   copy.setAttribute("inert", "");
+  for (const img of copy.querySelectorAll<HTMLImageElement>(".dc-crop img")) watchAspect(img);
   return copy;
 }
 
@@ -393,8 +395,12 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
 
   // The template's background: one of the slide's colors, or a brand image under a scrim of it. Text on a strong one
   // is reversed, in the scene's own colors, so every block and chart on it reads without a style of its own.
-  const background = template?.background;
-  const image = background?.image && brandUrl(ctx.assetBase, `brand/${background.image}`);
+  const own = scene.background;
+  const ownUrl = own && assetUrl(ctx.assetBase, own.asset);
+  const background = own ? { color: own.color ?? "bg", scrim: own.scrim } : template?.background;
+  const image = own
+    ? ownUrl
+    : template?.background?.image && brandUrl(ctx.assetBase, `brand/${template.background.image}`);
   const chrome = renderChrome(look, template, ctx);
 
   return h(
@@ -412,7 +418,7 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
       "aria-label": scene.title,
       tabindex: -1,
     },
-    image ? backdrop(image, background?.scrim ?? 0) : null,
+    image ? backdrop(image, background?.scrim ?? 0, own) : null,
     ...body,
     pinned.length > 0 && h("div", { class: "dc-pins" }, ...pinned),
     renderSources(scene, ctx),
@@ -421,10 +427,51 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
 }
 
 /** The picture behind a template's slide, with the scrim over it drawn by the stylesheet at `scrim` percent. */
-function backdrop(url: string, scrim: number): HTMLElement {
-  const node = h("div", { class: "dc-backdrop", "aria-hidden": "true", "--scrim": scrim });
+function backdrop(url: string, scrim: number, own?: Scene["background"]): HTMLElement {
+  // A scene's own picture that says something is an image to a screen reader (`role="img"` with its alt); every other
+  // backdrop is decoration.
+  const says = own && !own.decorative && own.alt;
+  const node = h("div", {
+    class: "dc-backdrop",
+    ...(says ? { role: "img", "aria-label": own.alt } : { "aria-hidden": "true" }),
+    "--scrim": scrim,
+  });
+  if (own?.focus) node.style.backgroundPosition = `${own.focus.x}% ${own.focus.y}%`;
   node.style.backgroundImage = `url("${url.replaceAll('"', "%22")}")`;
   return node;
+}
+
+/**
+ * An image with a `fit`, `crop` or `focus`, drawn without `object-view-box`: a clipping box holds a stage the size of
+ * the cropped part (contain or cover, set in the stylesheet from `--a`, the part's aspect ratio) and the whole picture
+ * sits in the stage, scaled and shifted so the crop fills it. `--a` needs the file's size, so it is set on load.
+ */
+function cropped(img: HTMLImageElement, block: Extract<Block, { type: "image" }>): HTMLElement {
+  const { x, y, w, h: ch } = block.crop ?? { x: 0, y: 0, w: 100, h: 100 };
+  const f = block.focus;
+  const box = h(
+    "span",
+    { class: "dc-crop", "--cx": x, "--cy": y, "--cw": w, "--ch": ch, "--gx": f?.x, "--gy": f?.y },
+    h("span", { class: "dc-crop-in", "data-fit": block.fit }, img),
+  );
+  watchAspect(img);
+  return box;
+}
+
+/** Sets `--a` on the clipping box around `img`, now and when the file's size is known: the crop's width over its height. */
+function watchAspect(img: HTMLImageElement): void {
+  const set = () => {
+    const box = img.closest<HTMLElement>(".dc-crop");
+    const part = (name: string) => Number(box?.style.getPropertyValue(name));
+    if (box && img.naturalWidth) {
+      box.style.setProperty(
+        "--a",
+        String((img.naturalWidth * part("--cw")) / (img.naturalHeight * part("--ch"))),
+      );
+    }
+  };
+  img.addEventListener("load", set);
+  set();
 }
 
 function gateAttributes(id: string, gated: ReadonlySet<string>) {

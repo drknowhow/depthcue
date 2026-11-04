@@ -66,7 +66,17 @@ export interface LayoutMeasure {
   /** Pinned blocks whose content is larger than their frame, by how many pixels. */
   spills: Array<{ id: string; x: number; y: number }>;
   text: TextSample[];
-  images: Array<{ id: string; src: string; ok: boolean }>;
+  images: Array<{
+    id: string;
+    src: string;
+    ok: boolean;
+    /**
+     * For a raster picture of a block that is on the page: the pixels of its file that show (the file's size times the
+     * crop) and the size it is drawn at, on a slide 1920 px wide. Left out for a vector picture, the brand's logo and a
+     * picture that is not shown.
+     */
+    scale?: { shownW: number; shownH: number; drawnW: number; drawnH: number };
+  }>;
   words: number;
   /** Template slots whose blocks are bigger than the slot, by how many pixels, and the block that runs out of it. */
   slots?: Array<{ id: string; template: string; block: string; x: number; y: number }>;
@@ -406,11 +416,36 @@ export async function measureLayout(): Promise<LayoutMeasure> {
     overlaps,
     spills,
     text,
-    images: images.map((image) => ({
-      id: owner(image),
-      src: image.getAttribute("src") ?? "",
-      ok: image.complete && image.naturalWidth > 0,
-    })),
+    images: images.map((image) => {
+      const src = image.getAttribute("src") ?? "";
+      const id = owner(image);
+      const ok = image.complete && image.naturalWidth > 0;
+      if (!ok || id === "" || /\.svg$/i.test(src) || !visible(image)) return { id, src, ok };
+      // The part of the file that shows, and the size that part is drawn at. A cropped picture is drawn in a stage the
+      // size of the crop, so the stage is the measure; a plain one is its box, less the room that `object-fit` leaves.
+      const stage = image.closest<HTMLElement>(".dc-crop-in");
+      const crop = stage?.parentElement;
+      const part = (name: string) => Number(crop?.style.getPropertyValue(name) || 100) / 100;
+      const shownW = image.naturalWidth * part("--cw");
+      const shownH = image.naturalHeight * part("--ch");
+      const box = (stage ?? image).getBoundingClientRect();
+      const fill = getComputedStyle(image).objectFit === "cover" ? Math.max : Math.min;
+      const k = fill(box.width / shownW, box.height / shownH);
+      const drawnW = stage ? box.width : shownW * k;
+      const drawnH = stage ? box.height : shownH * k;
+      const to1920 = 1920 / view.clientWidth;
+      return {
+        id,
+        src,
+        ok,
+        scale: {
+          shownW: Math.round(shownW),
+          shownH: Math.round(shownH),
+          drawnW: Math.round(drawnW * to1920),
+          drawnH: Math.round(drawnH * to1920),
+        },
+      };
+    }),
     words,
     ...(slots.length > 0 ? { slots } : {}),
     ...(chrome.length > 0 ? { chrome } : {}),
@@ -492,6 +527,9 @@ export function contrastRatio(fg: Rgba, bg: Rgba): number {
   const [light, dark] = [luminance(shown), luminance(bg)].sort((a, b) => b - a) as [number, number];
   return (light + 0.05) / (dark + 0.05);
 }
+
+/** How many times wider or taller than the pixels of its file a picture may be drawn, on a 1920 px slide, before it looks soft. */
+export const LOW_RESOLUTION_RATIO = 1.5;
 
 /** WCAG 2.2 AA: 3 for large text (24 px, or 18.66 px bold), 4.5 for the rest. */
 export const requiredContrast = (fontPx: number, weight: number): number =>
@@ -656,8 +694,10 @@ export function layoutDiagnostics(
     error(
       "background-low-contrast",
       id,
-      `Text in ${id ? `"${id}"` : "the scene"} has a contrast of ${line.ratio.toFixed(2)}:1 over the template's picture where the picture is weakest; WCAG AA needs ${need}:1: "${line.text}".`,
-      "Raise the template's scrim, pick a calmer or darker picture, or move the text where the picture is plain. The picture is measured as drawn, so the next render shows the change.",
+      `Text in ${id ? `"${id}"` : "the scene"} has a contrast of ${line.ratio.toFixed(2)}:1 over the ${scene.background ? "scene's background picture" : "template's picture"} where the picture is weakest; WCAG AA needs ${need}:1: "${line.text}".`,
+      scene.background
+        ? `Raise the scene's background scrim (scene.set { background: { asset: "${scene.background.asset}", scrim: ${Math.min(100, scene.background.scrim + 30)} } }), pick a calmer or darker picture, or move the text where the picture is plain. The picture is measured as drawn, so the next render shows the change.`
+        : "Raise the template's scrim, pick a calmer or darker picture, or move the text where the picture is plain. The picture is measured as drawn, so the next render shows the change.",
     );
   }
 
@@ -696,6 +736,19 @@ export function layoutDiagnostics(
   }
 
   for (const image of measure.images) {
+    const scale = image.scale;
+    if (scale && scale.shownW > 0 && scale.shownH > 0) {
+      const times = Math.max(scale.drawnW / scale.shownW, scale.drawnH / scale.shownH);
+      if (times > LOW_RESOLUTION_RATIO) {
+        report(
+          "warning",
+          "image-low-resolution",
+          image.id,
+          `"${image.id}" is drawn ${scale.drawnW}x${scale.drawnH}px on a 1920px-wide slide from ${scale.shownW}x${scale.shownH}px of "${image.src}", ${times.toFixed(1)} times its own pixels, so it looks soft.`,
+          `Use a picture with at least ${Math.ceil(scale.drawnW / LOW_RESOLUTION_RATIO)}x${Math.ceil(scale.drawnH / LOW_RESOLUTION_RATIO)}px in the part that shows, make the block smaller, or crop less.`,
+        );
+      }
+    }
     if (!image.ok) {
       error(
         "image-failed",

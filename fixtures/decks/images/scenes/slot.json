@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "0.6",
+  "id": "slot",
+  "title": "Slot",
+  "blocks": [
+    {
+      "id": "slot-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "A picture slot",
+      "slot": "title"
+    },
+    {
+      "id": "slot-image",
+      "type": "image",
+      "asset": "assets/grid.png",
+      "alt": "A grid of nine colored squares",
+      "slot": "picture"
+    }
+  ],
+  "template": "full-image"
+}

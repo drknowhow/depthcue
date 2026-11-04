@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "0.6",
+  "id": "slot-contain",
+  "title": "Slot contain",
+  "blocks": [
+    {
+      "id": "slot-contain-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "A picture slot",
+      "slot": "title"
+    },
+    {
+      "id": "slot-contain-image",
+      "type": "image",
+      "asset": "assets/grid.png",
+      "alt": "A grid of nine colored squares",
+      "slot": "picture",
+      "fit": "contain"
+    }
+  ],
+  "template": "full-image"
+}

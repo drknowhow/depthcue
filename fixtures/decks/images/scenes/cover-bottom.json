@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "0.6",
+  "id": "cover-bottom",
+  "title": "Cover bottom",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "cover-bottom-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Cover, focus at the bottom"
+    },
+    {
+      "id": "cover-bottom-image",
+      "type": "image",
+      "asset": "assets/grid.png",
+      "alt": "A grid of nine colored squares",
+      "frame": {
+        "x": 5,
+        "y": 35,
+        "w": 40,
+        "h": 20
+      },
+      "fit": "cover",
+      "focus": {
+        "x": 50,
+        "y": 100
+      }
+    }
+  ]
+}

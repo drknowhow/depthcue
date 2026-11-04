@@ -43,7 +43,7 @@ describe("renderScene", () => {
     expect(image?.getAttribute("alt")).toBeTruthy();
   });
 
-  it("gives a decorative image an empty alt, on the slide and in the reading version, alt text or not", () => {
+  it("gives a decorative image an empty alt on the slide, and leaves it out of the reading version, alt text or not", () => {
     for (const alt of [{}, { alt: "Waves" }]) {
       const scene = sceneWith({
         schemaVersion: "0.6",
@@ -54,7 +54,7 @@ describe("renderScene", () => {
         ],
       });
       expect(renderScene(scene, ctx).querySelector("img")?.getAttribute("alt")).toBe("");
-      expect(renderReading(deck, [scene], ctx).querySelector("img")?.getAttribute("alt")).toBe("");
+      expect(renderReading(deck, [scene], ctx).querySelector("img")).toBeNull();
     }
   });
 

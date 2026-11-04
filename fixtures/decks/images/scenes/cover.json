@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "0.6",
+  "id": "cover",
+  "title": "Cover",
+  "layout": "text-media",
+  "blocks": [
+    {
+      "id": "cover-heading",
+      "type": "text",
+      "role": "heading",
+      "text": "Cover, focus at the top"
+    },
+    {
+      "id": "cover-image",
+      "type": "image",
+      "asset": "assets/grid.png",
+      "alt": "A grid of nine colored squares",
+      "frame": {
+        "x": 5,
+        "y": 35,
+        "w": 40,
+        "h": 20
+      },
+      "fit": "cover",
+      "focus": {
+        "x": 50,
+        "y": 0
+      }
+    }
+  ]
+}

@@ -828,6 +828,9 @@ const brand = (() => {
 const template = (slots: Array<{ id: string; role: string }>) =>
   ({ schemaVersion: "0.4", id: "t", name: "T", slots }) as unknown as Template;
 
+const DECORATIVE =
+  '<a:extLst><a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"><adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/></a:ext></a:extLst>';
+
 describe("the placeholder a slot becomes", () => {
   it("is typed by the slot's role", () => {
     const chartAndNote = brand.templates?.["chart-and-note"] as Template;
@@ -953,10 +956,20 @@ describe("the placeholder a slot becomes", () => {
     const xml =
       '<p:cNvPr id="3" name="sea" descr="preencoded.png"><a:hlinkClick/></p:cNvPr><p:cNvPr id="4" name="photo" descr="preencoded.png">';
     const emptied = describeShape(xml, "sea", "");
+    // The empty description, and PowerPoint's decorative mark after the link, in the same element.
     expect(emptied).toBe(
-      '<p:cNvPr id="3" name="sea" descr=""><a:hlinkClick/></p:cNvPr><p:cNvPr id="4" name="photo" descr="preencoded.png">',
+      `<p:cNvPr id="3" name="sea" descr=""><a:hlinkClick/>${DECORATIVE}</p:cNvPr><p:cNvPr id="4" name="photo" descr="preencoded.png">`,
     );
     expect(describeShape(emptied, "sea", "")).toBe(emptied);
+  });
+
+  it("marks a picture with no link or other child as decorative too, and a self-closed one", () => {
+    expect(describeShape('<p:cNvPr id="3" name="sea" descr="x"/>', "sea", "")).toBe(
+      `<p:cNvPr id="3" name="sea" descr="">${DECORATIVE}</p:cNvPr>`,
+    );
+    expect(describeShape('<p:cNvPr id="3" name="sea">  </p:cNvPr>', "sea", "")).toBe(
+      `<p:cNvPr id="3" name="sea" descr="">  ${DECORATIVE}</p:cNvPr>`,
+    );
   });
 });
 
