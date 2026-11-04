@@ -36,6 +36,10 @@ export interface ShortcutActions {
   duplicate(again: boolean): boolean;
   /** Opens the right-click menu on what the keyboard is on: the chosen block or a scene of the strip. False when there is none. */
   menu(): boolean;
+  /** Goes to the scene before or after the one on show. */
+  scene(direction: 1 | -1): void;
+  /** Zooms the slide one step in or out, or back to the size that fits. */
+  zoom(change: "in" | "out" | "fit"): void;
 }
 
 export interface Shortcut {
@@ -65,6 +69,10 @@ const letter = (key: string) => (event: KeyboardEvent) =>
   event.key.toLowerCase() === key &&
   !(event.ctrlKey || event.metaKey || event.altKey || event.repeat) &&
   !typesInto(event.target);
+
+/** A key with no modifier, which in a field is a character like any other. Held down it repeats. */
+const plain = (event: KeyboardEvent, ...keys: string[]) =>
+  keys.includes(event.key) && !(event.ctrlKey || event.metaKey || event.altKey) && !typesInto(event.target);
 
 /** The table of shortcuts. The handler and the sheet both read it, so a key cannot be listed without being handled. */
 export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
@@ -124,6 +132,41 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
       does: "Save now",
       keys: [["Mod", "S"]],
       handle: (event) => when(mod(event) && event.key.toLowerCase() === "s", () => actions.save()),
+    },
+    {
+      id: "previous-scene",
+      group: "Moving around",
+      does: "Go to the previous slide",
+      keys: [["["]],
+      handle: (event) => when(plain(event, "["), () => actions.scene(-1)),
+    },
+    {
+      id: "next-scene",
+      group: "Moving around",
+      does: "Go to the next slide",
+      keys: [["]"]],
+      handle: (event) => when(plain(event, "]"), () => actions.scene(1)),
+    },
+    {
+      id: "zoom-in",
+      group: "Moving around",
+      does: "Zoom in on the slide",
+      keys: [["+"], ["Ctrl", "Scroll up"]],
+      handle: (event) => when(plain(event, "+", "="), () => actions.zoom("in")),
+    },
+    {
+      id: "zoom-out",
+      group: "Moving around",
+      does: "Zoom out",
+      keys: [["-"], ["Ctrl", "Scroll down"]],
+      handle: (event) => when(plain(event, "-", "_"), () => actions.zoom("out")),
+    },
+    {
+      id: "zoom-fit",
+      group: "Moving around",
+      does: "Fit the slide to the window",
+      keys: [["0"]],
+      handle: (event) => when(plain(event, "0"), () => actions.zoom("fit")),
     },
     {
       id: "palette",

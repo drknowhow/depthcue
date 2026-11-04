@@ -39,6 +39,9 @@ const press = (node: EventTarget, key: string, init: KeyboardEventInit = {}) => 
 const bar = () => host.querySelector<HTMLElement>(".ed-quick") as HTMLElement;
 const quick = (name: string) =>
   bar().querySelector<HTMLButtonElement>(`[data-quick='${name}']`) as HTMLElement;
+const zoomShown = () => host.querySelector("[data-view='fit']")?.textContent;
+const canvasZoom = () =>
+  host.querySelector<HTMLElement>(".ed-canvas-host")?.style.getPropertyValue("--ed-zoom");
 const sheet = () => host.querySelector<HTMLElement>(".ed-sheet") as HTMLElement;
 const card = () => sheet().querySelector<HTMLElement>("[role='dialog']") as HTMLElement;
 const closeButton = () =>
@@ -305,6 +308,37 @@ const CASES: Record<string, () => void | Promise<void>> = {
     expect(host.querySelector<HTMLElement>(".ed-palette")?.hidden).toBe(true);
     expect(host.querySelector<HTMLFormElement>(".ed-fmt-link")?.hidden).toBe(false);
   },
+  "previous-scene"() {
+    editor.select("demand");
+    const before = store.session.doc.deck.scenes.indexOf("demand");
+    expect(press(document.body, "[").defaultPrevented).toBe(true);
+    expect(editor.sceneId).toBe(store.session.doc.deck.scenes[before - 1]);
+    // A key typed into a text is a character.
+    const field = document.createElement("input");
+    host.append(field);
+    expect(press(field, "[").defaultPrevented).toBe(false);
+  },
+  "next-scene"() {
+    editor.select("opening");
+    expect(press(document.body, "]").defaultPrevented).toBe(true);
+    expect(editor.sceneId).toBe(store.session.doc.deck.scenes[1]);
+  },
+  "zoom-in"() {
+    expect(press(document.body, "+").defaultPrevented).toBe(true);
+    expect(zoomShown()).toBe("125%");
+    expect(canvasZoom()).toBe("1.25");
+  },
+  "zoom-out"() {
+    expect(press(document.body, "-").defaultPrevented).toBe(true);
+    expect(zoomShown()).toBe("75%");
+  },
+  "zoom-fit"() {
+    press(document.body, "+");
+    press(document.body, "+");
+    expect(zoomShown()).toBe("150%");
+    expect(press(document.body, "0").defaultPrevented).toBe(true);
+    expect(zoomShown()).toBe("100%");
+  },
   "bar-value"() {
     editor.select("demand");
     const first = host.querySelector<HTMLElement>(".dc-bar") as HTMLElement;
@@ -337,6 +371,8 @@ describe("the table of shortcuts", () => {
       paste: () => false,
       duplicate: () => false,
       menu: () => false,
+      scene() {},
+      zoom() {},
     }).map((entry) => entry.id);
     expect([...drawn].sort()).toEqual([...table].sort());
     expect([...table].sort()).toEqual(Object.keys(CASES).sort());
@@ -388,6 +424,7 @@ describe("the shortcut sheet", () => {
       "Add to the slide",
       "Comments",
       "Everywhere",
+      "Moving around",
       "The chosen block",
       "With a block focused",
       "Typing in a text",
