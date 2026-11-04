@@ -22,7 +22,8 @@
         "0.2",
         "0.3",
         "0.4",
-        "0.5"
+        "0.5",
+        "0.6"
       ]
     },
     "id": {
@@ -44,6 +45,81 @@
     "template": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{1,63}$"
+    },
+    "background": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset",
+        "scrim"
+      ],
+      "properties": {
+        "asset": {
+          "type": "string",
+          "pattern": "^assets/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "maxLength": 200
+        },
+        "scrim": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "color": {
+          "enum": [
+            "bg",
+            "surface",
+            "text",
+            "action",
+            "evidence"
+          ]
+        },
+        "focus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        },
+        "decorative": {
+          "type": "boolean"
+        },
+        "alt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250
+        }
+      },
+      "if": {
+        "properties": {
+          "decorative": {
+            "const": true
+          }
+        },
+        "required": [
+          "decorative"
+        ]
+      },
+      "else": {
+        "properties": {
+          "alt": {}
+        },
+        "required": [
+          "alt"
+        ]
+      }
     },
     "lead": {
       "enum": [
@@ -267,8 +343,7 @@
             "required": [
               "id",
               "type",
-              "asset",
-              "alt"
+              "asset"
             ],
             "properties": {
               "id": {
@@ -288,10 +363,71 @@
                 "minLength": 1,
                 "maxLength": 250
               },
+              "decorative": {
+                "type": "boolean"
+              },
               "caption": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 160
+              },
+              "fit": {
+                "enum": [
+                  "contain",
+                  "cover"
+                ]
+              },
+              "crop": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "w": {
+                    "type": "number",
+                    "minimum": 5,
+                    "maximum": 100
+                  },
+                  "h": {
+                    "type": "number",
+                    "minimum": 5,
+                    "maximum": 100
+                  }
+                }
+              },
+              "focus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                }
               },
               "sourceIds": {
                 "type": "array",
@@ -346,6 +482,24 @@
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
+            },
+            "if": {
+              "properties": {
+                "decorative": {
+                  "const": true
+                }
+              },
+              "required": [
+                "decorative"
+              ]
+            },
+            "else": {
+              "properties": {
+                "alt": {}
+              },
+              "required": [
+                "alt"
+              ]
             }
           },
           {

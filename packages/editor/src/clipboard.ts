@@ -61,7 +61,7 @@ export function wordsOf(block: Block, language?: string): string {
         .join("\n");
     case "image":
     case "clip":
-      return block.alt;
+      return block.alt ?? "";
     default:
       return "";
   }

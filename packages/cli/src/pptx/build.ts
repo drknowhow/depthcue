@@ -1041,9 +1041,11 @@ function item(page: Page, entry: Item) {
           block,
           block.asset,
           entry.picture,
-          block.alt,
+          block.decorative ? "" : (block.alt ?? ""),
           block.link === undefined ? undefined : linkFor(page, block.link),
         );
+        // pptxgenjs writes the file's name for an empty alt text; an empty entry here empties it again.
+        if (block.decorative) page.alts[block.id] = "";
         if (block.caption && entry.caption) {
           addText(
             page,

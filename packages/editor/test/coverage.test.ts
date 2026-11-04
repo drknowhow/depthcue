@@ -762,11 +762,16 @@ const WAYS: Record<string, Entry> = {
 
 /**
  * Properties a schema added that the editor cannot edit yet, by the step that adds their controls: for schema 0.4, the
- * steps of docs/BRANDS_AND_PPTX.md. The step that adds a control takes its prefix out of this list and gives each
+ * steps of docs/BRANDS_AND_PPTX.md, and for 0.6, those of docs/IMAGES.md. The step that adds a control takes its prefix out of this list and gives each
  * property a way in WAYS. A block type added later fails "has a way" above until it is listed here or given a way.
  */
 const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
   ["scene.template", "BRANDS_AND_PPTX step 7, the template picker and Change template"],
+  ["scene.background", "IMAGES step 4, the Background section of the scene's Layout popover"],
+  ["scene.blocks<image>.fit", "IMAGES step 4, Fit or Fill on the image toolbar"],
+  ["scene.blocks<image>.crop", "IMAGES step 4, crop mode"],
+  ["scene.blocks<image>.focus", "IMAGES step 4, crop mode"],
+  ["scene.blocks<image>.decorative", "IMAGES step 4, the Decorative checkbox in the Edit popover"],
   ...["text", "image", "bar-chart", "clip", "table", "chart"].flatMap(
     (type): Array<[string, string]> => [
       [`scene.blocks<${type}>.slot`, "BRANDS_AND_PPTX step 7, Change template"],

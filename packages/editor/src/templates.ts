@@ -176,7 +176,7 @@ export function blockLabel(block: Block, scene?: Pick<Scene, "schemaVersion">): 
     case "text":
       return scene ? shownText(scene, block) : block.text;
     case "image":
-      return block.alt;
+      return block.alt ?? placeholderAlt(block.asset);
     case "clip":
       return block.alt;
     case "bar-chart":

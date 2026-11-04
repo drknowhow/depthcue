@@ -13,9 +13,12 @@ export const placeholderAlt = (path: string): string =>
     .replace(/[-_]+/g, " ")
     .trim() || "untitled";
 
-/** True for an image or clip whose alt text is still the name of its file, so nobody has described it yet. */
+/**
+ * True for an image or clip whose alt text is still the name of its file, so nobody has described it yet. A decorative
+ * picture needs no description, so its alt text is never a placeholder.
+ */
 export function hasPlaceholderAlt(block: Block): boolean {
-  if (block.type === "image") return block.alt === placeholderAlt(block.asset);
+  if (block.type === "image") return block.decorative !== true && block.alt === placeholderAlt(block.asset);
   if (block.type === "clip") return block.alt === placeholderAlt(block.source);
   return false;
 }

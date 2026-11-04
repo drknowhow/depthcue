@@ -133,7 +133,7 @@ function renderBlock(
       node = h(
         "figure",
         { class: "dc-figure" },
-        src && h("img", { src, alt: block.alt, decoding: "async" }),
+        src && h("img", { src, alt: block.decorative ? "" : block.alt, decoding: "async" }),
         block.caption && h("figcaption", {}, block.caption),
       );
       break;
