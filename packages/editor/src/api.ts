@@ -107,12 +107,27 @@ export interface SaveOptions {
   keepAgent?: readonly string[];
 }
 
+/** An image in the deck's assets folder as the server lists it, with where the saved deck names it. */
+export interface ListedAsset {
+  asset: string;
+  kind: string;
+  bytes: number;
+  width?: number;
+  height?: number;
+  /** Where the saved deck names the file; `scene` is null for the deck itself, such as a link. */
+  usedBy: Array<{ scene: string | null; path: string }>;
+}
+
 /** What the editor needs from the server. A test can stand in for it. */
 export interface Api {
   loadDeck(): Promise<DeckPayload>;
   save(files: Record<string, string>, baseRev: string, options?: SaveOptions): Promise<SaveResult>;
   /** Adds an image and returns its deck path, such as "assets/photo-1a2b3c4d.png". */
   uploadAsset(file: Blob, name: string): Promise<string>;
+  /** Every image in the deck's assets folder. Rejects with a message the person can read. */
+  listAssets(): Promise<ListedAsset[]>;
+  /** Deletes an image the saved deck does not name. Rejects with the server's message, such as when it is in use. */
+  removeAsset(asset: string): Promise<void>;
   /**
    * Sends a file to the brand folder (`?kind=…&name=…` and the file) or takes one out (`/remove` and its JSON). Never
    * rejects: a refusal, or a server that cannot be reached, is `ok: false` with the reason.
@@ -206,6 +221,18 @@ export function createApi(token: string, send: typeof fetch = (...args) => fetch
       const answer = await body(response);
       if (!response.ok || typeof answer.asset !== "string") throw new Error(messageOf(answer, response));
       return answer.asset;
+    },
+
+    async listAssets() {
+      const response = await call("assets");
+      const answer = await body(response);
+      if (!response.ok || !Array.isArray(answer.assets)) throw new Error(messageOf(answer, response));
+      return answer.assets as ListedAsset[];
+    },
+
+    async removeAsset(asset) {
+      const response = await call(`asset/remove?asset=${encodeURIComponent(asset)}`, { method: "POST" });
+      if (!response.ok) throw new Error(messageOf(await body(response), response));
     },
 
     async brandFile(path, sent) {

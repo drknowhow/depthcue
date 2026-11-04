@@ -108,6 +108,8 @@ export interface ToolbarHooks {
   focusBlock(id: string): void;
   /** Opens where the scene's sources are added and edited. */
   openSources(): void;
+  /** Opens the image library to choose a file for an image. `back` puts the keyboard where it was. */
+  library?(choose: (asset: string) => void, back: () => void): void;
   /** The cues of the clips, which are kept in files beside the videos. */
   cues: CueBook;
   /** Where the editor of a clip's cues and the Style menu are fetched from, the first time they are wanted. */
@@ -201,6 +203,14 @@ export function createToolbar(
     problem: hooks.problem,
     close: () => closePop(),
     openSources: hooks.openSources,
+    // The popover is put away while the library is open, and the keyboard goes back to its chip when it is shut.
+    ...(hooks.library && {
+      library(choose) {
+        const chip = open;
+        closePop();
+        hooks.library?.(choose, () => chip?.button.focus());
+      },
+    }),
   });
 
   /** The video of a clip is on the slide only while the clip is drawn, so it is looked for each time it is needed. */

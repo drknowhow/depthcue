@@ -43,6 +43,8 @@ export interface CanvasHooks {
   changed?(): void;
   /** A picture file was dropped on an image, or pasted while the image had the keyboard: use it in its place. */
   replaceImage?(id: string, file: File): void;
+  /** Several picture files were dropped on an image, or pasted while it had the keyboard: add one image block each. */
+  addImages?(files: File[]): void;
   /** An arrow key was pressed on a pinned block: move it by `dx` and `dy` percent of the slide. */
   nudge?(id: string, dx: number, dy: number): void;
   /** The cues of the clips. A clip that has some gets a row of places to jump to under it. */
@@ -439,8 +441,13 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
 
   /** An image takes a picture dropped on it or pasted into it. A dropped file that is not a picture is told so. */
   function wireDrop(node: HTMLElement, id: string) {
-    const pictureIn = (files: FileList | null | undefined) =>
-      [...(files ?? [])].find((file) => file.type.startsWith("image/") || IMAGE_FILE.test(file.name));
+    const picturesIn = (files: FileList | null | undefined) =>
+      [...(files ?? [])].filter((file) => file.type.startsWith("image/") || IMAGE_FILE.test(file.name));
+    // One picture takes the place of the image; several are each a new image, since they cannot all be this one.
+    const take = (files: File[]) => {
+      if (files.length > 1 && hooks.addImages) hooks.addImages(files);
+      else hooks.replaceImage?.(id, files[0] as File);
+    };
     // dragenter and dragleave fire again for every child the pointer crosses, so they are counted.
     let depth = 0;
     const carriesFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
@@ -466,15 +473,15 @@ export function createCanvas(session: Session, hooks: CanvasHooks): Canvas {
       event.preventDefault();
       depth = 0;
       node.removeAttribute("data-drop");
-      const file = pictureIn(event.dataTransfer?.files);
-      if (file) hooks.replaceImage?.(id, file);
+      const pictures = picturesIn(event.dataTransfer?.files);
+      if (pictures.length > 0) take(pictures);
       else hooks.hint("That is not a picture file. Use PNG, JPEG, GIF, WebP or SVG.", true);
     });
     node.addEventListener("paste", (event) => {
-      const file = pictureIn(event.clipboardData?.files);
-      if (!file) return;
+      const pictures = picturesIn(event.clipboardData?.files);
+      if (pictures.length === 0) return;
       event.preventDefault();
-      hooks.replaceImage?.(id, file);
+      take(pictures);
     });
   }
 
