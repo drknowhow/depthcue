@@ -24,7 +24,7 @@ import {
 } from "@depthcue/core";
 import { asciiLower, cssUrls, MAX_STYLE_LENGTH, svgProblem } from "../brand-import/svg.ts";
 import { parseXmlCounted, XmlError, type XmlNode, XmlTooLarge } from "../brand-import/xml.ts";
-import { MAX_ASSET_BYTES, sniffImage } from "../edit-api.ts";
+import { MAX_ASSET_BYTES, sniffImage } from "../images.ts";
 import { fileHash, isNameableBrandFile, loadDeckDir } from "../loader.ts";
 import { FONT_LIMITS, FontError, factsOf, fontKind, unpackFont } from "../pptx/sfnt.ts";
 import { recordAgentWrite, recordPersonWrite } from "../review-file.ts";
