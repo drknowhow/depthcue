@@ -7,10 +7,12 @@ import {
   type ReviewFailure,
   revertChanges,
   reviewChanges,
+  reviewDrafts,
   reviewRevision,
   revisionOf,
   startReview,
 } from "@depthcue/core";
+import { appendAudit } from "./audit-file.ts";
 import { openDeck } from "./deck-api.ts";
 import { loadReviewDir, saveReviewDir } from "./review-file.ts";
 import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
@@ -169,6 +171,14 @@ export function acceptInFolder(folder: string, ids: readonly string[] | "all"): 
     if (reviewRevision(result.review) !== reviewRevision(read.review)) {
       saveReviewDir(folder, read.review, result.review);
     }
+    const taken = new Set(result.accepted);
+    appendAudit(
+      folder,
+      reviewDrafts(
+        "accept",
+        reviewChanges(read.review, read.doc).filter((change) => taken.has(change.id)),
+      ),
+    );
     return {
       ok: true,
       accepted: result.accepted,
@@ -221,6 +231,14 @@ export function revertInFolder(folder: string, ids: readonly string[] | "all"): 
     } catch {
       // The deck is back as it was. The review only forgets which changes were the agent's, and does so at the next edit.
     }
+    const undone = new Set(result.reverted);
+    appendAudit(
+      folder,
+      reviewDrafts(
+        "revert",
+        reviewChanges(read.review, read.doc).filter((change) => undone.has(change.id)),
+      ),
+    );
   }
   return {
     ok: true,

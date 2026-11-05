@@ -1,6 +1,8 @@
 import {
+  type AuditBy,
   type Comment,
   type CommentsFile,
+  commentDrafts,
   commentsRevision,
   commentWarnings,
   type Diagnostic,
@@ -9,6 +11,7 @@ import {
   isTask,
   openComments,
 } from "@depthcue/core";
+import { appendAudit } from "./audit-file.ts";
 import { applyCommentsDir, loadCommentsDir } from "./comments-file.ts";
 import { openDeck } from "./deck-api.ts";
 import { ChangedOnDiskError } from "./save.ts";
@@ -130,13 +133,15 @@ const HINTS = {
 
 /**
  * Applies comment operations to the comments beside a deck folder, all or none, against the revision they were read
- * at. The deck is read to check that a new comment points at a block it has, and is never written.
+ * at. The deck is read to check that a new comment points at a block it has, and is never written. `by` signs the
+ * audit entries for operations that name no author (resolve, reopen, delete): the agent unless the editor says so.
  */
 export function applyCommentsToFolder(
   folder: string,
   ops: unknown,
   baseRev: string,
   now?: () => string,
+  by: AuditBy = "agent",
 ): CommentsOutcome {
   const read = readFolderComments(folder);
   if (!read.ok) return { ...read, hint: HINTS[read.code] };
@@ -154,6 +159,8 @@ export function applyCommentsToFolder(
             : HINTS[result.code],
       };
     }
+    if (result.rev !== result.prevRev)
+      appendAudit(folder, commentDrafts(ops, read.file, result.file, by), now);
     return {
       ok: true,
       prevRev: result.prevRev,

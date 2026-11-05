@@ -9,6 +9,7 @@ import {
   commentsRevision,
   cueMapPath,
   type Diagnostic,
+  editDrafts,
   loadDoc,
   type Review,
   readCueMap,
@@ -16,6 +17,7 @@ import {
   reviewRevision,
   revisionOf,
 } from "@depthcue/core";
+import { appendAudit } from "./audit-file.ts";
 import {
   addBrandFile,
   brandFileBody,
@@ -156,6 +158,7 @@ async function save(request: IncomingMessage, response: ServerResponse, ctx: Edi
     // What the person changed is theirs: it goes into the reviewed deck, so it is never listed as the agent's. The
     // editor names the changes a person reverted and then undid, which come back as the agent's.
     recordPersonWrite(ctx.folder, current.doc, next.doc, keptAgent(body.keepAgent));
+    appendAudit(ctx.folder, editDrafts("you", current.doc, next.doc));
     return send(response, 200, { rev: revisionOf(next.doc), written });
   } catch (error) {
     if (error instanceof ChangedOnDiskError) {
@@ -498,7 +501,7 @@ async function applyComments(request: IncomingMessage, response: ServerResponse,
       message: "Send { baseRev: string, ops: CommentOp[] }.",
     });
   }
-  const outcome = applyCommentsToFolder(ctx.folder, body.ops, body.baseRev);
+  const outcome = applyCommentsToFolder(ctx.folder, body.ops, body.baseRev, undefined, "you");
   if (outcome.ok) {
     const fresh = readFolderComments(ctx.folder);
     if (!fresh.ok)

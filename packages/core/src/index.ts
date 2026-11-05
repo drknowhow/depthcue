@@ -18,6 +18,24 @@ export type {
 export { applyOps, BRAND_KEYS } from "./apply.ts";
 export type { AssetRef } from "./assets.ts";
 export { assetRefs, assetsOf } from "./assets.ts";
+export type {
+  AuditBy,
+  AuditDraft,
+  AuditEntry,
+  AuditKind,
+  AuditQuery,
+  ReadAudit,
+} from "./audit.ts";
+export {
+  AUDIT_FILE,
+  AUDIT_WRITE_MAX,
+  auditLine,
+  commentDrafts,
+  editDrafts,
+  filterAudit,
+  readAudit,
+  reviewDrafts,
+} from "./audit.ts";
 export type { BackgroundColor, BrandPart, SceneKit } from "./brand.ts";
 export {
   BRAND_DIR,
