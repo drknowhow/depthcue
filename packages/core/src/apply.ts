@@ -33,6 +33,7 @@ export type SceneChanges = Nullable<
     | "reading"
     | "steps"
     | "notes"
+    | "voiceover"
   >
 >;
 /** What `brand.set` may write. The id is given once, when the brand is made, and never changes. */
@@ -145,6 +146,7 @@ export const SCENE_KEYS = [
   "reading",
   "steps",
   "notes",
+  "voiceover",
 ] as const;
 
 const REDIRECTS: Record<string, string> = {
