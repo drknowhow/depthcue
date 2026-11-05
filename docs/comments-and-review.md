@@ -12,14 +12,16 @@ leaves them out, and the player and presenter view never load them.
 ### Making one
 
 Press the Comment button in the quick bar under the slide, or press `M`. The next press on a block starts a comment
-at the spot you pressed, marked by a dashed pin. Type the note and choose:
+at the spot you pressed, marked by a dashed pin. Drag instead of pressing to mark an area of the block: a dashed
+outline shows what you covered, and the pin sits at its top left. A drag that moves under 8 pixels is a press. Type the note and choose:
 
 - Comment, which saves it.
 - Ask the agent, which saves it as a request for the agent to act on. This is the only way to ask the agent
   something. A later reply never turns a comment into a request.
 
 The pin sits at a spot on the block, as a fraction of the block, so it follows the block when you move, resize or pin
-it. `Esc` closes the box and gives the keyboard back to the pin.
+it, and so does an area, which is kept as the same kind of fractions (`x`, `y`, `w`, `h`). An agent reads the area in
+the comment's `anchor`, and can mark one the same way. `Esc` closes the box and gives the keyboard back to the pin.
 
 ### Reading and answering
 

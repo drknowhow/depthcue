@@ -317,6 +317,14 @@ const COMMENT_WAYS: Record<string, Entry> = {
     where: "Comment tool: the point of the block that is pressed",
     reach: pressing,
   },
+  "comments.comments[].anchor.w": {
+    where: "Comment tool: the width of the area dragged over a block",
+    reach: pressing,
+  },
+  "comments.comments[].anchor.h": {
+    where: "Comment tool: the height of the area dragged over a block",
+    reach: pressing,
+  },
   "comments.comments[].thread": {
     where: "A pin opens its thread, and Reply adds to it",
     reach: () => within(threading(), "[data-comment='reply']"),
@@ -350,6 +358,11 @@ const COMMENT_WAYS: Record<string, Entry> = {
   "commentOps<comment.add>.anchor": { where: "Comment tool: the point pressed", reach: pressing },
   "commentOps<comment.add>.anchor.x": { where: "Comment tool: the point pressed", reach: pressing },
   "commentOps<comment.add>.anchor.y": { where: "Comment tool: the point pressed", reach: pressing },
+  "commentOps<comment.add>.anchor.w": { where: "Comment tool: the area dragged, its width", reach: pressing },
+  "commentOps<comment.add>.anchor.h": {
+    where: "Comment tool: the area dragged, its height",
+    reach: pressing,
+  },
   "commentOps<comment.add>.author": { never: NEVER_AUTHOR },
   "commentOps<comment.add>.text": {
     where: "Comment box, the text area",

@@ -60,7 +60,25 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "w": {
+                "type": "number",
+                "minimum": 0.001,
+                "maximum": 1
+              },
+              "h": {
+                "type": "number",
+                "minimum": 0.001,
+                "maximum": 1
               }
+            },
+            "dependencies": {
+              "w": [
+                "h"
+              ],
+              "h": [
+                "w"
+              ]
             }
           },
           "thread": {

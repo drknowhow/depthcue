@@ -145,6 +145,27 @@ describe("adding a comment", () => {
     }
   });
 
+  it("keeps an area of the block, rounded to thousandths, with the pin at its top left", () => {
+    const file = applied(emptyComments(), [add({ anchor: { x: 0.1, y: 0.2, w: 0.30001, h: 0.4 } })]);
+    expect(file.comments[0]?.anchor).toEqual({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 });
+    expect(
+      applied(emptyComments(), [add({ anchor: { x: 0, y: 0, w: 1, h: 1 } })]).comments[0]?.anchor,
+    ).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+  });
+
+  it("refuses an area with only one size, no size, or one that runs past the block", () => {
+    for (const anchor of [
+      { x: 0.1, y: 0.1, w: 0.5 },
+      { x: 0.1, y: 0.1, h: 0.5 },
+      { x: 0.1, y: 0.1, w: 0, h: 0.5 },
+      { x: 0.1, y: 0.1, w: 1.2, h: 0.5 },
+    ]) {
+      expect(refused(emptyComments(), [add({ anchor } as never)]).code).toBe("bad-op");
+    }
+    const past = refused(emptyComments(), [add({ anchor: { x: 0.8, y: 0.1, w: 0.5, h: 0.2 } })]);
+    expect(past.diagnostics[0]).toMatchObject({ code: "area-outside-block" });
+  });
+
   it("trims the text, and refuses a message with nothing in it", () => {
     expect(applied(emptyComments(), [add({ text: "  Move it left.\n" })]).comments[0]?.thread[0]?.text).toBe(
       "Move it left.",

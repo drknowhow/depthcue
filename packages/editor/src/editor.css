@@ -1633,6 +1633,7 @@ body {
 }
 
 .ed-comment-catch {
+  touch-action: none;
   position: absolute;
   inset: 0;
   cursor: crosshair;
@@ -4655,4 +4656,30 @@ body {
 .ed-app .ed-footer .ed-view button {
   min-height: 1.875rem;
   padding-inline: var(--dc-space-2);
+}
+
+/* An area a comment marks: a dashed outline over the block, under the pin at its top left. */
+.ed-region {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed var(--dc-action);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--dc-action) 10%, transparent);
+  pointer-events: none;
+}
+
+.ed-region[hidden] {
+  display: none;
+}
+
+.ed-region[data-state="resolved"] {
+  opacity: 0.4;
+}
+
+.ed-region[data-state="answered"] {
+  border-style: solid;
+}
+
+.ed-region-draft {
+  border-color: var(--dc-text);
 }
