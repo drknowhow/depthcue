@@ -415,8 +415,21 @@ export function exportDeck(request: ExportRequest): ExportResult {
       }
     }
   }
+  // A voice-over's word times and step marks are read the same way: the page cannot fetch them from a file, so they go
+  // into the page, and the audio beside them is copied as an ordinary asset.
+  const wordFiles = new Set<string>();
+  for (const scene of scenes) {
+    const path = scene.voiceover?.words;
+    if (!path || Object.hasOwn(files, path)) continue;
+    try {
+      files[path] = JSON.parse(readFileSync(join(request.folder, path), "utf8"));
+      wordFiles.add(path);
+    } catch {
+      // Missing or not JSON: the captions are spread over the recording by the text and no mark moves the slide.
+    }
+  }
   cueMaps.sort();
-  const assets = [...used].sort();
+  const assets = [...used].filter((path) => !wordFiles.has(path)).sort();
   const skipped = [...doc.assets].filter((path) => !used.has(path) && !Object.hasOwn(files, path)).sort();
 
   const brand = brandFilesOf(look, request.folder);

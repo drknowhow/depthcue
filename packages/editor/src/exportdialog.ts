@@ -19,7 +19,7 @@ import type { EditorStore } from "./store.ts";
  * said about it.
  */
 
-export type ExportFormat = "pptx" | "pdf" | "html";
+export type ExportFormat = "pptx" | "pdf" | "html" | "mp4";
 
 interface FormatInfo {
   label: string;
@@ -47,6 +47,13 @@ export const FORMATS: Record<ExportFormat, FormatInfo> = {
     call: "/_depthcue/api/export.html",
     about: "A zip of the page that opens by double-click, with no server and no network.",
     wait: "Making the page. ",
+  },
+  mp4: {
+    label: "Video",
+    call: "/_depthcue/api/export.mp4",
+    about:
+      "An MP4 with the voice-over: each scene is held for as long as its recording, and the {step} marks bring in the steps.",
+    wait: "A browser draws each scene and ffmpeg joins them with the sound, so it can take a few minutes. ",
   },
 };
 
@@ -112,6 +119,12 @@ export function openExport(
     "The slides look exactly as they do here, but nothing on them can be edited in PowerPoint.",
     false,
   );
+  const captions = option(
+    "captions",
+    "Captions on the video",
+    "The words of the voice-over, drawn over the slide as they are said.",
+    false,
+  );
   const formatNow = () => formats.find((entry) => entry.input.checked)?.format ?? "pptx";
   const progress = h("progress", { "aria-label": "Making the file" });
   const elapsed = h("span", {}, "0 s");
@@ -147,6 +160,7 @@ export function openExport(
         notes.row,
         comments.row,
         pictures.row,
+        captions.row,
       ),
       making,
       status,
@@ -157,6 +171,7 @@ export function openExport(
 
   const showFormat = () => {
     pictures.row.hidden = formatNow() !== "pptx";
+    captions.row.hidden = formatNow() !== "mp4";
     waiting.textContent = FORMATS[formatNow()].wait;
   };
   for (const entry of formats) entry.input.addEventListener("change", showFormat);
@@ -164,7 +179,13 @@ export function openExport(
 
   let call: AbortController | undefined;
   let clock: ReturnType<typeof setInterval> | undefined;
-  const inputs = [...formats.map((entry) => entry.input), notes.input, comments.input, pictures.input];
+  const inputs = [
+    ...formats.map((entry) => entry.input),
+    notes.input,
+    comments.input,
+    pictures.input,
+    captions.input,
+  ];
   const busy = (on: boolean) => {
     making.hidden = !on;
     download.disabled = on;
@@ -217,11 +238,15 @@ export function openExport(
     }
     call = new AbortController();
     const { signal } = call;
-    const body = {
-      notes: notes.input.checked,
-      ...(format === "pptx" ? { pictures: pictures.input.checked } : {}),
-      ...(comments.input.checked ? { comments: true } : {}),
-    };
+    // The video takes only captions; the other options are for the files that hold notes and comments.
+    const body =
+      format === "mp4"
+        ? { captions: captions.input.checked }
+        : {
+            notes: notes.input.checked,
+            ...(format === "pptx" ? { pictures: pictures.input.checked } : {}),
+            ...(comments.input.checked ? { comments: true } : {}),
+          };
     let file: Blob;
     let response: Response;
     try {

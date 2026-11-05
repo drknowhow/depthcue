@@ -21,6 +21,9 @@ It writes `<deck folder name>-export` in the current directory, or the folder yo
 | `assets/`          | Only the files a scene names: images, clips and their posters, and source files.                    |
 | `.depthcue-export` | A list of what the export wrote, so a later export can replace it safely.                           |
 
+A scene's voice-over plays from the export: the recording is copied with the other assets, and its word times and
+step marks go into the page. See [Voice-over](voice.md).
+
 Assets that no scene names are left out, and the command lists them. A clip's cue map, the small file beside a
 built clip that says where its parts begin, is put into the page and not copied.
 
@@ -86,6 +89,18 @@ bytes every time for the same deck, so an export can be committed or compared.
 built. With `--json` the result is one object: on success, `out`, `index`, `scenes`, `assets`, `skipped`,
 `cueMaps`, `notes`, `files`, `bytes` and any `diagnostics` (warnings); on failure, `ok: false` with a `code` and
 a `message`.
+
+## Video
+
+```
+depthcue export <deck-folder> --format mp4 [--out <file.mp4>] [--captions] [--json]
+```
+
+One MP4 with the voice-over: 1920x1080 H.264 and AAC. Each scene is held for as long as its recording, and the `{step}`
+marks bring in its steps at the times they are said. A scene with no recording stays up for five seconds. It needs
+Chrome or Edge and `ffmpeg` (on the PATH, or `DEPTHCUE_FFMPEG`). An existing file is replaced only if it is a video.
+`--captions` draws the player's captions over the slide as they are said. The editor's Export dialog has the same as
+Video, with a Captions box.
 
 ## What an export does not have yet
 

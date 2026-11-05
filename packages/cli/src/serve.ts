@@ -250,12 +250,14 @@ function sendFile(request: IncomingMessage, response: ServerResponse, path: stri
 /** The live server's PowerPoint export: the open deck's file, as `depthcue export --format pptx` makes it. */
 export const PPTX_ROUTE = "/_depthcue/api/export.pptx";
 const PPTX_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-const PPTX_STATUS: Record<string, number> = { "no-browser": 503, "bad-comments": 422 };
+const PPTX_STATUS: Record<string, number> = { "no-browser": 503, "no-ffmpeg": 503, "bad-comments": 422 };
 
 /** The editor's other two exports, which take only notes and comments. */
 export const PDF_ROUTE = "/_depthcue/api/export.pdf";
 export const HTML_ROUTE = "/_depthcue/api/export.html";
+export const VIDEO_ROUTE = "/_depthcue/api/export.mp4";
 const PAGE_EXPORTS = {
+  [VIDEO_ROUTE]: { type: "video/mp4", ext: "mp4" },
   [PDF_ROUTE]: { type: "application/pdf", ext: "pdf" },
   [HTML_ROUTE]: { type: "application/zip", ext: "zip" },
 } as const;
@@ -373,6 +375,7 @@ function pptxOptions(body: unknown, keys: readonly string[] = PPTX_KEYS): PptxOp
 
 const PPTX_KEYS = ["notes", "pictures", "steps", "posters", "comments"] as const;
 const PAGE_KEYS = ["notes", "comments"] as const;
+const VIDEO_KEYS = ["captions"] as const;
 
 /**
  * Answers the PowerPoint export call: the same token and origin checks as the editor's other calls, a POST with the
@@ -400,7 +403,7 @@ async function pptxCall(
     const body = await readBody(request, 4096);
     options = pptxOptions(
       body.length === 0 ? {} : JSON.parse(body.toString("utf8")),
-      page ? PAGE_KEYS : PPTX_KEYS,
+      page ? (page.ext === "mp4" ? VIDEO_KEYS : PAGE_KEYS) : PPTX_KEYS,
     );
   } catch (error) {
     if (error instanceof TooLarge) {
@@ -464,6 +467,14 @@ async function pageCall(
 ): Promise<void> {
   const job = queue.last.then(async () => {
     const { renderPdf, renderHtmlZip } = await import("./export-pages.ts");
+    if (page.ext === "mp4") {
+      const { renderVideo } = await import("./export-video.ts");
+      return renderVideo({
+        folder: ctx.folder,
+        playerDir,
+        captions: (options as { captions?: boolean }).captions === true,
+      });
+    }
     const make = page.ext === "pdf" ? renderPdf : renderHtmlZip;
     return make({ folder: ctx.folder, playerDir, ...options });
   });

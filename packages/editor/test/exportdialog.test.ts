@@ -53,10 +53,10 @@ const press = (action: string) => inDialog<HTMLButtonElement>(`[data-dialog-acti
 const body = () => JSON.parse(String(sent[0]?.init.body));
 
 describe("Export", () => {
-  it("offers PowerPoint, PDF and HTML, with notes on and comments off to begin with", () => {
+  it("offers PowerPoint, PDF, HTML and video, with notes on and comments off to begin with", () => {
     openExport(root, store, io);
     expect(dialog()?.open).toBe(true);
-    expect(root.querySelectorAll("input[name='format']")).toHaveLength(3);
+    expect(root.querySelectorAll("input[name='format']")).toHaveLength(4);
     expect(format("pptx").checked).toBe(true);
     expect(box("notes").checked).toBe(true);
     expect(box("comments").checked).toBe(false);

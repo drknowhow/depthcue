@@ -121,7 +121,17 @@ the recording off the scene and leaves the text. The file stays in `assets/`.
 
 The audio is a change by the person, so the review does not list it as the agent's.
 
+## In the exports
+
+- **Folder and zip** (`depthcue export`, and HTML in the editor). The recording is copied with the other assets, and the
+  word times and marks go into the page, so the captions and the marks work from a double-click with no server.
+- **Video** (`depthcue export <deck> --format mp4`, and Video in the editor). Each scene is pictures of the player with
+  the recording under them. Mark N brings in step N at the time it is said; the last picture of a scene shows every step,
+  since nobody can press Next in a video. A scene with no recording stays up for five seconds. The file is 1920x1080
+  H.264 with AAC sound. It needs Chrome or Edge, as `render` does, and `ffmpeg` on the PATH (or `DEPTHCUE_FFMPEG`).
+  `--captions` (the Captions box in the editor) draws the captions the player shows, cut and timed the same way, over the
+  bottom of the slide. Without it the video has none.
+
 ## Not yet
 
-The exports do not carry the audio or the marks. That is the next step; the PowerPoint export will need AAC, so it will
-also need `ffmpeg`.
+The PowerPoint export does not carry the audio; it would need AAC in the file. The video has no transitions between scenes.

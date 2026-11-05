@@ -13,8 +13,9 @@ recording when the scene shows, with small play or pause, captions and Auto cont
 a voice-over's text and `voice build` times it, so the slide shows that step as the words are said. With Auto on, the
 deck moves to the next scene when a recording ends, so you do not press Next. The presenter view has the same controls.
 The editor's Script button opens a drawer beside the slide with the speaker notes, the reading version and the
-voice-over: write the text, add `{step}` marks with a button, press Make audio, and hear the result. The title shows whether the audio still matches the text. The exports do not use the audio yet. See
-[voice-over](docs/voice.md).
+voice-over: write the text, add `{step}` marks with a button, press Make audio, and hear the result. The title shows whether the audio still matches the text. The folder and zip exports carry the recording, its captions and its marks, so the voice-over plays from a double-click.
+`depthcue export <deck> --format mp4` (and Video in the editor's Export dialog) writes a 1920x1080 MP4 with the voice-over: each scene
+is held for its recording and the `{step}` marks bring in the steps, and `--captions` draws the captions in. It needs `ffmpeg`. See [voice-over](docs/voice.md).
 
 ### Moving between slides and zooming
 
