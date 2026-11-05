@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { checkDeckFiles, type Diagnostic, describeChange, loadDoc, revisionOf } from "@depthcue/core";
 import { BRAND_COMMANDS_TEXT, BRAND_COMMANDS_USAGE, NEW_TEXT, NEW_USAGE } from "./brand/usage.ts";
 import { BRAND_IMPORT_TEXT, BRAND_IMPORT_USAGE } from "./brand-import/usage.ts";
@@ -29,7 +29,8 @@ export { report, summary };
 /** The two forms of export, which `depthcue export --help` prints on their own. */
 const EXPORT_USAGE = `  depthcue export <deck-folder> [--out <dir>] [--no-notes] [--json]
   depthcue export <deck-folder> --format pptx [--out <file.pptx>] [--no-notes] [--pictures] [--steps]
-                  [--posters] [--json]`;
+                  [--posters] [--json]
+  depthcue export <deck-folder> --format mp4 [--out <file.mp4>] [--captions] [--json]`;
 
 const EXPORT_TEXT = `export Writes a folder that opens by double-click: index.html with the deck inside it, the player beside it
        and only the assets a scene names. It needs no server and no network, so it works from a USB stick.
@@ -46,6 +47,11 @@ const EXPORT_TEXT = `export Writes a folder that opens by double-click: index.ht
        or Edge, as render does. It reports, per slide, what has no PowerPoint form (the chart explorer,
        content past the slide's edge, build steps, transitions) and which fonts are embedded. A file Depthcue
        did not write, or one that has been changed since, is never replaced.
+       --format mp4 writes a video with the voice-over: each scene is a picture of the player, held for as long
+       as its recording runs, and a scene's {step} marks bring in its steps at the times they are said. A scene
+       with no recording stays up for five seconds. It needs Chrome or Edge, as render does, and ffmpeg on the
+       PATH (or DEPTHCUE_FFMPEG). The default file is <deck-folder name>.mp4 here. --captions draws the captions
+       the player shows, as they are said.
        Exit codes: 0 done, 1 the deck has errors, 2 the export could not run.`;
 
 const LINK_USAGE = `  depthcue link list <deck-folder> [--json]
@@ -656,6 +662,52 @@ async function pptxCommand(
   }
 }
 
+/** Writes the video: the deck's scenes as pictures with their voice-over under them. */
+async function videoCommand(
+  folder: string,
+  out: string | undefined,
+  captions: boolean,
+  json: boolean,
+  io: Io,
+): Promise<number> {
+  const { renderVideo } = await import("./export-video.ts");
+  const { PageExportError } = await import("./export-pages.ts");
+  try {
+    const result = await renderVideo({ folder, captions });
+    if (!result.ok) {
+      report(io, result.diagnostics, json, { code: "deck-invalid" });
+      if (!json) {
+        io.out(summary(result.diagnostics));
+        io.out("Nothing was exported. Fix the errors and run it again.");
+      }
+      return 1;
+    }
+    const file = resolve(out ?? `${basename(resolve(folder))}.mp4`);
+    // Only an earlier video is replaced; any other file there is not ours to overwrite.
+    if (existsSync(file) && readFileSync(file).subarray(4, 8).toString("latin1") !== "ftyp") {
+      const message = `${file} exists and is not a video. Pick another file with --out.`;
+      if (json) io.out(JSON.stringify({ ok: false, code: "out-exists", message }, null, 2));
+      else io.err(message);
+      return 2;
+    }
+    writeFileSync(file, result.bytes);
+    const done = { out: file, ...result.summary, bytes: result.bytes.length };
+    if (json) report(io, [], true, done);
+    else {
+      io.out(`Exported ${plural(done.scenes, "scene")} to ${file}`);
+      io.out(
+        `  ${done.seconds.toFixed(1)} s, ${kilobytes(done.bytes)}, voice-over in ${done.voiced} of ${done.scenes}`,
+      );
+    }
+    return 0;
+  } catch (error) {
+    if (!(error instanceof PageExportError)) throw error;
+    if (json) io.out(JSON.stringify({ ok: false, code: error.code, message: error.message }, null, 2));
+    else io.err(error.message);
+    return 2;
+  }
+}
+
 /** Lists the comments, so a person or a program can see what is open and what the agent has been asked to do. */
 function commentsListCommand(folder: string, all: boolean, json: boolean, io: Io): number {
   const read = readFolderComments(folder);
@@ -899,8 +951,12 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   };
   // The switches only `export --format pptx` takes are known there and nowhere else.
   const pptx = new Set(["--pictures", "--steps", "--posters"].filter((flag) => unknown.includes(flag)));
-  const strange = unknown.filter((arg) => !pptx.has(arg));
+  const captions = unknown.includes("--captions");
+  const strange = unknown.filter((arg) => !pptx.has(arg) && arg !== "--captions");
   if (strange.length > 0) return usage(`Unknown option ${strange[0]}.`);
+  if (captions && (command !== "export" || values.format !== "mp4")) {
+    return usage("--captions belongs to export --format mp4.");
+  }
   if (pptx.size > 0 && (command !== "export" || values.format !== "pptx")) {
     return usage(`${[...pptx][0]} belongs to export --format pptx.`);
   }
@@ -911,8 +967,8 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   }
   if (noNotes && command !== "export") return usage("--no-notes belongs to export.");
   if (values.format !== undefined && command !== "export") return usage("--format belongs to export.");
-  if (values.format !== undefined && values.format !== "pptx") {
-    return usage(`--format needs pptx, the one format there is. Without it, export writes a folder.`);
+  if (values.format !== undefined && values.format !== "pptx" && values.format !== "mp4") {
+    return usage(`--format needs pptx or mp4. Without it, export writes a folder.`);
   }
   if (all && command !== "comments" && command !== "diff") {
     return usage("--all belongs to comments list, diff accept and diff revert.");
@@ -1146,6 +1202,12 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
       values.width === undefined &&
       values.height === undefined
     ) {
+      if (values.format === "mp4") {
+        return videoCommand(folder, values.out, captions, json, io).catch((error: Error) => {
+          io.err(error.message);
+          return 2;
+        });
+      }
       if (values.format === "pptx") {
         const options = {
           notes: !noNotes,

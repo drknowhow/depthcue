@@ -1,5 +1,6 @@
 import "./player.css";
 
+export { captionEdges, type Line, lineAt, linesFromText, linesFromWords, readWords } from "./captions.ts";
 export { CHART_KIND_LABELS, chartTable, renderChart } from "./charts/draw.ts";
 export { niceTicks } from "./charts/scale.ts";
 export { h } from "./dom.ts";

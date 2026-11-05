@@ -100,6 +100,11 @@ export function linesFromText(text: string, duration: number): Line[] {
   });
 }
 
+/** The times at which what `lineAt` returns can change: where a caption begins and where it goes away. */
+export function captionEdges(lines: readonly Line[]): number[] {
+  return lines.flatMap((line) => [line.start, line.end + LINGER]);
+}
+
 /** The caption to show at a time: the latest one that has begun, until it has been up past its end. */
 export function lineAt(lines: readonly Line[], time: number): Line | undefined {
   let found: Line | undefined;
