@@ -101,7 +101,27 @@ whether the recording is playing, paused, finished or waiting for a press. The s
 audience is; the presenter's window only asks that window. If the deck window has had no press yet, the browser may
 refuse, and the presenter view says to press Play there.
 
+## In the editor
+
+The Script button in the bar under the slide opens a drawer at the right of the stage, with the slide still in view. It
+holds the speaker notes, the reading version and a Voice-over part: the text, the voice (any Kokoro voice name; common
+ones are suggested), a Make audio button and a player for the result. Typing changes the scene as any edit does.
+
+Insert {step} mark puts a step mark at the cursor, so you do not type the tag. It counts the marks against the scene's
+steps, and is off when every step has one or the scene has none. Escape closes the drawer.
+
+Make audio saves the deck first, then runs the same build as `voice build` for that scene on the machine that runs
+`depthcue edit`, and reads the new audio back. It takes several seconds, the first time longer while Kokoro loads. If
+Kokoro is not installed, the panel says so with the same message as `voice doctor`. Set `DEPTHCUE_PYTHON` before
+starting `depthcue edit` to use a Python other than the one on the PATH.
+
+The mark by the Voice-over title tells where the recording stands: a tick when the audio matches the text and voice, an
+exclamation mark when either has changed since, a dot when there is a voice-over with no audio yet. Remove audio takes
+the recording off the scene and leaves the text. The file stays in `assets/`.
+
+The audio is a change by the person, so the review does not list it as the agent's.
+
 ## Not yet
 
-The editor has no voice panel, and the exports do not carry the audio or the marks. Those are the next steps; the
-PowerPoint export will need AAC, so it will also need `ffmpeg`.
+The exports do not carry the audio or the marks. That is the next step; the PowerPoint export will need AAC, so it will
+also need `ffmpeg`.

@@ -118,6 +118,11 @@ export interface ListedAsset {
   usedBy: Array<{ scene: string | null; path: string }>;
 }
 
+/** What the server says of one voice-over it was asked to make. */
+export type VoiceAnswer =
+  | { ok: true; audio: string; words: string; duration: number; built: boolean; seconds: number }
+  | { ok: false; code?: string; message: string };
+
 /** What the editor needs from the server. A test can stand in for it. */
 export interface Api {
   loadDeck(): Promise<DeckPayload>;
@@ -133,6 +138,8 @@ export interface Api {
    * rejects: a refusal, or a server that cannot be reached, is `ok: false` with the reason.
    */
   brandFile(path: string, body: Blob | string): Promise<BrandFileAnswer>;
+  /** Makes the voice-over audio of a scene from the scene as saved. Never rejects: a refusal is `ok: false` with the reason. */
+  buildVoice(scene: string, voice: string | undefined): Promise<VoiceAnswer>;
   /** The cues of a clip, named by its deck path such as "assets/intro.mp4". */
   loadCues(source: string): Promise<CueList>;
   /** Replaces a clip's cues. Rejects with a message the person can read when the server refuses the list. */
@@ -248,6 +255,40 @@ export function createApi(token: string, send: typeof fetch = (...args) => fetch
         return (
           response.ok ? answer : { ...answer, ok: false, message: messageOf(answer, response) }
         ) as BrandFileAnswer;
+      } catch {
+        return {
+          ok: false,
+          message: "The editor could not reach the server. Is `depthcue edit` still running?",
+        };
+      }
+    },
+
+    async buildVoice(scene, voice) {
+      try {
+        const response = await call("voice", {
+          method: "POST",
+          body: JSON.stringify({ scene, ...(voice === undefined ? {} : { voice }) }),
+          headers: { "Content-Type": "application/json" },
+        });
+        const answer = await body(response);
+        const first = Array.isArray(answer.results)
+          ? (answer.results[0] as Record<string, unknown>)
+          : undefined;
+        if (response.ok && answer.ok === true && first) {
+          return {
+            ok: true,
+            audio: String(first.audio),
+            words: String(first.words),
+            duration: Number(first.duration),
+            built: first.built === true,
+            seconds: Number(first.seconds),
+          };
+        }
+        return {
+          ok: false,
+          ...(typeof answer.code === "string" ? { code: answer.code } : {}),
+          message: messageOf(answer, response),
+        };
       } catch {
         return {
           ok: false,

@@ -1,3 +1,5 @@
+import { sha256Hex } from "./revision.ts";
+
 /** What an author writes in a voice-over's text where the slide should move on: the next step shows here. */
 export const VOICE_MARK = "{step}";
 
@@ -18,4 +20,11 @@ export function splitMarks(text: string): { spoken: string; marks: number[] } {
     marks.push(before);
   }
   return { spoken: parts.join(" ").replace(/\s+/g, " ").trim(), marks };
+}
+
+const KEY_FORMAT = "depthcue-voice/1";
+
+/** The hash a recording is filed under: it changes when the text or the voice does, so a stale recording shows. */
+export function voiceKey(text: string, voice: string): string {
+  return sha256Hex(`${KEY_FORMAT}\n${voice}\n${text}`);
 }

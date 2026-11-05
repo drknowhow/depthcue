@@ -508,6 +508,8 @@ describe("the editor in a real browser", () => {
     const sources = () => disk().scenes.method?.sources ?? [];
     expect(sources()).toMatchObject([{ title: "Annual report", url: "https://example.org/report" }]);
 
+    // The popover is over part of the slide, which is a little narrower with the footer under it.
+    await page.keyboard.press("Escape");
     await page.locator(".ed-frame [data-id='method-body']").click();
     const bar = page.locator(".ed-toolbar");
     await bar.locator("[data-tb='cite']").click();
@@ -615,7 +617,7 @@ describe("the editor in a real browser", () => {
     await page.locator(".ed-toolbar [data-tb='data']").waitFor();
 
     await row.locator("[data-tb='notes']").click();
-    await row.locator("[data-field='panel:notes']").fill("Start with the sample.");
+    await page.locator(".ed-script [data-field='panel:notes']").fill("Start with the sample.");
     await saved();
     expect(scene()?.notes).toBe("Start with the sample.");
     expect(problems).toEqual([]);
@@ -635,7 +637,7 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
-  it("keeps the notes and deck popovers inside the window on a phone", async () => {
+  it("keeps the script drawer and the deck popover inside the window on a phone", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await open();
     await page.evaluate(() => {
@@ -645,7 +647,9 @@ describe("the editor in a real browser", () => {
     });
     for (const chip of [".ed-quick [data-tb='notes']", ".ed-actions [data-tb='deck']"]) {
       await page.locator(chip).click();
-      const pop = page.locator(".ed-tb-pop:not([hidden])");
+      const pop = page.locator(
+        chip.includes("notes") ? ".ed-script:not([hidden])" : ".ed-tb-pop:not([hidden])",
+      );
       await pop.waitFor();
       const box = await pop.boundingBox();
       if (!box) throw new Error(`the popover of ${chip} should be on screen`);
@@ -1968,15 +1972,18 @@ describe("the quick bar in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
-  it("opens the notes upward, inside the window and a little way from its edge", async () => {
+  it("opens the script as a drawer at the right of the stage, inside the window, and closes it with Escape", async () => {
     await layout(1024, 768);
     await page.locator("[data-tb='notes']").click();
-    const pop = page.locator(".ed-quick .ed-tb-pop");
-    await pop.waitFor();
-    const [popBox, barBox] = await Promise.all([boxOf(pop), boxOf(bar())]);
-    expect(popBox.y + popBox.height).toBeLessThanOrEqual(barBox.y);
-    expect(popBox.x).toBeGreaterThanOrEqual(8 - 1);
-    expect(popBox.x + popBox.width).toBeLessThanOrEqual(1024 - 8 + 1);
+    const drawer = page.locator(".ed-script");
+    await drawer.waitFor();
+    const [box, stage] = await Promise.all([boxOf(drawer), boxOf(page.locator(".ed-stage"))]);
+    expect(box.x + box.width).toBeLessThanOrEqual(stage.x + stage.width + 1);
+    expect(box.x).toBeGreaterThan(stage.x);
+    expect(box.y).toBeGreaterThanOrEqual(stage.y - 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(stage.y + stage.height + 1);
+    await page.keyboard.press("Escape");
+    await drawer.waitFor({ state: "hidden" });
     expect(problems).toEqual([]);
   });
 

@@ -27,8 +27,7 @@ const quick = (name: string) =>
 const method = () => store.session.doc.scenes.method;
 const ids = () => method()?.blocks.map((block) => block.id);
 const notesChip = () => bar().querySelector<HTMLButtonElement>("[data-tb='notes']") as HTMLButtonElement;
-const notesPop = () =>
-  notesChip().closest(".ed-tb-chip-wrap")?.querySelector<HTMLElement>(".ed-tb-pop") as HTMLElement;
+const notesPop = () => host.querySelector<HTMLElement>(".ed-script") as HTMLElement;
 const field = (key: string) =>
   notesPop().querySelector<HTMLTextAreaElement>(`[data-field="${key}"]`) as HTMLTextAreaElement;
 const typeInto = (node: HTMLTextAreaElement | HTMLInputElement, text: string) => {
@@ -223,11 +222,11 @@ describe("adding to the slide", () => {
 });
 
 describe("the notes", () => {
-  it("open upward from a Notes chip in the bar, with the speaker notes and the reading version", () => {
+  it("open in the Script drawer from a button in the bar, with the speaker notes and the reading version", () => {
     expect(notesPop().hidden).toBe(true);
     notesChip().click();
     expect(notesPop().hidden).toBe(false);
-    expect(notesPop().hasAttribute("data-up")).toBe(true);
+    expect(notesChip().getAttribute("aria-expanded")).toBe("true");
     expect(field("panel:notes").value).toBe("");
     expect(field("panel:reading").value).toBe(method()?.reading?.text);
   });
@@ -304,7 +303,7 @@ describe("the notes", () => {
     expect(notesPop().hidden).toBe(true);
     expect(document.activeElement).toBe(notesChip());
     notesChip().click();
-    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    notesChip().click();
     expect(notesPop().hidden).toBe(true);
   });
 });

@@ -39,8 +39,13 @@ import {
 import { brandHashEntries, loadDeckDir } from "./loader.ts";
 import { loadReviewDir, recordPersonWrite, saveReviewDir } from "./review-file.ts";
 import { ChangedOnDiskError, RefusedSaveError, saveDeckDir } from "./save.ts";
+import { VoiceError, type VoiceSceneResult } from "./voice.ts";
 
 export interface EditContext {
+  /** Makes one scene's voice-over audio from the scene on disk. Without it the editor is told that none can be made. */
+  voice?: (scene: string, voice: string | undefined) => Promise<VoiceSceneResult[]>;
+  /** Set while a voice-over is being made: one at a time, because each run reads the deck and saves a scene. */
+  voicing?: { busy: boolean };
   /** The deck folder, already resolved to its real path. */
   folder: string;
   /** Secret the editor page was given. Every call must send it, so another web page cannot drive the editor. */
@@ -597,6 +602,60 @@ async function replaceReview(request: IncomingMessage, response: ServerResponse,
   return send(response, 200, { rev: reviewRevision(checked.review), review: checked.review });
 }
 
+/**
+ * Makes the voice-over audio for one scene, from the scene as saved on disk: the editor saves its change first. The
+ * scene file changes as the person's own work, so the review does not list it as the agent's.
+ */
+async function buildVoiceRoute(request: IncomingMessage, response: ServerResponse, ctx: EditContext) {
+  if (!String(request.headers["content-type"]).startsWith("application/json")) {
+    return send(response, 415, { error: "bad-request", message: "Send application/json." });
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse((await readBody(request, 4096)).toString("utf8"));
+  } catch {
+    return send(response, 400, { error: "bad-request", message: "The body is not valid JSON." });
+  }
+  if (
+    !isRecord(body) ||
+    typeof body.scene !== "string" ||
+    (body.voice !== undefined && typeof body.voice !== "string")
+  ) {
+    return send(response, 400, { error: "bad-request", message: "Send { scene: string, voice?: string }." });
+  }
+  if (!ctx.voice) {
+    return send(response, 501, {
+      ok: false,
+      code: "no-voice",
+      message: "This server does not make voice-overs.",
+    });
+  }
+  const state = ctx.voicing ?? { busy: false };
+  ctx.voicing = state;
+  if (state.busy) {
+    return send(response, 409, {
+      ok: false,
+      code: "busy",
+      message: "A voice-over is already being made. Wait for it.",
+    });
+  }
+  state.busy = true;
+  try {
+    const before = openDeck(ctx.folder);
+    const results = await ctx.voice(body.scene, body.voice);
+    const after = openDeck(ctx.folder);
+    if (before.ok && after.ok) recordPersonWrite(ctx.folder, before.doc, after.doc);
+    return send(response, 200, { ok: true, results });
+  } catch (error) {
+    if (error instanceof VoiceError) {
+      return send(response, 422, { ok: false, code: error.code, message: error.message });
+    }
+    return send(response, 500, { ok: false, code: "kokoro-failed", message: (error as Error).message });
+  } finally {
+    state.busy = false;
+  }
+}
+
 /** Handles `/_depthcue/api/*`. Returns false when the path is not an edit API path. */
 export async function handleEditApi(
   request: IncomingMessage,
@@ -628,6 +687,8 @@ export async function handleEditApi(
     else if (route === "/_depthcue/api/cues" && request.method === "POST")
       await saveCues(request, response, ctx);
     else if (route === "/_depthcue/api/layout" && request.method === "GET") await layout(response, url, ctx);
+    else if (route === "/_depthcue/api/voice" && request.method === "POST")
+      await buildVoiceRoute(request, response, ctx);
     else if (route === "/_depthcue/api/comments" && request.method === "GET") loadComments(response, ctx);
     else if (route === "/_depthcue/api/comments" && request.method === "POST")
       await applyComments(request, response, ctx);

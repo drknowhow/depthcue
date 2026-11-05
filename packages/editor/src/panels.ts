@@ -12,12 +12,16 @@ import {
   type SceneChanges,
   type Session,
   STEPS_MAX,
+  splitMarks,
   styleOf,
   TARGET_RULE,
   THEMES,
+  VOICE_MARK,
+  voiceKey,
 } from "@depthcue/core";
 import { firstPartyManifests, h } from "@depthcue/player";
 import { checkBrandLock } from "../../core/src/brand.ts";
+import type { VoiceAnswer } from "./api.ts";
 import { addedRow, CHART_ROWS_MAX, sortedRows } from "./chart.ts";
 import { removeSource, swapped } from "./cleanup.ts";
 import {
@@ -62,6 +66,8 @@ export interface PanelHost {
   problem(text: string | undefined): void;
   /** Closes the popover this panel is in. */
   close(): void;
+  /** Makes the voice-over audio of a scene. Left out where the editor cannot. */
+  voice?(scene: string, voice: string | undefined): Promise<VoiceAnswer>;
   /** Opens where the scene's sources are added and edited. */
   openSources(): void;
   /** Opens the image library to choose a file for an image; `choose` gets its path. Left out where there is none. */
@@ -73,7 +79,10 @@ export interface PanelHost {
 /** What the toolbar and the scene bar each bring to their panels; the rest is read from the session. */
 export function panelHost(
   session: Session,
-  parts: Pick<PanelHost, "edits" | "upload" | "problem" | "close" | "openSources" | "library" | "picture">,
+  parts: Pick<
+    PanelHost,
+    "edits" | "upload" | "problem" | "close" | "openSources" | "library" | "picture" | "voice"
+  >,
 ): PanelHost {
   return {
     ...parts,
@@ -852,6 +861,203 @@ export function notesPanel(host: PanelHost, current: () => string): Panel {
         title:
           n > 0 ? `Speaker notes and reading version, ${n} written` : "Speaker notes and reading version",
       };
+    },
+  };
+}
+
+/** The voice a scene is read in when it names none. Kokoro's own default, as `depthcue voice build` has it. */
+const DEFAULT_VOICE = "af_heart";
+
+/** Kokoro's American and British English voices, offered as suggestions. Any voice name Kokoro has is accepted. */
+const VOICES = [
+  "af_heart",
+  "af_bella",
+  "af_nicole",
+  "af_sarah",
+  "af_sky",
+  "am_adam",
+  "am_michael",
+  "bf_emma",
+  "bf_isabella",
+  "bm_george",
+  "bm_lewis",
+] as const;
+
+/** Where a scene's recording stands against what the scene says now. */
+export type VoiceStanding = "none" | "missing" | "current" | "stale";
+
+export function voiceStanding(live: Scene): VoiceStanding {
+  const voiceover = live.voiceover;
+  if (!voiceover) return "none";
+  if (!voiceover.audio) return "missing";
+  return voiceover.key === voiceKey(voiceover.text, voiceover.voice ?? DEFAULT_VOICE) ? "current" : "stale";
+}
+
+/** What is read aloud for a scene, and the recording of it that Kokoro makes, as `depthcue voice build` does. */
+/** Offers the voices in `ed-voices` as suggestions in the field's input. */
+const withList = (field: HTMLElement) => {
+  field.querySelector("input")?.setAttribute("list", "ed-voices");
+  return field;
+};
+
+export function voicePanel(host: PanelHost, current: () => string): Panel {
+  const scene = () => host.scene(current());
+  const set = (changes: SceneChanges): Op => sceneSet(current(), changes);
+  let busy = false;
+  let failure: string | undefined;
+  let made: string | undefined;
+
+  const text = () => scene()?.voiceover?.text ?? "";
+  const status = h("p", {
+    class: "ed-hint-text",
+    role: "status",
+    "aria-live": "polite",
+    "data-voice": "status",
+  });
+  const problem = h("p", { class: "ed-problem", role: "alert", hidden: true, "data-voice": "problem" });
+  const player = h("audio", { controls: true, preload: "none", "data-voice": "preview" });
+
+  const markNote = h("span", { class: "ed-hint-text", "data-voice": "marks" });
+  const paint = () => {
+    const live = scene();
+    const standing = live ? voiceStanding(live) : "none";
+    const marks = splitMarks(text()).marks.length;
+    const steps = live?.steps?.length ?? 0;
+    markNote.textContent =
+      steps === 0 ? "This scene has no steps to mark." : `${marks} of ${steps} steps marked`;
+    mark.disabled = steps === 0 || marks >= steps;
+    mark.title =
+      steps === 0
+        ? "This scene has no steps, so there is nothing for a mark to show. Add steps in the Scene panel."
+        : marks >= steps
+          ? "Every step already has a mark."
+          : "Put the next step of the slide where the cursor is: it shows when the voice reaches this point.";
+    make.disabled = busy || standing === "none" || !host.voice;
+    make.textContent = busy
+      ? "Making audio…"
+      : standing === "current" || standing === "stale"
+        ? "Make audio again"
+        : "Make audio";
+    remove.hidden = busy || !live?.voiceover?.audio;
+    const audio = live?.voiceover?.audio;
+    player.hidden = !audio || standing === "stale";
+    if (audio) {
+      const src = `${audio}?v=${live?.voiceover?.key?.slice(0, 8) ?? ""}`;
+      if (player.getAttribute("src") !== src) player.setAttribute("src", src);
+    } else player.removeAttribute("src");
+    problem.hidden = failure === undefined;
+    problem.textContent = failure ?? "";
+    let line = "";
+    if (busy) line = "Kokoro is reading the text. This can take a minute the first time.";
+    else if (marks > steps)
+      line = `There are ${marks} ${VOICE_MARK} marks but the scene has ${steps} steps, so the audio cannot be made.`;
+    else if (made && standing === "current") line = made;
+    else if (standing === "stale")
+      line = "The text or voice changed since the audio was made. Make it again.";
+    else if (standing === "missing") line = "No audio yet.";
+    else if (standing === "current") line = "The audio matches the text.";
+    status.textContent = line;
+  };
+
+  const run = async () => {
+    const live = scene()?.voiceover;
+    if (!live || busy || !host.voice) return;
+    busy = true;
+    failure = undefined;
+    made = undefined;
+    paint();
+    const answer = await host.voice(current(), live.voice);
+    busy = false;
+    if (answer.ok)
+      made = answer.built
+        ? `Made ${answer.duration.toFixed(1)} s of audio in ${answer.seconds.toFixed(1)} s.`
+        : "Already up to date.";
+    else failure = answer.message;
+    paint();
+  };
+
+  const unvoice = () => {
+    const live = scene()?.voiceover;
+    if (!live) return;
+    failure = undefined;
+    made = undefined;
+    host.run([
+      set({ voiceover: { text: live.text, ...(live.voice === undefined ? {} : { voice: live.voice }) } }),
+    ]);
+  };
+
+  const insertMark = () => {
+    const box = fields.body.querySelector<HTMLTextAreaElement>("[data-field='panel:voice-text']");
+    if (!box) return;
+    const at = box.selectionStart ?? box.value.length;
+    const before = `${box.value.slice(0, at).replace(/\s+$/, "")} ${VOICE_MARK} `.trimStart();
+    box.value = `${before}${box.value.slice(at).replace(/^\s+/, "")}`.trimEnd();
+    box.setSelectionRange(before.length, before.length);
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    box.focus();
+  };
+  const mark = actionButton(`Insert ${VOICE_MARK} mark`, insertMark, {
+    "data-field": "voice:mark",
+    title: "Put the next step of the slide where the cursor is: it shows when the voice reaches this point.",
+  });
+  const make = actionButton("Make audio", () => void run(), { "data-field": "voice:make" });
+  const remove = actionButton("Remove audio", unvoice, { "data-field": "voice:remove" });
+
+  const fields = form(
+    () => scene() !== undefined,
+    () => {
+      paint();
+      return [
+        textField(host.edits, {
+          key: "panel:voice-text",
+          label: "Voice-over",
+          hint: `What Kokoro reads aloud; it is not the speaker notes. Write ${VOICE_MARK} where the next step of the slide should show.`,
+          multiline: true,
+          read: text,
+          commit(value) {
+            if (value === "") return set({ voiceover: null });
+            return set({ voiceover: { ...scene()?.voiceover, text: value } });
+          },
+        }),
+        h("div", { class: "ed-row" }, mark, markNote),
+        withList(
+          textField(host.edits, {
+            key: "panel:voice-name",
+            label: "Voice",
+            hint: `A Kokoro voice such as bf_emma. Left empty it is ${DEFAULT_VOICE}.`,
+            placeholder: DEFAULT_VOICE,
+            read: () => scene()?.voiceover?.voice ?? "",
+            commit(value) {
+              const live = scene()?.voiceover;
+              if (!live) return "Write the voice-over first.";
+              const { voice: _old, ...rest } = live;
+              return set({ voiceover: value === "" ? rest : { ...rest, voice: value } });
+            },
+          }),
+        ),
+        h("div", { class: "ed-row" }, make, remove),
+        h("datalist", { id: "ed-voices" }, ...VOICES.map((name) => h("option", { value: name }))),
+        status,
+        problem,
+        player,
+      ];
+    },
+  );
+  return {
+    name: "voice",
+    label: "Voice",
+    title: "Voice-over",
+    body: fields.body,
+    fill(live, typing) {
+      fields.fill(live, typing);
+      paint();
+    },
+    state(live) {
+      const standing = voiceStanding(live);
+      if (standing === "current") return { badge: "✓", title: "Voice-over, audio is up to date" };
+      if (standing === "stale") return { badge: "!", title: "Voice-over, audio is out of date" };
+      if (standing === "missing") return { badge: "·", title: "Voice-over, no audio yet" };
+      return { badge: "", title: "Voice-over" };
     },
   };
 }
