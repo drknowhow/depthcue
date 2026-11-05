@@ -787,3 +787,50 @@ describe("repeatability", () => {
     expect(marker.files).toEqual([...marker.files].sort());
   });
 });
+
+describe("voice-over", () => {
+  const voiced = (marks = true) => {
+    write(join(deck, "assets", "opening.voice.wav"), "RIFFwav");
+    write(
+      join(deck, "assets", "opening.voice.words.json"),
+      JSON.stringify({
+        format: "depthcue-words/1",
+        duration: 3,
+        words: [],
+        ...(marks ? { marks: [1.2] } : {}),
+      }),
+    );
+    editScene("opening", (scene) => {
+      scene.voiceover = {
+        text: "Hello. {step} There.",
+        audio: "assets/opening.voice.wav",
+        words: "assets/opening.voice.words.json",
+      };
+    });
+  };
+
+  it("copies the recording and puts the word times and marks into the page", () => {
+    voiced();
+    const summary = done();
+    expect(readFileSync(join(out(), "assets", "opening.voice.wav"), "utf8")).toBe("RIFFwav");
+    expect(embedded(readFileSync(join(out(), "index.html"), "utf8")).files).toEqual({
+      "assets/opening.voice.words.json": { format: "depthcue-words/1", duration: 3, words: [], marks: [1.2] },
+    });
+    expect(summary.assets).toContain("assets/opening.voice.wav");
+    expect(summary.skipped).toEqual([]);
+  });
+
+  it("does not copy the word times file, since the page reads them from its own data", () => {
+    voiced();
+    done();
+    expect(existsSync(join(out(), "assets", "opening.voice.words.json"))).toBe(false);
+  });
+
+  it("leaves the page without word times when the file is not JSON", () => {
+    voiced();
+    write(join(deck, "assets", "opening.voice.words.json"), "not json");
+    done();
+    expect(embedded(readFileSync(join(out(), "index.html"), "utf8")).files).toEqual({});
+    expect(existsSync(join(out(), "assets", "opening.voice.words.json"))).toBe(true);
+  });
+});

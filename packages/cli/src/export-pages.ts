@@ -14,7 +14,12 @@ import { exportDeck } from "./export.ts";
 import { launchBrowser } from "./render.ts";
 import { builtPlayerDir, startServer } from "./serve.ts";
 
-export type PageErrorCode = "no-browser" | "render-failed" | "player-not-built" | "bad-comments";
+export type PageErrorCode =
+  | "no-browser"
+  | "render-failed"
+  | "player-not-built"
+  | "bad-comments"
+  | "no-ffmpeg";
 
 export class PageExportError extends Error {
   readonly code: PageErrorCode;
