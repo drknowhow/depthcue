@@ -341,6 +341,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
         select(sceneId);
         selectBlock(blockId);
       },
+      audit: store.audit,
+      current: () => selected,
+      has: (sceneId) => session.doc.scenes[sceneId] !== undefined,
       closed: () => reviewButton.focus({ preventScroll: true }),
     });
     floor.append(drawer.element);

@@ -67,6 +67,29 @@ describe("asking the server for a scene's layout problems", () => {
   });
 });
 
+describe("reading the audit log", () => {
+  const entries = [{ id: "a", time: "2026-11-05T10:00:00.000Z", by: "agent", kind: "edit", summary: "x" }];
+
+  it("reads the entries with the token and counts the lines that were skipped", async () => {
+    const { api, calls } = server(() => reply(200, { entries, skipped: 2 }));
+    expect(await api.loadAudit()).toEqual({ ok: true, entries, skipped: 2 });
+    expect(calls[0]?.url).toBe("/_depthcue/api/audit");
+    expect(calls[0]?.headers["X-Depthcue-Token"]).toBe("secret");
+  });
+
+  it("does not throw when the server cannot be reached, or sends something else", async () => {
+    const down = server(() => {
+      throw new TypeError("Failed to fetch");
+    });
+    expect(await down.api.loadAudit()).toEqual({
+      ok: false,
+      message: "The editor could not reach the server.",
+    });
+    const odd = server(() => reply(200, { nothing: true }));
+    expect(await odd.api.loadAudit()).toMatchObject({ ok: false });
+  });
+});
+
 describe("reading and writing the review", () => {
   const review = {
     format: "depthcue-review/1",

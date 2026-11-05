@@ -41,6 +41,7 @@ export function withPart<T>(from: Part<T>, then: (module: T) => void, failed: ()
 /** The parts, by name. `mountEditor` takes others in their place, so a test can hold one back or make it fail. */
 export const PARTS = {
   review: part(() => import("./reviewdrawer.ts")),
+  history: part(() => import("./auditpane.ts")),
   storyboard: part(() => import("./storyboard.ts")),
   comments: part(() => import("./commentpins.ts")),
   cues: part(() => import("./cuespanel.ts")),

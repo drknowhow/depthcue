@@ -1,4 +1,4 @@
-import type { Comment, CommentOp, Cue, Review } from "@depthcue/core";
+import type { AuditEntry, Comment, CommentOp, Cue, Review } from "@depthcue/core";
 
 export interface ApiDiagnostic {
   code: string;
@@ -82,6 +82,14 @@ export type ReviewSaveResult =
   | { ok: false; kind: "rejected" | "failed"; message: string };
 
 /**
+ * The latest entries of the audit log, oldest first, and how many lines of the file were not entries. A server that
+ * cannot be reached, or sends something else, is `ok: false` with the reason, and the editor then lists nothing.
+ */
+export type AuditAnswer =
+  | { ok: true; entries: AuditEntry[]; skipped: number }
+  | { ok: false; message: string };
+
+/**
  * What the server answers an upload to the brand folder, or a removal from it. Good, it names the file as brand.json
  * names it (`path`), as the deck has it (`file`, with its sha256 as `hash`, null once removed) and the revisions on disk
  * before and after; refused, it says why in words to show as they are, with the file already there for `exists` and
@@ -154,6 +162,8 @@ export interface Api {
   loadReview(): Promise<ReviewAnswer>;
   /** Replaces the review, against the revision the editor last read. `"none"` is the revision of no review at all. */
   saveReview(review: Review, baseRev: string): Promise<ReviewSaveResult>;
+  /** The audit log of the deck. Never rejects: a failure is `ok: false`. */
+  loadAudit(): Promise<AuditAnswer>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -385,6 +395,23 @@ export function createApi(token: string, send: typeof fetch = (...args) => fetch
             ok: true,
             rev: answer.rev,
             review: isRecord(answer.review) ? (answer.review as unknown as Review) : undefined,
+          };
+        }
+        return { ok: false, message: messageOf(answer, response) };
+      } catch {
+        return { ok: false, message: "The editor could not reach the server." };
+      }
+    },
+
+    async loadAudit() {
+      try {
+        const response = await call("audit");
+        const answer = await body(response);
+        if (response.ok && Array.isArray(answer.entries)) {
+          return {
+            ok: true,
+            entries: answer.entries as AuditEntry[],
+            skipped: typeof answer.skipped === "number" ? answer.skipped : 0,
           };
         }
         return { ok: false, message: messageOf(answer, response) };

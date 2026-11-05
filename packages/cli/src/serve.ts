@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { COMMENTS_FILE, pageLook, REVIEW_FILE } from "@depthcue/core";
+import { AUDIT_FILE, COMMENTS_FILE, pageLook, REVIEW_FILE } from "@depthcue/core";
 import { type EditContext, handleEditApi } from "./edit-api.ts";
 import { createLayoutChecker, type LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send as sendJson, TooLarge } from "./http.ts";
@@ -528,6 +528,8 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   const commentListeners = new Set<ServerResponse>();
   /** The editor pages again, for the review. A page opened with `?comments=1` and `?review=1` is in both. */
   const reviewListeners = new Set<ServerResponse>();
+  /** The editor pages once more, for the audit log, when they open the History list. */
+  const auditListeners = new Set<ServerResponse>();
   let boundPort = 0;
   /** The last look.json that could be built, as text, for the moments when the folder's own cannot be. */
   let lastLook: string | undefined;
@@ -630,10 +632,12 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       listeners.add(response);
       if (edit && url.searchParams.get("comments") === "1") commentListeners.add(response);
       if (edit && url.searchParams.get("review") === "1") reviewListeners.add(response);
+      if (edit && url.searchParams.get("audit") === "1") auditListeners.add(response);
       request.on("close", () => {
         listeners.delete(response);
         commentListeners.delete(response);
         reviewListeners.delete(response);
+        auditListeners.delete(response);
       });
       // A page that has the lease says so, and is the one an agent's calls go to.
       if (url.searchParams.get("lease") === "1") relay.attach(response);
@@ -680,9 +684,18 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   let pending: ReturnType<typeof setTimeout> | undefined;
   let pendingComments: ReturnType<typeof setTimeout> | undefined;
   let pendingReview: ReturnType<typeof setTimeout> | undefined;
+  let pendingAudit: ReturnType<typeof setTimeout> | undefined;
   const watcher = watch(folder, { recursive: true }, (_event, name) => {
     const changed = String(name ?? "").replaceAll("\\", "/");
     if (changed.endsWith(".tmp")) return;
+    // The same for the audit log: no page reloads, and only an editor that asked is told.
+    if (changed === AUDIT_FILE) {
+      clearTimeout(pendingAudit);
+      pendingAudit = setTimeout(() => {
+        for (const client of auditListeners) client.write("event: audit\ndata: {}\n\n");
+      }, 60);
+      return;
+    }
     // The same for the review: no page reloads, and only an editor that asked is told.
     if (changed === REVIEW_FILE) {
       clearTimeout(pendingReview);
@@ -728,6 +741,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
             clearTimeout(pending);
             clearTimeout(pendingComments);
             clearTimeout(pendingReview);
+            clearTimeout(pendingAudit);
             relay.close();
             watcher.close();
             for (const client of listeners) client.end();

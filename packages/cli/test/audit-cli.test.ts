@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_MAX_BYTES, appendAudit, loadAuditDir } from "../src/audit-file.ts";
 import { run } from "../src/index.ts";
 import { loadDeckDir } from "../src/loader.ts";
+import { builtPlayerDir, builtStandaloneDir } from "../src/serve.ts";
 
 const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
 const temps: string[] = [];
@@ -205,5 +206,25 @@ describe("the audit file and the deck", () => {
     expect(existsSync(join(dir, AUDIT_FILE))).toBe(true);
     expect(revOf(dir)).toBe(before);
     expect(JSON.stringify(Object.keys(loadDeckDir(dir).text))).not.toContain("audit");
+  });
+});
+
+describe("the built player does not carry the audit log", () => {
+  it.each([
+    ["the player", builtPlayerDir],
+    ["the standalone page", builtStandaloneDir],
+  ])("%s has no audit file name in any script", (_name, dir) => {
+    const built = dir();
+    const scripts = existsSync(built)
+      ? (readdirSync(built, { recursive: true }) as string[]).filter((path) => path.endsWith(".js"))
+      : [];
+    if (scripts.length === 0) {
+      if (process.env.CI) throw new Error(`Nothing is built in ${built}. Run pnpm build.`);
+      return;
+    }
+    for (const path of scripts) {
+      const text = readFileSync(join(built, path), "utf8");
+      expect(text.includes(AUDIT_FILE), `${path} contains ${AUDIT_FILE}`).toBe(false);
+    }
   });
 });

@@ -42,6 +42,8 @@ const PAGES = {
 
 /** Docs that are left off, and why. A link to one of these goes to the file on GitHub. */
 const LEFT_OFF = {
+  "docs/AUDIT_COLLAB_PLAN.md":
+    "It is the plan for the controller session and the audit log, with open questions the user guides do not need.",
   "docs/BRANDS_AND_PPTX.md":
     "It is the build record of the brands and PowerPoint work, with decisions the user guides do not need.",
   "docs/CONTENT_RANGE.md":

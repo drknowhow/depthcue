@@ -1,5 +1,8 @@
 import { acceptChanges, revertChanges, revertOps, type Session } from "@depthcue/core";
 import { h } from "@depthcue/player";
+import type { AuditBook } from "./auditbook.ts";
+import type { AuditPane } from "./auditpane.ts";
+import { notLoaded, PARTS, withPart } from "./lazy.ts";
 import type { Outcome, ReviewBook } from "./reviewbook.ts";
 import { BRAND_CHANGE, type ChangeRow, rowOf } from "./reviewview.ts";
 
@@ -12,6 +15,12 @@ const WAITS = /^(unknown-(template|style)|no-brand|missing-brand-file)$/;
 export interface ReviewDrawerHooks {
   /** Shows what a change is about: its scene, and its block when it has one. */
   goTo(scene: string, block: string | undefined): void;
+  /** The audit log, listed on the drawer's History tab. */
+  audit: AuditBook;
+  /** The slide being edited, which the History tab's "This slide" keeps. */
+  current(): string | undefined;
+  /** Whether the deck still has a slide. */
+  has(scene: string): boolean;
   /** The drawer was closed by the key or its button, so the control that opened it can have the keyboard back. */
   closed(): void;
 }
@@ -55,15 +64,58 @@ export function createReviewDrawer(
   const together = h("div", { class: "ed-review-together", hidden: true });
   const empty = h("p", { class: "ed-review-empty" });
   const list = h("ol", { class: "ed-review-list" });
+  const tabReview = h(
+    "button",
+    { type: "button", role: "tab", "data-action": "tab-review", "aria-selected": "true" },
+    "To review",
+  );
+  const tabHistory = h(
+    "button",
+    { type: "button", role: "tab", "data-action": "tab-history", "aria-selected": "false" },
+    "History",
+  );
+  const reviewBody = h("div", { class: "ed-review-body" }, problem, together, empty, list);
   const element = h(
     "aside",
     { class: "ed-review", id: "ed-review", "aria-label": "Changes to review", tabindex: "-1", hidden: true },
     h("header", { class: "ed-review-head" }, h("h2", {}, "Changes"), count, acceptAll, close),
-    problem,
-    together,
-    empty,
-    list,
+    h("div", { class: "ed-review-tabs", role: "tablist" }, tabReview, tabHistory),
+    reviewBody,
   );
+  let history = false;
+  /** The History list is a part of its own, made when the tab is first picked, or at once when it is already in. */
+  let pane: AuditPane | undefined;
+  const withPane = (then: (ready: AuditPane) => void) =>
+    withPart(
+      PARTS.history,
+      (module) => {
+        if (!pane) {
+          pane = module.createAuditPane(hooks.audit, hooks);
+          element.append(pane.element);
+        }
+        then(pane);
+      },
+      () => {
+        pick(false);
+        show({ ok: false, message: notLoaded("the history") });
+      },
+    );
+  const pick = (toHistory: boolean) => {
+    history = toHistory;
+    tabReview.setAttribute("aria-selected", String(!history));
+    tabHistory.setAttribute("aria-selected", String(history));
+    reviewBody.hidden = history;
+    acceptAll.hidden = history;
+    if (history)
+      withPane((ready) => {
+        if (history) ready.show();
+      });
+    else pane?.hide();
+    render();
+  };
+  tabReview.addEventListener("click", () => pick(false));
+  tabHistory.addEventListener("click", () => pick(true));
+  const unsubscribeAudit = hooks.audit.subscribe(() => pane?.render());
 
   const show = (outcome: Outcome) => {
     const said = outcome.ok ? leftWords(outcome.left ?? []) : outcome.message;
@@ -198,6 +250,7 @@ export function createReviewDrawer(
 
   function render() {
     if (!open) return;
+    if (history) return pane?.render();
     const { problem: unreadable, ready } = book.state;
     const rows = book.changes().map((change) => rowOf(change, session.doc));
     // Redrawing the same rows would drop the keyboard from the button that has it, so it is skipped.
@@ -268,6 +321,7 @@ export function createReviewDrawer(
       problem.hidden = true;
       together.hidden = true;
       document.addEventListener("keydown", onKey);
+      if (history) withPane((ready) => ready.show());
       render();
       element.focus({ preventScroll: true });
     },
@@ -284,6 +338,7 @@ export function createReviewDrawer(
     render,
     destroy() {
       drawer.close();
+      unsubscribeAudit();
       element.remove();
     },
   };

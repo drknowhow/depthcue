@@ -10,6 +10,7 @@ import {
   cueMapPath,
   type Diagnostic,
   editDrafts,
+  filterAudit,
   loadDoc,
   type Review,
   readCueMap,
@@ -17,7 +18,7 @@ import {
   reviewRevision,
   revisionOf,
 } from "@depthcue/core";
-import { appendAudit } from "./audit-file.ts";
+import { appendAudit, loadAuditDir } from "./audit-file.ts";
 import {
   addBrandFile,
   brandFileBody,
@@ -533,6 +534,15 @@ const revisionOfReview = (review: Review | undefined): string =>
  * works out the changes itself, against the deck it has open, so unsaved edits and undo are counted. A review file
  * that is not valid is reported and left alone, so a hand edit survives.
  */
+/** The latest entries of the audit log that the editor shows. The command line prints the rest. */
+const AUDIT_LIST_MAX = 500;
+
+/** The audit log for the editor's History list. A line that is not an entry is counted, never an error. */
+function loadAudit(response: ServerResponse, ctx: EditContext) {
+  const { entries, skipped } = loadAuditDir(ctx.folder);
+  return send(response, 200, { entries: filterAudit(entries, { limit: AUDIT_LIST_MAX }), skipped });
+}
+
 function loadReview(response: ServerResponse, ctx: EditContext) {
   const read = loadReviewDir(ctx.folder);
   if (!read.ok) {
@@ -695,6 +705,7 @@ export async function handleEditApi(
     else if (route === "/_depthcue/api/comments" && request.method === "GET") loadComments(response, ctx);
     else if (route === "/_depthcue/api/comments" && request.method === "POST")
       await applyComments(request, response, ctx);
+    else if (route === "/_depthcue/api/audit" && request.method === "GET") loadAudit(response, ctx);
     else if (route === "/_depthcue/api/review" && request.method === "GET") loadReview(response, ctx);
     else if (route === "/_depthcue/api/review" && request.method === "POST")
       await replaceReview(request, response, ctx);

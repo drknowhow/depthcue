@@ -12,6 +12,7 @@ import {
   withBrandFile,
 } from "@depthcue/core";
 import type { Api, BrandFileAnswer, DeckPayload, ListedAsset, VoiceAnswer } from "./api.ts";
+import { type AuditBook, createAuditBook } from "./auditbook.ts";
 import { loadBrandChecks, loadBuiltIns, waitedForBrandChecks, waitedForBuiltIns } from "./brandchecks.ts";
 import { type CommentBook, createCommentBook } from "./commentbook.ts";
 import { createHistory, type History } from "./history.ts";
@@ -70,6 +71,8 @@ export interface EditorStore {
    * with `review.sync()` when the server says it changed, and a save of the deck sends it what the review needs to know.
    */
   readonly review: ReviewBook;
+  /** The audit log, read only when the History list is first opened and again each time the server says it changed. */
+  readonly audit: AuditBook;
   /** Undo and redo: the session's, and the steps taken outside it, such as accepting a change, in their place among them. */
   readonly history: History;
   /** The deck as the files on disk have it, as far as this editor knows. The session's document is that and the unsaved edits. */
@@ -189,6 +192,7 @@ export async function openStore(
         : undefined,
   });
   void review.sync();
+  const audit = createAuditBook(api);
   let diskRev = payload.rev;
   let saving = false;
   /** What the save or the brand file call under way resolves with, for a brand file call to wait for. */
@@ -343,6 +347,7 @@ export async function openStore(
     layoutApi: { loadLayout: (scene) => api.loadLayout(scene) },
     comments,
     review,
+    audit,
     history,
     get saved() {
       return onDisk;
@@ -600,6 +605,7 @@ export async function openStore(
       autosave.stop();
       comments.dispose();
       review.dispose();
+      audit.dispose();
       history.dispose();
       listeners.clear();
     },
