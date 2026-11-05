@@ -19,8 +19,12 @@ import { renderReading } from "./reading.ts";
 import { assetUrl } from "./safe.ts";
 import { type RenderContext, renderScene } from "./scene.ts";
 import { applyLook } from "./style.ts";
+import { createVoice, type VoiceState } from "./voice.ts";
 
 export type Mode = "present" | "read";
+
+/** How long a finished recording rests before the deck moves on to the next scene. */
+const END_BEAT_MS = 900;
 
 export interface PlayerState {
   mode: Mode;
@@ -37,6 +41,8 @@ export interface PlayerOptions {
   /** Modules that may make blocks interactive once they show. Default none: every block stays static. */
   modules?: ModuleRegistry;
   onModule?: (event: ModuleEvent) => void;
+  /** The voice-over started, paused, ended, or had its captions or its lead switched. */
+  onVoice?: (state: VoiceState) => void;
 }
 
 export interface Player {
@@ -51,6 +57,10 @@ export interface Player {
   update(source: PlayerSource): void;
   /** Runs a command on a block's module, such as `highlight` on a chart. False when it did not run. */
   invoke(blockId: string, command: string, args?: unknown): boolean;
+  /** What the voice-over of the scene on screen is doing. `available` is false for a scene with none. */
+  voiceState(): VoiceState;
+  /** Pauses or plays the recording, switches the captions, or switches whether the voice leads. No-op without one. */
+  voiceControl(action: "pause" | "captions" | "auto"): void;
   /** Resolves once the modules that are in view have hydrated or failed. */
   settled(): Promise<void>;
   /** Where each block's module stands: pending, hydrated, failed, off or incompatible. */
@@ -74,6 +84,7 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
   let position: Position = { scene: 0, step: 0 };
   let notes = false;
   let idleHandle: number | undefined;
+  let endTimer: number | undefined;
   const prefetched = new Set<string>();
   const motion =
     typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : undefined;
@@ -92,6 +103,24 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
   const nextButton = button("next", "Next", icon("next"));
   const readButton = button("read", "Reading view", h("span", {}, "Read"));
   const notesButton = button("notes", "Speaker notes", h("span", {}, "Notes"));
+  // One small group for the voice-over: play or pause, captions, and whether the voice leads the deck.
+  const pauseButton = button(
+    "voice-pause",
+    "Pause voice-over",
+    h("span", { class: "dc-vi", "aria-hidden": "true" }),
+  );
+  const captionsButton = button("voice-captions", "Captions", h("span", {}, "CC"));
+  const autoButton = button("voice-auto", "Voice leads the deck", h("span", {}, "Auto"));
+  captionsButton.setAttribute("aria-pressed", "false");
+  autoButton.setAttribute("aria-pressed", "false");
+  autoButton.title = "Auto: the voice starts each scene, moves its steps and moves on when it ends";
+  const voiceGroup = h(
+    "div",
+    { class: "dc-voice", role: "group", "aria-label": "Voice-over", hidden: true },
+    pauseButton,
+    captionsButton,
+    autoButton,
+  );
   readButton.setAttribute("aria-pressed", "false");
   notesButton.setAttribute("aria-pressed", "false");
   notesButton.setAttribute("aria-controls", "dc-notes");
@@ -111,13 +140,56 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     lead,
     readButton,
     notesButton,
+    voiceGroup,
+  );
+  // The caption sits at the foot of the slide, over the picture, so it reads on any layout.
+  const captionBox = h("p", { class: "dc-captions", hidden: true });
+  const voice = createVoice({
+    onChange: () => {
+      updateVoiceButton();
+      options.onVoice?.(voice.state());
+    },
+    onCaption: (text) => {
+      captionBox.textContent = text ?? "";
+      captionBox.hidden = !text || mode !== "present";
+    },
+    // The recording passed a mark: the scene shows that step.
+    onMark: (step) => {
+      const to = Math.min(step, stepCount(current()));
+      if (mode === "present" && to !== position.step)
+        show({
+          position: { scene: position.scene, step: to },
+          transition: false,
+          focus: false,
+          history: "replace",
+        });
+    },
+    // The recording ended: after a beat the next scene shows, and its own recording starts.
+    onEnd: () => {
+      if (endTimer !== undefined) clearTimeout(endTimer);
+      const scene = position.scene;
+      endTimer = window.setTimeout(() => {
+        endTimer = undefined;
+        const state = voice.state();
+        if (mode !== "present" || position.scene !== scene || !state.ended || !state.auto) return;
+        if (scene + 1 < source.scenes.length)
+          show({ position: { scene: scene + 1, step: 0 }, transition: true, focus: false, history: "push" });
+      }, END_BEAT_MS);
+    },
+  });
+  // Shown over the slide when the browser held the sound back until something is pressed.
+  const voiceStart = h(
+    "button",
+    { type: "button", class: "dc-voice-start", "data-action": "voice-start", hidden: true },
+    h("span", { class: "dc-voice-start-icon", "aria-hidden": "true" }),
+    "Play voice-over",
   );
   const deckTitle = h("h1", { class: "dc-sr-only" });
   const root = h(
     "div",
     { class: "dc-player" },
     deckTitle,
-    h("div", { class: "dc-stage" }, view),
+    h("div", { class: "dc-stage" }, view, voiceStart, captionBox),
     notesPanel,
     bar,
     live,
@@ -174,6 +246,19 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     idleHandle = window.setTimeout(fetchAll, 250);
   }
 
+  function updateVoiceButton() {
+    const now = voice.state();
+    voiceGroup.hidden = !now.available || mode !== "present";
+    captionsButton.setAttribute("aria-pressed", String(now.captions));
+    autoButton.setAttribute("aria-pressed", String(now.auto));
+    pauseButton.dataset.state = now.playing ? "playing" : "paused";
+    pauseButton.setAttribute(
+      "aria-label",
+      now.playing ? "Pause voice-over" : now.ended ? "Replay voice-over" : "Play voice-over",
+    );
+    voiceStart.hidden = !voice.blocked || mode !== "present";
+  }
+
   function updateChrome() {
     const scene = current();
     const total = source.scenes.length;
@@ -199,10 +284,17 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     notesPanel.hidden = !(notes && mode === "present");
     notesBody.textContent = scene.notes ?? "No notes for this scene.";
     notesBody.classList.toggle("dc-empty", scene.notes === undefined);
+    updateVoiceButton();
   }
 
   function renderView(focus: boolean) {
     modules.detach();
+    if (endTimer !== undefined) clearTimeout(endTimer);
+    endTimer = undefined;
+    // The recording belongs to the scene being presented; the reading view is silent.
+    voice.attach(mode === "present" ? current() : undefined, source.assetBase, (path) =>
+      readDeckJson(source, path),
+    );
     view.replaceChildren(
       mode === "read"
         ? renderReading(source.deck, source.scenes, context())
@@ -317,11 +409,20 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
       renderView(false);
       options.onChange?.(state());
     },
+    voiceState: () => voice.state(),
+    voiceControl(action) {
+      if (!voice.available) return;
+      if (action === "pause") voice.togglePause();
+      else if (action === "captions") voice.captions = !voice.captions;
+      else voice.auto = !voice.auto;
+    },
     invoke: (blockId, command, args) => modules.invoke(blockId, command, args),
     settled: () => modules.settled(),
     moduleStates: () => modules.states(),
     destroy() {
       modules.detach();
+      voice.dispose();
+      if (endTimer !== undefined) clearTimeout(endTimer);
       document.removeEventListener("keydown", onKey);
       removeEventListener("hashchange", onHash);
       removeEventListener("popstate", onHash);
@@ -372,6 +473,13 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
         case "n":
           api.toggleNotes();
           break;
+        case "p":
+        case "c":
+        case "a":
+          if (voice.available)
+            api.voiceControl(event.key === "p" ? "pause" : event.key === "c" ? "captions" : "auto");
+          else handled = false;
+          break;
         default:
           handled = false;
       }
@@ -405,6 +513,18 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
         break;
       case "notes":
         api.toggleNotes();
+        break;
+      case "voice-auto":
+        api.voiceControl("auto");
+        break;
+      case "voice-pause":
+        api.voiceControl("pause");
+        break;
+      case "voice-captions":
+        api.voiceControl("captions");
+        break;
+      case "voice-start":
+        voice.start();
         break;
     }
   }

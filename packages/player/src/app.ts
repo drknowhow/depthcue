@@ -3,7 +3,7 @@ import type { BroadcastMount } from "./broadcast.ts";
 import type { LeaseMount } from "./lease.ts";
 import { loadDeck, type PlayerSource } from "./load.ts";
 import { firstPartyModules } from "./modules/index.ts";
-import { mountPlayer, type Player } from "./player.ts";
+import { mountPlayer, type Player, type PlayerState } from "./player.ts";
 import type { PresenterMount } from "./presenter.ts";
 
 /**
@@ -31,6 +31,8 @@ async function start(host: HTMLElement) {
         lease?.changed(state);
         broadcast?.changed(state);
       },
+      // Pausing or finishing the voice-over is not a move, but the presenter's window shows it.
+      onVoice: () => broadcast?.changed(player?.state as PlayerState),
     });
     // Tools that drive the page, such as the renderer, wait on `settled()` and run module commands through it.
     Object.defineProperty(window, "depthcue", { value: player, configurable: true });

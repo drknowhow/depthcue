@@ -8,8 +8,11 @@ Notable changes to Depthcue, newest first. Nothing has been released yet, so eve
 
 A scene can have a `voiceover` with the text Kokoro reads aloud. `depthcue voice build <deck> [scene]` runs the `kokoro`
 Python package and writes `assets/<scene>.voice.wav` and the word times, names them in the scene and skips scenes whose
-text and voice did not change. `depthcue voice doctor` says what Python is missing. The player, the editor and the
-exports do not use the audio yet. See [voice-over](docs/voice.md).
+text and voice did not change. `depthcue voice doctor` says what Python is missing. The player plays a scene's
+recording when the scene shows, with small play or pause, captions and Auto controls (`p`, `c`, `a`). Write `{step}` in
+a voice-over's text and `voice build` times it, so the slide shows that step as the words are said. With Auto on, the
+deck moves to the next scene when a recording ends, so you do not press Next. The presenter view has the same controls.
+The editor and the exports do not use the audio yet. See [voice-over](docs/voice.md).
 
 ### Moving between slides and zooming
 
