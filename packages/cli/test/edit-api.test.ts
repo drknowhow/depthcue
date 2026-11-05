@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  AUDIT_FILE,
   acceptChanges,
   COMMENTS_FILE,
   commentsRevision,
@@ -1066,6 +1067,108 @@ describe("comments", () => {
   it("answers no other method", async () => {
     expect((await call(COMMENTS, { method: "DELETE" })).status).toBe(404);
     expect((await call(COMMENTS, { ...json({}), method: "PUT" })).status).toBe(404);
+  });
+});
+
+describe("audit", () => {
+  const AUDIT = "/_depthcue/api/audit";
+
+  it("reads no log from a deck nothing has happened to, and makes no file", async () => {
+    const answer = await call(AUDIT);
+    expect(answer.status).toBe(200);
+    expect(answer.json).toEqual({ entries: [], skipped: 0 });
+    expect(existsSync(join(folder, AUDIT_FILE))).toBe(false);
+  });
+
+  it("logs a save from the editor as the person's and lists it", async () => {
+    const saved = await call("/_depthcue/api/save", {
+      ...json({ baseRev: revisionOf(readDeck()), files: editedFiles("Channel B is ahead") }),
+    });
+    expect(saved.status).toBe(200);
+    const answer = await call(AUDIT);
+    expect(answer.json.entries).toEqual([
+      expect.objectContaining({ by: "you", kind: "edit", scene: "opening", block: "opening-title" }),
+    ]);
+  });
+
+  it("signs a resolve from the editor as the person's", async () => {
+    const add = {
+      op: "comment.add",
+      scene: "method",
+      block: "method-diagram",
+      anchor: { x: 0.5, y: 0.5 },
+      author: "agent",
+      text: "Look here.",
+    };
+    const first = await call(
+      "/_depthcue/api/comments",
+      json({ baseRev: commentsRevision(emptyComments()), ops: [add] }),
+    );
+    expect(first.status).toBe(200);
+    const resolved = await call(
+      "/_depthcue/api/comments",
+      json({ baseRev: first.json.rev, ops: [{ op: "comment.resolve", id: "c1" }] }),
+    );
+    expect(resolved.status).toBe(200);
+    const entries = (await call(AUDIT)).json.entries as Array<{ by: string; kind: string }>;
+    expect(entries.map((e) => [e.by, e.kind])).toEqual([
+      ["agent", "comment"],
+      ["you", "resolve"],
+    ]);
+  });
+
+  it("lists the latest 500 entries and counts lines that are not entries", async () => {
+    const line = (n: number) =>
+      `${JSON.stringify({ id: `e${n}`, time: "2026-11-05T10:00:00.000Z", by: "agent", kind: "edit", summary: `s${n}` })}\n`;
+    writeFileSync(
+      join(folder, AUDIT_FILE),
+      `${Array.from({ length: 520 }, (_, n) => line(n)).join("")}not an entry\n`,
+    );
+    const answer = await call(AUDIT);
+    const entries = answer.json.entries as Array<{ id: string }>;
+    expect(entries).toHaveLength(500);
+    expect(entries[0]?.id).toBe("e20");
+    expect(entries.at(-1)?.id).toBe("e519");
+    expect(answer.json.skipped).toBe(1);
+  });
+
+  it("needs the editor's token and answers no other method", async () => {
+    expect((await call(AUDIT, { token: false })).status).toBe(403);
+    expect((await call(AUDIT, { method: "POST" })).status).toBe(404);
+  });
+
+  it("tells only an editor that asked about the audit log, on an event of its own", async () => {
+    const asked: string[] = [];
+    const notAsked: string[] = [];
+    const open = (query: string, into: string[]) => {
+      const listener = request({
+        host: "127.0.0.1",
+        port: server.port,
+        path: `/_depthcue/events?${query}`,
+        headers: { Host: `127.0.0.1:${server.port}` },
+      });
+      return new Promise<ReturnType<typeof request>>((started, fail) => {
+        listener.on("response", (response) => {
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => into.push(String(chunk)));
+          started(listener);
+        });
+        listener.on("error", fail);
+        listener.end();
+      });
+    };
+    const editor = await open("comments=1&review=1&audit=1", asked);
+    const other = await open("comments=1&review=1", notAsked);
+    try {
+      writeFileSync(join(folder, AUDIT_FILE), "");
+      await new Promise((wait) => setTimeout(wait, 300));
+      expect(asked.join("")).toContain("event: audit");
+      expect(asked.join("")).not.toContain("event: change");
+      expect(notAsked.join("")).not.toContain("event:");
+    } finally {
+      editor.destroy();
+      other.destroy();
+    }
   });
 });
 

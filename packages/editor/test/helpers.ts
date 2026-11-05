@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
+  type AuditEntry,
   applyCommentOps,
   applyOps,
   type CommentOp,
@@ -25,6 +26,7 @@ import {
 import type {
   Api,
   ApiDiagnostic,
+  AuditAnswer,
   BrandFileAnswer,
   ClipSize,
   CommentsAnswer,
@@ -120,6 +122,11 @@ export class FakeServer implements Api {
   reviewGate: Promise<void> | undefined;
   /** The calls to the brand folder, by the path after `brand-file`. */
   brandCalls: string[] = [];
+  /** The audit log, oldest first, as the server would send it. */
+  audit: AuditEntry[] = [];
+  /** Makes loadAudit answer that the log cannot be read, with this message. */
+  auditBroken: string | undefined;
+  auditLoads = 0;
 
   constructor() {
     const demo = readDemo();
@@ -159,6 +166,13 @@ export class FakeServer implements Api {
 
   get reviewRev(): string {
     return this.review ? reviewRevision(this.review) : "none";
+  }
+
+  async loadAudit(): Promise<AuditAnswer> {
+    this.auditLoads += 1;
+    return this.auditBroken === undefined
+      ? { ok: true, entries: structuredClone(this.audit), skipped: 0 }
+      : { ok: false, message: this.auditBroken };
   }
 
   async loadReview(): Promise<ReviewAnswer> {

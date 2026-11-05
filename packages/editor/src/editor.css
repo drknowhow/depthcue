@@ -2317,6 +2317,102 @@ body {
   min-height: 2rem;
 }
 
+/* The drawer's two tabs: the changes to answer, and the history of what was done to the deck. */
+.ed-review-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--dc-space-1);
+  padding: var(--dc-space-2) var(--dc-space-4);
+  border-bottom: 1px solid var(--dc-line);
+}
+
+.ed-app .ed-review-tabs button {
+  min-height: 2rem;
+}
+
+.ed-app .ed-review-tabs button[aria-selected="true"],
+.ed-app .ed-ai-scope button[aria-pressed="true"] {
+  border-color: var(--dc-text);
+  font-weight: 600;
+}
+
+.ed-review-body,
+.ed-audit {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ed-review-body[hidden],
+.ed-audit[hidden] {
+  display: none;
+}
+
+.ed-ai-filters {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dc-space-2);
+  padding: var(--dc-space-2) var(--dc-space-4);
+  border-bottom: 1px solid var(--dc-line);
+}
+
+.ed-ai-scope {
+  display: flex;
+  gap: var(--dc-space-1);
+}
+
+.ed-app .ed-ai-filters button,
+.ed-app .ed-ai-filters select {
+  min-height: 2rem;
+}
+
+.ed-ai-list {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.ed-ai {
+  display: grid;
+  gap: var(--dc-space-1);
+  padding: var(--dc-space-3) var(--dc-space-4);
+  border-bottom: 1px solid var(--dc-line);
+}
+
+.ed-ai-time {
+  color: var(--dc-muted);
+  font: 600 0.6875rem / 1.4 var(--dc-font-mono);
+}
+
+.ed-ai-by {
+  margin-inline-start: auto;
+}
+
+.ed-ai-summary {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ed-ai-skipped {
+  flex-shrink: 0;
+  margin: 0;
+  padding: var(--dc-space-2) var(--dc-space-4);
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.ed-ai-skipped[hidden] {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .ed-review {
     position: fixed;

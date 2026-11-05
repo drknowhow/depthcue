@@ -106,6 +106,8 @@ moves to `audit.1.jsonl` and a new one starts. A line that is not an entry is sk
 depthcue log <deck-folder> [--scene <id>] [--by you|agent|outside] [--kind <kind>] [--since <entry-id>] [--limit <n>] [--json]
 ```
 
+In the editor, the Review drawer has a History tab that lists the log newest first. "This slide" keeps the entries of the slide being edited and follows the selection; "All slides" lists everything, and a menu keeps one author's entries. An entry that names a slide has a button that goes to that slide and block. The tab shows the latest 500 entries and reads the log again when the file changes.
+
 `--scene` keeps one slide's entries. `--since` takes an entry id from an earlier run and prints only what was written
 after it. Edits made in the editor are logged as `you`; edits through `deck_apply` and `depthcue apply` as `agent`.
 A hand edit to the files is not logged, because nothing sees it happen.

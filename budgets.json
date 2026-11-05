@@ -89,7 +89,13 @@
       "name": "editor review drawer",
       "file": "packages/editor/dist/reviewdrawer.js",
       "metric": "brotli",
-      "limitBytes": 3072
+      "limitBytes": 3584
+    },
+    {
+      "name": "editor history list",
+      "file": "packages/editor/dist/auditpane.js",
+      "metric": "brotli",
+      "limitBytes": 2048
     },
     {
       "name": "editor storyboard",
