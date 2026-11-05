@@ -85,6 +85,9 @@ export const PATTERN_HINTS: Record<string, string> = {
   [IMAGE_FILE_PATTERN]:
     'An image is in the brand folder\'s images/, such as "images/cover.jpg" (jpg, png, webp or svg).',
   [FAMILY_PATTERN]: "Write the family name alone, without quotes, semicolons or braces.",
+  "^[a-z]{2}_[a-z0-9]{2,32}$":
+    'A Kokoro voice name is a language letter, a gender letter, "_" and a name, such as "af_heart".',
+  "^[0-9a-f]{64}$": "Leave this to `depthcue voice build`: it is a 64-digit hex hash of the text and voice.",
 };
 
 /** What a number outside its range in a frame should be, since the schema's own limits do not say percent of what. */
