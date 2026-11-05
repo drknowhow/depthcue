@@ -4,6 +4,7 @@ import {
   brandPartOf,
   type Diagnostic,
   type Doc,
+  editDrafts,
   kitOf,
   loadDoc,
   revisionOf,
@@ -11,6 +12,7 @@ import {
   sceneRevision,
   slotMax,
 } from "@depthcue/core";
+import { appendAudit } from "./audit-file.ts";
 import { largeImageDiagnostics } from "./images.ts";
 import { loadDeckDir } from "./loader.ts";
 import { recordAgentWrite } from "./review-file.ts";
@@ -225,6 +227,7 @@ export function applyToFolder(folder: string, ops: unknown, baseRev: string): Ap
     const written = saveDeckDir(folder, opened.doc, result.doc);
     // This is the agent's way in, so what it changed is recorded for the person to review.
     const recorded = recordAgentWrite(folder, opened.doc, result.doc);
+    appendAudit(folder, editDrafts("agent", opened.doc, result.doc));
     return {
       ok: true,
       prevRev: result.prevRev,

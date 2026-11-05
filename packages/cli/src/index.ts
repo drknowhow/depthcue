@@ -1,6 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { checkDeckFiles, type Diagnostic, describeChange, loadDoc, revisionOf } from "@depthcue/core";
+import {
+  type AuditBy,
+  type AuditKind,
+  type AuditQuery,
+  checkDeckFiles,
+  type Diagnostic,
+  describeChange,
+  filterAudit,
+  loadDoc,
+  revisionOf,
+} from "@depthcue/core";
+import { loadAuditDir } from "./audit-file.ts";
 import { BRAND_COMMANDS_TEXT, BRAND_COMMANDS_USAGE, NEW_TEXT, NEW_USAGE } from "./brand/usage.ts";
 import { BRAND_IMPORT_TEXT, BRAND_IMPORT_USAGE } from "./brand-import/usage.ts";
 import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./clip.ts";
@@ -106,6 +117,8 @@ ${ASSET_USAGE}
   depthcue diff <deck-folder> [--json]
   depthcue diff <deck-folder> accept <change-id...> | --all [--json]
   depthcue diff <deck-folder> revert <change-id...> | --all [--json]
+  depthcue log <deck-folder> [--scene <id>] [--by you|agent|outside] [--kind <kind>] [--since <entry-id>]
+                             [--limit <n>] [--json]
 ${UPGRADE_USAGE}
   depthcue --help
 
@@ -160,6 +173,12 @@ diff   Lists what changed since the deck was last reviewed, one entry per proper
        puts them back as they were, written as a new revision, so nothing in the history is rewritten.
        --all means every change; accept --all also starts a review from the deck as it is.
 
+log    Prints the audit log kept in audit.jsonl beside the deck: every edit, comment, reply, accept and
+       revert, with who did it (you, agent or outside), the scene and block, and a sentence. Like the
+       comments and the review it is never part of the deck. --scene keeps one slide's entries, --since
+       takes an entry id from an earlier run and prints only what came after it, and --limit keeps the
+       latest n.
+
 ${UPGRADE_TEXT}
 
 Exit codes: 0 done, 1 errors found, edit rejected or a clip did not build, 2 could not run, 3 stale revision.`;
@@ -183,6 +202,10 @@ const VALUE_FLAGS = [
   "target",
   "note",
   "to",
+  "scene",
+  "by",
+  "since",
+  "limit",
 ] as const;
 
 interface Parsed {
@@ -708,6 +731,27 @@ async function videoCommand(
   }
 }
 
+const AUDIT_BYS = ["you", "agent", "outside"] as const;
+const AUDIT_KINDS = ["edit", "comment", "reply", "resolve", "reopen", "delete", "accept", "revert"] as const;
+
+/** Prints the audit log: what changed, who changed it and where, newest last. */
+function logCommand(folder: string, query: AuditQuery, json: boolean, io: Io): number {
+  const { entries, skipped } = loadAuditDir(folder);
+  const shown = filterAudit(entries, query);
+  if (json) {
+    io.out(JSON.stringify({ ok: true, total: entries.length, skipped, entries: shown }, null, 2));
+    return 0;
+  }
+  io.out(
+    `${plural(shown.length, "entry")} of ${entries.length}${skipped > 0 ? `, ${skipped} unreadable lines skipped` : ""}.`,
+  );
+  for (const e of shown) {
+    const place = e.scene === undefined ? "" : `  ${e.scene}${e.block === undefined ? "" : `/${e.block}`}`;
+    io.out(`${e.time}  ${e.by}  ${e.kind}${place}  ${e.summary}`);
+  }
+  return 0;
+}
+
 /** Lists the comments, so a person or a program can see what is open and what the agent has been asked to do. */
 function commentsListCommand(folder: string, all: boolean, json: boolean, io: Io): number {
   const read = readFolderComments(folder);
@@ -1090,7 +1134,7 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
         return 2;
       });
   }
-  if ((replace || values.kind !== undefined) && command !== "brand") {
+  if ((replace || (values.kind !== undefined && command !== "log")) && command !== "brand") {
     return usage(`${replace ? "--replace" : "--kind"} belongs to brand add.`);
   }
   if (command === "brand" || command === "new") {
@@ -1159,6 +1203,35 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
       return usage(`diff ${action} needs change ids or --all. List them with: depthcue diff <deck-folder>`);
     }
     return diffActCommand(action, diffFolder, all ? "all" : changeIds, json, io);
+  }
+  if (command === "log") {
+    if (!folder || positional.length > 1) return usage("log needs one deck folder.");
+    if (baseRev !== undefined || portText !== undefined || renderFlags !== undefined) {
+      return usage("log takes a deck folder, --scene, --by, --kind, --since, --limit and --json.");
+    }
+    const { scene, by, kind, since, limit } = values;
+    if (by !== undefined && !(AUDIT_BYS as readonly string[]).includes(by)) {
+      return usage(`--by is one of ${AUDIT_BYS.join(", ")}.`);
+    }
+    if (kind !== undefined && !(AUDIT_KINDS as readonly string[]).includes(kind)) {
+      return usage(`--kind is one of ${AUDIT_KINDS.join(", ")}.`);
+    }
+    const count = limit === undefined ? undefined : Number(limit);
+    if (count !== undefined && !(Number.isInteger(count) && count > 0)) {
+      return usage("--limit needs a whole number above 0.");
+    }
+    return logCommand(
+      folder,
+      {
+        ...(scene === undefined ? {} : { scene }),
+        ...(by === undefined ? {} : { by: by as AuditBy }),
+        ...(kind === undefined ? {} : { kind: kind as AuditKind }),
+        ...(since === undefined ? {} : { since }),
+        ...(count === undefined ? {} : { limit: count }),
+      },
+      json,
+      io,
+    );
   }
   if (extra.length > 0) return usage(`Unexpected argument ${extra[0]}.`);
 

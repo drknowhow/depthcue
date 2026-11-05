@@ -94,6 +94,22 @@ depthcue diff <deck-folder> revert <change-id...> | --all
 them back as a new revision, so the history is not rewritten. `accept --all` also starts a review from the deck as it
 is. A refusal exits with 1, and a deck that changed on disk while the command ran exits with 3.
 
+## Audit log
+
+`audit.jsonl` beside the deck keeps one line for each thing that happened: an edit, a comment, a reply, a resolve,
+a reopen, a delete, an accept or a revert. Each line has the time, who did it (`you`, `agent` or `outside`), the kind,
+the scene and block it concerns, the comment id when there is one, and a sentence. It is not part of the deck, so it
+does not change the revision, an export leaves it out, and the player and presenter never load it. Past 1 MiB the log
+moves to `audit.1.jsonl` and a new one starts. A line that is not an entry is skipped when reading and left in the file.
+
+```
+depthcue log <deck-folder> [--scene <id>] [--by you|agent|outside] [--kind <kind>] [--since <entry-id>] [--limit <n>] [--json]
+```
+
+`--scene` keeps one slide's entries. `--since` takes an entry id from an earlier run and prints only what was written
+after it. Edits made in the editor are logged as `you`; edits through `deck_apply` and `depthcue apply` as `agent`.
+A hand edit to the files is not logged, because nothing sees it happen.
+
 ## Related guides
 
 - [The editor](editor.md): the drawer, the storyboard and the rest of the editor.
