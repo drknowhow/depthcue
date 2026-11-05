@@ -4,6 +4,13 @@ Notable changes to Depthcue, newest first. Nothing has been released yet, so eve
 
 ## Unreleased
 
+### Voice-over
+
+A scene can have a `voiceover` with the text Kokoro reads aloud. `depthcue voice build <deck> [scene]` runs the `kokoro`
+Python package and writes `assets/<scene>.voice.wav` and the word times, names them in the scene and skips scenes whose
+text and voice did not change. `depthcue voice doctor` says what Python is missing. The player, the editor and the
+exports do not use the audio yet. See [voice-over](docs/voice.md).
+
 ### Moving between slides and zooming
 
 A bar at the top right of the slide in the editor has Previous and Next with a "3 / 12" count, and zoom out, zoom level

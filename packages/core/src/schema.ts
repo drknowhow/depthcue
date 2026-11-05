@@ -499,6 +499,20 @@ export const sceneSchema = {
       },
     },
     notes: { type: "string", maxLength: 4000 },
+    voiceover: {
+      type: "object",
+      additionalProperties: false,
+      required: ["text"],
+      properties: {
+        /** What is read aloud. Kept apart from `notes`, which are for the presenter. */
+        text: { type: "string", minLength: 1, maxLength: 4000 },
+        voice: { type: "string", pattern: "^[a-z]{2}_[a-z0-9]{2,32}$", maxLength: 40 },
+        /** Written by `depthcue voice build`. */
+        audio: assetPath,
+        words: assetPath,
+        key: { type: "string", pattern: "^[0-9a-f]{64}$" },
+      },
+    },
   },
 } as const;
 

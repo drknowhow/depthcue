@@ -21,6 +21,7 @@ import {
 } from "./review-api.ts";
 import { builtEditorDir, builtPlayerDir, startServer } from "./serve.ts";
 import { installedVersion, upgradeCommand } from "./upgrade.ts";
+import { buildVoice, pythonCommand, VoiceError, voiceDoctor } from "./voice.ts";
 
 export type { Io };
 export { report, summary };
@@ -87,6 +88,8 @@ ${EXPORT_USAGE}
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
   depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
                       [--scale <0.1-1>] [--kine <path>] [--json]
+  depthcue voice build <deck-folder> [scene] [--voice <name>] [--python <path>] [--json]
+  depthcue voice doctor [--python <path>]
 ${BRAND_IMPORT_USAGE}
 ${BRAND_COMMANDS_USAGE}
 ${NEW_USAGE}
@@ -123,6 +126,11 @@ clip   Builds a clip from a Kinescript scene with the kine program you have inst
        kinescript; --kine or DEPTHCUE_KINE points elsewhere). It writes assets/<name>.mp4, a poster
        and a cue map, and skips the render when nothing changed. Add the result to a scene as a
        clip block. --scale 0.5 with --quality draft is the fast way to try a scene.
+
+voice  Reads each scene's voiceover text aloud with Kokoro (pip install kokoro soundfile; Python 3.10 to
+       3.12, espeak-ng on the PATH; --python or DEPTHCUE_PYTHON points to the Python that has them).
+       It writes assets/<scene>.voice.wav and its word times, names them in the scene, and skips scenes
+       whose text and voice did not change. doctor says what Python is missing. The default voice is af_heart.
 
 ${BRAND_IMPORT_TEXT}
 
@@ -161,6 +169,8 @@ const VALUE_FLAGS = [
   "quality",
   "scale",
   "kine",
+  "voice",
+  "python",
   "format",
   "brand",
   "kind",
@@ -407,6 +417,76 @@ async function renderCommand(
   if (json) report(io, found, true, { scenes: rows });
   else io.out(`${ids.length} scene${ids.length === 1 ? "" : "s"} rendered, ${summary(found)}`);
   return errors === 0 ? 0 : 1;
+}
+
+interface VoiceRequest {
+  folder: string;
+  scene: string | undefined;
+  voice: string | undefined;
+  python: readonly string[];
+}
+
+async function voiceBuildCommand(request: VoiceRequest, json: boolean, io: Io): Promise<number> {
+  if (!existsSync(join(request.folder, "deck.json"))) {
+    io.err(`${request.folder} is not a deck folder: it has no deck.json.`);
+    return 2;
+  }
+  const stop = new AbortController();
+  const onInterrupt = () => stop.abort();
+  process.once("SIGINT", onInterrupt);
+  try {
+    const made = await buildVoice({
+      folder: request.folder,
+      python: request.python,
+      signal: stop.signal,
+      ...(request.scene === undefined ? {} : { scene: request.scene }),
+      ...(request.voice === undefined ? {} : { voice: request.voice }),
+    });
+    if (json) {
+      io.out(
+        JSON.stringify(
+          { ok: true, scenes: made.map((item) => ({ ...item, seconds: Number(item.seconds.toFixed(2)) })) },
+          null,
+          2,
+        ),
+      );
+    } else {
+      for (const item of made) {
+        io.out(
+          item.built
+            ? `Voiced ${item.scene}: ${item.audio}, ${item.duration.toFixed(1)} s, ${item.voice}, ${item.seconds.toFixed(1)} s to make.`
+            : `Up to date: ${item.scene}. Nothing was made again.`,
+        );
+      }
+    }
+    return 0;
+  } catch (error) {
+    if (!(error instanceof VoiceError)) throw error;
+    if (json) io.out(JSON.stringify({ ok: false, code: error.code, message: error.message }, null, 2));
+    else io.err(error.message);
+    return error.code === "kokoro-failed" ? 1 : 2;
+  } finally {
+    process.off("SIGINT", onInterrupt);
+  }
+}
+
+async function voiceDoctorCommand(python: readonly string[], json: boolean, io: Io): Promise<number> {
+  try {
+    const found = await voiceDoctor(python);
+    if (json) io.out(JSON.stringify({ ok: found.missing.length === 0, ...found }, null, 2));
+    else if (found.missing.length === 0)
+      io.out(`Ready: ${found.python} can import kokoro, soundfile and numpy.`);
+    else
+      io.out(
+        `${found.python} cannot import ${found.missing.join(", ")}. Install with: pip install kokoro soundfile`,
+      );
+    return found.missing.length === 0 ? 0 : 1;
+  } catch (error) {
+    if (!(error instanceof VoiceError)) throw error;
+    if (json) io.out(JSON.stringify({ ok: false, code: error.code, message: error.message }, null, 2));
+    else io.err(error.message);
+    return 2;
+  }
 }
 
 interface ClipRequest {
@@ -774,9 +854,10 @@ function diffActCommand(
   return 0;
 }
 
-/** Test seams: the command that runs Kinescript, so a stand-in can be used where it is not installed. */
+/** Test seams: the commands that run Kinescript and Python, so a stand-in can be used where they are not installed. */
 export interface RunOptions {
   kine?: readonly string[];
+  python?: readonly string[];
 }
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
@@ -868,6 +949,40 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
       io.err(error.message);
       return 2;
     });
+  }
+  if (command === "voice") {
+    const [sub, voiceFolder, scene, ...more] = positional;
+    if (sub !== "build" && sub !== "doctor") {
+      return usage("voice needs a subcommand. The ones there are: voice build, voice doctor.");
+    }
+    if (
+      clipFlags !== undefined ||
+      baseRev !== undefined ||
+      portText !== undefined ||
+      renderFlags !== undefined
+    ) {
+      return usage("voice takes --voice, --python and --json.");
+    }
+    const python = options.python ?? pythonCommand(values.python);
+    if (sub === "doctor") {
+      if (voiceFolder !== undefined || values.voice !== undefined)
+        return usage("voice doctor takes only --python.");
+      return voiceDoctorCommand(python, json, io).catch((error: Error) => {
+        io.err(error.message);
+        return 2;
+      });
+    }
+    if (!voiceFolder) return usage("voice build needs a deck folder.");
+    if (more.length > 0) return usage(`Unexpected argument ${more[0]}.`);
+    return voiceBuildCommand({ folder: voiceFolder, scene, voice: values.voice, python }, json, io).catch(
+      (error: Error) => {
+        io.err(error.message);
+        return 2;
+      },
+    );
+  }
+  if (values.voice !== undefined || values.python !== undefined) {
+    return usage("--voice and --python belong to voice.");
   }
   if (clipFlags !== undefined) return usage("--name, --quality, --scale and --kine belong to clip build.");
   if (command !== "new" && values.brand !== undefined) return usage("--brand belongs to new.");

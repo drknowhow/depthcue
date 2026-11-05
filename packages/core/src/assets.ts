@@ -22,6 +22,8 @@ export function assetRefs(scene: Scene): AssetRef[] {
       if (block.poster) refs.push({ path: `/blocks/${i}/poster`, asset: block.poster });
     }
   });
+  if (scene.voiceover?.audio) refs.push({ path: "/voiceover/audio", asset: scene.voiceover.audio });
+  if (scene.voiceover?.words) refs.push({ path: "/voiceover/words", asset: scene.voiceover.words });
   scene.sources?.forEach((source, i) => {
     if (source.asset) refs.push({ path: `/sources/${i}/asset`, asset: source.asset });
   });

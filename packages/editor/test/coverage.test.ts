@@ -176,6 +176,8 @@ type Entry = Way | { never: string };
 const NEVER_FORMAT = "A format marker the editor writes back as it found it.";
 const NEVER_ID = "Chosen when the thing is created, and other things point at it, so it does not change.";
 const NEVER_KIND = "The kind of a block is fixed when it is added.";
+const NEVER_NO_VOICE_PANEL =
+  "Set with scene.set and `depthcue voice build` until the editor has a Voice panel; remove this entry when it does.";
 
 /** A pinned block, as a stored deck has it, chosen and with its Pinned chip open. There is no layout here to measure. */
 const pinnedPop = (id: string) => {
@@ -543,6 +545,12 @@ const WAYS: Record<string, Entry> = {
     where: "Notes popover, Speaker notes",
     reach: () => field(notesPop() as HTMLElement, "panel:notes"),
   },
+  "scene.voiceover": { never: NEVER_NO_VOICE_PANEL },
+  "scene.voiceover.text": { never: NEVER_NO_VOICE_PANEL },
+  "scene.voiceover.voice": { never: NEVER_NO_VOICE_PANEL },
+  "scene.voiceover.audio": { never: NEVER_NO_VOICE_PANEL },
+  "scene.voiceover.words": { never: NEVER_NO_VOICE_PANEL },
+  "scene.voiceover.key": { never: NEVER_NO_VOICE_PANEL },
 
   "scene.blocks<text>.id": { never: NEVER_ID },
   "scene.blocks<text>.type": { never: NEVER_KIND },
