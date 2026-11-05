@@ -1,8 +1,8 @@
 import type { Session } from "@depthcue/core";
 import { h } from "@depthcue/player";
-import { popoverChip } from "./chip.ts";
 import { actionButton, type Edits, fileButton } from "./fields.ts";
-import { notesPanel, panelHost } from "./panels.ts";
+import { panelHost } from "./panels.ts";
+import { createScriptDrawer, type ScriptDrawer } from "./scriptdrawer.ts";
 import { keyName } from "./shortcuts.ts";
 import { BLOCK_KINDS, IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
 
@@ -17,6 +17,10 @@ export interface QuickBarHooks {
   add(kind: NewBlockKind, file?: File): void;
   /** The Image button or the I key was pressed: opens the image library and answers true when the deck has pictures. */
   library?(): boolean;
+  /** Makes the voice-over audio of a scene; see `EditorStore.buildVoice`. */
+  voice?: Parameters<typeof panelHost>[1]["voice"];
+  /** The script drawer opened: another drawer over the same place should close. */
+  scriptOpened?(): void;
   /** Gives the slide a claim. */
   claim(): void;
   /** Whether the deck has a video a clip could play. */
@@ -33,6 +37,12 @@ export interface QuickBarHooks {
 
 export interface QuickBar {
   readonly element: HTMLElement;
+  /** The drawer with the notes and the voice-over, which sits in the stage beside the bar and is shown from it. */
+  readonly drawer: HTMLElement;
+  /** Puts the drawer away, as another drawer over the same place opens. */
+  closeScript(): void;
+  /** Opens the drawer, or closes it when it is open. */
+  toggleScript(): void;
   /** Opens the file chooser that adds an image, as the Image button does. */
   pickImage(): void;
   /** Puts the keyboard on the Image button. */
@@ -103,12 +113,37 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     edits: hooks.edits,
     upload: hooks.upload,
     problem: hooks.problem,
-    close: () => notes.close(),
+    close: () => drawer?.close(),
     openSources: () => {},
+    ...(hooks.voice ? { voice: hooks.voice } : {}),
   });
-  const panel = notesPanel(host, () => current);
-  // The bar sits at the foot of the stage, so the notes open upward over it, a little way in from the window's edge.
-  const notes = popoverChip(panel, true, 8);
+  // The words that go with the slide open in a drawer beside it, from this button.
+  let drawer: ScriptDrawer | undefined;
+  const badge = h("span", { class: "ed-tb-n" });
+  const scriptButton = h(
+    "button",
+    {
+      type: "button",
+      class: "ed-tb-chip",
+      "data-tb": "notes",
+      "aria-label": "Script: speaker notes, reading version and voice-over",
+      "aria-expanded": "false",
+      "aria-controls": "ed-script",
+    },
+    "Script",
+    badge,
+  );
+  scriptButton.addEventListener("click", () => drawer?.toggle());
+  drawer = createScriptDrawer(host, () => current, {
+    opened() {
+      scriptButton.setAttribute("aria-expanded", "true");
+      hooks.scriptOpened?.();
+    },
+    closed(giveBack) {
+      scriptButton.setAttribute("aria-expanded", "false");
+      if (giveBack) scriptButton.focus({ preventScroll: true });
+    },
+  });
 
   // Build order is a view of the slide and not an addition to it, so it sits apart from the row of things to add.
   const order = actionButton(
@@ -150,7 +185,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     ...adders,
     claim,
     h("span", { class: "ed-quick-rule", "aria-hidden": "true" }),
-    notes.chip.wrap,
+    scriptButton,
     order,
     comment,
     everything,
@@ -162,12 +197,18 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     pickImage: () => imageInput?.click(),
     focusImage: () => imageInput?.focus({ preventScroll: true }),
     setCommenting: (on) => comment.setAttribute("aria-pressed", String(on)),
-    destroy: notes.destroy,
+    drawer: drawer.element,
+    closeScript: () => drawer?.close(),
+    toggleScript: () => drawer?.toggle(),
+    destroy() {},
     render(sceneId, typing = false) {
       current = sceneId;
       const live = scene();
       if (!live) return;
-      notes.fill(live, typing);
+      drawer?.fill(live, typing);
+      const state = drawer?.state(live);
+      badge.textContent = state?.badge ?? "";
+      scriptButton.setAttribute("aria-label", state?.title ?? "Script");
       const hasVideo = hooks.hasVideo();
       clip.disabled = !hasVideo;
       clip.title = hasVideo ? "" : "Put an .mp4 or .webm file in the deck's assets folder first.";

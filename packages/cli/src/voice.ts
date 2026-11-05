@@ -1,8 +1,7 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { revisionOf, type Scene, splitMarks, VOICE_MARK } from "@depthcue/core";
+import { revisionOf, type Scene, splitMarks, VOICE_MARK, voiceKey } from "@depthcue/core";
 import { applyToFolder, openDeck } from "./deck-api.ts";
 
 /**
@@ -13,7 +12,6 @@ import { applyToFolder, openDeck } from "./deck-api.ts";
 
 export const DEFAULT_VOICE = "af_heart";
 export const WORDS_FORMAT = "depthcue-words/1";
-const KEY_FORMAT = "depthcue-voice/1";
 const VOICE_PATTERN = /^[a-z]{2}_[a-z0-9]{2,32}$/;
 
 export type VoiceErrorCode =
@@ -149,10 +147,7 @@ function exec(command: readonly string[], args: readonly string[], signal?: Abor
 
 const tail = (text: string) => text.trim().split(/\r?\n/).slice(-6).join("\n");
 
-/** What decides whether the audio is current: the text and the voice, and the format of the files. */
-export function voiceKey(text: string, voice: string): string {
-  return createHash("sha256").update(`${KEY_FORMAT}\n${voice}\n${text}`).digest("hex");
-}
+export { voiceKey };
 
 /** Which of the modules Kokoro needs the given Python cannot import. Empty means it is ready. */
 export async function voiceDoctor(

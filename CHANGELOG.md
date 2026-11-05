@@ -12,11 +12,14 @@ text and voice did not change. `depthcue voice doctor` says what Python is missi
 recording when the scene shows, with small play or pause, captions and Auto controls (`p`, `c`, `a`). Write `{step}` in
 a voice-over's text and `voice build` times it, so the slide shows that step as the words are said. With Auto on, the
 deck moves to the next scene when a recording ends, so you do not press Next. The presenter view has the same controls.
-The editor and the exports do not use the audio yet. See [voice-over](docs/voice.md).
+The editor's Script button opens a drawer beside the slide with the speaker notes, the reading version and the
+voice-over: write the text, add `{step}` marks with a button, press Make audio, and hear the result. The title shows whether the audio still matches the text. The exports do not use the audio yet. See
+[voice-over](docs/voice.md).
 
 ### Moving between slides and zooming
 
-A bar at the top right of the slide in the editor has Previous and Next with a "3 / 12" count, and zoom out, zoom level
+The editor has a footer. On the left it says which slide is on show and what it holds: steps, speaker notes, reading
+version and voice-over, each of which opens the script. On the right it has Previous and Next with a "3 / 12" count, and zoom out, zoom level
 and zoom in. The zoom steps from 50% to 300%, and the level button returns to Fit. `[` and `]` change slide, `+`, `-`
 and `0` zoom, and Ctrl with the wheel zooms. The zoom is a view setting: it is not saved and is not an undo step.
 

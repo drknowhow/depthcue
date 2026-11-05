@@ -36,6 +36,7 @@ import type {
   ReviewSaveResult,
   SaveOptions,
   SaveResult,
+  VoiceAnswer,
 } from "../src/api.ts";
 import { loadParts } from "../src/lazy.ts";
 
@@ -263,6 +264,15 @@ export class FakeServer implements Api {
   async brandFile(path: string, _body: Blob | string): Promise<BrandFileAnswer> {
     this.brandCalls.push(path);
     return { ok: false, error: "unreadable-deck", message: "This deck has no brand folder." };
+  }
+
+  /** What the next buildVoice call answers, and what it was asked. A good answer writes the files the scene names. */
+  voiceAnswer: VoiceAnswer = { ok: false, code: "kokoro-missing", message: "Kokoro is not installed." };
+  voiceCalls: Array<{ scene: string; voice: string | undefined }> = [];
+
+  async buildVoice(scene: string, voice: string | undefined): Promise<VoiceAnswer> {
+    this.voiceCalls.push({ scene, voice });
+    return this.voiceAnswer;
   }
 
   async loadCues(source: string): Promise<CueList> {

@@ -35,6 +35,7 @@ import { assetName, sniffImage } from "../src/images.ts";
 import { loadDeckDir } from "../src/loader.ts";
 import { loadReviewDir } from "../src/review-file.ts";
 import { type RunningServer, startServer } from "../src/serve.ts";
+import { VoiceError, type VoiceSceneResult } from "../src/voice.ts";
 import { png } from "./images-fixtures.ts";
 
 const demo = fileURLToPath(new URL("../../../fixtures/decks/v0-1", import.meta.url));
@@ -827,6 +828,90 @@ describe("layout", () => {
   it("closes the checker, and the browser with it, when the server closes", async () => {
     await server.close();
     expect(closes).toBe(1);
+  });
+});
+
+describe("voice-over", () => {
+  const made: VoiceSceneResult = {
+    scene: "method",
+    voice: "af_heart",
+    audio: "assets/method.voice.wav",
+    words: "assets/method.voice.words.json",
+    built: true,
+    duration: 3.4,
+    seconds: 1.2,
+  };
+  const asked: Array<[string, string | undefined]> = [];
+  let builder: (scene: string, voice: string | undefined) => Promise<VoiceSceneResult[]>;
+
+  beforeEach(async () => {
+    asked.length = 0;
+    builder = async (scene, voice) => {
+      asked.push([scene, voice]);
+      return [made];
+    };
+    await server.close();
+    server = await startServer({
+      folder,
+      playerDir: join(root, "player"),
+      editorDir: join(root, "editor"),
+      port: 0,
+      voice: (scene, voice) => builder(scene, voice),
+    });
+  });
+
+  const post = (body: unknown, init: Call = {}) =>
+    call("/_depthcue/api/voice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      ...init,
+    });
+
+  it("makes the audio of a scene and answers with what was made", async () => {
+    const reply = await post({ scene: "method", voice: "bf_emma" });
+    expect(reply.status).toBe(200);
+    expect(reply.json).toEqual({ ok: true, results: [made] });
+    expect(asked).toEqual([["method", "bf_emma"]]);
+  });
+
+  it("says why it could not, with the code the command line uses", async () => {
+    builder = async () => {
+      throw new VoiceError("kokoro-missing", "Kokoro is not installed.");
+    };
+    const reply = await post({ scene: "method" });
+    expect(reply.status).toBe(422);
+    expect(reply.json).toEqual({ ok: false, code: "kokoro-missing", message: "Kokoro is not installed." });
+  });
+
+  it("makes one at a time", async () => {
+    let finish: (value: VoiceSceneResult[]) => void = () => {};
+    let started: () => void = () => {};
+    const running = new Promise<void>((resolveStarted) => {
+      started = resolveStarted;
+    });
+    builder = () =>
+      new Promise((resolveBuild) => {
+        finish = resolveBuild;
+        started();
+      });
+    const first = post({ scene: "method" });
+    await running;
+    const second = await post({ scene: "method" });
+    expect(second.status).toBe(409);
+    expect(second.json.code).toBe("busy");
+    finish([made]);
+    expect((await first).status).toBe(200);
+    builder = async () => [made];
+    expect((await post({ scene: "method" })).status).toBe(200);
+  });
+
+  it("wants the editor's token and a scene name", async () => {
+    expect((await post({ scene: "method" }, { token: false })).status).toBe(403);
+    expect((await post({})).status).toBe(400);
+    expect((await post({ scene: "method", voice: 3 })).status).toBe(400);
+    expect((await call("/_depthcue/api/voice")).status).toBe(404);
+    expect(asked).toEqual([]);
   });
 });
 

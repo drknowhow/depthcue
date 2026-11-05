@@ -11,6 +11,7 @@ import { countsOf } from "./commentview.ts";
 import { createContextMenu } from "./contextmenu.ts";
 import { createCueBook } from "./cues.ts";
 import { type Edits, problemOf } from "./fields.ts";
+import { createFooter } from "./footer.ts";
 import { createLayoutWatch, type LayoutWatch } from "./layout-watch.ts";
 import { notLoaded, PARTS, type Parts, withPart } from "./lazy.ts";
 import { createPalette } from "./palette.ts";
@@ -356,7 +357,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       (module) => {
         reviewBusy(false);
         if (!drawer) makeDrawer(module);
-        if (!drawer?.isOpen) parts.define.ready?.closeBrand(floor);
+        if (!drawer?.isOpen) {
+          parts.define.ready?.closeBrand(floor);
+          quick.closeScript();
+        }
         drawer?.toggle();
         renderReview();
       },
@@ -439,6 +443,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     upload: (file) => store.upload(file),
     add: (kind, file) => void adder.quick(kind, file),
     library: () => addFromLibrary(),
+    voice: (scene, voice) => store.buildVoice(scene, voice),
+    scriptOpened: () => {
+      drawer?.close();
+    },
     claim: () => adder.claim(),
     hasVideo: () => adder.hasVideo(),
     build: (on) => canvas.setBuild(on),
@@ -700,7 +708,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
   });
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
-  const floor = h("div", { class: "ed-stage" }, stage, quick.element, view.element);
+  const floor = h("div", { class: "ed-stage" }, stage, quick.element, quick.drawer);
+  const footer = createFooter(view.element, { script: () => quick.toggleScript() });
   const root = h(
     "div",
     { class: "ed-app" },
@@ -709,6 +718,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     ribbon.element,
     strip.element,
     floor,
+    footer.element,
     shortcuts.sheet,
     palette.element,
   );
@@ -872,6 +882,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     quick.render(selected, typingIn === "quick");
     const live = session.doc.scenes[selected];
     if (live) deckChip.fill(live, typingIn === "deck");
+    if (live)
+      footer.render(live, session.doc.deck.scenes.indexOf(selected) + 1, session.doc.deck.scenes.length);
   }
 
   function renderNotices() {

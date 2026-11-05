@@ -14,6 +14,7 @@ import { createLeaseRelay, RELAY_PREFIX } from "./lease-relay.ts";
 import { loadDeckDir } from "./loader.ts";
 import { lookOfFiles } from "./look.ts";
 import type { PptxOptions, PptxSummary } from "./pptx/index.ts";
+import { buildVoice, pythonCommand } from "./voice.ts";
 
 export interface ServeOptions {
   /** The deck folder: deck.json, scenes/, assets/. */
@@ -31,6 +32,8 @@ export interface ServeOptions {
   editorDir?: string;
   /** Answers the editor's layout questions. By default a render in a headless browser, started when first asked. */
   layout?: LayoutChecker;
+  /** Makes a scene's voice-over for the editor. By default `buildVoice` with the Python from DEPTHCUE_PYTHON or the PATH. */
+  voice?: EditContext["voice"];
 }
 
 export interface RunningServer {
@@ -522,7 +525,23 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     LOOPBACK_NAMES.map((name) => `http://${name === "::1" ? "[::1]" : name}:${boundPort}`);
   const layout = token === undefined ? undefined : (options.layout ?? createLayoutChecker(folder));
   const edit: EditContext | undefined =
-    token === undefined ? undefined : { folder, token, origins, ...(layout ? { layout } : {}) };
+    token === undefined
+      ? undefined
+      : {
+          folder,
+          token,
+          origins,
+          ...(layout ? { layout } : {}),
+          voice:
+            options.voice ??
+            ((scene, voice) =>
+              buildVoice({
+                folder,
+                scene,
+                ...(voice === undefined ? {} : { voice }),
+                python: pythonCommand(undefined),
+              })),
+        };
   /** The PowerPoint exports, one after another: each starts a browser. */
   const exports = { last: Promise.resolve() as Promise<unknown> };
   const relay = createLeaseRelay({

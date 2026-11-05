@@ -154,7 +154,12 @@ const openTop = (selector: string) => {
   return popOf(chip);
 };
 const scenePop = () => openTop(".ed-scene-tools [data-tb='scene']");
-const notesPop = () => openTop(".ed-quick [data-tb='notes']");
+const notesPop = () => {
+  const button = find(host, ".ed-quick [data-tb='notes']") as HTMLElement | null;
+  if (button && button.getAttribute("aria-expanded") !== "true") button.click();
+  return find(host, ".ed-script") as HTMLElement | undefined;
+};
+const voicePop = notesPop;
 const deckPop = () => openTop(".ed-actions [data-tb='deck']");
 const source = () => store.session.doc.scenes[SCENE]?.sources?.[0]?.id as string;
 const linked = (kind: "text" | "other", id: string) => {
@@ -176,8 +181,8 @@ type Entry = Way | { never: string };
 const NEVER_FORMAT = "A format marker the editor writes back as it found it.";
 const NEVER_ID = "Chosen when the thing is created, and other things point at it, so it does not change.";
 const NEVER_KIND = "The kind of a block is fixed when it is added.";
-const NEVER_NO_VOICE_PANEL =
-  "Set with scene.set and `depthcue voice build` until the editor has a Voice panel; remove this entry when it does.";
+const NEVER_VOICE_BUILT =
+  "Written by `depthcue voice build`, which the Voice panel runs; it names the recording and says what it was made from.";
 
 /** A pinned block, as a stored deck has it, chosen and with its Pinned chip open. There is no layout here to measure. */
 const pinnedPop = (id: string) => {
@@ -521,11 +526,11 @@ const WAYS: Record<string, Entry> = {
     reach: () => field(scenePop() as HTMLElement, `panel:source:${source()}:url`),
   },
   "scene.reading": {
-    where: "Notes popover, Reading version",
+    where: "Script drawer, Reading version",
     reach: () => field(notesPop() as HTMLElement, "panel:reading"),
   },
   "scene.reading.text": {
-    where: "Notes popover, Reading version",
+    where: "Script drawer, Reading version",
     reach: () => field(notesPop() as HTMLElement, "panel:reading"),
   },
   "scene.steps": {
@@ -542,15 +547,24 @@ const WAYS: Record<string, Entry> = {
       ),
   },
   "scene.notes": {
-    where: "Notes popover, Speaker notes",
+    where: "Script drawer, Speaker notes",
     reach: () => field(notesPop() as HTMLElement, "panel:notes"),
   },
-  "scene.voiceover": { never: NEVER_NO_VOICE_PANEL },
-  "scene.voiceover.text": { never: NEVER_NO_VOICE_PANEL },
-  "scene.voiceover.voice": { never: NEVER_NO_VOICE_PANEL },
-  "scene.voiceover.audio": { never: NEVER_NO_VOICE_PANEL },
-  "scene.voiceover.words": { never: NEVER_NO_VOICE_PANEL },
-  "scene.voiceover.key": { never: NEVER_NO_VOICE_PANEL },
+  "scene.voiceover": {
+    where: "Script drawer, Voice-over",
+    reach: () => field(voicePop() as HTMLElement, "panel:voice-text"),
+  },
+  "scene.voiceover.text": {
+    where: "Script drawer, Voice-over",
+    reach: () => field(voicePop() as HTMLElement, "panel:voice-text"),
+  },
+  "scene.voiceover.voice": {
+    where: "Script drawer, Voice",
+    reach: () => field(voicePop() as HTMLElement, "panel:voice-name"),
+  },
+  "scene.voiceover.audio": { never: NEVER_VOICE_BUILT },
+  "scene.voiceover.words": { never: NEVER_VOICE_BUILT },
+  "scene.voiceover.key": { never: NEVER_VOICE_BUILT },
 
   "scene.blocks<text>.id": { never: NEVER_ID },
   "scene.blocks<text>.type": { never: NEVER_KIND },

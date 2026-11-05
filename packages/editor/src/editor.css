@@ -20,7 +20,7 @@ body {
 .ed-app {
   display: grid;
   grid-template-columns: 10.5rem minmax(0, 1fr);
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   height: 100dvh;
 }
 
@@ -445,24 +445,20 @@ body {
 /* The slide takes the width it is given, unless the height runs out first: the top bar, the problem ribbon, the padding, the hint and the room for the quick bar are about 13.75rem. A short window scrolls the slide under the bar instead of shrinking it past 24rem. */
 .ed-canvas-host {
   position: relative;
-  width: calc(min(100%, max(24rem, calc((100dvh - 13.75rem) * 16 / 9))) * var(--ed-zoom, 1));
+  width: calc(min(100%, max(24rem, calc((100dvh - 16.5rem) * 16 / 9))) * var(--ed-zoom, 1));
   flex: none;
 }
 
 /* The bar for moving between slides and zooming, over the top right of the stage. */
 .ed-view {
-  position: absolute;
-  top: var(--dc-space-3);
-  right: var(--dc-space-5, 1.5rem);
-  z-index: 8;
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: var(--dc-space-1);
   padding: var(--dc-space-1);
   border: 1px solid var(--dc-line);
   border-radius: var(--dc-radius-lg);
   background: var(--dc-bg);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 14%);
 }
 
 .ed-app .ed-view button {
@@ -489,10 +485,6 @@ body {
   width: 1px;
   margin: var(--dc-space-1);
   background: var(--dc-line);
-}
-
-.ed-stage[data-side] .ed-view {
-  right: calc(var(--ed-side) + var(--dc-space-4));
 }
 
 .ed-app .ed-frame.dc-player {
@@ -4398,4 +4390,173 @@ body {
 .ed-crop-focus:focus-visible {
   outline: 3px solid var(--dc-action);
   outline-offset: 2px;
+}
+
+/* The script: speaker notes, reading version and voice-over, in a drawer over the right of the stage. */
+.ed-script {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  width: min(24rem, 100%);
+  border-left: 1px solid var(--dc-line);
+  background: var(--dc-surface);
+  box-shadow: -0.75rem 0 1.5rem -1rem color-mix(in srgb, var(--dc-text) 45%, transparent);
+}
+
+.ed-script[hidden] {
+  display: none;
+}
+
+.ed-script:focus-visible {
+  outline-offset: -3px;
+}
+
+.ed-script-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  gap: var(--dc-space-2);
+  padding: var(--dc-space-3) var(--dc-space-4);
+  border-bottom: 1px solid var(--dc-line);
+}
+
+.ed-script-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.ed-script-scene {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-script-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--dc-space-4);
+  min-height: 0;
+  padding: var(--dc-space-4);
+  overflow-y: auto;
+}
+
+.ed-script-part h3 {
+  display: flex;
+  gap: var(--dc-space-2);
+  align-items: center;
+  margin: 0 0 var(--dc-space-1);
+  font-size: 0.875rem;
+}
+
+.ed-script-part + .ed-script-part {
+  padding-top: var(--dc-space-4);
+  border-top: 1px solid var(--dc-line);
+}
+
+.ed-script audio {
+  width: 100%;
+  margin-top: var(--dc-space-2);
+}
+
+.ed-script audio[hidden] {
+  display: none;
+}
+
+.ed-script textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+@media (max-width: 40rem) {
+  .ed-script {
+    top: auto;
+    width: 100%;
+    max-height: 70%;
+    border-top: 1px solid var(--dc-line);
+    border-left: 0;
+  }
+}
+
+/* Over the bar and the view controls, which sit in the same stage; the notes under it stay in reach by scrolling. */
+.ed-script {
+  z-index: 10;
+}
+
+.ed-script-part > .ed-hint-text {
+  margin-bottom: var(--dc-space-2);
+}
+
+/* The footer: what the slide on show holds, and the controls for moving between slides and zooming. */
+.ed-footer {
+  grid-column: 1 / -1;
+  grid-row: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dc-space-4);
+  min-width: 0;
+  padding: var(--dc-space-2) var(--dc-space-4);
+  border-top: 1px solid var(--dc-line);
+  background: var(--dc-surface);
+}
+
+.ed-footer-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-1) var(--dc-space-3);
+  min-width: 0;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.ed-footer-where {
+  overflow: hidden;
+  max-width: 24rem;
+  color: var(--dc-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-app .ed-footer-part {
+  min-height: 1.75rem;
+  padding: 0 var(--dc-space-2);
+  border-color: transparent;
+  background: transparent;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.ed-app .ed-footer-part[data-on] {
+  color: var(--dc-text);
+}
+
+.ed-app .ed-footer-part[data-stale] {
+  color: var(--dc-action);
+}
+
+@media (max-width: 760px) {
+  .ed-footer {
+    grid-row: auto;
+    flex-wrap: wrap;
+  }
+}
+
+/* In the footer the controls are a little smaller, so the strip costs the slide as little height as it can. */
+.ed-footer {
+  padding-block: var(--dc-space-1);
+}
+
+.ed-app .ed-footer .ed-view button {
+  min-height: 1.875rem;
+  padding-inline: var(--dc-space-2);
 }

@@ -11,7 +11,7 @@ import {
   type Session,
   withBrandFile,
 } from "@depthcue/core";
-import type { Api, BrandFileAnswer, DeckPayload, ListedAsset } from "./api.ts";
+import type { Api, BrandFileAnswer, DeckPayload, ListedAsset, VoiceAnswer } from "./api.ts";
 import { loadBrandChecks, loadBuiltIns, waitedForBrandChecks, waitedForBuiltIns } from "./brandchecks.ts";
 import { type CommentBook, createCommentBook } from "./commentbook.ts";
 import { createHistory, type History } from "./history.ts";
@@ -100,6 +100,11 @@ export interface EditorStore {
    * change to what is saved and what is not.
    */
   brandFile(send: (diskRev: string) => [path: string, body: Blob | string]): Promise<BrandFileAnswer>;
+  /**
+   * Makes the voice-over audio of a scene. Unsaved edits are saved first, because the server reads the files; the
+   * saves wait while it runs, and the new audio is read in from disk when it is done. Never rejects.
+   */
+  buildVoice(scene: string, voice: string | undefined): Promise<VoiceAnswer>;
   /** Writes the draft now. Call it when the page is about to hide. */
   flush(): void;
   dispose(): void;
@@ -551,6 +556,41 @@ export async function openStore(
       const done = run();
       running = done;
       return done;
+    },
+
+    async buildVoice(scene, voice) {
+      while (saving) await running;
+      if (session.dirty) await store.save();
+      while (saving) await running;
+      if (session.dirty || conflict || failed) {
+        return {
+          ok: false,
+          code: "not-saved",
+          message: message ?? "The deck could not be saved, so no voice was made.",
+        };
+      }
+      saving = true;
+      notify();
+      const done = api.buildVoice(scene, voice);
+      running = done;
+      const answer = await done;
+      if (answer.ok) await review.sync(); // the scene file is the person's own work: never listed as the agent's
+      saving = false;
+      epoch += 1;
+      notify();
+      pendingSync = false;
+      if (answer.ok) {
+        await store.syncFromDisk();
+        if (message === "Updated from the files on disk.") {
+          message = undefined;
+          notify();
+        }
+      }
+      if (resave) {
+        resave = false;
+        if (session.dirty) armAutosave();
+      }
+      return answer;
     },
 
     flush: () => autosave.flush(),

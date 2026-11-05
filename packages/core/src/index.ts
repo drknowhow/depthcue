@@ -307,4 +307,4 @@ export {
   upgradeScene,
   versionAtLeast,
 } from "./versions.ts";
-export { splitMarks, VOICE_MARK } from "./voiceover.ts";
+export { splitMarks, VOICE_MARK, voiceKey } from "./voiceover.ts";
