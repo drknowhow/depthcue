@@ -27,6 +27,7 @@ import { createStrip } from "./strip.ts";
 import { createTableEditing } from "./tablecells.ts";
 import { IMAGE_ACCEPT, IMAGE_FILE, type Layout, type NewBlockKind } from "./templates.ts";
 import { createToolbar } from "./toolbar.ts";
+import { createViewBar, FIT, stepZoom } from "./viewbar.ts";
 
 const SAVE_LABEL = {
   saved: "Saved",
@@ -61,6 +62,8 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
   const { session } = store;
   let selected = session.doc.deck.scenes[0] as string;
   let selectedBlock: string | undefined;
+  // How far the slide is zoomed, as a multiple of the size that fits the window. It is the view's, not the deck's.
+  let zoom = FIT;
   // The form that is applying a keystroke right now, so that one is not rebuilt under the caret.
   let typingIn: "toolbar" | "scene" | "quick" | "deck" | undefined;
 
@@ -496,7 +499,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     },
     // Shift+F10 and the Menu key open the menu of the right-click on what the keyboard is on.
     menu: () => menu.openFromKeyboard(),
+    scene: goScene,
+    zoom: (change) => setZoom(change === "fit" ? FIT : stepZoom(zoom, change === "in" ? 1 : -1)),
   });
+  const view = createViewBar({ go: goScene, zoom: (next) => setZoom(next) });
   // Cut, copy, paste and duplicate of a block. A paste is one more add, so it is one step of Undo like the rest.
   const clip = createBlockClipboard(session, {
     scene: () => selected,
@@ -694,7 +700,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
   });
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
-  const floor = h("div", { class: "ed-stage" }, stage, quick.element);
+  const floor = h("div", { class: "ed-stage" }, stage, quick.element, view.element);
   const root = h(
     "div",
     { class: "ed-app" },
@@ -859,6 +865,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
   /** The popovers and buttons of the bar, redrawn from the deck. Saving changes none of it, so a save skips this. */
   function renderBar() {
     renderStatus();
+    renderView();
     renderReview();
     renderComments();
     sceneBar.render(selected, typingIn === "scene");
@@ -912,6 +919,27 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       text,
       button("dismiss", "OK", () => store.dismissNotice()),
     );
+  }
+
+  /** The view bar: which slide this is of how many, and the zoom. */
+  function renderView() {
+    const ids = session.doc.deck.scenes;
+    view.render(ids.indexOf(selected) + 1, ids.length, zoom);
+  }
+
+  /** Goes to the slide before or after the one on show, and stops at the ends. */
+  function goScene(direction: 1 | -1) {
+    const ids = session.doc.deck.scenes;
+    const next = ids[ids.indexOf(selected) + direction];
+    if (next !== undefined) select(next);
+  }
+
+  /** Zooms the slide. The room it is drawn in grows with it, and the stage scrolls to the part out of sight. */
+  function setZoom(next: number) {
+    zoom = next;
+    canvas.element.style.setProperty("--ed-zoom", String(zoom));
+    stage.toggleAttribute("data-zoomed", zoom !== FIT);
+    renderView();
   }
 
   /** Keeps the selection pointing at things that exist after the document changed under it. */
@@ -993,6 +1021,17 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
         selectBlock(undefined);
     },
     true,
+  );
+
+  // Ctrl and the wheel, or a pinch on a trackpad, zoom the slide instead of the page.
+  stage.addEventListener(
+    "wheel",
+    (event) => {
+      if (!event.ctrlKey || event.deltaY === 0) return;
+      event.preventDefault();
+      setZoom(stepZoom(zoom, event.deltaY < 0 ? 1 : -1));
+    },
+    { passive: false },
   );
 
   renderScenes();

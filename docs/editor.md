@@ -42,6 +42,10 @@ the files as they are. Keep mine as copy hands you your version as a file first 
 - **Adding.** The quick bar at the foot of the stage has Text, Chart, Table, Image, Clip and Claim, a Notes popover
   for the speaker notes and the reading version, and Build order. `T`, `C` and `I` add a text, a chart or an image
   from the keyboard. An area of the slide that holds nothing shows a dashed place; click it to add there.
+- **Moving and zooming.** The bar at the top right of the slide has Previous and Next, with "3 / 12" for where you are,
+  and zoom out, the zoom level and zoom in. Press the level to return to Fit. `[` and `]` change slide, `+` and `-`
+  zoom, `0` fits, and Ctrl with the wheel zooms. A zoomed slide scrolls. The zoom is only how you see the slide; it is
+  not saved and is not an undo step.
 - **Scenes.** The strip adds a scene, and each scene has buttons to duplicate or delete it. Drag a scene to move it.
 - **Moving between areas.** Drag a block by the grip beside it. See [Placing blocks](placement.md).
 - **Build order.** The Build order button puts a badge on each block. Press a badge to choose the step that reveals

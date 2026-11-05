@@ -71,7 +71,7 @@
       "name": "editor script",
       "file": "packages/editor/dist/editor.js",
       "metric": "brotli",
-      "limitBytes": 95744
+      "limitBytes": 96768
     },
     {
       "name": "editor brand checks",

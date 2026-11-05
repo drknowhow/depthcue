@@ -11,6 +11,12 @@ Python package and writes `assets/<scene>.voice.wav` and the word times, names t
 text and voice did not change. `depthcue voice doctor` says what Python is missing. The player, the editor and the
 exports do not use the audio yet. See [voice-over](docs/voice.md).
 
+### Moving between slides and zooming
+
+A bar at the top right of the slide in the editor has Previous and Next with a "3 / 12" count, and zoom out, zoom level
+and zoom in. The zoom steps from 50% to 300%, and the level button returns to Fit. `[` and `]` change slide, `+`, `-`
+and `0` zoom, and Ctrl with the wheel zooms. The zoom is a view setting: it is not saved and is not an undo step.
+
 ### Version and upgrade
 
 `depthcue --version` prints the installed version, `depthcue --help` prints the usage and exits 0, and `depthcue upgrade`
