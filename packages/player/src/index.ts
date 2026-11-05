@@ -41,3 +41,4 @@ export type { Look } from "./style.ts";
 export { applyLook, faceCss, lookKey } from "./style.ts";
 export { numberText, renderTable, unitText } from "./table.ts";
 export { renderFlow, renderSpans, renderText } from "./text.ts";
+export type { VoiceState } from "./voice.ts";

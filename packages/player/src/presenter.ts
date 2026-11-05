@@ -88,6 +88,33 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
   const reset = h("button", { type: "button", class: "dc-btn", "data-pv": "reset" }, "Reset");
   const previous = h("button", { type: "button", class: "dc-btn", "data-pv": "previous" }, "Previous");
   const next = h("button", { type: "button", class: "dc-btn", "data-pv": "next" }, "Next");
+  const voiceStatus = h("span", { class: "dc-pv-voice-status", role: "status" });
+  const voicePause = h("button", { type: "button", class: "dc-btn", "data-pv": "voice-pause" }, "Pause");
+  const voiceCaptions = h(
+    "button",
+    { type: "button", class: "dc-btn", "data-pv": "voice-captions", "aria-pressed": "false" },
+    "Captions",
+  );
+  const voiceAuto = h(
+    "button",
+    {
+      type: "button",
+      class: "dc-btn",
+      "data-pv": "voice-auto",
+      "aria-pressed": "false",
+      title: "Auto: the voice starts each scene, moves its steps and moves on",
+    },
+    "Auto",
+  );
+  // The recording plays in the deck window, where the audience is. These buttons only ask that window.
+  const voicePanel = h(
+    "div",
+    { class: "dc-pv-voice", role: "group", "aria-label": "Voice-over", hidden: true },
+    voiceStatus,
+    voicePause,
+    voiceCaptions,
+    voiceAuto,
+  );
 
   const root = h(
     "main",
@@ -95,7 +122,7 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
     h("header", { class: "dc-pv-head" }, deckTitle, holderText, takeOver),
     h("section", { class: "dc-pv-now", "aria-label": "On screen" }, where, sceneTitle, notes),
     h("aside", { class: "dc-pv-next", "aria-label": "Next" }, nextLabel, nextTitle, nextDetail),
-    h("section", { class: "dc-pv-clock", "aria-label": "Timer" }, time, reset),
+    h("section", { class: "dc-pv-clock", "aria-label": "Timer" }, time, reset, voicePanel),
     h("nav", { class: "dc-pv-moves", "aria-label": "Moves" }, previous, next),
   );
   host.replaceChildren(root);
@@ -135,8 +162,10 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
       nextDetail.textContent = "";
       setDisabled(previous, true);
       setDisabled(next, true);
+      voicePanel.hidden = true;
       return;
     }
+    paintVoice(shown.voice);
     const steps = stepCount(here.scene);
     where.textContent = [
       `Scene ${here.index + 1} of ${source.scenes.length}`,
@@ -158,6 +187,21 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
     const at = { scene: here.index, step: shown.step };
     setDisabled(previous, at.scene === 0 && at.step === 0);
     setDisabled(next, nextPosition(source.scenes, at) === null);
+  }
+
+  function paintVoice(voice: StateMessage["voice"]) {
+    voicePanel.hidden = !voice;
+    if (!voice) return;
+    voiceStatus.textContent = voice.blocked
+      ? "Press Play in the deck window"
+      : voice.playing
+        ? "Voice-over playing"
+        : voice.ended
+          ? "Voice-over finished"
+          : "Voice-over paused";
+    voicePause.textContent = voice.playing ? "Pause" : voice.ended ? "Replay" : "Play";
+    voiceCaptions.setAttribute("aria-pressed", String(voice.captions));
+    voiceAuto.setAttribute("aria-pressed", String(voice.auto));
   }
 
   const ask = (message: RequestMessage) => channel.postMessage(message);
@@ -194,6 +238,9 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
     const action = control?.dataset.pv;
     if (action === "next" || action === "previous") move(control as HTMLElement, action);
     else if (action === "takeover") ask({ type: "takeover" });
+    else if (action === "voice-pause") ask({ type: "voice", action: "pause" });
+    else if (action === "voice-captions") ask({ type: "voice", action: "captions" });
+    else if (action === "voice-auto") ask({ type: "voice", action: "auto" });
     else if (action === "reset") {
       startedAt = now();
       tick();
@@ -206,6 +253,8 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
     if (event.key === "ArrowRight" || event.key === "PageDown") move(next, "next");
     else if (event.key === "ArrowLeft" || event.key === "PageUp") move(previous, "previous");
     else if (event.key === "Escape" && shown?.holder === "agent") ask({ type: "takeover" });
+    else if (shown?.voice && (event.key === "p" || event.key === "c" || event.key === "a"))
+      ask({ type: "voice", action: event.key === "p" ? "pause" : event.key === "c" ? "captions" : "auto" });
   };
   document.addEventListener("keydown", onKey);
 

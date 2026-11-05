@@ -2,6 +2,7 @@ import { h } from "./dom.ts";
 import type { LeaseMount } from "./lease.ts";
 import type { PlayerSource } from "./load.ts";
 import type { Player, PlayerState } from "./player.ts";
+import type { VoiceState } from "./voice.ts";
 
 /** The name both windows listen on. A channel reaches only pages of the same origin, so one deck server at a time. */
 export const CHANNEL_NAME = "depthcue-presenter";
@@ -24,14 +25,28 @@ export interface StateMessage {
   scene: string;
   step: number;
   holder: Holder;
+  /** What the voice-over of that scene is doing. Left out for a scene without one. */
+  voice?: VoiceState;
 }
+
+export type VoiceAction = "pause" | "captions" | "auto";
 
 /** What the presenter's window asks of the deck window. `hello` asks for a fresh `state`. */
 export type RequestMessage =
   | { type: "hello" }
   | { type: "next" }
   | { type: "previous" }
-  | { type: "takeover" };
+  | { type: "takeover" }
+  | { type: "voice"; action: VoiceAction };
+
+const VOICE_KEYS = ["available", "playing", "ended", "blocked", "auto", "captions"] as const;
+
+function readVoice(data: unknown): VoiceState | undefined {
+  const voice = data as Record<string, unknown> | null;
+  if (!voice || typeof voice !== "object") return undefined;
+  if (!VOICE_KEYS.every((key) => typeof voice[key] === "boolean")) return undefined;
+  return Object.fromEntries(VOICE_KEYS.map((key) => [key, voice[key]])) as unknown as VoiceState;
+}
 
 export function readState(data: unknown): StateMessage | undefined {
   const message = data as Partial<StateMessage> | null;
@@ -40,11 +55,24 @@ export function readState(data: unknown): StateMessage | undefined {
     return undefined;
   }
   if (message.holder !== "human" && message.holder !== "agent") return undefined;
-  return { type: "state", scene: message.scene, step: message.step as number, holder: message.holder };
+  const state: StateMessage = {
+    type: "state",
+    scene: message.scene,
+    step: message.step as number,
+    holder: message.holder,
+  };
+  const voice = message.voice === undefined ? undefined : readVoice(message.voice);
+  if (voice) state.voice = voice;
+  return state;
 }
 
 export function readRequest(data: unknown): RequestMessage | undefined {
-  const type = (data as { type?: unknown } | null)?.type;
+  const message = data as { type?: unknown; action?: unknown } | null;
+  const type = message?.type;
+  if (type === "voice") {
+    const action = message?.action;
+    return action === "pause" || action === "captions" || action === "auto" ? { type, action } : undefined;
+  }
   return type === "hello" || type === "next" || type === "previous" || type === "takeover"
     ? { type }
     : undefined;
@@ -91,6 +119,8 @@ export function mountBroadcast(options: BroadcastOptions): BroadcastMount {
       step: state.position.step,
       holder: holder(),
     };
+    const voice = player.voiceState?.();
+    if (voice?.available) message.voice = voice;
     // Moves and hand-overs often arrive together, and the presenter's window needs each fact once.
     const key = JSON.stringify(message);
     if (key === last && !force) return;
@@ -104,6 +134,7 @@ export function mountBroadcast(options: BroadcastOptions): BroadcastMount {
     if (request.type === "hello") post(true);
     else if (request.type === "next") player.next();
     else if (request.type === "previous") player.previous();
+    else if (request.type === "voice") player.voiceControl(request.action);
     else lease?.controller.takeover();
   };
   channel.addEventListener("message", onMessage);

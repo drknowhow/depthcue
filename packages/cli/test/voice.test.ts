@@ -67,6 +67,51 @@ const generations = () =>
         .filter((args) => args[0] === "-I")
     : [];
 
+describe("depthcue voice build marks", () => {
+  const timings = (id: string) =>
+    JSON.parse(readFileSync(join(folder, "assets", `${id}.voice.words.json`), "utf8")) as {
+      words: Array<{ text: string }>;
+      marks?: number[];
+    };
+
+  it("reads the text without its marks and writes when each one is said", async () => {
+    speak("demand", { text: "First point. {step} Second point. {step} Done." });
+    const { io, errors } = capture();
+    expect(await run(["voice", "build", folder, "demand"], io, options)).toBe(0);
+    expect(errors).toEqual([]);
+    // The stub times each word at 0.4 s: the marks sit before the 3rd and 5th words, 0.1 s early.
+    expect(timings("demand").marks).toEqual([0.7, 1.5]);
+    expect(timings("demand").words.map((word) => word.text)).toEqual([
+      "First",
+      "point.",
+      "Second",
+      "point.",
+      "Done.",
+    ]);
+    expect(readScene("demand").voiceover.text).toBe("First point. {step} Second point. {step} Done.");
+  });
+
+  it("puts a mark at the end of the recording when nothing follows it", async () => {
+    speak("demand", { text: "One. {step} Two. {step}" });
+    expect(await run(["voice", "build", folder, "demand"], capture().io, options)).toBe(0);
+    expect(timings("demand").marks).toEqual([0.3, 0.7]);
+  });
+
+  it("refuses a voiceover with more marks than the scene has steps", async () => {
+    speak("demand", { text: "{step} a {step} b {step} c" });
+    const { io, errors } = capture();
+    expect(await run(["voice", "build", folder, "demand"], io, options)).toBe(2);
+    expect(errors.join("\n")).toMatch(/3 \{step\} marks but the scene has 2 steps/);
+  });
+
+  it("refuses a voiceover that is only marks", async () => {
+    speak("demand", { text: "{step} {step}" });
+    const { io, errors } = capture();
+    expect(await run(["voice", "build", folder, "demand"], io, options)).toBe(2);
+    expect(errors.join("\n")).toMatch(/no words to read/);
+  });
+});
+
 describe("depthcue voice build", () => {
   it("voices every scene that has a voiceover and names the files in the scene", async () => {
     const { io, lines, errors } = capture();

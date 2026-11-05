@@ -55,13 +55,53 @@ so a deck that passed `check` still passes.
 Times are seconds from the start of the audio. The helper reads them from Kokoro's English pipeline; if a voice gives none, the
 list is empty.
 
+## Moving the slide with the voice
+
+Write `{step}` in the text where the next step of the scene should show:
+
+```json
+{ "voiceover": { "text": "Channel B overtook A last quarter. {step} The gap is still widening. {step} Here is why." } }
+```
+
+Kokoro does not read the marks. `voice build` finds the word after each mark and writes the time it is said, 0.1 s
+early, as `marks` in the word times file. Mark N shows step N. A scene can have no more marks than steps, and `voice
+build` says so if it has. Mark every step you want the voice to show: a step with no mark stays hidden until you press
+Next.
+
+```json
+{ "format": "depthcue-words/1", "duration": 6.8, "words": [], "marks": [2.1, 4.4] }
+```
+
 ## Exit codes and `--json`
 
 0 done, 1 Kokoro failed, 2 it could not run: Python is missing, Kokoro is not installed, the deck has errors or a name
 is wrong. With `--json` the result is one object: `ok: true` and `scenes`, one entry per scene with `scene`, `voice`,
 `audio`, `words`, `built`, `duration` and `seconds`; or `ok: false` with a `code` and a `message`.
 
+## In the player
+
+A scene with a recording plays it when the scene shows, and stops when you leave. Three small buttons sit together in
+the controls on those scenes:
+
+- Play or pause (`p`) stops and restarts this scene's recording. After the recording ends it replays it.
+- CC (`c`) shows captions at the foot of the slide. They follow the word times, with the script's own punctuation, and
+  when a scene has no word times they are spread over the recording by the text.
+- Auto (`a`) lets the voice lead. With it on, each scene's recording starts by itself, its marks show the steps, and a
+  beat after it ends the deck moves to the next scene, so you do not press Next. With it off, nothing starts or moves
+  until you press Play, and Next works as before.
+
+Pausing holds the slide where it is. Next, Previous and the other keys work at any time, and the recording of the scene
+you land on takes over. Captions and Auto are remembered in the browser. The reading view is silent.
+
+A browser refuses to start sound before you have pressed anything, so a deck that opens on a voiced scene shows a Play
+voice-over button over the slide until you press it. After that the rest of the deck runs by itself.
+
+The presenter view has the same three controls beside the timer, and the `p`, `c` and `a` keys, with a line saying
+whether the recording is playing, paused, finished or waiting for a press. The sound plays in the deck window, where the
+audience is; the presenter's window only asks that window. If the deck window has had no press yet, the browser may
+refuse, and the presenter view says to press Play there.
+
 ## Not yet
 
-The player does not play the audio, the editor has no voice panel, and the exports do not carry it. Those are the next
-steps; the PowerPoint export will need AAC, so it will also need `ffmpeg`.
+The editor has no voice panel, and the exports do not carry the audio or the marks. Those are the next steps; the
+PowerPoint export will need AAC, so it will also need `ffmpeg`.

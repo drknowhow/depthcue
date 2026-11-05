@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { revisionOf, type Scene } from "@depthcue/core";
+import { revisionOf, type Scene, splitMarks, VOICE_MARK } from "@depthcue/core";
 import { applyToFolder, openDeck } from "./deck-api.ts";
 
 /**
@@ -167,6 +167,30 @@ export async function voiceDoctor(
   return { python: python.join(" "), missing };
 }
 
+/** Seconds before a spoken word that the slide moves on, so the change is there as the word is said. */
+const MARK_LEAD = 0.1;
+
+/**
+ * Writes the marks into the word times as seconds. A mark sits before the word it was written in front of; when the
+ * words Kokoro timed are not the words of the text (a number it spelled out), the mark goes where the same share of
+ * the recording has passed.
+ */
+function writeMarks(file: string, marks: readonly number[], spokenWords: number): void {
+  const data = JSON.parse(readFileSync(file, "utf8")) as {
+    duration: number;
+    words: Array<{ start: number }>;
+    marks?: number[];
+  };
+  const exact = data.words.length === spokenWords;
+  data.marks = marks.map((before) => {
+    const at = exact
+      ? (data.words[before]?.start ?? data.duration)
+      : (before / Math.max(1, spokenWords)) * data.duration;
+    return Math.max(0, Math.round((at - MARK_LEAD) * 1000) / 1000);
+  });
+  writeFileSync(file, JSON.stringify(data));
+}
+
 function readWordsDuration(file: string): number {
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8")) as { duration?: unknown };
@@ -190,6 +214,17 @@ async function generate(
   const words = `assets/${scene.id}.voice.words.json`;
   const key = voiceKey(text, voice);
   const on = (path: string) => join(folder, ...path.split("/"));
+  const { spoken, marks } = splitMarks(text);
+  if (spoken === "") {
+    throw new VoiceError("bad-scene", `The voice-over of "${scene.id}" has no words to read.`);
+  }
+  const steps = scene.steps?.length ?? 0;
+  if (marks.length > steps) {
+    throw new VoiceError(
+      "bad-scene",
+      `The voice-over of "${scene.id}" has ${marks.length} ${VOICE_MARK} marks but the scene has ${steps} steps.`,
+    );
+  }
 
   const current = scene.voiceover;
   if (current?.key === key && current.audio === audio && current.words === words) {
@@ -215,7 +250,7 @@ async function generate(
     const wav = join(work, "voice.wav");
     const timings = join(work, "words.json");
     writeFileSync(script, HELPER);
-    writeFileSync(textFile, text);
+    writeFileSync(textFile, spoken);
     const ran = await exec(
       python,
       ["-I", script, "--voice", voice, "--text-file", textFile, "--out", wav, "--words", timings],
@@ -238,6 +273,7 @@ async function generate(
       );
     }
     const duration = readWordsDuration(timings);
+    writeMarks(timings, marks, spoken.split(/\s+/).length);
 
     // The audio moves in before the scene names it, and the scene is saved through the same checks as any edit,
     // so a stopped build leaves files nothing refers to rather than a scene that refers to missing files.

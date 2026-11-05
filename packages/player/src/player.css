@@ -111,6 +111,108 @@
   container-type: size;
 }
 
+/* The voice-over controls: one small joined group, so they take little of the bar. */
+.dc-voice {
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+}
+
+.dc-voice[hidden] {
+  display: none;
+}
+
+.dc-voice .dc-btn {
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0 0.55rem;
+  border: 0;
+  border-radius: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+}
+
+.dc-voice .dc-btn + .dc-btn {
+  border-left: 1px solid var(--dc-line);
+}
+
+.dc-vi {
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0.35rem 0 0.35rem 0.6rem;
+  border-color: transparent transparent transparent currentcolor;
+}
+
+.dc-btn[data-state="playing"] .dc-vi {
+  width: 0.6rem;
+  height: 0.7rem;
+  border-width: 0 0.2rem;
+  border-color: currentcolor;
+}
+
+.dc-voice-start {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  padding: 0 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--dc-text);
+  color: var(--dc-bg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--dc-text) 30%, transparent);
+}
+
+.dc-voice-start[hidden] {
+  display: none;
+}
+
+.dc-captions {
+  position: absolute;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 1;
+  max-width: min(46rem, calc(100% - 2rem));
+  margin: 0;
+  padding: 0.5rem 1rem;
+  transform: translateX(-50%);
+  border-radius: var(--dc-radius-md);
+  background: color-mix(in srgb, #000 78%, transparent);
+  color: #fff;
+  font-size: clamp(1rem, 2.4cqw, 1.6rem);
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+}
+
+.dc-captions[hidden] {
+  display: none;
+}
+
+/* The Play button takes the corner, so the caption steps up when both show. */
+.dc-voice-start:not([hidden]) ~ .dc-captions {
+  bottom: 4.5rem;
+}
+
+.dc-voice-start-icon {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0.4rem 0 0.4rem 0.7rem;
+  border-color: transparent transparent transparent currentcolor;
+}
+
 .dc-view {
   position: absolute;
   inset: 0;
@@ -1582,6 +1684,10 @@ button.dc-link {
   cursor: pointer;
 }
 
+.dc-btn[hidden] {
+  display: none;
+}
+
 .dc-btn:hover {
   background: color-mix(in srgb, var(--dc-text) 8%, transparent);
 }
@@ -1889,6 +1995,30 @@ button.dc-link {
 .dc-pv-moves {
   grid-area: moves;
   justify-content: flex-end;
+}
+
+.dc-pv-clock {
+  flex-wrap: wrap;
+}
+
+.dc-pv-voice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.dc-pv-voice .dc-btn {
+  min-width: 0;
+  min-height: 2.25rem;
+  padding: 0 0.8rem;
+  font-size: 0.85rem;
+}
+
+.dc-pv-voice-status {
+  color: var(--dc-muted);
+  font-size: 0.9rem;
 }
 
 .dc-pv-time {
