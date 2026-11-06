@@ -96,8 +96,9 @@ describe("the tool list", () => {
     // which the core checks anyway (see below). Schema 0.5 adds the three link operations, 0.5 KB with their sentence.
     // Schema 0.6 names the image fields and the scene background in deck_get and deck_apply, 0.2 KB. The seventh tool,
     // deck_asset, is 1.3 KB: its description and five arguments. Comment areas add w and h to the comment anchor in
-    // deck_comment's schema and a sentence to its description, 0.2 KB. Raise it only for a reason of that size.
-    expect(JSON.stringify(tools).length).toBeLessThan(15500);
+    // deck_comment's schema and a sentence to its description, 0.2 KB. The activity view of deck_get and its `since`
+    // argument, 0.4 KB. Raise it only for a reason of that size.
+    expect(JSON.stringify(tools).length).toBeLessThan(15900);
     for (const tool of tools) expect(tool.description?.length).toBeLessThan(1100);
   });
 
@@ -474,6 +475,34 @@ describe("comments", () => {
       const list = await call("deck_get", { view: "comments" });
       expect(list.isError).toBe(true);
       expect(list.text).toContain("comments.json is not valid");
+    });
+  });
+
+  describe("deck_get activity", () => {
+    const activity = async (args: Record<string, unknown> = {}) =>
+      (await call("deck_get", { view: "activity", ...args })).json.activity as {
+        cursor?: string;
+        count: number;
+        entries: { id: string; by: string; kind: string; scene?: string }[];
+      };
+
+    it("gives only what is new after the last cursor, and can narrow to a scene", async () => {
+      const start = (await activity()).cursor;
+      await answer([agentAdd()]);
+      const first = await activity({ ...(start ? { since: start } : {}) });
+      expect(first.entries.map((e) => e.kind)).toEqual(["comment"]);
+      expect(first.cursor).toBe(first.entries[0]?.id);
+
+      expect((await activity({ since: first.cursor })).entries).toEqual([]);
+
+      await answer([{ op: "comment.reply", id: "c1", text: "Shortened it." }]);
+      const next = await activity({ since: first.cursor });
+      expect(next.entries.map((e) => e.kind)).toEqual(["reply"]);
+      expect(next.cursor).not.toBe(first.cursor);
+
+      const here = await activity({ scene: "opening", ...(start ? { since: start } : {}) });
+      expect(here.count).toBe(2);
+      expect((await activity({ scene: "no-such-scene" })).count).toBe(0);
     });
   });
 

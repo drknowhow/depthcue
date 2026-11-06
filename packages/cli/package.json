@@ -20,6 +20,10 @@
       "types": "./dist/comments-api.d.ts",
       "default": "./dist/comments-api.js"
     },
+    "./audit-file": {
+      "types": "./dist/audit-file.d.ts",
+      "default": "./dist/audit-file.js"
+    },
     "./render": {
       "types": "./dist/render.d.ts",
       "default": "./dist/render.js"
