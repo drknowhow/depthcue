@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { loadAuditDir } from "@depthcue/cli/audit-file";
 import {
   applyCommentsToFolder,
   type CommentSummary,
@@ -16,7 +17,7 @@ import {
   removeImage,
 } from "@depthcue/cli/images";
 import { openRenderer, type Renderer, type SceneRender } from "@depthcue/cli/render";
-import { commentOpsSchema, type Diagnostic, ID_PATTERN, opsSchema } from "@depthcue/core";
+import { commentOpsSchema, type Diagnostic, filterAudit, ID_PATTERN, opsSchema } from "@depthcue/core";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
@@ -33,10 +34,19 @@ const detail = z
 
 const getArgs = z.strictObject({
   view: z
-    .enum(["outline", "scene", "comments"])
+    .enum(["outline", "scene", "comments", "activity"])
     .default("outline")
-    .describe("outline lists the scenes; scene returns one; comments lists the comments."),
-  scene: z.string().optional().describe("Scene id. Required when view is scene; narrows view comments."),
+    .describe(
+      "outline lists the scenes; scene returns one; comments lists the comments; activity lists the audit log.",
+    ),
+  scene: z
+    .string()
+    .optional()
+    .describe("Scene id. Required when view is scene; narrows view comments and activity."),
+  since: z
+    .string()
+    .optional()
+    .describe("With view activity, an entry id: only what was logged after it. Use the last `cursor`."),
   resolved: z.boolean().default(false).describe("With view comments, true adds the resolved ones."),
   detail,
 });
@@ -190,7 +200,7 @@ const TOOLS = [
   {
     name: "deck_get",
     description:
-      "Read the deck. view 'outline' (default): `rev` (base_rev for deck_apply), scenes (id, title, layout or template, lead, counts), `comments` (open count, tasks), `templates` (id, name), `styles` (ids), `brand`; detailed adds slots. view 'scene' adds a scene's open comments, view 'comments' all comments. A block's `frame` {x,y,w,h} pins it: percent of the 16:9 slide, x+w and y+h within 100. Template scene blocks name a `slot`; `style` names a style for the block's kind. 0.3+ text is markup: **bold**, *italic*, [label](https: or mailto: URL), [label]{tone}, \\ escapes, `- ` or `1. ` body lines; other strings are literal. Text takes tone (text, muted, action, evidence), size (s-xl), align (start, center, end). table and chart hold `columns`, `rows`; a chart's first column is its categories. palette colors are #rrggbb. An image takes fit (contain|cover), crop {x,y,w,h} (percent of the file: the part shown), focus {x,y} and decorative (true: alt optional); a scene's background is {asset, scrim, color, focus, decorative, alt}.",
+      "Read the deck. view 'outline' (default): `rev` (base_rev for deck_apply), scenes (id, title, layout or template, lead, counts), `comments` (open count, tasks), `templates` (id, name), `styles` (ids), `brand`; detailed adds slots. view 'scene' adds a scene's open comments, view 'comments' all comments, view 'activity' the audit log, with a `cursor` to pass as `since`. A block's `frame` {x,y,w,h} pins it: percent of the 16:9 slide, x+w and y+h within 100. Template scene blocks name a `slot`; `style` names a style for the block's kind. 0.3+ text is markup: **bold**, *italic*, [label](https: or mailto: URL), [label]{tone}, \\ escapes, `- ` or `1. ` body lines; other strings are literal. Text takes tone (text, muted, action, evidence), size (s-xl), align (start, center, end). table and chart hold `columns`, `rows`; a chart's first column is its categories. palette colors are #rrggbb. An image takes fit (contain|cover), crop {x,y,w,h} (percent of the file: the part shown), focus {x,y} and decorative (true: alt optional); a scene's background is {asset, scrim, color, focus, decorative, alt}.",
     inputSchema: jsonSchema(getArgs),
     annotations: { title: "Read the deck", readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   },
@@ -353,7 +363,19 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
   function get(raw: unknown): CallToolResult {
     const parsed = getArgs.safeParse(raw ?? {});
     if (!parsed.success) return failure(complaint(parsed.error));
-    const { view, scene, resolved, detail: level } = parsed.data;
+    const { view, scene, resolved, since, detail: level } = parsed.data;
+    if (view === "activity") {
+      // The log is a file beside the deck, so it reads even when the deck has errors.
+      const log = loadAuditDir(folder);
+      const all = log.entries;
+      const entries = filterAudit(all, {
+        ...(scene === undefined ? {} : { scene }),
+        ...(since === undefined ? {} : { since }),
+        limit: 100,
+      });
+      const cursor = all.at(-1)?.id;
+      return text({ activity: { cursor, count: entries.length, entries } });
+    }
     if (view === "scene" && !scene)
       return failure(
         "view 'scene' needs `scene`, the scene id. Call deck_get with view 'outline' to list them.",

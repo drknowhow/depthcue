@@ -114,6 +114,11 @@ In the editor, the Review drawer has a History tab that lists the log newest fir
 after it. Edits made in the editor are logged as `you`; edits through `deck_apply` and `depthcue apply` as `agent`.
 A hand edit to the files is not logged, because nothing sees it happen.
 
+An agent following the deck reads the log with `deck_get` and `view: "activity"`. The answer has `cursor`, the id of the
+newest entry, and `entries`, the latest 100 after `since`. The agent keeps the cursor and sends it as `since` on its
+next look, so it sees only what is new, including what the person did in the editor. `scene` narrows it to one slide.
+The agent asks; nothing is pushed to it.
+
 ## Related guides
 
 - [The editor](editor.md): the drawer, the storyboard and the rest of the editor.
