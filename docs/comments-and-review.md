@@ -117,7 +117,13 @@ A hand edit to the files is not logged, because nothing sees it happen.
 An agent following the deck reads the log with `deck_get` and `view: "activity"`. The answer has `cursor`, the id of the
 newest entry, and `entries`, the latest 100 after `since`. The agent keeps the cursor and sends it as `since` on its
 next look, so it sees only what is new, including what the person did in the editor. `scene` narrows it to one slide.
-The agent asks; nothing is pushed to it.
+The agent asks; nothing is pushed to it unless the client has the channel on.
+
+`depthcue-mcp` also declares the `claude/channel` capability. While it runs it watches `audit.jsonl` and sends a
+`notifications/claude/channel` message with what the person added: edits, comments and replies, one line each starting
+with the slide id, as one message for a burst of saves. The agent's own entries are left out. A client that does not
+have the channel on ignores the message, and `deck_get` with `since` stays the way to read the log. Claude Code takes
+channels from servers it is started with channels for; check its documentation for the flag your version uses.
 
 ## Related guides
 

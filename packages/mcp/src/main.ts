@@ -34,3 +34,4 @@ process.once("SIGTERM", shutdown);
 process.stdin.once("end", shutdown);
 
 await depthcue.server.connect(new StdioServerTransport());
+depthcue.startChannel();

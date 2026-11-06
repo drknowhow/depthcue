@@ -25,6 +25,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
+import { CHANNEL_CAPABILITY, CHANNEL_INSTRUCTIONS, watchActivity } from "./channel.ts";
 import { createPresent, presentArgs } from "./present.ts";
 
 const detail = z
@@ -200,7 +201,7 @@ const TOOLS = [
   {
     name: "deck_get",
     description:
-      "Read the deck. view 'outline' (default): `rev` (base_rev for deck_apply), scenes (id, title, layout or template, lead, counts), `comments` (open count, tasks), `templates` (id, name), `styles` (ids), `brand`; detailed adds slots. view 'scene' adds a scene's open comments, view 'comments' all comments, view 'activity' the audit log, with a `cursor` to pass as `since`. A block's `frame` {x,y,w,h} pins it: percent of the 16:9 slide, x+w and y+h within 100. Template scene blocks name a `slot`; `style` names a style for the block's kind. 0.3+ text is markup: **bold**, *italic*, [label](https: or mailto: URL), [label]{tone}, \\ escapes, `- ` or `1. ` body lines; other strings are literal. Text takes tone (text, muted, action, evidence), size (s-xl), align (start, center, end). table and chart hold `columns`, `rows`; a chart's first column is its categories. palette colors are #rrggbb. An image takes fit (contain|cover), crop {x,y,w,h} (percent of the file: the part shown), focus {x,y} and decorative (true: alt optional); a scene's background is {asset, scrim, color, focus, decorative, alt}.",
+      "Read the deck. view 'outline' (default): `rev` (base_rev for deck_apply), scenes (id, title, layout or template, lead, counts), `comments` (open count, tasks), `templates` (id, name), `styles` (ids), `brand`; detailed adds slots. view 'scene' adds a scene's open comments, view 'comments' all comments, view 'activity' the audit log (`cursor`, for `since`). A block's `frame` {x,y,w,h} pins it: percent of the 16:9 slide, x+w and y+h within 100. Template scene blocks name a `slot`; `style` names a style for the block's kind. 0.3+ text is markup: **bold**, *italic*, [label](https: or mailto: URL), [label]{tone}, \\ escapes, `- ` or `1. ` body lines; other strings are literal. Text takes tone (text, muted, action, evidence), size (s-xl), align (start, center, end). table and chart hold `columns`, `rows`; a chart's first column is its categories. palette colors are #rrggbb. An image takes fit (contain|cover), crop {x,y,w,h} (percent of the file: the part shown), focus {x,y} and decorative (true: alt optional); a scene's background is {asset, scrim, color, focus, decorative, alt}.",
     inputSchema: jsonSchema(getArgs),
     annotations: { title: "Read the deck", readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   },
@@ -335,6 +336,8 @@ function complaint(error: z.ZodError): string {
 
 export interface DepthcueServer {
   server: Server;
+  /** Starts telling the client what the person does in the editor. Call it once connected. */
+  startChannel(quietMs?: number): void;
   close(): Promise<void>;
 }
 
@@ -346,7 +349,14 @@ export interface DepthcueServer {
  * until `close()`; an export starts its own.
  */
 export function createDepthcueServer(folder: string, version = "0.0.0"): DepthcueServer {
-  const server = new Server({ name: "depthcue", version }, { capabilities: { tools: {} } });
+  const server = new Server(
+    { name: "depthcue", version },
+    {
+      capabilities: { tools: {}, experimental: CHANNEL_CAPABILITY },
+      instructions: CHANNEL_INSTRUCTIONS,
+    },
+  );
+  let stopWatching: (() => void) | undefined;
   let renderer: Promise<Renderer> | undefined;
   let queue: Promise<unknown> = Promise.resolve();
   const present = createPresent(folder);
@@ -670,7 +680,20 @@ export function createDepthcueServer(folder: string, version = "0.0.0"): Depthcu
 
   return {
     server,
+    startChannel(quietMs) {
+      stopWatching ??= watchActivity(
+        folder,
+        ({ content, meta }) => {
+          // Not in the SDK's notification types, so it is sent as the method Claude Code defines.
+          void server
+            .notification({ method: "notifications/claude/channel", params: { content, meta } } as never)
+            .catch(() => undefined);
+        },
+        quietMs,
+      );
+    },
     async close() {
+      stopWatching?.();
       present.close();
       await server.close();
       if (renderer) await (await renderer).close();
