@@ -123,7 +123,12 @@ The agent asks; nothing is pushed to it unless the client has the channel on.
 `notifications/claude/channel` message with what the person added: edits, comments and replies, one line each starting
 with the slide id, as one message for a burst of saves. The agent's own entries are left out. A client that does not
 have the channel on ignores the message, and `deck_get` with `since` stays the way to read the log. Claude Code takes
-channels from servers it is started with channels for; check its documentation for the flag your version uses.
+channels from servers it is started with channels for.
+
+`depthcue control <deck-folder>` does the setup: it starts the editor, writes an MCP configuration for the folder, and
+starts `claude --mcp-config <file> --dangerously-load-development-channels server:depthcue` in the deck folder. Claude
+Code shows a confirmation for the channel when it starts. The editor stops when the session ends. `DEPTHCUE_CLAUDE`
+names another command in place of `claude`, and `--print` prints both commands without running them.
 
 ## Related guides
 

@@ -101,6 +101,7 @@ const USAGE = `Usage:
   depthcue apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue serve <deck-folder> [--port <n>]
   depthcue edit <deck-folder> [--port <n>]
+  depthcue control <deck-folder> [--port <n>] [--print]
 ${EXPORT_USAGE}
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
   depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
@@ -133,6 +134,12 @@ serve  Shows the deck in the player at a loopback address and reloads the page w
 edit   Opens the editor at a loopback address. Changes go through the same operations an agent uses, save
        to the folder by themselves, and a draft survives a closed tab. The deck must pass check.
        The player is at /present. Same default port as serve; keep one port to keep your drafts.
+
+control Opens the editor and starts Claude Code beside it, as the deck's controller: the session has the deck's
+       tools, and what you do in the editor (edits, comments, "ask an agent") reaches it as it happens. It needs
+       Claude Code installed; set DEPTHCUE_CLAUDE to use another command. Claude Code asks you to confirm the
+       channel when it starts. When the session ends, so does the editor. --print shows both commands and
+       runs neither.
 
 ${EXPORT_TEXT}
 
@@ -743,7 +750,7 @@ function logCommand(folder: string, query: AuditQuery, json: boolean, io: Io): n
     return 0;
   }
   io.out(
-    `${plural(shown.length, "entry")} of ${entries.length}${skipped > 0 ? `, ${skipped} unreadable lines skipped` : ""}.`,
+    `${shown.length} ${shown.length === 1 ? "entry" : "entries"} of ${entries.length}${skipped > 0 ? `, ${skipped} unreadable lines skipped` : ""}.`,
   );
   for (const e of shown) {
     const place = e.scene === undefined ? "" : `  ${e.scene}${e.block === undefined ? "" : `/${e.block}`}`;
@@ -954,6 +961,7 @@ function diffActCommand(
 export interface RunOptions {
   kine?: readonly string[];
   python?: readonly string[];
+  claude?: readonly string[];
 }
 
 export function run(argv: readonly string[], io: Io, options: RunOptions = {}): number | Promise<number> {
@@ -996,8 +1004,43 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   // The switches only `export --format pptx` takes are known there and nowhere else.
   const pptx = new Set(["--pictures", "--steps", "--posters"].filter((flag) => unknown.includes(flag)));
   const captions = unknown.includes("--captions");
-  const strange = unknown.filter((arg) => !pptx.has(arg) && arg !== "--captions");
+  const printOnly = unknown.includes("--print");
+  const strange = unknown.filter((arg) => !pptx.has(arg) && arg !== "--captions" && arg !== "--print");
   if (strange.length > 0) return usage(`Unknown option ${strange[0]}.`);
+  if (printOnly && command !== "control") return usage("--print belongs to control.");
+  if (command === "control") {
+    if (!folder || positional.length > 1) return usage("control needs one deck folder.");
+    if (
+      json ||
+      all ||
+      baseRev !== undefined ||
+      renderFlags !== undefined ||
+      clipFlags !== undefined ||
+      captions ||
+      pptx.size > 0
+    ) {
+      return usage("control takes a deck folder, --port and --print.");
+    }
+    if (port !== undefined && !(Number.isInteger(port) && port >= 0 && port <= 65535)) {
+      return usage("--port needs a whole number from 0 to 65535.");
+    }
+    return import("./control.ts")
+      .then((control) =>
+        control.controlCommand(
+          {
+            folder,
+            port: port ?? 4173,
+            print: printOnly,
+            claude: options.claude ?? control.claudeCommand(),
+          },
+          io,
+        ),
+      )
+      .catch((error: Error) => {
+        io.err(error.message);
+        return 2;
+      });
+  }
   if (captions && (command !== "export" || values.format !== "mp4")) {
     return usage("--captions belongs to export --format mp4.");
   }

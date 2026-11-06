@@ -84,6 +84,11 @@ To let an agent edit and render a deck, add the server to your MCP client with t
 }
 ```
 
+To work with Claude Code as the deck's controller, run `depthcue control my-deck`. It opens the editor and starts Claude
+Code beside it with the deck's tools, and what you do in the editor (edits, comments, "ask an agent") reaches the
+session as it happens. Claude Code asks you to confirm the channel when it starts. `--print` shows the two commands
+and runs neither. See [comments and review](docs/comments-and-review.md).
+
 ## What a deck is
 
 A folder: `deck.json` lists the scenes in order, and each scene is its own JSON file. This is a scene from the
