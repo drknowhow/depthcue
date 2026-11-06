@@ -95,8 +95,9 @@ describe("the tool list", () => {
     // operations fit by leaving the id pattern and each operation's own type out of deck_apply's copy of the schema,
     // which the core checks anyway (see below). Schema 0.5 adds the three link operations, 0.5 KB with their sentence.
     // Schema 0.6 names the image fields and the scene background in deck_get and deck_apply, 0.2 KB. The seventh tool,
-    // deck_asset, is 1.3 KB: its description and five arguments. Raise it only for a reason of that size.
-    expect(JSON.stringify(tools).length).toBeLessThan(15300);
+    // deck_asset, is 1.3 KB: its description and five arguments. Comment areas add w and h to the comment anchor in
+    // deck_comment's schema and a sentence to its description, 0.2 KB. Raise it only for a reason of that size.
+    expect(JSON.stringify(tools).length).toBeLessThan(15500);
     for (const tool of tools) expect(tool.description?.length).toBeLessThan(1100);
   });
 

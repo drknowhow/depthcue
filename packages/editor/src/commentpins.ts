@@ -2,13 +2,17 @@ import { COMMENT_LIMITS, type Comment, type CommentOp, type Scene, type Session 
 import { h } from "@depthcue/player";
 import type { CommentBook } from "./commentbook.ts";
 import {
+  type Anchor,
   anchorAt,
   DEFAULT_ANCHOR,
+  DRAG_MIN,
   type PinState,
   type PinView,
   type Point,
   pinsOf,
   pointOf,
+  regionAt,
+  regionBox,
   stateOf,
   WHO,
 } from "./commentview.ts";
@@ -37,8 +41,8 @@ export interface CommentPins {
   /** Resolved comments are drawn too, dimmed. */
   readonly showResolved: boolean;
   setShowResolved(on: boolean): void;
-  /** Opens the box that writes a comment on a block of the scene, at a point of it or at the usual corner. */
-  compose(blockId: string, at?: Point): boolean;
+  /** Opens the box that writes a comment on a block of the scene, at a point or an area of it or at the usual corner. */
+  compose(blockId: string, at?: Anchor): boolean;
   /** Opens the thread of a comment of the scene. False when the scene has no such comment. */
   open(id: string): boolean;
   /** Puts the open thread or box away. */
@@ -49,7 +53,7 @@ export interface CommentPins {
 }
 
 /** Said under the tool's banner. The second is for a press that landed on no block. */
-const TOOL_HINT = "Click a block to comment on it. Esc to stop.";
+const TOOL_HINT = "Click a block to comment on it, or drag to mark an area. Esc to stop.";
 const MISS_HINT = "That is not a block. Click a text, a chart, an image, a clip or the claim.";
 
 const GAP = 8;
@@ -61,7 +65,10 @@ const SAY: Record<PinState, string> = {
   resolved: "resolved",
 };
 
-type Open = { kind: "thread"; id: string } | { kind: "new"; block: string; at: Point };
+type Open = { kind: "thread"; id: string } | { kind: "new"; block: string; at: Anchor };
+
+const hasArea = (anchor: Anchor): anchor is Required<Anchor> =>
+  anchor.w !== undefined && anchor.h !== undefined;
 
 /** What a comment points at, in words: the claim, or the kind of block and the start of its text. */
 function nameOf(scene: Scene, id: string): string {
@@ -130,6 +137,8 @@ export function createCommentPins(
   let panel: Panel | undefined;
   /** Where a comment being written will point, drawn as an empty pin until it is sent. */
   let draft: HTMLElement | undefined;
+  /** The area a comment being written marks, outlined until it is sent. */
+  let draftArea: HTMLElement | undefined;
   let busy = false;
   const keyOf = (item: Open) => (item.kind === "thread" ? `thread:${item.id}` : `new:${item.block}`);
 
@@ -142,8 +151,10 @@ export function createCommentPins(
     const was = open;
     panel.root.remove();
     draft?.remove();
+    draftArea?.remove();
     panel = undefined;
     draft = undefined;
+    draftArea = undefined;
     open = undefined;
     busy = false;
     document.removeEventListener("pointerdown", outside, true);
@@ -405,6 +416,10 @@ export function createCommentPins(
     if (item.kind === "new") {
       draft = h("span", { class: "ed-pin ed-pin-draft", "aria-hidden": "true" }, "+");
       layer.append(draft);
+      if (hasArea(item.at)) {
+        draftArea = h("span", { class: "ed-region ed-region-draft", "aria-hidden": "true" });
+        layer.append(draftArea);
+      }
     }
     layer.append(panel.root);
     document.addEventListener("pointerdown", outside, true);
@@ -461,6 +476,18 @@ export function createCommentPins(
     return pin;
   }
 
+  /** Puts an area's outline over the pixels it covers, in the layer's own coordinates. */
+  function areaAt(
+    node: HTMLElement,
+    box: { left: number; top: number; width: number; height: number },
+    origin: DOMRect,
+  ) {
+    node.style.left = `${box.left - origin.left}px`;
+    node.style.top = `${box.top - origin.top}px`;
+    node.style.width = `${box.width}px`;
+    node.style.height = `${box.height}px`;
+  }
+
   function place() {
     const origin = host.getBoundingClientRect();
     let orphans = 0;
@@ -483,8 +510,17 @@ export function createCommentPins(
       if (open?.kind === "thread" && open.id === view.comment.id)
         anchor = { node, point: { x: left + size / 2, y: top + size / 2 } };
     }
+    for (const node of pinLayer.querySelectorAll<HTMLElement>("[data-region]")) {
+      const view = views.get(node.dataset.region ?? "");
+      const target = view && !view.orphan ? nodeOf(view.comment.block) : undefined;
+      if (view && target && hasArea(view.comment.anchor)) {
+        areaAt(node, regionBox(view.comment.anchor, restingBox(target)), origin);
+      }
+    }
     if (draft && open?.kind === "new") {
       const node = nodeOf(open.block);
+      if (node && draftArea && hasArea(open.at))
+        areaAt(draftArea, regionBox(open.at, restingBox(node)), origin);
       if (node) {
         const spot = pointOf(open.at, restingBox(node));
         const size = draft.offsetWidth || 28;
@@ -542,7 +578,17 @@ export function createCommentPins(
     sceneId = next?.id;
     layer.hidden = !shown;
     const views = next && shown ? pinsOf(book.state.comments, session.doc, next.id, showResolved) : [];
-    pinLayer.replaceChildren(...views.map((view) => pinFor(view, next as Scene)));
+    const areas = views
+      .filter((view) => !view.orphan && hasArea(view.comment.anchor))
+      .map((view) =>
+        h("span", {
+          class: "ed-region",
+          "data-region": view.comment.id,
+          "data-state": view.state,
+          "aria-hidden": "true",
+        }),
+      );
+    pinLayer.replaceChildren(...areas, ...views.map((view) => pinFor(view, next as Scene)));
     fill();
     place();
     if (kept !== undefined) pinOf(kept)?.focus({ preventScroll: true });
@@ -563,7 +609,50 @@ export function createCommentPins(
     return undefined;
   }
 
+  // A press that moves marks an area of the block it started on; one that stays is a click and leaves a pin.
+  let press: { id: string; from: Point; moved: boolean } | undefined;
+  /** The click that ends a drag follows it, and must not also leave a pin. */
+  let dragged = false;
+  const rubber = h("span", { class: "ed-region ed-region-draft", hidden: true, "aria-hidden": "true" });
+  layer.append(rubber);
+
+  const endPress = () => {
+    press = undefined;
+    rubber.hidden = true;
+  };
+
+  catcher.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const id = blockAt(event.clientX, event.clientY);
+    press = id === undefined ? undefined : { id, from: { x: event.clientX, y: event.clientY }, moved: false };
+  });
+
+  catcher.addEventListener("pointermove", (event) => {
+    const node = press ? nodeOf(press.id) : undefined;
+    if (!press || !node) return;
+    const to = { x: event.clientX, y: event.clientY };
+    if (!press.moved && Math.hypot(to.x - press.from.x, to.y - press.from.y) < DRAG_MIN) return;
+    press.moved = true;
+    const area = regionAt(press.from, to, restingBox(node)) as Required<Anchor>;
+    areaAt(rubber, regionBox(area, restingBox(node)), host.getBoundingClientRect());
+    rubber.hidden = false;
+  });
+
+  catcher.addEventListener("pointerup", (event) => {
+    const was = press;
+    endPress();
+    const node = was ? nodeOf(was.id) : undefined;
+    if (!was?.moved || !node) return;
+    dragged = true;
+    compose(was.id, regionAt(was.from, { x: event.clientX, y: event.clientY }, restingBox(node)));
+  });
+  catcher.addEventListener("pointercancel", endPress);
+
   catcher.addEventListener("click", (event) => {
+    if (dragged) {
+      dragged = false;
+      return;
+    }
     const id = blockAt(event.clientX, event.clientY);
     if (id === undefined) {
       banner.textContent = MISS_HINT;
@@ -611,7 +700,7 @@ export function createCommentPins(
     surface.changed();
   }
 
-  function compose(blockId: string, at: Point = DEFAULT_ANCHOR): boolean {
+  function compose(blockId: string, at: Anchor = DEFAULT_ANCHOR): boolean {
     const current = scene();
     if (!current || !targets(current).includes(blockId)) return false;
     if (!shown) setShown(true);

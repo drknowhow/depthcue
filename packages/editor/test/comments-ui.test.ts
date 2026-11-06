@@ -583,3 +583,86 @@ describe("the strip", () => {
     expect(stripCount("method").hidden).toBe(true);
   });
 });
+
+describe("marking an area", () => {
+  const BOX = { left: 100, top: 100, width: 200, height: 100, right: 300, bottom: 200, x: 100, y: 100 };
+  const ZERO = { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0, x: 0, y: 0 };
+
+  /** The text block is 200 by 100 at (100, 100); nothing else has a size. */
+  function sized() {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return { ...(this.dataset.id === TEXT ? BOX : ZERO), toJSON: () => ({}) };
+    });
+  }
+  const mouse = (type: string, x: number, y: number) =>
+    catcher().dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }));
+  const rubber = () => host.querySelector<HTMLElement>(".ed-comment-catch ~ .ed-region-draft") as HTMLElement;
+
+  function drag(from: [number, number], to: [number, number]) {
+    press(document, "m");
+    over(blockNode(TEXT));
+    mouse("pointerdown", ...from);
+    mouse("pointermove", ...to);
+    mouse("pointerup", ...to);
+    mouse("click", ...to);
+  }
+
+  it("says in the banner that a drag marks an area", async () => {
+    await mount();
+    press(document, "m");
+    expect(banner().textContent).toMatch(/drag to mark an area/);
+  });
+
+  it("writes the area a drag covered, as fractions of the block, with the pin at its top left", async () => {
+    sized();
+    await mount();
+    drag([110, 120], [210, 170]);
+    expect(thread()?.dataset.thread).toBe(`new:${TEXT}`);
+    expect(host.querySelector(".ed-region-draft:not([hidden])")).not.toBeNull();
+    write("This part");
+    control("add").click();
+    await vi.waitFor(() => expect(server.comments.comments).toHaveLength(1));
+    expect(server.comments.comments[0]?.anchor).toEqual({ x: 0.05, y: 0.2, w: 0.5, h: 0.5 });
+    await vi.waitFor(() => expect(host.querySelector(".ed-region[data-region='c1']")).not.toBeNull());
+    expect(host.querySelectorAll(".ed-pin[data-pin]")).toHaveLength(1);
+  });
+
+  it("keeps the area inside the block and the right way round when the drag runs past it or backwards", async () => {
+    sized();
+    await mount();
+    drag([290, 190], [400, 50]);
+    write("Corner");
+    control("add").click();
+    await vi.waitFor(() => expect(server.comments.comments).toHaveLength(1));
+    expect(server.comments.comments[0]?.anchor).toEqual({ x: 0.95, y: 0, w: 0.05, h: 0.9 });
+  });
+
+  it("leaves a pin, and no area, when the press hardly moved", async () => {
+    sized();
+    await mount();
+    press(document, "m");
+    over(blockNode(TEXT));
+    mouse("pointerdown", 150, 150);
+    mouse("pointermove", 152, 151);
+    mouse("pointerup", 152, 151);
+    mouse("click", 152, 151);
+    write("Here");
+    control("add").click();
+    await vi.waitFor(() => expect(server.comments.comments).toHaveLength(1));
+    expect(server.comments.comments[0]?.anchor).toEqual({ x: 0.26, y: 0.51 });
+    expect(host.querySelector(".ed-region[data-region]")).toBeNull();
+  });
+
+  it("draws the outline of an area that an agent or a person already marked", async () => {
+    sized();
+    await mount([
+      { ...note("Look here"), anchor: { x: 0.1, y: 0.2, w: 0.5, h: 0.4 } } as CommentOp,
+      { ...note("Just a pin"), anchor: { x: 0.9, y: 0.9 } } as CommentOp,
+    ]);
+    const outline = host.querySelector<HTMLElement>(".ed-region[data-region='c1']");
+    expect(outline).not.toBeNull();
+    expect(outline?.style.width).toBe("100px");
+    expect(outline?.style.height).toBe("40px");
+    expect(host.querySelector(".ed-region[data-region='c2']")).toBeNull();
+  });
+});

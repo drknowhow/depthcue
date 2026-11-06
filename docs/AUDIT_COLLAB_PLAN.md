@@ -45,9 +45,11 @@ and a short `summary`. No full values; `review.json` already holds those.
 
 ### 3. Pointing
 
-- A Point tool beside Comment: click a block, drag a region, or pick a step. It records `scene`, `block`, `region`
-  (fractions, as pins are) and `step`.
-- A point can be sent alone ("look at this") or saved as a comment anchor. It is an `ask` only when the person says so.
+Built as an area on a comment, not a separate tool. Dragging with the Comment tool marks an area of a block: the
+anchor gains `w` and `h` (fractions of the block, like `x` and `y`), the pin sits at the area's top left, and the agent
+reads it in the comment's `anchor`. A step needs no field of its own, because a block belongs to one build step and
+pointing at the block already names it. A comment with no text to send ("look at this") is not built: the existing
+Ask the agent comment covers it.
 
 ### 4. Controller link
 

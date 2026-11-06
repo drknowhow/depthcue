@@ -933,12 +933,17 @@ const TIMESTAMP_PATTERN = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3
 const fraction = { type: "number", minimum: 0, maximum: 1 } as const;
 const author = { enum: COMMENT_AUTHORS } as const;
 const commentText = { type: "string", minLength: 1, maxLength: COMMENT_LIMITS.text } as const;
-/** Where on the block a comment points, as fractions of the block's width and height from its top left. */
+const areaSize = { type: "number", minimum: 0.001, maximum: 1 } as const;
+/**
+ * Where on the block a comment points, as fractions of the block's width and height from its top left. With `w` and
+ * `h` it marks the area that starts there and is that wide and tall, and the pin sits at its top left.
+ */
 const anchor = {
   type: "object",
   additionalProperties: false,
   required: ["x", "y"],
-  properties: { x: fraction, y: fraction },
+  properties: { x: fraction, y: fraction, w: areaSize, h: areaSize },
+  dependencies: { w: ["h"], h: ["w"] },
 } as const;
 const message = {
   type: "object",

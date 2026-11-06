@@ -81,6 +81,12 @@ export interface Point {
   y: number;
 }
 
+/** A point of a block, or the area that starts there and is `w` wide and `h` tall, all as fractions of the block. */
+export type Anchor = Point & { w?: number; h?: number };
+
+/** A press that moves less than this many pixels is a click and leaves a pin; more marks an area. */
+export const DRAG_MIN = 8;
+
 /** Thousandths of the block are as fine as a person can point, and the core keeps no more. */
 const thousandth = (value: number) => Math.round(value * 1000) / 1000;
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
@@ -90,6 +96,33 @@ export function anchorAt(point: Point, box: Rect): Point {
   return {
     x: box.width > 0 ? thousandth(clamp((point.x - box.left) / box.width)) : 0.5,
     y: box.height > 0 ? thousandth(clamp((point.y - box.top) / box.height)) : 0.5,
+  };
+}
+
+/**
+ * The area of a block between two points of the screen, kept inside the block. Its top left is where the pin goes, and
+ * it is never thinner than a thousandth, which is all the core keeps.
+ */
+export function regionAt(from: Point, to: Point, box: Rect): Anchor {
+  const a = anchorAt(from, box);
+  const b = anchorAt(to, box);
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return {
+    x,
+    y,
+    w: Math.max(0.001, thousandth(Math.max(a.x, b.x) - x)),
+    h: Math.max(0.001, thousandth(Math.max(a.y, b.y) - y)),
+  };
+}
+
+/** The pixels an area of a block covers. */
+export function regionBox(anchor: Required<Anchor>, box: Rect): Rect {
+  return {
+    left: box.left + anchor.x * box.width,
+    top: box.top + anchor.y * box.height,
+    width: anchor.w * box.width,
+    height: anchor.h * box.height,
   };
 }
 

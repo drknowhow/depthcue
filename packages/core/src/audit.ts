@@ -127,7 +127,7 @@ export function commentDrafts(
         out.push({
           by: op.author,
           kind: "comment",
-          summary: `${op.ask === true ? "Asked the agent" : "Commented"} on block "${op.block}": ${excerpt(op.text)}`,
+          summary: `${op.ask === true ? "Asked the agent" : "Commented"} on ${op.anchor.w === undefined ? "" : "an area of "}block "${op.block}": ${excerpt(op.text)}`,
           ...at(op.scene, op.block),
           ...(id === undefined ? {} : { comment: id }),
         });

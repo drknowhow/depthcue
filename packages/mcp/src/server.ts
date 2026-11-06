@@ -218,7 +218,7 @@ const TOOLS = [
   {
     name: "deck_comment",
     description:
-      "Leave and answer comments on the deck's blocks. They are kept beside the deck, never in it. deck_get returns `comments.rev`, the base_rev to pass here, and `comments.tasks`, which people asked you to act on. Operations apply together or not at all. For a task: reply, make the change with deck_apply, then resolve it. You write as the agent, so leave author out. You cannot delete. `anchor` is where on the block the comment points, as fractions from 0 to 1 from its top left. A stale base_rev is rejected, never merged: read again and redo.",
+      "Leave and answer comments on the deck's blocks. They are kept beside the deck, never in it. deck_get returns `comments.rev`, the base_rev to pass here, and `comments.tasks`, which people asked you to act on. Operations apply together or not at all. For a task: reply, make the change with deck_apply, then resolve it. You write as the agent, so leave author out. You cannot delete. `anchor` is where on the block the comment points, as fractions from 0 to 1 from its top left; add `w` and `h` (both, each above 0, with x+w and y+h at most 1) to mark an area that starts there, as a person does by dragging. A stale base_rev is rejected, never merged: read again and redo.",
     inputSchema: {
       type: "object",
       properties: {

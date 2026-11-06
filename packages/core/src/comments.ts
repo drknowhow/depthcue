@@ -201,6 +201,15 @@ function nextCommentId(comments: readonly Comment[]): string {
 /** Thousandths of the block are as fine as a person can point. */
 const rounded = (value: number): number => Math.round(value * 1000) / 1000;
 
+function roundedAnchor(anchor: Anchor): Anchor {
+  const { x, y, w, h } = anchor;
+  return {
+    x: rounded(x),
+    y: rounded(y),
+    ...(w === undefined || h === undefined ? {} : { w: rounded(w), h: rounded(h) }),
+  };
+}
+
 function unknown(index: number, path: string, what: string, id: string, ids: readonly string[]): Diagnostic {
   const guess = closest(id, ids);
   const list = ids.length > 0 ? `Existing ${what}s: ${ids.join(", ")}.` : `There are no ${what}s.`;
@@ -253,13 +262,23 @@ function step(
           "Pick another id.",
         );
       }
+      const { x, y, w, h } = op.anchor;
+      if ((w !== undefined && x + w > 1.0005) || (h !== undefined && y + h > 1.0005)) {
+        return problem(
+          index,
+          "/anchor",
+          "area-outside-block",
+          "The area runs past the edge of the block.",
+          "Keep x + w and y + h at 1 or less, since they are fractions of the block.",
+        );
+      }
       const text = tidyText(index, op.text);
       if (typeof text !== "string") return text;
       comments.push({
         id: op.id ?? nextCommentId(comments),
         scene: op.scene,
         block: op.block,
-        anchor: { x: rounded(op.anchor.x), y: rounded(op.anchor.y) },
+        anchor: roundedAnchor(op.anchor),
         thread: [{ author: op.author, text, at: context.now() }],
         resolved: false,
         ...(op.ask === true ? { ask: true } : {}),

@@ -98,6 +98,12 @@ describe("commentDrafts", () => {
     ]);
   });
 
+  it("says when a comment marks an area of the block", () => {
+    const area = add({ anchor: { x: 0.1, y: 0.1, w: 0.4, h: 0.3 } });
+    const [draft] = commentDrafts([area], emptyComments(), file({ id: "c1" }), "agent");
+    expect(draft?.summary).toBe('Commented on an area of block "diagram": Check this label.');
+  });
+
   it("signs resolve, reopen and delete with the one who sent them and finds the block", () => {
     const before = file({ id: "c1" }, { id: "c2", resolved: true }, { id: "c3" });
     const after = file({ id: "c1", resolved: true }, { id: "c2" });
