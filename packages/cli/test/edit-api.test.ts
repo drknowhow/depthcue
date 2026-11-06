@@ -1351,3 +1351,109 @@ describe("image sniffing", () => {
     expect(assetName("x".repeat(200), "png", Buffer.from("a")).length).toBeLessThan(60);
   });
 });
+
+describe("controller", () => {
+  const CONTROLLER = "/_depthcue/api/controller";
+  const opened: unknown[] = [];
+
+  /** The editor again, with a stand-in for the terminal, so a click cannot open a window. */
+  async function withSession() {
+    await server.close();
+    server = await startServer({
+      folder,
+      playerDir: join(root, "player"),
+      editorDir: join(root, "editor"),
+      port: 0,
+      session: {
+        claude: ["claude"],
+        open: (plan) => {
+          opened.push(plan);
+          return { ok: true };
+        },
+      },
+    });
+  }
+
+  beforeEach(async () => {
+    opened.length = 0;
+    await withSession();
+  });
+
+  it("says how the session starts, with no settings saved yet", async () => {
+    const answer = await call(CONTROLLER);
+    expect(answer.status).toBe(200);
+    expect(answer.json).toMatchObject({
+      settings: {},
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      canStart: true,
+    });
+    expect(String(answer.json.command)).toContain("--dangerously-load-development-channels server:depthcue");
+    expect(String(answer.json.command)).not.toContain("--model");
+    expect(existsSync(join(folder, "controller.json"))).toBe(false);
+  });
+
+  it("saves the model and the effort beside the deck, and the command then has them", async () => {
+    const answer = await call(CONTROLLER, json({ model: "opus", effort: "high" }));
+    expect(answer.status).toBe(200);
+    expect(answer.json.settings).toEqual({ model: "opus", effort: "high" });
+    expect(String(answer.json.command)).toContain("--model opus --effort high");
+    expect(JSON.parse(readFileSync(join(folder, "controller.json"), "utf8"))).toMatchObject({
+      format: "depthcue-controller/1",
+      model: "opus",
+      effort: "high",
+    });
+    // It is a side file: the deck's revision does not move.
+    expect(revisionOf(readDeck())).toBe(revisionOf(loadDoc(loadDeckDir(folder)).doc as never));
+  });
+
+  it("clears a setting that is sent empty", async () => {
+    await call(CONTROLLER, json({ model: "opus", effort: "high" }));
+    const answer = await call(CONTROLLER, json({ model: "", effort: "low" }));
+    expect(answer.json.settings).toEqual({ effort: "low" });
+  });
+
+  it("refuses a model that is not a name and an effort that is not a level, and writes nothing", async () => {
+    for (const bad of [
+      { model: "opus; calc" },
+      { model: "--dangerously-skip-permissions" },
+      { effort: "huge" },
+      [],
+    ]) {
+      const answer = await call(CONTROLLER, json(bad));
+      expect(answer.status).toBe(422);
+    }
+    expect(existsSync(join(folder, "controller.json"))).toBe(false);
+  });
+
+  it("starts the session from the saved settings, not from the request", async () => {
+    await call(CONTROLLER, json({ model: "sonnet", effort: "medium" }));
+    const answer = await call(`${CONTROLLER}/start`, json({ model: "evil", args: ["--x"] }));
+    expect(answer.status).toBe(200);
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({ program: "claude" });
+    const args = (opened[0] as { args: string[] }).args;
+    expect(args).toContain("--model");
+    expect(args).toContain("sonnet");
+    expect(args).not.toContain("evil");
+    expect(args).not.toContain("--x");
+  });
+
+  it("wants the editor's token for all of it", async () => {
+    for (const [path, init] of [
+      [CONTROLLER, {}],
+      [CONTROLLER, json({})],
+      [`${CONTROLLER}/start`, json({})],
+    ] as const) {
+      expect((await call(path, { ...init, token: false })).status).toBe(403);
+    }
+    expect(opened).toEqual([]);
+  });
+
+  it("says when the file is not settings, and still works", async () => {
+    writeFileSync(join(folder, "controller.json"), "{ nope");
+    const answer = await call(CONTROLLER);
+    expect(answer.status).toBe(200);
+    expect(answer.json.settings).toEqual({});
+    expect(String(answer.json.problem)).toContain("controller.json");
+  });
+});

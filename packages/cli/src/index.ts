@@ -16,6 +16,7 @@ import { BRAND_COMMANDS_TEXT, BRAND_COMMANDS_USAGE, NEW_TEXT, NEW_USAGE } from "
 import { BRAND_IMPORT_TEXT, BRAND_IMPORT_USAGE } from "./brand-import/usage.ts";
 import { buildClip, ClipError, kineCommand, QUALITIES, type Quality } from "./clip.ts";
 import { applyCommentsToFolder, listComments, readFolderComments } from "./comments-api.ts";
+import { checkSettings } from "./controller-file.ts";
 import { applyToFolder, openDeck } from "./deck-api.ts";
 import { ExportError, exportDeck } from "./export.ts";
 import { largeImageDiagnostics } from "./images.ts";
@@ -101,7 +102,7 @@ const USAGE = `Usage:
   depthcue apply <deck-folder> <ops.json> --base-rev <rev> [--json]
   depthcue serve <deck-folder> [--port <n>]
   depthcue edit <deck-folder> [--port <n>]
-  depthcue control <deck-folder> [--port <n>] [--print]
+  depthcue control <deck-folder> [--port <n>] [--model <name>] [--effort low|medium|high|xhigh|max] [--print]
 ${EXPORT_USAGE}
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
   depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
@@ -138,8 +139,9 @@ edit   Opens the editor at a loopback address. Changes go through the same opera
 control Opens the editor and starts Claude Code beside it, as the deck's controller: the session has the deck's
        tools, and what you do in the editor (edits, comments, "ask an agent") reaches it as it happens. It needs
        Claude Code installed; set DEPTHCUE_CLAUDE to use another command. Claude Code asks you to confirm the
-       channel when it starts. When the session ends, so does the editor. --print shows both commands and
-       runs neither.
+       channel when it starts. When the session ends, so does the editor. The model and effort come from
+       controller.json beside the deck, which the editor's Settings write; --model and --effort win over
+       it. --print shows both commands and runs neither.
 
 ${EXPORT_TEXT}
 
@@ -213,6 +215,8 @@ const VALUE_FLAGS = [
   "by",
   "since",
   "limit",
+  "model",
+  "effort",
 ] as const;
 
 interface Parsed {
@@ -1008,6 +1012,9 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   const strange = unknown.filter((arg) => !pptx.has(arg) && arg !== "--captions" && arg !== "--print");
   if (strange.length > 0) return usage(`Unknown option ${strange[0]}.`);
   if (printOnly && command !== "control") return usage("--print belongs to control.");
+  if ((values.model !== undefined || values.effort !== undefined) && command !== "control") {
+    return usage("--model and --effort belong to control.");
+  }
   if (command === "control") {
     if (!folder || positional.length > 1) return usage("control needs one deck folder.");
     if (
@@ -1019,11 +1026,13 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
       captions ||
       pptx.size > 0
     ) {
-      return usage("control takes a deck folder, --port and --print.");
+      return usage("control takes a deck folder, --port, --model, --effort and --print.");
     }
     if (port !== undefined && !(Number.isInteger(port) && port >= 0 && port <= 65535)) {
       return usage("--port needs a whole number from 0 to 65535.");
     }
+    const said = checkSettings({ model: values.model, effort: values.effort });
+    if (!said.ok) return usage(said.message);
     return import("./control.ts")
       .then((control) =>
         control.controlCommand(
@@ -1032,6 +1041,7 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
             port: port ?? 4173,
             print: printOnly,
             claude: options.claude ?? control.claudeCommand(),
+            settings: said.settings,
           },
           io,
         ),

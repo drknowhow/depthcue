@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkDeckFiles } from "@depthcue/core";
+import { type ControllerSettings, readController } from "./controller-file.ts";
 import { writeLink } from "./link.ts";
 import { loadDeckDir } from "./loader.ts";
 import { count, type Io, report } from "./report.ts";
@@ -26,14 +27,23 @@ export interface ControlOptions {
   print: boolean;
   /** The command that starts Claude Code, so a test can stand in for it. */
   claude: readonly string[];
+  /** Said on the command line; they win over the deck's controller.json. */
+  settings?: ControllerSettings;
 }
 
 /** The command to start Claude Code. DEPTHCUE_CLAUDE names another program, such as a wrapper script. */
 export const claudeCommand = (): readonly string[] => [process.env.DEPTHCUE_CLAUDE || "claude"];
 
 /** Claude Code's arguments for a session that has the deck's server and listens to its channel. */
-export function claudeArgs(config: string): string[] {
-  return ["--mcp-config", config, "--dangerously-load-development-channels", `server:${SERVER}`];
+export function claudeArgs(config: string, settings: ControllerSettings = {}): string[] {
+  return [
+    "--mcp-config",
+    config,
+    "--dangerously-load-development-channels",
+    `server:${SERVER}`,
+    ...(settings.model ? ["--model", settings.model] : []),
+    ...(settings.effort ? ["--effort", settings.effort] : []),
+  ];
 }
 
 /** Writes the MCP configuration for one deck folder, where the same folder always gets the same file. */
@@ -48,6 +58,91 @@ export function writeConfig(folder: string, main: string): string {
 
 const quote = (text: string) => (/[\s"]/.test(text) ? `"${text.replaceAll('"', '\\"')}"` : text);
 
+export interface SessionPlan {
+  folder: string;
+  program: string;
+  args: string[];
+}
+
+export type Planned = { ok: true; plan: SessionPlan } | { ok: false; message: string };
+
+/** What to run for a deck: the program, its arguments and the folder to run it in. Writes the MCP configuration. */
+export function planSession(
+  folderPath: string,
+  settings: ControllerSettings,
+  claude: readonly string[] = claudeCommand(),
+): Planned {
+  const folder = resolve(folderPath);
+  const main = mcpMain();
+  if (!existsSync(main))
+    return { ok: false, message: "The MCP server is not built. Run `pnpm build` first." };
+  const [program, ...front] = claude;
+  return {
+    ok: true,
+    plan: {
+      folder,
+      program: program as string,
+      args: [...front, ...claudeArgs(writeConfig(folder, main), settings)],
+    },
+  };
+}
+
+/** The plan as one line to paste into a terminal in the deck folder. */
+export const commandLine = (plan: SessionPlan): string =>
+  [plan.program, ...plan.args].map((part) => quote(part)).join(" ");
+
+/** Where a new terminal window can be opened for the person. */
+export const canOpenTerminal = (): boolean => process.platform === "win32" || process.platform === "darwin";
+
+export type Started = { ok: true } | { ok: false; message: string };
+
+/**
+ * Opens a terminal window in the deck folder and runs the plan in it. The window is the person's: Claude Code needs
+ * a terminal to ask them to confirm the channel, and it stays open when the session ends. Nothing here comes from the
+ * page except the settings, and those have been checked down to the characters a model name may have.
+ */
+export function openTerminal(plan: SessionPlan): Started {
+  if (!canOpenTerminal()) {
+    return {
+      ok: false,
+      message: "This computer cannot open a terminal from here. Copy the command and run it.",
+    };
+  }
+  const dir = join(tmpdir(), "depthcue-control");
+  mkdirSync(dir, { recursive: true });
+  const id = `session-${Date.now()}`;
+  try {
+    if (process.platform === "win32") {
+      const q = (text: string) => `"${text.replaceAll("%", "%%")}"`;
+      const script = join(dir, `${id}.cmd`);
+      writeFileSync(
+        script,
+        `@echo off\r\ntitle Depthcue controller\r\ncd /d ${q(plan.folder)}\r\n${[plan.program, ...plan.args].map(q).join(" ")}\r\n`,
+      );
+      const child = spawn("cmd.exe", ["/c", "start", "Depthcue controller", "cmd.exe", "/k", script], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.on("error", () => undefined);
+      child.unref();
+    } else {
+      const q = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
+      const script = join(dir, `${id}.command`);
+      writeFileSync(
+        script,
+        `#!/bin/sh\ncd ${q(plan.folder)}\nexec ${[plan.program, ...plan.args].map(q).join(" ")}\n`,
+      );
+      chmodSync(script, 0o755);
+      const child = spawn("open", ["-a", "Terminal", script], { detached: true, stdio: "ignore" });
+      child.on("error", () => undefined);
+      child.unref();
+    }
+  } catch (error) {
+    return { ok: false, message: (error as Error).message };
+  }
+  return { ok: true };
+}
+
 /**
  * Makes this terminal the controller of a deck: the editor runs here, and Claude Code starts beside it with the
  * deck's MCP server and its channel, so what the person does in the editor reaches the session as it happens.
@@ -55,18 +150,18 @@ const quote = (text: string) => (/[\s"]/.test(text) ? `"${text.replaceAll('"', '
  */
 export async function controlCommand(options: ControlOptions, io: Io): Promise<number> {
   const folder = resolve(options.folder);
-  const main = mcpMain();
-  if (!existsSync(main)) {
-    io.err("The MCP server is not built. Run `pnpm build` first.");
+  const saved = readController(folder);
+  if (saved.problem) io.err(`${saved.problem} Starting without its settings.`);
+  const planned = planSession(folder, { ...saved.settings, ...options.settings }, options.claude);
+  if (!planned.ok) {
+    io.err(planned.message);
     return 2;
   }
-  const config = writeConfig(folder, main);
-  const [program, ...front] = options.claude;
-  const args = [...front, ...claudeArgs(config)];
+  const { program, args } = planned.plan;
 
   if (options.print) {
     io.out(`Editor:  depthcue edit ${quote(folder)}`);
-    io.out(`Session: ${[program, ...args].map((part) => quote(String(part))).join(" ")}`);
+    io.out(`Session: ${commandLine(planned.plan)}`);
     return 0;
   }
 
@@ -102,7 +197,7 @@ export async function controlCommand(options: ControlOptions, io: Io): Promise<n
 
   try {
     return await new Promise<number>((done) => {
-      const child = spawn(program as string, args, { stdio: "inherit", cwd: folder });
+      const child = spawn(program, args, { stdio: "inherit", cwd: folder });
       child.once("error", (error: NodeJS.ErrnoException) => {
         io.err(
           error.code === "ENOENT"

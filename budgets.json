@@ -98,6 +98,12 @@
       "limitBytes": 2048
     },
     {
+      "name": "editor settings",
+      "file": "packages/editor/dist/controllerdialog.js",
+      "metric": "brotli",
+      "limitBytes": 3072
+    },
+    {
       "name": "editor storyboard",
       "file": "packages/editor/dist/storyboard.js",
       "metric": "brotli",
