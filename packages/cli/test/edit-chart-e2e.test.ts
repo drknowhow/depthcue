@@ -495,8 +495,8 @@ describe("the chart block in a real browser", () => {
     // Paper's evidence and action colors lead, in that order.
     expect(before.first).toBe("rgb(43, 85, 230)");
     expect(before.second).toBe("rgb(199, 58, 24)");
-    await page.locator(".ed-actions [data-tb='deck']").click();
-    const popover = page.locator(".ed-actions .ed-tb-pop:not([hidden])");
+    await page.locator(".ed-bar-deck [data-tb='deck']").click();
+    const popover = page.locator(".ed-bar-deck .ed-tb-pop:not([hidden])");
     const section = popover.locator("details[data-section='style']");
     if ((await section.getAttribute("open")) === null) await section.locator("summary").click();
     await popover.locator("[data-field='panel:deck:palette:evidence']").fill("#0044cc");

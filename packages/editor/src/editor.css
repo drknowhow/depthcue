@@ -68,6 +68,79 @@ body {
   gap: var(--dc-space-2);
 }
 
+/* The deck and its menu; then the history, set apart by a rule. */
+.ed-bar-deck {
+  display: flex;
+  flex: 1 1 8rem;
+  align-items: center;
+  gap: var(--dc-space-2);
+  min-width: 0;
+}
+
+.ed-bar-history {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--dc-space-1);
+  padding-left: var(--dc-space-3);
+  border-left: 1px solid var(--dc-line);
+}
+
+.ed-app .ed-icon-button {
+  justify-content: center;
+  min-width: 2.25rem;
+  padding: 0;
+  border-color: transparent;
+  background: none;
+}
+
+.ed-icon-button::before {
+  content: "";
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  background: currentcolor;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.ed-app .ed-icon-button:hover:not(:disabled) {
+  border-color: var(--dc-line);
+}
+
+.ed-icon-undo {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5L2.5 6 6 2.5'/%3E%3Cpath d='M2.5 6h7a3.5 3.5 0 010 7h-2'/%3E%3C/svg%3E");
+}
+
+.ed-icon-chevron {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
+.ed-icon-redo {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 9.5L13.5 6 10 2.5'/%3E%3Cpath d='M13.5 6h-7a3.5 3.5 0 000 7h2'/%3E%3C/svg%3E");
+}
+
+/* Present is what the deck is for, so it is the one filled button; its triangle is the cue. */
+.ed-app .ed-present {
+  gap: var(--dc-space-2);
+  border-color: var(--dc-text);
+  background: var(--dc-text);
+  color: var(--dc-bg);
+  font-weight: 600;
+}
+
+.ed-app .ed-present:hover {
+  border-color: var(--dc-text);
+  background: color-mix(in srgb, var(--dc-text) 86%, var(--dc-bg));
+}
+
+.ed-present::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-block: 0.3125rem solid transparent;
+  border-left: 0.5rem solid var(--dc-color-brand-vermilion, #ff633f);
+}
+
 .ed-app button,
 .ed-link {
   min-height: 2.25rem;
@@ -170,24 +243,53 @@ body {
   margin: 0;
 }
 
-/* Problem ribbon: always there, so a problem that appears or goes moves nothing. */
+/*
+ * The checks chip: a quiet pill in the top bar while all is clear, the action colour while something needs checking.
+ * Pressed, it opens the list under it. It lives in the bar, so a problem that appears or goes moves nothing.
+ */
 
 .ed-ribbon {
-  grid-column: 1 / -1;
-  grid-row: 3;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--dc-space-3);
-  box-sizing: border-box;
-  height: 2.5rem;
-  padding: 0 var(--dc-space-4);
-  border-bottom: 1px solid var(--dc-line);
-  background: var(--dc-surface);
   font-size: 0.875rem;
 }
 
-.ed-ribbon[data-state="clear"] {
-  background: color-mix(in srgb, var(--dc-state) 28%, var(--dc-surface));
+.ed-app .ed-ribbon-chip {
+  gap: var(--dc-space-2);
+  border-radius: 999px;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--dc-line) 45%, var(--dc-surface));
+}
+
+.ed-app .ed-ribbon-chip:disabled {
+  color: var(--dc-text);
+  opacity: 1;
+}
+
+.ed-app .ed-ribbon[data-state="problems"] .ed-ribbon-chip {
+  border-color: var(--dc-action);
+  background: color-mix(in srgb, var(--dc-action) 10%, var(--dc-surface));
+}
+
+.ed-ribbon-count {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* All clear needs no words in the bar: the dot says it, and the words stay for a screen reader and the tooltip. */
+.ed-app .ed-ribbon[data-state="clear"] .ed-ribbon-chip {
+  min-width: 2.25rem;
+  justify-content: center;
+  padding: 0;
+}
+
+.ed-ribbon[data-state="clear"] .ed-ribbon-count {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 .ed-ribbon-dot {
@@ -199,7 +301,29 @@ body {
 }
 
 .ed-ribbon[data-state="clear"] .ed-ribbon-dot {
-  background: var(--dc-text);
+  background: var(--dc-state);
+  box-shadow: 0 0 0 1px var(--dc-muted);
+}
+
+.ed-ribbon-panel {
+  position: absolute;
+  top: calc(100% + var(--dc-space-2));
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dc-space-2) var(--dc-space-3);
+  width: min(26rem, calc(100vw - 2 * var(--dc-space-4)));
+  padding: var(--dc-space-3);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-surface);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--dc-text) 16%, transparent);
+}
+
+.ed-ribbon-panel[hidden] {
+  display: none;
 }
 
 .ed-ribbon-nav {
@@ -221,19 +345,17 @@ body {
   padding: 0 var(--dc-space-2);
 }
 
-/* One line, so the strip is the same height whatever it says; the sentence is cut short with an ellipsis and whole in the tooltip. */
+/* The whole sentence, on as many lines as it needs. Pressing it goes to the block it is about. */
 .ed-app .ed-ribbon-text {
-  flex: 1 1 0;
+  flex: 1 1 100%;
+  order: -1;
   min-width: 0;
   min-height: 2rem;
   padding: 0;
   border-color: transparent;
   background: none;
-  overflow: hidden;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
 .ed-app .ed-ribbon-text:hover:not(:disabled) {
@@ -1894,8 +2016,13 @@ body {
  * A phone has its own layout below.
  */
 @media (min-width: 761px) and (max-width: 1279px) {
+  .ed-bar {
+    gap: var(--dc-space-2);
+  }
+
   .ed-app .ed-actions button,
-  .ed-app .ed-actions .ed-link {
+  .ed-app .ed-actions .ed-link,
+  .ed-app .ed-scene-tools button {
     padding-inline: var(--dc-space-2);
   }
 
@@ -2769,7 +2896,17 @@ body {
  * The deck popover is as tall as its Style section: it scrolls inside the window and stops above the pill at the foot of
  * the stage, which would otherwise cover its last rows.
  */
-.ed-actions .ed-tb-pop {
+/* It hangs from the start of the deck's group, under the title, so on a phone it does not run off the right edge. */
+.ed-bar-deck {
+  position: relative;
+}
+
+.ed-bar-deck .ed-tb-chip-wrap {
+  position: static;
+}
+
+.ed-bar-deck .ed-tb-pop {
+  max-width: calc(100vw - 2 * var(--dc-space-4));
   max-height: calc(100dvh - 8rem);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -3501,24 +3638,25 @@ body {
   }
 
   .ed-scenes,
-  .ed-stage,
-  .ed-ribbon {
+  .ed-stage {
     grid-column: auto;
     grid-row: auto;
   }
 
-  /* On a phone the sentence wraps, and the strip grows to hold it. */
+  /* On a phone the open list sits in the flow under the chip, as wide as the bar, so nothing reaches off the screen. */
   .ed-ribbon {
     flex-wrap: wrap;
-    height: auto;
-    min-height: 2.5rem;
-    padding: var(--dc-space-1) var(--dc-space-4);
+    gap: var(--dc-space-2);
   }
 
-  .ed-app .ed-ribbon-text {
-    flex-basis: 14rem;
-    overflow: visible;
-    white-space: normal;
+  .ed-ribbon:has(.ed-ribbon-panel:not([hidden])) {
+    flex-basis: 100%;
+  }
+
+  .ed-ribbon-panel {
+    position: static;
+    width: 100%;
+    box-shadow: none;
   }
 
   /* On a phone the page scrolls and the bar sits under the slide, in the flow. */

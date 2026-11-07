@@ -127,13 +127,26 @@ const setText = (node: HTMLElement, text: string) => {
 };
 
 /**
- * The strip under the top bar that says what is wrong with the deck, one problem at a time, with Previous and Next to
- * walk them and a Fix button where one change settles it. It takes its rules from the core, which also gives them to
- * `depthcue check`, so it has none of its own. It is always there, so a problem that appears moves nothing.
+ * The chip in the top bar that says whether anything about the deck needs checking. Pressed, it opens a list under it
+ * that shows the problems one at a time, with Previous and Next to walk them and a Fix button where one change settles
+ * it. It takes its rules from the core, which also gives them to `depthcue check`, so it has none of its own. It sits
+ * in the bar, so a problem that appears moves nothing.
  */
 export function createRibbon(session: Session, hooks: RibbonHooks): Ribbon {
   const dot = h("span", { class: "ed-ribbon-dot", "aria-hidden": "true" });
   const count = h("b", { class: "ed-ribbon-count" });
+  const toggle = h(
+    "button",
+    {
+      type: "button",
+      class: "ed-ribbon-chip",
+      "data-ribbon": "open",
+      "aria-expanded": "false",
+      "aria-controls": "ed-ribbon-panel",
+    },
+    dot,
+    count,
+  );
   const place = h("span", { class: "ed-ribbon-place" });
   const previous = h(
     "button",
@@ -152,16 +165,32 @@ export function createRibbon(session: Session, hooks: RibbonHooks): Ribbon {
   const fix = h("button", { type: "button", class: "ed-ribbon-fix", "data-ribbon": "fix" });
   // What a screen reader hears. The strip itself is not a live region, because its buttons are in it.
   const say = h("span", { class: "ed-sr-only", role: "status", "aria-live": "polite" });
-  const element = h("div", { class: "ed-ribbon", "data-state": "clear" }, dot, count, nav, show, fix, say);
+  const panel = h(
+    "div",
+    { class: "ed-ribbon-panel", id: "ed-ribbon-panel", role: "group", "aria-label": "Things to check" },
+    nav,
+    show,
+    fix,
+  );
+  panel.hidden = true;
+  const element = h("div", { class: "ed-ribbon", "data-state": "clear" }, toggle, panel, say);
 
   let problems: Problem[] = [];
   let at = 0;
 
   const current = () => problems[at];
 
+  function setOpen(open: boolean) {
+    const next = open && problems.length > 0;
+    panel.hidden = !next;
+    toggle.setAttribute("aria-expanded", String(next));
+  }
+
   function paint() {
     const problem = current();
     element.dataset.state = problem === undefined ? "clear" : "problems";
+    toggle.disabled = problem === undefined;
+    if (problem === undefined) setOpen(false);
     setText(count, problem === undefined ? "All clear" : plural(problems.length));
     nav.hidden = problems.length < 2;
     previous.disabled = problems.length < 2;
@@ -212,9 +241,24 @@ export function createRibbon(session: Session, hooks: RibbonHooks): Ribbon {
   next.addEventListener("click", () => step(1));
   show.addEventListener("click", () => {
     const problem = current();
-    if (problem) hooks.go(problem, true);
+    if (!problem) return;
+    setOpen(false);
+    hooks.go(problem, true);
   });
   fix.addEventListener("click", () => void fixNext());
+  toggle.addEventListener("click", () => setOpen(toggle.getAttribute("aria-expanded") !== "true"));
+  // Escape closes the list and gives the keyboard back to the chip; a press anywhere else closes it too.
+  element.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || panel.hidden) return;
+    event.stopPropagation();
+    setOpen(false);
+    toggle.focus({ preventScroll: true });
+  });
+  const outside = (event: Event) => {
+    if (!panel.hidden && !element.contains(event.target as Node)) setOpen(false);
+  };
+  const doc = element.ownerDocument;
+  doc.addEventListener("pointerdown", outside);
 
   render();
   return {
@@ -229,6 +273,7 @@ export function createRibbon(session: Session, hooks: RibbonHooks): Ribbon {
     step,
     fixNext,
     destroy() {
+      doc.removeEventListener("pointerdown", outside);
       element.remove();
     },
   };

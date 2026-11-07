@@ -157,7 +157,7 @@ const notesPop = () => {
   return find(host, ".ed-script") as HTMLElement | undefined;
 };
 const voicePop = notesPop;
-const deckPop = () => openTop(".ed-actions [data-tb='deck']");
+const deckPop = () => openTop(".ed-bar-deck [data-tb='deck']");
 const source = () => store.session.doc.scenes[SCENE]?.sources?.[0]?.id as string;
 const linked = (kind: "text" | "other", id: string) => {
   choose(id, kind);

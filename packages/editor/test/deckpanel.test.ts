@@ -24,7 +24,8 @@ beforeEach(async () => {
 });
 afterEach(() => editor.destroy());
 
-const chip = () => host.querySelector<HTMLButtonElement>(".ed-actions [data-tb='deck']") as HTMLButtonElement;
+const chip = () =>
+  host.querySelector<HTMLButtonElement>(".ed-bar-deck [data-tb='deck']") as HTMLButtonElement;
 const pop = () => chip().closest(".ed-tb-chip-wrap")?.querySelector<HTMLElement>(".ed-tb-pop") as HTMLElement;
 const control = <T extends HTMLElement = HTMLInputElement>(key: string): T => {
   const found = pop().querySelector<T>(`[data-field="${key}"]`);
