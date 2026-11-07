@@ -66,6 +66,16 @@ export {
 export type { BuildEntry, BuildTarget } from "./build.ts";
 export { buildOf, placeInBuild, revealable, STEPS_MAX } from "./build.ts";
 export { BUILT_IN_STYLES, BUILT_IN_TEMPLATES } from "./builtins.ts";
+export type { Bands, ChromeDeck, ChromeMode, SlideChrome, Zones } from "./chrome.ts";
+export {
+  bandsOf,
+  checkChromeDeck,
+  checkChromeFields,
+  fieldsIn,
+  fill as fillChrome,
+  resolveChrome,
+  sectionOf,
+} from "./chrome.ts";
 export type {
   Anchor,
   Comment,
@@ -237,6 +247,7 @@ export {
   blockStyleSchema,
   brandSchema,
   CHART_KINDS,
+  CHROME_FIELDS,
   COLOR_PATTERN,
   COLUMN_KINDS,
   COMMENT_AUTHORS,
@@ -246,6 +257,7 @@ export {
   commentOpsSchema,
   commentsSchema,
   DATA_LIMITS,
+  DECK_DATE_MAX,
   deckSchema,
   FAMILY_PATTERN,
   FONT_FILE_PATTERN,
@@ -258,12 +270,14 @@ export {
   LINK_LIMITS,
   LOGO_FILE_PATTERN,
   MODULE_SETTING_PATTERN,
+  NUMBERING_LIMITS,
   OP_NAMES,
   opsSchema,
   PALETTE_COLORS,
   ROLE_KINDS,
   SCHEMA_VERSION,
   SCHEMA_VERSIONS,
+  SECTION_TEMPLATE,
   SLOT_ROLES,
   sceneSchema,
   TEXT_ALIGNS,

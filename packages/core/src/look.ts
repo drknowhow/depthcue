@@ -3,7 +3,9 @@
  * resolved from deck.json, its brand and Depthcue's own. The server and the export call this; the player only reads
  * what it returns, so the built-in registry never reaches the player's bundle.
  */
+
 import { type BrandPart, blockStylesOf, brandFilePath, templatesOf } from "./brand.ts";
+import { bandsOf } from "./chrome.ts";
 import type { DeckLook, LookFace, PageLook } from "./exported.ts";
 import { own } from "./own.ts";
 import { styleOf } from "./style.ts";
@@ -22,6 +24,11 @@ const faceOf = (face: BrandFace): LookFace => ({
 const logoFor = (brand: Brand, theme: Deck["theme"]): string | undefined =>
   theme === "ink" ? (brand.logos?.dark ?? brand.logos?.light) : (brand.logos?.light ?? brand.logos?.dark);
 
+const hasBands = (chrome: NonNullable<Brand["chrome"]>): boolean => {
+  const { header, footer } = bandsOf(chrome);
+  return Object.keys(header).length + Object.keys(footer).length > 0;
+};
+
 function chromeOf(brand: Brand, theme: Deck["theme"]): DeckLook["chrome"] {
   const chrome = brand.chrome;
   if (chrome === undefined) return undefined;
@@ -32,6 +39,7 @@ function chromeOf(brand: Brand, theme: Deck["theme"]): DeckLook["chrome"] {
       : {}),
     ...(chrome.footer ? { footer: { ...chrome.footer } } : {}),
     ...(chrome.number ? { number: { ...chrome.number } } : {}),
+    ...(hasBands(chrome) ? { bands: bandsOf(chrome) } : {}),
     accent: chrome.accent ?? "none",
   };
 }

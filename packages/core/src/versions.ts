@@ -27,7 +27,14 @@ export const BLOCK_BRAND_KEYS = ["slot", "style"] as const;
 /** The properties of an image block that came with 0.6: how it takes its box, and that it carries no information. */
 export const IMAGE_KEYS = ["fit", "crop", "focus", "decorative"] as const;
 /** The properties of deck.json that came after 0.1, with the version each came with. */
-export const DECK_KEYS_BY_VERSION = { palette: "0.3", fonts: "0.3", brand: "0.4", links: "0.5" } as const;
+export const DECK_KEYS_BY_VERSION = {
+  palette: "0.3",
+  fonts: "0.3",
+  brand: "0.4",
+  links: "0.5",
+  date: "0.7",
+  numbering: "0.7",
+} as const;
 
 type Part = { name: string; version: SchemaVersion; path: string };
 
@@ -62,17 +69,19 @@ export function blockNeeds(block: Block): SchemaVersion {
 
 /**
  * The oldest version that has everything the scene uses: its blocks, a template, which came with 0.4, a source's
- * link, which came with 0.5, and a background, which came with 0.6.
+ * link, which came with 0.5, a background, which came with 0.6, and a chrome setting, which came with 0.7.
  */
 export const sceneNeeds = (scene: Scene): SchemaVersion => {
   const base: SchemaVersion =
-    scene.background !== undefined
-      ? "0.6"
-      : scene.sources?.some((source) => source?.link !== undefined)
-        ? "0.5"
-        : scene.template === undefined
-          ? "0.1"
-          : "0.4";
+    scene.chrome !== undefined
+      ? "0.7"
+      : scene.background !== undefined
+        ? "0.6"
+        : scene.sources?.some((source) => source?.link !== undefined)
+          ? "0.5"
+          : scene.template === undefined
+            ? "0.1"
+            : "0.4";
   return (Array.isArray(scene.blocks) ? scene.blocks : []).reduce<SchemaVersion>(
     (most, block) => newest(most, blockNeeds(block)),
     base,
@@ -116,6 +125,8 @@ export function checkSceneVersion(scene: Scene, file: string): Diagnostic[] {
   const out: Diagnostic[] = [];
   if (scene.template !== undefined && declared < rank("0.4"))
     out.push(tooOld(file, "/template", "template", "0.4", scene.schemaVersion, '"template"'));
+  if (scene.chrome !== undefined && declared < rank("0.7"))
+    out.push(tooOld(file, "/chrome", "chrome", "0.7", scene.schemaVersion, '"chrome"'));
   if (scene.background !== undefined && declared < rank("0.6"))
     out.push(tooOld(file, "/background", "background", "0.6", scene.schemaVersion, '"background"'));
   scene.sources?.forEach((source, i) => {

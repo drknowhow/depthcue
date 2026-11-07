@@ -59,16 +59,17 @@ const pinned = (frame: unknown) =>
   });
 
 describe("the schema versions", () => {
-  it("accepts 0.1 to 0.6 and says which are allowed when given another", () => {
+  it("accepts 0.1 to 0.7 and says which are allowed when given another", () => {
     expect(checkScene(scene({ schemaVersion: "0.1" }), "scenes/a.json")).toEqual([]);
     expect(checkScene(scene({ schemaVersion: "0.2" }), "scenes/a.json")).toEqual([]);
     expect(checkScene(scene({ schemaVersion: "0.3" }), "scenes/a.json")).toEqual([]);
     expect(checkScene(scene({ schemaVersion: "0.4" }), "scenes/a.json")).toEqual([]);
     expect(checkScene(scene({ schemaVersion: "0.5" }), "scenes/a.json")).toEqual([]);
     expect(checkScene(scene({ schemaVersion: "0.6" }), "scenes/a.json")).toEqual([]);
-    const found = first(checkScene(scene({ schemaVersion: "0.7" }), "scenes/a.json"));
+    expect(checkScene(scene({ schemaVersion: "0.7" }), "scenes/a.json")).toEqual([]);
+    const found = first(checkScene(scene({ schemaVersion: "0.8" }), "scenes/a.json"));
     expect(found).toMatchObject({ code: "bad-value", path: "/schemaVersion" });
-    expect(found.fix).toContain("Use one of: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6.");
+    expect(found.fix).toContain("Use one of: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7.");
   });
 
   it("lets a brand or a template file declare 0.4, when both came, and every version after it", () => {

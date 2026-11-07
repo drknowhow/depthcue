@@ -37,7 +37,15 @@ Decisions (Dimitri, 2026-11-01):
 - `logos`: one for light slides and one for dark, SVG or PNG, with alt text.
 - `chrome`: what sits on every slide, like a PowerPoint master: the logo (corner and size), a footer line, the slide
   number, and an accent (none, a bar along the top, or a bar down the start side). A template says whether it shows
-  the full chrome, a minimal one (logo only) or none.
+  the full chrome, a minimal one (logo only) or none. From schema 0.7, `bands` adds a header along the top and a footer
+  along the bottom, each with `start`, `center` and `end` zones. A zone is text with fields in braces: `{number}`,
+  `{count}`, `{section}`, `{title}`, `{deck}` and `{date}`. A zone of `bands` wins over the footer line and the slide
+  number at the same place, and a brand written before `bands` reads as the same zones. A field with no value shows
+  nothing; `{section}` is the title of the nearest slide at or before this one on the `section` template.
+  `deck.json` takes `date` (text, never a clock) and `numbering` (`start`, and `skip`, template ids that show no
+  number but still count); a scene takes `chrome` (`full`, `minimal` or `none`), which wins over its template's.
+  `depthcue check` reports `chrome-unknown-field`, `chrome-no-date`, `chrome-no-section` and `chrome-no-number`.
+  Nothing draws the header or the zones yet: the player still draws the footer line and the number as before.
 - `styles`: the brand's components. A style is a named look for a block, chosen from a bounded list of properties:
   font (display, body, mono), size, weight, case, tone, fill (none, surface, action, evidence, text), border, an
   accent edge, corner radius, padding and alignment, and which block kinds it applies to. A block takes one with
