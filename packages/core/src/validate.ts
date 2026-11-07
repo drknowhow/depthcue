@@ -13,6 +13,7 @@ import {
   unusedBrand,
 } from "./brand.ts";
 import { type BrandData, readBrand } from "./brandcheck.ts";
+import { type ChromeDeck, checkChromeDeck } from "./chrome.ts";
 import { checkData } from "./data.ts";
 import { explain } from "./diagnostics.ts";
 import { checkFrames } from "./frames.ts";
@@ -236,6 +237,7 @@ export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
   if (deck) out.push(...checkLinkAssets(deck, assets, MANIFEST_FILE));
 
   const listed = new Set<string>();
+  const slides: ChromeDeck["slides"][number][] = [];
   const ids = Array.isArray((manifest.data as { scenes?: unknown })?.scenes)
     ? ((manifest.data as { scenes: unknown[] }).scenes.filter((id) => typeof id === "string") as string[])
     : [];
@@ -260,7 +262,19 @@ export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
       return;
     }
     out.push(...checkScenePart(scene.data, file, id, assets, deck, deck ? part : undefined));
+    const found = scene.data as Partial<Scene> | null;
+    if (found && typeof found === "object" && typeof found.title === "string")
+      slides.push({ id, title: found.title, template: found.template, chrome: found.chrome });
   });
+  if (deck && slides.length === ids.length) {
+    out.push(
+      ...checkChromeDeck(
+        part?.brand?.chrome,
+        { date: deck.date, numbering: deck.numbering, slides },
+        MANIFEST_FILE,
+      ),
+    );
+  }
 
   for (const file of Object.keys(files.text)) {
     if (file.startsWith("scenes/") && file.endsWith(".json") && !listed.has(file)) {

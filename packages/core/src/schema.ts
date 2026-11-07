@@ -9,13 +9,14 @@
  * and the brand and template files; it reads text as 0.3 does. A file is read as the version it declares, so the text
  * of an older scene stays exactly as written. 0.5 adds the deck's `links` and a block's or a source's `link`; it reads
  * text as 0.4 does. 0.6 adds an image block's `fit`, `crop`, `focus` and `decorative`, and a scene's `background`; it
- * reads text as 0.4 does.
+ * reads text as 0.4 does. 0.7 adds the deck's `date` and `numbering`, a scene's `chrome`, and the brand's header and
+ * footer `bands`; it reads text as 0.4 does.
  */
-export const SCHEMA_VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"] as const;
+export const SCHEMA_VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7"] as const;
 /** The version the tool writes into a new scene. 0.4 reads exactly as 0.3, so a new scene shows the same either way. */
 export const SCHEMA_VERSION = "0.4" as const;
 /** The versions a brand or a template file may declare: both came with 0.4. A test keeps this the tail of the list above. */
-export const BRAND_SCHEMA_VERSIONS = ["0.4", "0.5", "0.6"] as const;
+export const BRAND_SCHEMA_VERSIONS = ["0.4", "0.5", "0.6", "0.7"] as const;
 
 export const ID_PATTERN = "^[a-z][a-z0-9-]{1,63}$";
 export const ASSET_PATTERN = "^assets/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]*$";
@@ -115,6 +116,16 @@ export const CHROME_PLACES = ["start", "center", "end"] as const;
 export const ACCENTS = ["none", "top", "start"] as const;
 /** How much of the brand's chrome a template shows: all of it, the logo alone, or nothing. */
 export const TEMPLATE_CHROME = ["full", "minimal", "none"] as const;
+/**
+ * The fields a header or footer zone may hold, written in braces: the slide's number and the number of slides, the
+ * name of its section, its title, the deck's title, and the deck's date.
+ */
+export const CHROME_FIELDS = ["number", "count", "section", "title", "deck", "date"] as const;
+/** The template that starts a section: a slide on it names the part of the deck that follows. */
+export const SECTION_TEMPLATE = "section";
+/** The deck's date is a fixed text, so a deck draws the same on any day. */
+export const DECK_DATE_MAX = 40;
+export const NUMBERING_LIMITS = { start: 9999, skip: 16 } as const;
 /**
  * What a template slot is for. PowerPoint keeps it as a placeholder's type: a brand import reads it from a layout's
  * placeholders, and the export writes placeholders of that type. A `claim` slot is where the scene's claim is drawn and
@@ -460,6 +471,8 @@ export const sceneSchema = {
       },
       ...altUnlessDecorative,
     },
+    /** How much of the brand's header and footer this slide shows. It wins over its template's. Left out, the template's. */
+    chrome: { enum: TEMPLATE_CHROME },
     lead: { enum: LEADS },
     summary: {
       type: "object",
@@ -571,6 +584,21 @@ export const deckSchema = {
     /** The id of the brand in the deck's `brand/` folder, whose `brand.json` must say the same id. */
     brand: id,
     scenes: { type: "array", items: id, uniqueItems: true, minItems: 1, maxItems: 200 },
+    /** The date the header and footer show for `{date}`, as written: it is text, never a clock. */
+    date: { type: "string", minLength: 1, maxLength: DECK_DATE_MAX },
+    /**
+     * How slides are numbered: the number of the first slide, and the templates whose slides show no number. A slide
+     * that shows none still counts, so the next slide's number does not change.
+     */
+    numbering: {
+      type: "object",
+      additionalProperties: false,
+      minProperties: 1,
+      properties: {
+        start: { type: "integer", minimum: 0, maximum: NUMBERING_LIMITS.start },
+        skip: { type: "array", maxItems: NUMBERING_LIMITS.skip, uniqueItems: true, items: id },
+      },
+    },
     /** Named links that text, blocks and sources point at by id, so one edit changes every use. */
     links: { type: "array", maxItems: LINK_LIMITS.links, items: linkEntry },
     modules: {
@@ -589,6 +617,15 @@ const brandPalette = {
     /** In order. Without them a chart takes its colors from the palette. */
     chart: { type: "array", minItems: 1, maxItems: BRAND_LIMITS.chart, items: color },
   },
+} as const;
+
+/** The zones of a header or a footer: each is text, and `start` and `end` follow the deck's language. */
+const zone = { type: "string", minLength: 1, maxLength: BRAND_LIMITS.footer } as const;
+const zones = {
+  type: "object",
+  additionalProperties: false,
+  minProperties: 1,
+  properties: { start: zone, center: zone, end: zone },
 } as const;
 
 const brandVersion = { enum: BRAND_SCHEMA_VERSIONS } as const;
@@ -739,6 +776,17 @@ export const brandSchema = {
           properties: { place: { enum: CHROME_PLACES } },
         },
         accent: { enum: ACCENTS },
+        /**
+         * A header along the top and a footer along the bottom, each with up to three zones. A zone is text with
+         * fields in braces (`{number}`, see CHROME_FIELDS). A zone here wins over the `footer` and `number` above that
+         * sit at the same place.
+         */
+        bands: {
+          type: "object",
+          additionalProperties: false,
+          minProperties: 1,
+          properties: { header: zones, footer: zones },
+        },
       },
     },
     /** The brand's component styles, by id. One with the id of a built-in style replaces it. */

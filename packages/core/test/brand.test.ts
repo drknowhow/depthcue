@@ -931,6 +931,7 @@ describe("lookOf", () => {
       logo: { path: "brand/logos/harbor.svg", alt: "Harbor Analytics", corner: "top-end", size: "s" },
       footer: { text: "Harbor Analytics, for internal use", place: "start" },
       number: { place: "end" },
+      bands: { header: {}, footer: { start: "Harbor Analytics, for internal use", end: "{number}" } },
       accent: "top",
     });
     expect(Object.keys(look.templates).sort()).toEqual(["chart-and-note", "cover"]);

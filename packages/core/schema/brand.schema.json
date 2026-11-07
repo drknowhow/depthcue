@@ -18,7 +18,8 @@
       "enum": [
         "0.4",
         "0.5",
-        "0.6"
+        "0.6",
+        "0.7"
       ]
     },
     "id": {
@@ -470,6 +471,57 @@
             "top",
             "start"
           ]
+        },
+        "bands": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "header": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "center": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "end": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              }
+            },
+            "footer": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "center": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "end": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              }
+            }
+          }
         }
       }
     },

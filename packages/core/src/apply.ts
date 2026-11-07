@@ -18,7 +18,7 @@ const validateOps = /* @__PURE__ */ schemaValidator(opsSchema);
 type Nullable<T> = { [K in keyof T]?: T[K] | null };
 
 export type DeckChanges = Nullable<
-  Pick<Deck, "title" | "language" | "theme" | "palette" | "fonts" | "modules">
+  Pick<Deck, "title" | "language" | "theme" | "palette" | "fonts" | "modules" | "date" | "numbering">
 >;
 export type SceneChanges = Nullable<
   Pick<
@@ -27,6 +27,7 @@ export type SceneChanges = Nullable<
     | "layout"
     | "template"
     | "background"
+    | "chrome"
     | "lead"
     | "summary"
     | "sources"
@@ -134,12 +135,22 @@ interface Work {
 
 const ID_RE = new RegExp(ID_PATTERN);
 /** The properties `deck.set` and `scene.set` may write. Review compares exactly these, so the two cannot drift. */
-export const DECK_KEYS = ["title", "language", "theme", "palette", "fonts", "modules"] as const;
+export const DECK_KEYS = [
+  "title",
+  "language",
+  "theme",
+  "palette",
+  "fonts",
+  "modules",
+  "date",
+  "numbering",
+] as const;
 export const SCENE_KEYS = [
   "title",
   "layout",
   "template",
   "background",
+  "chrome",
   "lead",
   "summary",
   "sources",

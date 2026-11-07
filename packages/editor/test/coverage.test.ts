@@ -883,6 +883,9 @@ const WAYS: Record<string, Entry> = {
  */
 const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
   ["scene.template", "BRANDS_AND_PPTX step 7, the template picker and Change template"],
+  ["scene.chrome", "HEADER_FOOTER step 3, Show header and footer in the scene inspector"],
+  ["deck.date", "HEADER_FOOTER step 3, the Header and footer panel"],
+  ["deck.numbering", "HEADER_FOOTER step 3, the Header and footer panel"],
   ...["text", "image", "bar-chart", "clip", "table", "chart"].flatMap(
     (type): Array<[string, string]> => [
       [`scene.blocks<${type}>.slot`, "BRANDS_AND_PPTX step 7, Change template"],

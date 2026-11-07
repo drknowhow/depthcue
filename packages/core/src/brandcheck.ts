@@ -15,6 +15,7 @@ import {
   textOn,
   unusedBrand,
 } from "./brand.ts";
+import { checkChromeFields } from "./chrome.ts";
 import { explain } from "./diagnostics.ts";
 import { own } from "./own.ts";
 import { brandSchema, ROLE_KINDS, THEMES, templateSchema } from "./schema.ts";
@@ -120,6 +121,11 @@ const chromePlaces = (brand: Brand): string[] => {
     ...(chrome?.footer ? [`bottom-${chrome.footer.place}`] : []),
     ...(chrome?.number ? [`bottom-${chrome.number.place}`] : []),
     ...(chrome?.logo ? [chrome.logo.corner] : []),
+    ...(["header", "footer"] as const).flatMap((band) =>
+      Object.keys(chrome?.bands?.[band] ?? {}).map(
+        (place) => `${band === "header" ? "top" : "bottom"}-${place}`,
+      ),
+    ),
   ];
 };
 
@@ -242,6 +248,7 @@ export function checkBrand(deck: Deck, part: BrandPart, brandFiles: ReadonlySet<
     );
   }
 
+  out.push(...checkChromeFields(brand.chrome, BRAND_FILE));
   out.push(...checkBrandColors(brand, BRAND_FILE));
   const looks = looksOf(deck, brand);
   for (const { theme, colors } of looks) {

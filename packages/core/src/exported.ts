@@ -1,3 +1,4 @@
+import type { Bands } from "./chrome.ts";
 import type {
   ACCENTS,
   CHROME_PLACES,
@@ -58,6 +59,8 @@ export interface DeckLook {
     };
     footer?: { text: string; place: Place };
     number?: { place: Place };
+    /** The header and the footer as zones, with a footer line and a number of an older brand folded in. */
+    bands?: Bands;
     accent: (typeof ACCENTS)[number];
   };
   /** The component styles the deck's blocks and its templates' slots name, by id. */

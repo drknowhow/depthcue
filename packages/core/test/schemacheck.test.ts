@@ -140,6 +140,10 @@ const fullBrand = {
     footer: { text: "Acme", place: "start" },
     number: { place: "end" },
     accent: "top",
+    bands: {
+      header: { start: "{deck}", end: "{section}" },
+      footer: { center: "{number} / {count}", end: "{date}" },
+    },
   },
   styles: { quiet: { name: "Quiet", for: ["body", "caption"], tone: "muted", fill: "surface", pad: "m" } },
   lock: true,
@@ -190,6 +194,25 @@ const imageScenes = [
     ],
   },
 ];
+/** 0.7: a deck's date and numbering, and a scene's own say over its header and footer. */
+const numberedDeck = {
+  schemaVersion: "0.7",
+  id: "annual",
+  title: "Annual review",
+  language: "en",
+  theme: "paper",
+  date: "March 2027",
+  numbering: { start: 0, skip: ["title", "section"] },
+  scenes: ["opening"],
+};
+const quietScene = {
+  schemaVersion: "0.7",
+  id: "opening",
+  title: "Opening",
+  layout: "title",
+  chrome: "none",
+  blocks: [{ id: "opening-title", type: "text", role: "heading", text: "Annual review" }],
+};
 const imageTemplate = {
   schemaVersion: "0.4",
   id: "photo",
@@ -369,8 +392,8 @@ function* variants(schema: object, samples: readonly unknown[], seeded: number, 
 }
 
 const CASES: ReadonlyArray<[name: string, schema: object, samples: () => unknown[], seeded: number]> = [
-  ["deck.json", deckSchema, () => fixtureDecks, 3000],
-  ["a scene", sceneSchema, () => [...fixtureScenes, ...imageScenes], 4000],
+  ["deck.json", deckSchema, () => [...fixtureDecks, numberedDeck], 3000],
+  ["a scene", sceneSchema, () => [...fixtureScenes, ...imageScenes, quietScene], 4000],
   ["operations", opsSchema, () => [everyOp, ...everyOp.map((op) => [op])], 4000],
   ["comments.json", commentsSchema, () => [comments, { format: "depthcue-comments/1", comments: [] }], 3000],
   ["comment operations", commentOpsSchema, () => [everyCommentOp, ...everyCommentOp.map((op) => [op])], 3000],
