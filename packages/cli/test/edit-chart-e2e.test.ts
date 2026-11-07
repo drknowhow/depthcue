@@ -437,10 +437,16 @@ describe("the chart block in a real browser", () => {
       ]);
       if (!popBox || !chartBox || !slideBox)
         throw new Error("the popover, the chart and the slide should all be drawn");
-      // No part of the popover is over the chart, and the popover is inside the slide.
+      // No part of the popover is over the chart. A wide window gives it the inspector's column, right of the slide;
+      // a narrower one keeps it inside the slide.
       expect(popBox.x + popBox.width <= chartBox.x || popBox.x >= chartBox.x + chartBox.width).toBe(true);
-      expect(popBox.x).toBeGreaterThanOrEqual(slideBox.x);
-      expect(popBox.x + popBox.width).toBeLessThanOrEqual(slideBox.x + slideBox.width);
+      if (size.width >= 1440) {
+        expect(popBox.x).toBeGreaterThanOrEqual(slideBox.x + slideBox.width);
+        expect(popBox.x + popBox.width).toBeLessThanOrEqual(size.width);
+      } else {
+        expect(popBox.x).toBeGreaterThanOrEqual(slideBox.x);
+        expect(popBox.x + popBox.width).toBeLessThanOrEqual(slideBox.x + slideBox.width);
+      }
       // Four columns show in full: the grid does not scroll sideways, and the last column's words keep their padding.
       const fit = await pop.locator(".ed-chart-grid").evaluate((grid) => {
         const box = grid.getBoundingClientRect();

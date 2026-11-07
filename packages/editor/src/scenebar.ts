@@ -1,6 +1,6 @@
 import { LEADS, type Op, type Session, templatesOf } from "@depthcue/core";
 import { h } from "@depthcue/player";
-import { popoverChip } from "./chip.ts";
+import { docked, popoverChip } from "./chip.ts";
 import { type Edits, problemOf } from "./fields.ts";
 import { type PanelHost, panelHost, scenePanel } from "./panels.ts";
 import { LAYOUT_CHOICES, type Layout, LEAD_LABEL } from "./templates.ts";
@@ -70,6 +70,11 @@ export interface SceneBar {
   render(sceneId: string, typing?: boolean): void;
   /** Opens the scene popover, at one of its sections when that is given. */
   open(section?: "steps" | "sources"): void;
+  /**
+   * With the inspector open, shows the scene popover there while `show` is true (nothing on the slide is chosen) and
+   * puts it away while it is false. The keyboard stays where it is. Without the inspector it does nothing.
+   */
+  dock(show: boolean): void;
   /** What the buttons do, for a command that has no button to press: one change, one undo step. */
   setLead(lead: (typeof LEADS)[number]): void;
   setLayout(layout: Layout): void;
@@ -167,6 +172,7 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
   });
   const panel = scenePanel(host, () => current);
   const popover = popoverChip(panel);
+  popover.chip.pop.classList.add("ed-dock");
   // Change template and Save as template open dialogs of their own, so the popover closes first.
   const opener = (field: string, label: string, run: (() => void) | undefined) => {
     if (!run) return;
@@ -203,6 +209,11 @@ export function createSceneBar(session: Session, hooks: SceneBarHooks): SceneBar
   return {
     element,
     open,
+    dock(show) {
+      if (!docked(popover.chip.pop)) return;
+      if (show && !popover.isOpen) popover.open(true);
+      else if (!show && popover.isOpen) popover.close();
+    },
     setLead: (lead) => choose({ lead }),
     setLayout: (layout) => choose({ layout }),
     autoLayout,

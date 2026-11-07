@@ -40,6 +40,8 @@ export interface ShortcutActions {
   scene(direction: 1 | -1): void;
   /** Zooms the slide one step in or out, or back to the size that fits. */
   zoom(change: "in" | "out" | "fit"): void;
+  /** Hides the inspector on the right of a wide window, or shows it again. */
+  inspector(): void;
 }
 
 export interface Shortcut {
@@ -146,6 +148,13 @@ export function shortcutTable(actions: ShortcutActions): readonly Shortcut[] {
       does: "Go to the next slide",
       keys: [["]"]],
       handle: (event) => when(plain(event, "]"), () => actions.scene(1)),
+    },
+    {
+      id: "inspector",
+      group: "Moving around",
+      does: "Hide or show the inspector, on the right of a wide window",
+      keys: [["\\"]],
+      handle: (event) => when(plain(event, "\\"), () => actions.inspector()),
     },
     {
       id: "zoom-in",
