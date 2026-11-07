@@ -147,10 +147,42 @@ describe("rows", () => {
   });
 });
 
+// Each scene has one More button, which opens the scene's menu: the right-click one, with the keyboard on it.
+const more = (id: string) =>
+  row(id)?.querySelector<HTMLButtonElement>("[data-action='scene-menu']") as HTMLButtonElement;
+const menuItem = (command: string) => host.querySelector<HTMLElement>(`.ed-menu [data-command='${command}']`);
+const viaMenu = (id: string, command: string) => {
+  more(id).click();
+  const item = menuItem(command);
+  expect(item, `${command} in the menu of ${id}`).not.toBeNull();
+  item?.click();
+};
+
+describe("the More button of a scene", () => {
+  it("names its scene for a screen reader and says it opens a menu", () => {
+    const button = more("demand");
+    expect(button.getAttribute("aria-label")).toBe(
+      `More for scene 2, ${store.session.doc.scenes.demand?.title}`,
+    );
+    expect(button.getAttribute("aria-haspopup")).toBe("menu");
+    expect(button.hidden).toBe(false);
+  });
+
+  it("opens the scene's menu with the keyboard on its first item, and Esc gives the keyboard back", () => {
+    more("demand").click();
+    const menu = host.querySelector<HTMLElement>(".ed-menu") as HTMLElement;
+    expect(menu.hidden).toBe(false);
+    expect(menu.contains(document.activeElement)).toBe(true);
+    menu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(menu.hidden).toBe(true);
+    expect(row("demand")?.contains(document.activeElement)).toBe(true);
+  });
+});
+
 describe("duplicating a scene", () => {
   it("puts a copy right after it, chooses the copy, and undoes in one step", () => {
     const original = store.session.doc.scenes.demand;
-    click("[data-action='duplicate-scene']", row("demand") as HTMLElement);
+    viaMenu("demand", "duplicate-scene");
     expect(order()).toEqual(["opening", "demand", "demand-copy", "method"]);
     const copy = store.session.doc.scenes["demand-copy"];
     expect(copy?.title).toBe(`${original?.title} (copy)`);
@@ -165,36 +197,26 @@ describe("duplicating a scene", () => {
   });
 
   it("gives every copy an id of its own", () => {
-    click("[data-action='duplicate-scene']", row("demand") as HTMLElement);
-    click("[data-action='duplicate-scene']", row("demand") as HTMLElement);
+    viaMenu("demand", "duplicate-scene");
+    viaMenu("demand", "duplicate-scene");
     expect(order()).toEqual(["opening", "demand", "demand-copy-2", "demand-copy", "method"]);
   });
 
   it("keeps the title inside the schema's limit", () => {
     const long = "T".repeat(120);
     store.session.apply([{ op: "scene.set", id: "demand", set: { title: long } }]);
-    click("[data-action='duplicate-scene']", row("demand") as HTMLElement);
+    viaMenu("demand", "duplicate-scene");
     const title = store.session.doc.scenes["demand-copy"]?.title ?? "";
     expect(title.length).toBeLessThanOrEqual(120);
     expect(title.endsWith(" (copy)")).toBe(true);
   });
-
-  it("names the scene it copies for a screen reader", () => {
-    const label = row("demand")?.querySelector("[data-action='duplicate-scene']")?.getAttribute("aria-label");
-    expect(label).toBe(`Duplicate scene 2, ${store.session.doc.scenes.demand?.title}`);
-  });
 });
 
-describe("moving a scene with the buttons", () => {
-  const earlier = (id: string) =>
-    row(id)?.querySelector<HTMLButtonElement>("[data-action='move-scene-earlier']") as HTMLButtonElement;
-  const later = (id: string) =>
-    row(id)?.querySelector<HTMLButtonElement>("[data-action='move-scene-later']") as HTMLButtonElement;
-
+describe("moving a scene from its menu", () => {
   it("moves a scene one place earlier or later, one undo step each", () => {
-    later("opening").click();
+    viaMenu("opening", "move-scene-later");
     expect(order()).toEqual(["demand", "opening", "method"]);
-    earlier("method").click();
+    viaMenu("method", "move-scene-earlier");
     expect(order()).toEqual(["demand", "method", "opening"]);
     store.session.undo();
     expect(order()).toEqual(["demand", "opening", "method"]);
@@ -203,44 +225,30 @@ describe("moving a scene with the buttons", () => {
   });
 
   it("moves a scene to the very start", () => {
-    earlier("demand").click();
+    viaMenu("demand", "move-scene-earlier");
     expect(order()).toEqual(["demand", "opening", "method"]);
   });
 
-  it("rests the button at each end, since it has nowhere to go", () => {
-    expect(earlier("opening").disabled).toBe(true);
-    expect(later("opening").disabled).toBe(false);
-    expect(later("method").disabled).toBe(true);
-    expect(earlier("method").disabled).toBe(false);
-    later("opening").click();
-    expect(earlier("opening").disabled).toBe(false);
-    expect(earlier("demand").disabled).toBe(true);
+  it("leaves out the move that has nowhere to go at each end", () => {
+    more("opening").click();
+    expect(menuItem("move-scene-earlier")).toBeNull();
+    expect(menuItem("move-scene-later")).not.toBeNull();
+    more("method").click();
+    expect(menuItem("move-scene-later")).toBeNull();
+    expect(menuItem("move-scene-earlier")).not.toBeNull();
   });
 
-  it("names the scene and the direction for a screen reader, with the number the scene has now", () => {
-    expect(later("opening").getAttribute("aria-label")).toMatch(/^Move scene 1, .+ later$/);
-    later("opening").click();
-    expect(later("opening").getAttribute("aria-label")).toMatch(/^Move scene 2, .+ later$/);
-  });
-
-  it("keeps the edited scene being edited while another one moves", () => {
+  it("chooses the scene whose menu it is, as a right-click does, and keeps it chosen where it moves to", () => {
     editor.select("demand");
-    later("opening").click();
-    expect(editor.sceneId).toBe("demand");
-  });
-
-  it("keeps the keyboard on the button that was pressed", () => {
-    const button = later("opening");
-    button.focus();
-    button.click();
-    expect(document.activeElement).toBe(button);
+    viaMenu("opening", "move-scene-later");
+    expect(editor.sceneId).toBe("opening");
   });
 });
 
 describe("deleting a scene", () => {
   it("removes it, chooses its neighbour, and undoes", () => {
     editor.select("demand");
-    click("[data-action='delete-scene']", row("demand") as HTMLElement);
+    viaMenu("demand", "remove-scene");
     expect(order()).toEqual(["opening", "method"]);
     expect(editor.sceneId).toBe("method");
     expect(row("demand")).toBeNull();
@@ -250,24 +258,36 @@ describe("deleting a scene", () => {
 
   it("falls back to the scene before when the last one goes", () => {
     editor.select("method");
-    click("[data-action='delete-scene']", row("method") as HTMLElement);
+    viaMenu("method", "remove-scene");
     expect(editor.sceneId).toBe("demand");
   });
 
-  it("can delete a scene that is not the one being edited, and keeps the edited one", () => {
-    editor.select("opening");
-    click("[data-action='delete-scene']", row("method") as HTMLElement);
-    expect(order()).toEqual(["opening", "demand"]);
-    expect(editor.sceneId).toBe("opening");
+  it("is not offered for the only scene left, because a deck needs one", () => {
+    viaMenu("demand", "remove-scene");
+    viaMenu("method", "remove-scene");
+    expect(order()).toEqual(["opening"]);
+    more("opening").click();
+    expect(menuItem("remove-scene")).toBeNull();
   });
+});
 
-  it("is disabled for the only scene left, because a deck needs one", () => {
-    click("[data-action='delete-scene']", row("demand") as HTMLElement);
-    click("[data-action='delete-scene']", row("method") as HTMLElement);
-    expect(order()).toEqual(["opening"]);
-    const only = row("opening")?.querySelector<HTMLButtonElement>("[data-action='delete-scene']");
-    expect(only?.disabled).toBe(true);
-    only?.click();
-    expect(order()).toEqual(["opening"]);
+describe("the Add slide tile", () => {
+  it("closes the list, and adds a slide after the one on show and chooses it", () => {
+    const tile = host.querySelector<HTMLButtonElement>(".ed-scenes > .ed-add-tile") as HTMLButtonElement;
+    expect(tile.previousElementSibling?.classList.contains("ed-scene-list")).toBe(true);
+    expect(tile.textContent).toBe("Add slide");
+    editor.select("opening");
+    tile.click();
+    expect(order()).toHaveLength(4);
+    expect(order()[1]).toBe(editor.sceneId);
+  });
+});
+
+describe("who leads a scene", () => {
+  it("is marked on the row, in words and by kind", () => {
+    store.session.apply([{ op: "scene.set", id: "demand", set: { lead: "agent" } }]);
+    const lead = row("demand")?.querySelector<HTMLElement>(".ed-lead") as HTMLElement;
+    expect(lead.dataset.lead).toBe("agent");
+    expect(lead.textContent).toBe("Agent");
   });
 });

@@ -23,7 +23,7 @@ const VOICE_WORDS = {
 /**
  * The strip along the foot of the editor. On the left it says what the slide on show holds: which slide it is, its
  * steps, and whether it has speaker notes, a reading version and a voice-over, each of which opens the script. On the
- * right is the control for moving between slides and zooming, which is made elsewhere and put here.
+ * right is the zoom, which is made elsewhere and put here.
  */
 export function createFooter(controls: HTMLElement, hooks: FooterHooks): Footer {
   const where = h("span", { class: "ed-footer-where" });

@@ -20,8 +20,10 @@ export interface StripHooks {
   changed?(): ReadonlyMap<string, number>;
   /** Opens the storyboard. The strip has a button for it only when it is given a way to. */
   storyboard?(): void;
-  /** Opens the template picker, which adds a scene from a template or a layout. A button beside Add scene opens it. */
+  /** Opens the template picker, which adds a scene from a template or a layout. A button beside Add slide opens it. */
   pick?(): void;
+  /** Opens the scene's menu, the one a right-click opens, under the slide's More button, which already has the keyboard. */
+  menu?(button: HTMLElement): void;
 }
 
 export interface Strip {
@@ -48,10 +50,8 @@ interface Item {
   changes: HTMLElement;
   thumb: HTMLElement;
   pick: HTMLButtonElement;
-  earlier: HTMLButtonElement;
-  later: HTMLButtonElement;
-  duplicate: HTMLButtonElement;
-  remove: HTMLButtonElement;
+  /** Opens the scene's menu: move, duplicate, delete, its lead and its template. */
+  more: HTMLButtonElement;
   /** What the thumbnail was last drawn from. A different scene object, or theme, means it is out of date. */
   drawn: Drawn | undefined;
 }
@@ -64,9 +64,9 @@ function copyOf(scene: Scene, taken: ReadonlySet<string>) {
 }
 
 /**
- * The strip of scenes on the left: a thumbnail of each, its number, title and who leads it, with move, duplicate
- * and delete on the scene itself and the controls that add a scene below. Rows are kept between renders, so a
- * keystroke on the slide updates one title and queues one thumbnail instead of rebuilding the list.
+ * The strip of scenes on the left: a thumbnail of each, its number, title and a mark for who leads it, with one More
+ * button on the scene that opens its menu, and an Add slide tile below. Rows are kept between renders, so a keystroke
+ * on the slide updates one title and queues one thumbnail instead of rebuilding the list.
  */
 export function createStrip(session: Session, hooks: StripHooks): Strip {
   const items = new Map<string, Item>();
@@ -90,7 +90,12 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     problem.textContent = result.ok ? "" : problemOf(result);
     return result;
   };
-  const addScene = h("button", { type: "button", "data-action": "add-scene" }, "Add scene");
+  // The tile for a new slide closes the list, so it reads as the next slide. It adds after the one on show.
+  const addScene = h(
+    "button",
+    { type: "button", class: "ed-add-tile", "data-action": "add-scene" },
+    "Add slide",
+  );
   addScene.addEventListener("click", () => {
     const scene = newScene(session.doc, layoutChoice.value as Layout);
     if (run([{ op: "scene.add", scene, after: current }]).ok) hooks.select(scene.id);
@@ -138,11 +143,11 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     { class: "ed-scenes", "aria-label": "Scenes" },
     storyboard,
     list,
+    addScene,
     h(
       "div",
       { class: "ed-add-scene" },
       layoutChoice,
-      addScene,
       hooks.pick &&
         actionButton("From a template…", hooks.pick, {
           "data-action": "pick-template",
@@ -164,31 +169,23 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     const thumb = h("div", { class: "ed-thumb", "aria-hidden": "true" });
     thumb.addEventListener("click", () => hooks.select(id));
 
-    // Dragging is for the mouse; these two are the way to reorder from the keyboard.
-    const mover = (direction: -1 | 1, action: string) => {
-      const button = h("button", { type: "button", "data-action": action });
-      button.addEventListener("click", () => moveScene(id, direction));
-      return button;
-    };
-    const earlier = mover(-1, "move-scene-earlier");
-    const later = mover(1, "move-scene-later");
-    const duplicate = h("button", { type: "button", "data-action": "duplicate-scene" });
-    duplicate.addEventListener("click", () => duplicateScene(id));
-    const remove = h("button", { type: "button", "data-action": "delete-scene", class: "ed-danger" });
-    remove.addEventListener("click", () => removeScene(id));
+    // Dragging is for the mouse; the menu is the way to move, duplicate and delete from the keyboard as well.
+    const more = h("button", {
+      type: "button",
+      class: "ed-scene-more",
+      "data-action": "scene-menu",
+      "aria-haspopup": "menu",
+      title: "More (Shift+F10)",
+      hidden: !hooks.menu,
+    });
+    more.addEventListener("click", () => hooks.menu?.(more));
 
     // A mark on the picture, so it is seen without reading. The button beside it says the same in words. It sits in
     // the picture's lower corner, which the scene's own buttons in the upper one never cover.
     const notes = h("span", { class: "ed-scene-notes", hidden: true, "aria-hidden": "true" });
     const changes = h("span", { class: "ed-scene-changed", hidden: true, "aria-hidden": "true" }, "Changed");
     thumb.append(changes, notes);
-    const li = h(
-      "li",
-      { "data-id": id },
-      pick,
-      thumb,
-      h("div", { class: "ed-scene-actions" }, earlier, later, duplicate, remove),
-    );
+    const li = h("li", { "data-id": id }, pick, thumb, h("div", { class: "ed-scene-actions" }, more));
     sortable.add(id, li);
     return {
       li,
@@ -199,10 +196,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       changes,
       thumb,
       pick,
-      earlier,
-      later,
-      duplicate,
-      remove,
+      more,
       drawn: undefined,
     };
   }
@@ -246,7 +240,6 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
     let edited = false;
     let fresh = false;
     const looked = lookKey(lookFor(session.doc));
-    const total = deck.scenes.length;
     const counts = hooks.comments?.();
     const changed = hooks.changed?.();
     for (const [index, id] of deck.scenes.entries()) {
@@ -278,18 +271,7 @@ export function createStrip(session: Session, hooks: StripHooks): Strip {
       item.lead.dataset.lead = scene.lead ?? "human";
       item.pick.setAttribute("aria-current", id === selected ? "true" : "false");
       item.li.toggleAttribute("data-current", id === selected);
-      const at = index + 1;
-      item.earlier.setAttribute("aria-label", `Move ${label} earlier`);
-      item.earlier.title = "Move scene earlier";
-      item.earlier.toggleAttribute("disabled", index === 0);
-      item.later.setAttribute("aria-label", `Move ${label} later`);
-      item.later.title = "Move scene later";
-      item.later.toggleAttribute("disabled", at === total);
-      item.duplicate.setAttribute("aria-label", `Duplicate ${label}`);
-      item.duplicate.title = "Duplicate scene";
-      item.remove.setAttribute("aria-label", `Delete ${label}`);
-      item.remove.title = "Delete scene";
-      item.remove.toggleAttribute("disabled", total < 2);
+      item.more.setAttribute("aria-label", `More for ${label}`);
 
       if (isStale(item.drawn, scene, looked)) {
         queue.add(id);
