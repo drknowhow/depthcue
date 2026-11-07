@@ -54,6 +54,7 @@ describe("adding to the slide", () => {
       (node) => node.getAttribute("aria-label") ?? nameOf(node),
     );
     expect(labels).toEqual([
+      "Insert a block on this slide",
       "Text",
       "Chart",
       "Table",
@@ -71,6 +72,28 @@ describe("adding to the slide", () => {
     const everything = bar().querySelector("[data-quick='palette']");
     expect(everything?.getAttribute("aria-keyshortcuts")).toBe("Control+K Meta+K");
     expect(everything?.getAttribute("title")).toMatch(/^Find anything to do \(\w+ K\)$/);
+  });
+
+  it("keeps the kinds of block in one Insert menu, which a choice or Escape puts away", () => {
+    const insert = quick("insert");
+    const pop = () => host.querySelector<HTMLElement>(".ed-insert-pop") as HTMLElement;
+    // Closed, the menu's buttons are out of sight, and the bar shows only the menu's button.
+    expect(insert.getAttribute("aria-expanded")).toBe("false");
+    expect(pop().hidden).toBe(true);
+    expect(quick("text").closest(".ed-insert-pop")).toBe(pop());
+    insert.click();
+    expect(insert.getAttribute("aria-expanded")).toBe("true");
+    expect(pop().hidden).toBe(false);
+    // The keyboard goes to the first kind.
+    expect(document.activeElement).toBe(quick("text"));
+    quick("text").click();
+    expect(pop().hidden).toBe(true);
+    expect(editor.blockId).toBe("method-text");
+    // Escape closes it and gives the keyboard back to its button.
+    insert.click();
+    pop().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(pop().hidden).toBe(true);
+    expect(document.activeElement).toBe(insert);
   });
 
   it("writes the key of Text, Chart and Image on their buttons, and tells assistive technology the same", () => {

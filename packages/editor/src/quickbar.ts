@@ -1,7 +1,8 @@
 import type { Session } from "@depthcue/core";
 import { h } from "@depthcue/player";
+import { popoverChip } from "./chip.ts";
 import { actionButton, type Edits, fileButton } from "./fields.ts";
-import { panelHost } from "./panels.ts";
+import { type Panel, panelHost } from "./panels.ts";
 import { createScriptDrawer, type ScriptDrawer } from "./scriptdrawer.ts";
 import { keyName } from "./shortcuts.ts";
 import { BLOCK_KINDS, IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
@@ -45,7 +46,7 @@ export interface QuickBar {
   toggleScript(): void;
   /** Opens the file chooser that adds an image, as the Image button does. */
   pickImage(): void;
-  /** Puts the keyboard on the Image button. */
+  /** Gives the keyboard back to the bar after the image library closes: to the Insert button. */
   focusImage(): void;
   /** Shows whether the Comment tool is on, which the M key and Escape change without the button. */
   setCommenting(on: boolean): void;
@@ -77,8 +78,9 @@ const withKey = <T extends HTMLElement>(
 };
 
 /**
- * The bar that floats at the foot of the stage: a block of each kind, or the claim, and the scene's notes. Where a new
- * block goes is the adder's business, so the bar and the empty places on the slide agree.
+ * The bar that floats at the foot of the stage: one Insert menu with a block of each kind and the claim, then the
+ * scene's notes and the ways of looking at the slide. Where a new block goes is the adder's business, so the menu and
+ * the empty places on the slide agree. T, C and I still add without opening the menu.
  */
 export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar {
   let current = session.doc.deck.scenes[0] as string;
@@ -108,6 +110,25 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
         KEYS[kind],
       );
     });
+
+  // The kinds of block are one menu, so the bar stays one short row in any window. It opens upward, over the stage.
+  const insertBody = h("div", { class: "ed-insert" }, ...adders, claim);
+  const insertPanel: Panel = {
+    name: "insert",
+    label: "Insert",
+    title: "Insert a block on this slide",
+    body: insertBody,
+    fill() {},
+  };
+  const insert = popoverChip(insertPanel, true);
+  insert.chip.button.setAttribute("data-quick", "insert");
+  insert.chip.button.setAttribute("aria-haspopup", "true");
+  insert.chip.pop.classList.add("ed-insert-pop");
+  // Choosing a kind puts the menu away: the new block takes the keyboard, or the file chooser does.
+  insertBody.addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest("button:not(:disabled), label"))
+      insert.close();
+  });
 
   const host = panelHost(session, {
     edits: hooks.edits,
@@ -182,8 +203,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
   const element = h(
     "div",
     { class: "ed-quick", role: "group", "aria-label": "Add to this slide" },
-    ...adders,
-    claim,
+    insert.chip.wrap,
     h("span", { class: "ed-quick-rule", "aria-hidden": "true" }),
     scriptButton,
     order,
@@ -195,12 +215,14 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
   return {
     element,
     pickImage: () => imageInput?.click(),
-    focusImage: () => imageInput?.focus({ preventScroll: true }),
+    focusImage: () => insert.chip.button.focus({ preventScroll: true }),
     setCommenting: (on) => comment.setAttribute("aria-pressed", String(on)),
     drawer: drawer.element,
     closeScript: () => drawer?.close(),
     toggleScript: () => drawer?.toggle(),
-    destroy() {},
+    destroy() {
+      insert.destroy();
+    },
     render(sceneId, typing = false) {
       current = sceneId;
       const live = scene();

@@ -134,6 +134,7 @@ const kindItem = (page: Page, kind: string) => page.locator(`[data-command='char
 /** Adds a chart to the method scene from the quick bar, and waits for it to be drawn and on disk. */
 async function addChart(deck: Deck) {
   await goTo(deck.page, 3);
+  await deck.page.locator("[data-quick='insert']").click();
   await deck.page.locator("[data-quick='chart']").click();
   await deck.page.locator(`${CHART} svg.dc-plot`).waitFor();
   await expect.poll(() => chartOf(deck.folder)?.kind).toBe("bar");

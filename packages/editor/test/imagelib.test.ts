@@ -204,12 +204,12 @@ describe("keyboard", () => {
     expect(document.activeElement).toBe(first);
   });
 
-  it("closes on Escape and gives the keyboard back to the Image button", async () => {
+  it("closes on Escape and gives the keyboard back to the Insert menu the Image button is in", async () => {
     clickImage();
     await settle();
     press(document.activeElement as Element, "Escape");
     expect(library()).toBeNull();
-    expect(document.activeElement).toBe(imageInput());
+    expect(document.activeElement).toBe(host.querySelector("[data-quick='insert']"));
   });
 
   it("gives every control a name a screen reader can say", async () => {

@@ -127,6 +127,7 @@ const menuItem = (page: Page, name: string) => page.getByRole("menuitem", { name
 /** Puts a table in the method scene from the quick bar, and waits for its grid. */
 async function addTable(deck: Deck) {
   await goTo(deck.page, 3);
+  await deck.page.locator("[data-quick='insert']").click();
   await deck.page.locator("[data-quick='table']").click();
   await deck.page.locator(`${TABLE} [role='grid']`).waitFor();
   await expect.poll(() => tableOf(deck.folder)?.id).toBe("method-table");
@@ -376,7 +377,7 @@ describe("the table block in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
-  it("keeps the quick bar, with its Table button, in one row at 1024 wide in a wide fallback face", async () => {
+  it("keeps the quick bar, with the Table button in its Insert menu, in one row at 1024 wide in a wide fallback face", async () => {
     const { page } = await openDeck();
     await page.setViewportSize({ width: 1024, height: 768 });
     // A machine without Space Grotesk draws wider letters, as a Linux runner does. This makes every machine see that case.
@@ -388,8 +389,10 @@ describe("the table block in a real browser", () => {
     const seen = await page.evaluate(() => {
       const box = (selector: string) =>
         (document.querySelector(selector) as HTMLElement).getBoundingClientRect();
-      return { bar: box(".ed-quick"), button: box("[data-quick='table']"), stage: box(".ed-stage") };
+      return { bar: box(".ed-quick"), button: box("[data-quick='insert']"), stage: box(".ed-stage") };
     });
+    await page.locator("[data-quick='insert']").click();
+    expect(await page.locator("[data-quick='table']").isVisible()).toBe(true);
     expect(seen.button.width).toBeGreaterThan(0);
     // One row, and 40 pixels of the stage to spare, so a face wider than this one still does not wrap the bar.
     expect(seen.bar.height).toBeLessThan(seen.button.height * 2);

@@ -100,6 +100,7 @@ const assetsOnDisk = () => {
   );
 };
 const openFromQuickBar = async () => {
+  await page.locator(".ed-quick [data-quick='insert']").click();
   await page.locator(".ed-quick label.ed-button", { hasText: "Image" }).click();
   await library().waitFor();
 };
@@ -182,12 +183,10 @@ describe("the image library in a real browser", () => {
     ]);
   });
 
-  it("closes on Escape and gives the keyboard back to the Image button", async () => {
+  it("closes on Escape and gives the keyboard back to the Insert menu the Image button is in", async () => {
     await openFromQuickBar();
     await page.keyboard.press("Escape");
     await library().waitFor({ state: "hidden" });
-    expect(await page.evaluate(() => document.activeElement?.closest("label")?.textContent)).toContain(
-      "Image",
-    );
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-quick"))).toBe("insert");
   });
 });

@@ -612,7 +612,9 @@ describe("the editor in a real browser", () => {
     await open();
     await page.locator(".ed-scene[data-scene='method']").click();
     const row = page.locator(".ed-quick");
+    await row.locator("[data-quick='insert']").click();
     await row.locator("[data-quick='chart']").click();
+    await row.locator("[data-quick='insert']").click();
     await row.locator("[data-quick='claim']").click();
     await saved();
     const scene = () => disk().scenes.method;
@@ -1977,6 +1979,33 @@ describe("the quick bar in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
+  for (const [width, height] of [
+    [1440, 900],
+    [1024, 768],
+    [390, 844],
+  ] as const) {
+    it(`opens the Insert menu above the bar and inside the window at ${width} by ${height}, and Escape shuts it`, async () => {
+      await layout(width, height);
+      const insert = bar().locator("[data-quick='insert']");
+      await insert.click();
+      const menu = page.locator(".ed-insert-pop");
+      await menu.waitFor();
+      const [box, button] = await Promise.all([boxOf(menu), boxOf(insert)]);
+      expect(box.y + box.height).toBeLessThanOrEqual(button.y + 1);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      // Every kind is there, with the keyboard on the first.
+      for (const kind of ["text", "chart", "table", "clip", "claim"])
+        expect(await menu.locator(`[data-quick='${kind}']`).isVisible()).toBe(true);
+      expect(await page.evaluate(() => document.activeElement?.getAttribute("data-quick"))).toBe("text");
+      await page.keyboard.press("Escape");
+      await menu.waitFor({ state: "hidden" });
+      expect(await page.evaluate(() => document.activeElement?.getAttribute("data-quick"))).toBe("insert");
+      expect(problems).toEqual([]);
+    });
+  }
+
   it("opens the script as a drawer at the right of the stage, inside the window, and closes it with Escape", async () => {
     await layout(1024, 768);
     await page.locator("[data-tb='notes']").click();
@@ -2002,6 +2031,7 @@ describe("the quick bar in a real browser", () => {
     });
     await openScene("qb", "qb-proof");
     await block("qb-proof").click();
+    await bar().locator("[data-quick='insert']").click();
     await bar().locator("[data-quick='text']").click();
     await saved();
     expect(idsOnDisk("qb")).toEqual(["qb-proof", "qb-text", "qb-side"]);
@@ -2020,6 +2050,7 @@ describe("the quick bar in a real browser", () => {
   it("adds to the first empty area when nothing is chosen, and a chart fills the media area", async () => {
     addScene({ id: "qm", title: "Media", layout: "text-media", blocks: [note("qm-words", "Words.")] });
     await openScene("qm", "qm-words");
+    await bar().locator("[data-quick='insert']").click();
     await bar().locator("[data-quick='chart']").click();
     await saved();
     expect(idsOnDisk("qm")).toEqual(["qm-words", "qm-chart"]);
@@ -2085,7 +2116,8 @@ describe("keyboard shortcuts in a real browser", () => {
       );
     });
     await page.keyboard.press("i");
-    await page.waitForSelector("[data-field='quick:image'][data-clicked]");
+    // The input is in the Insert menu, which stays shut: the key reaches it without opening the menu.
+    await page.waitForSelector("[data-field='quick:image'][data-clicked]", { state: "attached" });
     expect(await input.getAttribute("data-clicked")).toBe("true");
     expect(problems).toEqual([]);
   });
@@ -2100,7 +2132,7 @@ describe("keyboard shortcuts in a real browser", () => {
       await page.setViewportSize({ width, height });
       await page.goto(url());
       await bar().waitFor();
-      await bar().locator("[data-quick='text']").focus();
+      await bar().locator("[data-quick='insert']").focus();
       await page.keyboard.press("?");
       await sheet().waitFor();
       expect(await focused()).toBe("dialog");
@@ -2115,7 +2147,7 @@ describe("keyboard shortcuts in a real browser", () => {
       await page.keyboard.press("t");
       await page.keyboard.press("Escape");
       await sheet().waitFor({ state: "hidden" });
-      expect(await focused()).toBe("text");
+      expect(await focused()).toBe("insert");
       expect(problems).toEqual([]);
     });
   }
@@ -2335,15 +2367,15 @@ describe("the Ctrl K palette in a real browser", () => {
 
   it("opens on Ctrl K with the keyboard in its field, and Escape gives the keyboard back to where it was", async () => {
     await page.goto(url());
-    const text = page.locator(".ed-quick [data-quick='text']");
-    await text.focus();
+    const insert = page.locator(".ed-quick [data-quick='insert']");
+    await insert.focus();
     await page.keyboard.press("Control+k");
     await field().waitFor();
     expect(await focused()).toBe("combobox");
     expect(await palette().locator("[role='option']").count()).toBeGreaterThan(5);
     await page.keyboard.press("Escape");
     await palette().waitFor({ state: "hidden" });
-    expect(await focused()).toBe("text");
+    expect(await focused()).toBe("insert");
     // Ctrl K inside the field shuts it too.
     await page.keyboard.press("Control+k");
     await field().waitFor();
