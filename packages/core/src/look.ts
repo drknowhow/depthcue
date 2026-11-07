@@ -5,7 +5,7 @@
  */
 
 import { type BrandPart, blockStylesOf, brandFilePath, templatesOf } from "./brand.ts";
-import { bandsOf } from "./chrome.ts";
+import { bandsOf, type ChromeDeck } from "./chrome.ts";
 import type { DeckLook, LookFace, PageLook } from "./exported.ts";
 import { own } from "./own.ts";
 import { styleOf } from "./style.ts";
@@ -29,7 +29,25 @@ const hasBands = (chrome: NonNullable<Brand["chrome"]>): boolean => {
   return Object.keys(header).length + Object.keys(footer).length > 0;
 };
 
-function chromeOf(brand: Brand, theme: Deck["theme"]): DeckLook["chrome"] {
+/** What the header and footer read of the deck, so any page that has the look can say what a slide shows. */
+function chromeDeckOf(source: LookSource, templates: Readonly<Record<string, Template>>): ChromeDeck {
+  const { deck } = source;
+  const slides = deck.scenes.flatMap((id) => {
+    const scene = own(source.scenes, id);
+    return scene ? [{ id, title: scene.title, template: scene.template, chrome: scene.chrome }] : [];
+  });
+  const templateChrome = Object.fromEntries(
+    Object.entries(templates).flatMap(([id, template]) => (template.chrome ? [[id, template.chrome]] : [])),
+  );
+  return { title: deck.title, date: deck.date, numbering: deck.numbering, slides, templateChrome };
+}
+
+function chromeOf(
+  brand: Brand,
+  theme: Deck["theme"],
+  source: LookSource,
+  templates: Readonly<Record<string, Template>>,
+): DeckLook["chrome"] {
   const chrome = brand.chrome;
   if (chrome === undefined) return undefined;
   const logo = logoFor(brand, theme);
@@ -39,7 +57,7 @@ function chromeOf(brand: Brand, theme: Deck["theme"]): DeckLook["chrome"] {
       : {}),
     ...(chrome.footer ? { footer: { ...chrome.footer } } : {}),
     ...(chrome.number ? { number: { ...chrome.number } } : {}),
-    ...(hasBands(chrome) ? { bands: bandsOf(chrome) } : {}),
+    ...(hasBands(chrome) ? { bands: bandsOf(chrome), deck: chromeDeckOf(source, templates) } : {}),
     accent: chrome.accent ?? "none",
   };
 }
@@ -76,7 +94,7 @@ export function lookOf(source: LookSource): DeckLook {
     for (const block of scene.blocks) useStyle(block.style);
   }
   const fonts = brand?.lock || deck.fonts === undefined ? brand?.fonts : undefined;
-  const chrome = brand ? chromeOf(brand, deck.theme) : undefined;
+  const chrome = brand ? chromeOf(brand, deck.theme, source, allTemplates) : undefined;
   return {
     theme: style.theme,
     colors: { ...style.colors },

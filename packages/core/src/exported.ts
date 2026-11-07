@@ -1,4 +1,4 @@
-import type { Bands } from "./chrome.ts";
+import type { Bands, ChromeDeck } from "./chrome.ts";
 import type {
   ACCENTS,
   CHROME_PLACES,
@@ -61,6 +61,8 @@ export interface DeckLook {
     number?: { place: Place };
     /** The header and the footer as zones, with a footer line and a number of an older brand folded in. */
     bands?: Bands;
+    /** What the header and footer read of the deck: its title, date, numbering, and its slides in order. */
+    deck?: ChromeDeck;
     accent: (typeof ACCENTS)[number];
   };
   /** The component styles the deck's blocks and its templates' slots name, by id. */

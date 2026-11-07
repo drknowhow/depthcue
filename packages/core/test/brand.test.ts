@@ -927,7 +927,12 @@ describe("lookOf", () => {
     });
     expect(look.faces?.body.family).toBe("Harbor Sans");
     expect(look.faces?.mono).toBeUndefined();
-    expect(look.chrome).toEqual({
+    expect(look.chrome?.deck).toMatchObject({
+      title: expect.any(String),
+      slides: expect.arrayContaining([expect.objectContaining({ id: expect.any(String) })]),
+    });
+    expect({ ...look.chrome, deck: undefined }).toEqual({
+      deck: undefined,
       logo: { path: "brand/logos/harbor.svg", alt: "Harbor Analytics", corner: "top-end", size: "s" },
       footer: { text: "Harbor Analytics, for internal use", place: "start" },
       number: { place: "end" },

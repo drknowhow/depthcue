@@ -44,6 +44,8 @@ const PAGES = {
 const LEFT_OFF = {
   "docs/AUDIT_COLLAB_PLAN.md":
     "It is the plan for the controller session and the audit log, with open questions the user guides do not need.",
+  "docs/HEADER_FOOTER_PLAN.md":
+    "It is the plan for headers, footers, slide numbers and contents, with decisions the user guides do not need.",
   "docs/BRANDS_AND_PPTX.md":
     "It is the build record of the brands and PowerPoint work, with decisions the user guides do not need.",
   "docs/CONTENT_RANGE.md":

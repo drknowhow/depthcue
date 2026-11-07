@@ -85,6 +85,14 @@ describe("resolveChrome", () => {
       mode: "full",
       number: 3,
       section: "Results",
+      values: {
+        number: "3",
+        count: "6",
+        section: "Results",
+        title: "Revenue",
+        deck: "Annual review",
+        date: "March 2027",
+      },
       header: { start: "Annual review", end: "Results" },
       footer: { center: "3 / 6", end: "March 2027" },
     });
