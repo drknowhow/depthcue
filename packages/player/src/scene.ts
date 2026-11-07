@@ -1,5 +1,6 @@
 import type { Block, Deck, PageLook, PageSlot, PageStyle, PageTemplate, Scene } from "@depthcue/core";
 import { renderChart } from "./charts/draw.ts";
+import { shown, zoneNodes } from "./chrome.ts";
 import { h } from "./dom.ts";
 import { type Followed, followLink, linkElement } from "./links.ts";
 import { gatedIds } from "./model.ts";
@@ -17,7 +18,7 @@ export interface RenderContext {
    * template scene as a plain stack, so a deck read from plain files still shows everything it says.
    */
   look?: PageLook;
-  /** The scene's place in the deck, from 1, for the slide number the brand draws. */
+  /** The scene's place in the deck, from 1. Read only for a look made before the header and footer carried the deck's facts. */
   number?: number;
   /** The deck's link library, which a block's or a source's `link` names. */
   links?: Deck["links"];
@@ -281,28 +282,39 @@ function slotted(
 }
 
 /**
- * The brand's chrome on a scene: the logo in its corner, the footer line and the slide number along the bottom, and
- * the accent bar. A template says how much shows: all, the logo alone, or none. Only the logo is for a screen reader,
- * once, with the brand's words for it; the rest is decoration the reader is spared.
+ * The brand's chrome on a scene: the logo in its corner, the header along the top, the footer along the bottom, and
+ * the accent bar. The words come from `resolveChrome`, which the export and the agent's view read too. A template or
+ * the scene itself says how much shows: all, the logo alone, or none. Only the logo is for a screen reader, once, with
+ * the brand's words for it; the rest is decoration the reader is spared.
  */
-function renderChrome(look: PageLook | undefined, template: PageTemplate | undefined, ctx: RenderContext) {
+function renderChrome(
+  look: PageLook | undefined,
+  template: PageTemplate | undefined,
+  ctx: RenderContext,
+  scene: Scene,
+) {
   const chrome = look?.chrome;
-  const mode = template?.chrome;
-  if (!chrome || mode === "none") return null;
+  if (!chrome) return null;
+  const { mode, slide, bands } = shown(chrome, scene, template, ctx);
+  if (mode === "none") return null;
   const { logo } = chrome;
   const src = logo && brandUrl(ctx.assetBase, logo.path);
-  // The footer and the number that share a place share a cell, side by side.
-  const feet = new Map<string, HTMLElement[]>();
-  const foot = (part: string, place?: string, text?: string) => {
-    if (mode !== "minimal" && place && text) {
-      feet.set(place, [
-        ...(feet.get(place) ?? []),
-        h("span", { class: `dc-${part}`, "data-part": part }, text),
-      ]);
+  const cells = (band: "header" | "footer") => {
+    const out: HTMLElement[] = [];
+    for (const [at, text] of Object.entries(slide[band]) as Array<[string, string]>) {
+      const nodes = zoneNodes((bands[band] as Record<string, string>)[at] ?? text, band, slide);
+      if (nodes.length > 0) {
+        out.push(
+          h(
+            "div",
+            { class: band === "header" ? "dc-head" : "dc-foot", "data-at": at, "aria-hidden": "true" },
+            ...nodes,
+          ),
+        );
+      }
     }
+    return out;
   };
-  foot("footer", chrome.footer?.place, chrome.footer?.text);
-  foot("number", chrome.number?.place, ctx.number ? String(ctx.number) : undefined);
   const parts = [
     mode !== "minimal" &&
       chrome.accent !== "none" &&
@@ -312,9 +324,8 @@ function renderChrome(look: PageLook | undefined, template: PageTemplate | undef
         "data-accent": chrome.accent,
         "aria-hidden": "true",
       }),
-    ...[...feet].map(([at, nodes]) =>
-      h("div", { class: "dc-foot", "data-at": at, "aria-hidden": "true" }, ...nodes),
-    ),
+    ...cells("header"),
+    ...cells("footer"),
     logo &&
       src &&
       h("img", {
@@ -401,7 +412,7 @@ export function renderScene(scene: Scene, ctx: RenderContext): HTMLElement {
   const image = own
     ? ownUrl
     : template?.background?.image && brandUrl(ctx.assetBase, `brand/${template.background.image}`);
-  const chrome = renderChrome(look, template, ctx);
+  const chrome = renderChrome(look, template, ctx, scene);
 
   return h(
     "section",

@@ -65,6 +65,8 @@ export interface SlideChrome {
   number?: number;
   /** The section the slide is in: the title of the last slide on the section template at or before it. */
   section?: string;
+  /** What each field is on this slide, for a caller that draws a zone in parts, as the player does the number. */
+  values: Partial<Record<Field, string>>;
   /** The text of each zone with its fields filled. Empty unless the slide shows all of the chrome. */
   header: Zones;
   footer: Zones;
@@ -76,11 +78,15 @@ export const fieldsIn = (text: string): string[] =>
 
 const isField = (name: string): name is Field => (CHROME_FIELDS as readonly string[]).includes(name);
 
-/** The text with each known field replaced. A name that is not a field stays as written, and `check` reports it. */
-export function fill(text: string, values: Partial<Record<Field, string>>): string {
-  return text
-    .replace(/\{([A-Za-z]+)\}/g, (whole, name: string) => (isField(name) ? (values[name] ?? "") : whole))
-    .trim();
+/**
+ * The text with each known field replaced. A name that is not a field stays as written, and `check` reports it. The
+ * text is trimmed unless `trim` is false, for a caller that draws a zone in pieces and trims the whole.
+ */
+export function fill(text: string, values: Partial<Record<Field, string>>, trim = true): string {
+  const filled = text.replace(/\{([A-Za-z]+)\}/g, (whole, name: string) =>
+    isField(name) ? (values[name] ?? "") : whole,
+  );
+  return trim ? filled.trim() : filled;
 }
 
 /** The section a slide is in: the title of the nearest slide at or before it that is on the section template. */
@@ -105,22 +111,25 @@ export function resolveChrome(bands: Bands, deck: ChromeDeck, index: number): Sl
   const mode = slide?.chrome ?? template ?? "full";
   const section = sectionOf(deck, index);
   const number = numbered(deck, index) ? (deck.numbering?.start ?? 1) + index : undefined;
+  const values: Partial<Record<Field, string>> = slide
+    ? {
+        ...(number === undefined ? {} : { number: String(number) }),
+        count: String(deck.slides.length),
+        ...(section === undefined ? {} : { section }),
+        title: slide.title,
+        deck: deck.title,
+        ...(deck.date === undefined ? {} : { date: deck.date }),
+      }
+    : {};
   const out: SlideChrome = {
     mode,
     ...(number === undefined ? {} : { number }),
     ...(section === undefined ? {} : { section }),
+    values,
     header: {},
     footer: {},
   };
   if (mode !== "full" || !slide) return out;
-  const values: Partial<Record<Field, string>> = {
-    ...(number === undefined ? {} : { number: String(number) }),
-    count: String(deck.slides.length),
-    ...(section === undefined ? {} : { section }),
-    title: slide.title,
-    deck: deck.title,
-    ...(deck.date === undefined ? {} : { date: deck.date }),
-  };
   for (const band of ["header", "footer"] as const) {
     for (const place of CHROME_PLACES) {
       const text = bands[band][place];
