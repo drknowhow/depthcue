@@ -53,7 +53,7 @@
       "name": "presenter script",
       "file": "packages/player/dist/presenter.js",
       "metric": "brotli",
-      "limitBytes": 2304
+      "limitBytes": 3072
     },
     {
       "name": "exported page script",

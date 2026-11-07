@@ -23,9 +23,10 @@ by hand, and read afterwards as a document.
 - **Edit by agent.** `depthcue-mcp` is an MCP server with seven tools: `deck_get`, `deck_apply`, `deck_comment`,
   `deck_render`, `deck_present`, `deck_asset` and `deck_export`. An edit is one transaction against a revision. A stale
   revision is rejected, never merged. A person's comments sit beside the deck, never in it, and an agent can answer them with `deck_comment`.
-- **Present.** Keyboard navigation, a reading view for the audience, and a [presenter window](docs/presenter.md)
-  with notes, a timer and a preview of the next move. A person can [hand control to an agent](docs/lease.md) and
-  take it back at once.
+- **Present.** A full-window slide whose controls fade while you talk, keyboard navigation, an overview of every
+  scene (`g`), a reading view for the audience, and a [presenter window](docs/presenter.md) with notes, pictures of
+  the slide on screen, the next click and the slide after, and clocks for the talk and the scene. A person can
+  [hand control to an agent](docs/lease.md) and take it back at once.
 - **Blocks.** Text with bold, italic, links, lists and colored words, tables you can type or paste into, six kinds of
   chart (bar, stacked bar, line, area, scatter and donut), images you can crop, fit and focus, a picture behind a whole
   slide, and [Kinescript clips](docs/clips.md) with cue

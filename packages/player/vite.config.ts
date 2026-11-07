@@ -12,6 +12,16 @@ export default defineConfig({
       cssFileName: "player",
     },
     // A fixed chunk name lets budgets.json point at the shared player code.
-    rollupOptions: { output: { chunkFileNames: "[name].js" } },
+    // A chunk of the table helpers alone (src/table.ts, which the scene drawing shares with the table module) is named
+    // apart, so it never takes `table.js` from the table module, which a deck without a table must not load.
+    rollupOptions: {
+      output: {
+        chunkFileNames: (chunk) =>
+          chunk.moduleIds.some((id) => /[\\/]src[\\/]table\.ts$/.test(id)) &&
+          !chunk.moduleIds.some((id) => /[\\/]modules[\\/]/.test(id))
+            ? "table-format.js"
+            : "[name].js",
+      },
+    },
   },
 });

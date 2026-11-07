@@ -94,7 +94,7 @@ controller.changed(); // the host calls this after every position change
 ## On the page
 
 A deck that `depthcue serve` shows loads the lease; an exported deck does not, because the script is fetched only
-when the page's root element has `data-lease`. The controls bar gets a chip that says who is presenting, a
+when the page's root element has `data-lease`. The controls get a chip, labelled Live, that says who is presenting, a
 **Hand to agent** button, and, while an agent holds control, **Take over** with the Escape key. When control comes
 back the chip says why for six seconds (You took over, Agent timed out, Agent left, Agent error, Section ended),
 and a screen reader hears the full sentence from `REVOKE_TEXT`.
@@ -105,8 +105,8 @@ click that a script made with `element.click()`, so a script cannot give itself 
 sends real input events can still press the button, so this stops accidents and not a hostile page.
 
 **Takeover.** Escape, the arrow, Page Up and Page Down keys, Space and Enter (unless focus is on a control or a
-video), Home, End and `r` take control back before the key moves the deck. So does a click on the previous, next
-or read button. The notes key does not. Any other move that the lease did not make, such as the back button or an
+video), Home, End and `r` take control back before the key moves the deck. So does a click on the previous or next
+button, or on Reading view in the More menu. The notes key does not. Any other move that the lease did not make, such as the back button or an
 edited address, takes control back as soon as the player has followed it; Chrome runs the player's own listener
 for those first, so they cannot be caught earlier. Moves the agent makes itself never count.
 

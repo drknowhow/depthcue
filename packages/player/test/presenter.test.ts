@@ -397,7 +397,7 @@ describe("the presenter's window", () => {
   it("shows the scene on screen: where it is, its title, its notes and who is presenting", () => {
     mountView();
     bus.end().postMessage(state("demand", 1, "agent"));
-    expect(text(".dc-pv-where")).toBe("Scene 2 of 3 · step 1 of 2 · Agent-led");
+    expect(text(".dc-pv-where")).toBe("Scene 2 of 3 · reveal 1 of 2 · Planned: Agent-led");
     expect(text(".dc-pv-scene")).toBe("Demand is shifting");
     expect(text(".dc-pv-notes")).toContain("Pause on the chart.");
     expect(q(".dc-pv-notes").dataset.empty).toBe("false");
@@ -410,13 +410,13 @@ describe("the presenter's window", () => {
     plain.scenes[0] = sceneWith({ id: "opening", title: "Opening" });
     mountView({ deck: plain });
     bus.end().postMessage(state("opening", 0));
-    expect(text(".dc-pv-where")).toBe("Scene 1 of 3 · Human-led");
+    expect(text(".dc-pv-where")).toBe("Scene 1 of 3 · Planned: Human-led");
   });
 
   it("leaves the step out for a scene that has none, and says so when there are no notes", () => {
     mountView();
     bus.end().postMessage(state("method", 0));
-    expect(text(".dc-pv-where")).toBe("Scene 3 of 3 · Human-led");
+    expect(text(".dc-pv-where")).toBe("Scene 3 of 3 · Planned: Human-led");
     expect(text(".dc-pv-notes")).toBe("No notes for this scene.");
     expect(q(".dc-pv-notes").dataset.empty).toBe("true");
     expect(text(".dc-pv-holder")).toBe("You present");
@@ -454,7 +454,9 @@ describe("the presenter's window", () => {
     const named = (selector: string) => q(selector).getAttribute("aria-label");
     expect(named(".dc-pv-now")).toBe("On screen");
     expect(named(".dc-pv-next")).toBe("Next");
-    expect(named(".dc-pv-clock")).toBe("Timer");
+    expect(named(".dc-pv-clock")).toBe("Timers");
+    expect(named(".dc-pv-slide-time")).toBe("Time on this scene");
+    expect(q(".dc-pv-pic").getAttribute("role")).toBe("img");
     expect(named(".dc-pv-moves")).toBe("Moves");
     expect(named(".dc-pv-time")).toBe("Elapsed time");
     expect(q(".dc-pv-notes").getAttribute("role")).toBe("region");
@@ -472,7 +474,12 @@ describe("the presenter's window", () => {
     });
     mountView({ deck: evil });
     bus.end().postMessage(state("opening", 0));
-    expect(presenterHost.querySelector("img, script, b")).toBeNull();
+    // The pictures of scenes hold the deck's own pictures; nothing the deck's text says becomes an element anywhere.
+    const outside = [...presenterHost.querySelectorAll("img, script, b")].filter(
+      (node) => !node.closest(".dc-pv-pic"),
+    );
+    expect(outside).toEqual([]);
+    expect(presenterHost.querySelector('script, b, img[src="x"], [onerror]')).toBeNull();
     expect(text(".dc-pv-scene")).toBe("<img src=x onerror=alert(1)>");
     expect(text(".dc-pv-notes")).toBe("<script>alert(1)</script>\n<b>bold</b>");
   });
@@ -499,11 +506,11 @@ describe("the presenter's window", () => {
     it("says how many blocks the next click reveals", () => {
       mountView();
       expect(at("demand", 0)).toEqual({
-        label: "Next click: step 1 of 2",
+        label: "Next click: reveal 1 of 2",
         title: "",
         detail: "Reveals 1 block on this scene.",
       });
-      expect(at("demand", 1).label).toBe("Next click: step 2 of 2");
+      expect(at("demand", 1).label).toBe("Next click: reveal 2 of 2");
     });
 
     it("counts blocks in the plural, and leaves out a summary that is not there", () => {
@@ -570,7 +577,72 @@ describe("the presenter's window", () => {
     });
   });
 
+  describe("the pictures", () => {
+    const pics = () =>
+      [...presenterHost.querySelectorAll<HTMLElement>(".dc-pv-pic")].map((box) =>
+        box.hidden ? null : box.getAttribute("aria-label"),
+      );
+    const revealed = (index: number) =>
+      [
+        ...(presenterHost
+          .querySelectorAll(".dc-pv-pic")
+          [index]?.querySelectorAll<HTMLElement>("[data-gated]") ?? []),
+      ].map((node) => node.dataset.revealed);
+
+    it("show the scene on screen, the next click and the scene after it", () => {
+      mountView();
+      bus.end().postMessage(state("opening", 0));
+      expect(pics()).toEqual([
+        "On screen: Why channel B now leads",
+        "Next click: Demand is shifting",
+        expect.stringMatching(/^After that: /),
+      ]);
+      bus.end().postMessage(state("demand", 0));
+      expect(pics()[1]).toBe("Next click: Demand is shifting");
+      expect(pics()[2]).toMatch(/^After that: /);
+    });
+
+    it("draw a step's reveals as the audience will see them after the next click", () => {
+      mountView();
+      bus.end().postMessage(state("demand", 0));
+      expect(revealed(0)).not.toContain("true");
+      expect(revealed(1)).toContain("true");
+    });
+
+    it("are drawn inert, so nothing in them takes focus or a click", () => {
+      mountView();
+      bus.end().postMessage(state("opening", 0));
+      for (const mini of presenterHost.querySelectorAll(".dc-pv-mini"))
+        expect(mini.hasAttribute("inert")).toBe(true);
+      expect(presenterHost.querySelectorAll(".dc-pv-pic [id]")).toHaveLength(0);
+    });
+
+    it("show nothing after the last click of the deck", () => {
+      mountView();
+      bus.end().postMessage(state("method", 0));
+      expect(pics()[0]).toMatch(/^On screen: /);
+      expect(pics().slice(1)).toEqual([null, null]);
+    });
+  });
+
   describe("the timer", () => {
+    it("keeps a second clock for the scene on screen, which starts again when the scene changes", () => {
+      vi.useFakeTimers();
+      let clock = 0;
+      mountView({ now: () => clock });
+      bus.end().postMessage(state("opening", 0));
+      clock += 30_000;
+      vi.advanceTimersByTime(1000);
+      expect(text(".dc-pv-slide-time")).toBe("0:30");
+      bus.end().postMessage(state("demand", 0));
+      expect(text(".dc-pv-slide-time")).toBe("0:00");
+      clock += 5000;
+      bus.end().postMessage(state("demand", 1));
+      vi.advanceTimersByTime(1000);
+      expect(text(".dc-pv-slide-time")).toBe("0:05");
+      expect(text(".dc-pv-time")).toBe("0:35");
+    });
+
     it("counts from when the window opened and reads the clock it was given", () => {
       vi.useFakeTimers();
       let clock = 1_000_000;
@@ -785,7 +857,7 @@ describe("the two windows together", () => {
     expect(player.state.position).toEqual({ scene: 1, step: 0 });
     expect(text(".dc-pv-scene")).toBe("Demand is shifting");
     click("[data-pv='next']");
-    expect(text(".dc-pv-where")).toBe("Scene 2 of 3 · step 1 of 2 · Agent-led");
+    expect(text(".dc-pv-where")).toBe("Scene 2 of 3 · reveal 1 of 2 · Planned: Agent-led");
     player.go({ scene: 0, step: 0 });
     expect(text(".dc-pv-scene")).toBe("Why channel B now leads");
     expect(q(".dc-pv-moves [data-pv='previous']").getAttribute("aria-disabled")).toBe("true");
@@ -809,7 +881,7 @@ describe("the two windows together", () => {
     const { player } = mountDeck();
     player.go({ scene: 1, step: 2 });
     mountView();
-    expect(text(".dc-pv-where")).toBe("Scene 2 of 3 · step 2 of 2 · Agent-led");
+    expect(text(".dc-pv-where")).toBe("Scene 2 of 3 · reveal 2 of 2 · Planned: Agent-led");
   });
 });
 

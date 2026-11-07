@@ -4,6 +4,37 @@ Notable changes to Depthcue, newest first. Nothing has been released yet, so eve
 
 ## Unreleased
 
+### Working desk: a new layout for the editor, the player and the presenter view
+
+The editor now has the layout of familiar slide tools: slides down the left, the slide in the middle, and one
+inspector on the right.
+
+- The top bar is in three groups: the Deck chip, which opens the deck menu; Undo and Redo; and Review, Export and
+  Present. The checks are a status chip whose list opens under it, and choosing a problem chooses its block.
+- The filmstrip has one More menu per slide (duplicate, delete, move earlier or later) and an Add slide tile after
+  the last slide. The pager under the slide is gone; the zoom control stays.
+- In windows 1440 px and wider, one inspector column on the right holds the slide's and the chosen block's settings,
+  titled Slide or with the block's name. `\` folds it to a narrow rail. In narrower windows the same settings open
+  under their chips as before.
+- One Insert menu on the quick bar holds the kinds of block and the claim. The quick bar keeps Script, Build order,
+  Comment, Everything and `?`.
+- The Script drawer runs along the foot of the stage with tabs for Speaker notes, Reveal order, Reading version and
+  Voice-over. Reveal order lists each step's blocks and opens the slide's steps to change them. The footer opens each
+  tab.
+
+In the player, while a deck is presented, the slide fills the window and the controls float over its foot. They fade
+two seconds after the pointer stops and stay while they have the keyboard, the pointer or an open menu. The count
+reads "3 of 7 · reveal 1 of 2". The scene's planned lead is labelled Planned and the lease chip Live, so the two are
+not confused. Reading view, Speaker notes, Captions and Voice leads (the old Auto) moved into a More menu with All
+scenes, and `g` opens an overview of every scene.
+
+The presenter view shows pictures of the scene on screen, of what the next click will show, and of the scene after
+that, drawn by the player so they match the room. It has two clocks: one for the talk and one for the scene on
+screen. See [presenter view](docs/presenter.md) and [the editor](docs/editor.md).
+
+The exported page script's size limit went from 19 KB to 20 KB brotli, the presenter script's from 2.25 KB to 3 KB,
+and the editor script's to 102 KB.
+
 ### Voice-over
 
 A scene can have a `voiceover` with the text Kokoro reads aloud. `depthcue voice build <deck> [scene]` runs the `kokoro`
