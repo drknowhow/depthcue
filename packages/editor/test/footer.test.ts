@@ -20,10 +20,10 @@ const footer = () => host.querySelector(".ed-footer") as HTMLElement;
 const part = (name: string) => footer().querySelector(`[data-footer='${name}']`) as HTMLButtonElement;
 
 describe("the footer", () => {
-  it("holds the controls for moving between slides and zooming", () => {
+  it("holds the zoom, and no pager", () => {
     expect(footer().querySelector(".ed-view")).not.toBeNull();
     expect(footer().closest(".ed-stage")).toBeNull();
-    expect(footer().querySelector("[data-view='where']")?.textContent).toMatch(/^\d+ \/ \d+$/);
+    expect(footer().querySelector("[data-view='where']")).toBeNull();
   });
 
   it("says what the slide on show holds, and follows the choice of slide", () => {

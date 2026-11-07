@@ -461,6 +461,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     changed: () => countsByScene(store.review.changes()),
     storyboard: openBoard,
     pick: openPicker,
+    menu: (button) => {
+      button.focus({ preventScroll: true });
+      menu.openFromKeyboard();
+    },
   });
   const quick = createQuickBar(session, {
     edits: editsFor("quick"),
@@ -536,7 +540,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     scene: goScene,
     zoom: (change) => setZoom(change === "fit" ? FIT : stepZoom(zoom, change === "in" ? 1 : -1)),
   });
-  const view = createViewBar({ go: goScene, zoom: (next) => setZoom(next) });
+  const view = createViewBar({ zoom: (next) => setZoom(next) });
   // Cut, copy, paste and duplicate of a block. A paste is one more add, so it is one step of Undo like the rest.
   const clip = createBlockClipboard(session, {
     scene: () => selected,
@@ -958,10 +962,9 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     );
   }
 
-  /** The view bar: which slide this is of how many, and the zoom. */
+  /** The view bar: the zoom. */
   function renderView() {
-    const ids = session.doc.deck.scenes;
-    view.render(ids.indexOf(selected) + 1, ids.length, zoom);
+    view.render(zoom);
   }
 
   /** Goes to the slide before or after the one on show, and stops at the ends. */

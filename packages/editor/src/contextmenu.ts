@@ -388,8 +388,13 @@ export function createContextMenu(root: HTMLElement, hooks: ContextMenuHooks): C
     const active = document.activeElement;
     if (!(active instanceof Element) || !root.contains(active)) return false;
     const row = rowOf(active);
+    // From the scene's More button the menu hangs under the button; from anywhere else in the row, under the row.
     if (row)
-      return open({ target: "scene", id: row.dataset.id as string, at: { x: 0, y: 0 } }, "keyboard", row);
+      return open(
+        { target: "scene", id: row.dataset.id as string, at: { x: 0, y: 0 } },
+        "keyboard",
+        active.closest("[data-action='scene-menu']") ?? row,
+      );
     const found = hooks.stage.contains(active) ? itemAround(active) : undefined;
     const cell = found?.kind === "block" ? cellAround(active) : undefined;
     if (found && cell)

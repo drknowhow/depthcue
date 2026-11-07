@@ -440,13 +440,8 @@ const WAYS: Record<string, Entry> = {
         : null,
   },
   "deck.scenes": {
-    where: "Scene strip: add, move earlier and later, duplicate, delete and drag",
-    reach: () =>
-      find(host, "[data-action='add-scene']") &&
-      find(host, "[data-action='move-scene-earlier']") &&
-      find(host, "[data-action='move-scene-later']") &&
-      find(host, "[data-action='duplicate-scene']") &&
-      find(host, "[data-action='delete-scene']"),
+    where: "Scene strip: the Add slide tile, drag, and each scene's More menu (move, duplicate, delete)",
+    reach: () => find(host, "[data-action='add-scene']") && find(host, "[data-action='scene-menu']"),
   },
   "deck.date": {
     where: "Deck popover, Date and numbers section, Date",

@@ -214,40 +214,45 @@ describe("the editor in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
-  it("duplicates and deletes a scene from the strip, and the folder follows", async () => {
+  it("duplicates and deletes a scene from its More menu, and the folder follows", async () => {
     await open();
     await page.locator("[data-id='demand']").hover();
-    await page.locator("[data-id='demand'] [data-action='duplicate-scene']").click();
+    await page.locator("[data-id='demand'] [data-action='scene-menu']").click();
+    await page.locator(".ed-menu [data-command='duplicate-scene']").click();
     await page.locator("[data-id='demand-copy']").waitFor();
     await saved();
     expect(disk().deck.scenes).toEqual(["opening", "demand", "demand-copy", "method"]);
     expect(disk().scenes["demand-copy"]?.blocks).toEqual(disk().scenes.demand?.blocks);
 
-    await page.locator("[data-id='demand-copy'] [data-action='delete-scene']").click();
+    await page.locator("[data-id='demand-copy'] [data-action='scene-menu']").click();
+    await page.locator(".ed-menu [data-command='remove-scene']").click();
     await page.locator("[data-id='demand-copy']").waitFor({ state: "detached" });
     await saved();
     expect(disk().deck.scenes).toEqual(["opening", "demand", "method"]);
     expect(problems).toEqual([]);
   });
 
-  it("moves a scene with the keyboard, which stays on the button, and the folder follows", async () => {
+  it("moves a scene with the keyboard from its More menu, the keyboard stays on the scene, and the folder follows", async () => {
     await open();
-    const later = page.locator("[data-id='opening'] [data-action='move-scene-later']");
-    await later.focus();
-    await page.keyboard.press("Enter");
+    const moveLater = async () => {
+      await page.keyboard.press("Enter");
+      const item = page.locator(".ed-menu [data-command='move-scene-later']");
+      await item.focus();
+      await page.keyboard.press("Enter");
+    };
+    await page.locator("[data-id='opening'] [data-action='scene-menu']").focus();
+    await moveLater();
     await page.waitForFunction(
       () => document.querySelector(".ed-scene-list > li")?.getAttribute("data-id") === "demand",
     );
     await saved();
     expect(disk().deck.scenes).toEqual(["demand", "opening", "method"]);
-    // The rows are put back in a new order, which would drop the keyboard if it were not handed back.
-    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-action"))).toBe(
-      "move-scene-later",
-    );
+    // The rows are put back in a new order, which would drop the keyboard if it were not handed back to the scene.
     expect(await page.evaluate(() => document.activeElement?.closest("li")?.getAttribute("data-id"))).toBe(
       "opening",
     );
-    await page.keyboard.press("Enter");
+    await page.locator("[data-id='opening'] [data-action='scene-menu']").focus();
+    await moveLater();
     await page.waitForFunction(
       () => document.querySelector(".ed-scene-list > li:last-child")?.getAttribute("data-id") === "opening",
     );

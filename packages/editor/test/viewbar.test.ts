@@ -23,19 +23,10 @@ const control = (name: string) =>
 const scenes = () => store.session.doc.deck.scenes;
 
 describe("the view bar", () => {
-  it("says which slide this is of how many, and moves between them", () => {
-    expect(control("where").textContent).toBe(`1 / ${scenes().length}`);
-    expect(control("previous").disabled).toBe(true);
-    control("next").click();
-    expect(editor.sceneId).toBe(scenes()[1]);
-    expect(control("where").textContent).toBe(`2 / ${scenes().length}`);
-    control("previous").click();
-    expect(editor.sceneId).toBe(scenes()[0]);
-  });
-
-  it("stops at the last slide", () => {
-    editor.select(scenes().at(-1) as string);
-    expect(control("next").disabled).toBe(true);
+  it("has no pager: the filmstrip and the [ and ] keys move between slides", () => {
+    expect(control("previous")).toBeNull();
+    expect(control("next")).toBeNull();
+    expect(control("where")).toBeNull();
   });
 
   it("zooms the slide in steps and back to fit, without touching the deck", () => {
@@ -56,7 +47,7 @@ describe("the view bar", () => {
     for (let at = 0; at < 10; at++) control("zoom-in").click();
     expect(control("fit").textContent).toBe("300%");
     expect(control("zoom-in").disabled).toBe(true);
-    control("next").click();
+    editor.select(scenes()[1] as string);
     expect(control("fit").textContent).toBe("300%");
   });
 

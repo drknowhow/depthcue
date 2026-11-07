@@ -11,23 +11,21 @@ export function stepZoom(zoom: number, direction: 1 | -1): number {
 }
 
 export interface ViewBarHooks {
-  /** Goes to the scene before or after the one on show. */
-  go(direction: 1 | -1): void;
   /** Asks for a zoom, as a multiple of Fit. */
   zoom(zoom: number): void;
 }
 
 export interface ViewBar {
   readonly element: HTMLElement;
-  /** Shows which scene this is of how many, and the zoom. */
-  render(position: number, count: number, zoom: number): void;
+  /** Shows the zoom. */
+  render(zoom: number): void;
 }
 
 const percent = (zoom: number) => `${Math.round(zoom * 100)}%`;
 
 /**
- * The small bar over the top right of the stage: previous and next scene with where the deck stands, and the zoom of
- * the slide. It changes the view and never the deck, so none of it is an undo step.
+ * The zoom of the slide, at the foot of the editor. It changes the view and never the deck, so none of it is an undo
+ * step. Moving between slides is the filmstrip's, and the [ and ] keys'.
  */
 export function createViewBar(hooks: ViewBarHooks): ViewBar {
   const button = (action: string, label: string, text: string, onClick: () => void) => {
@@ -40,39 +38,18 @@ export function createViewBar(hooks: ViewBarHooks): ViewBar {
     return node;
   };
 
-  const previous = button("previous", "Previous slide ([)", "‹", () => hooks.go(-1));
-  const next = button("next", "Next slide (])", "›", () => hooks.go(1));
-  const where = h("span", {
-    class: "ed-view-where",
-    "data-view": "where",
-    role: "status",
-    "aria-live": "polite",
-  });
   let shown: number = FIT;
   const out = button("zoom-out", "Zoom out (-)", "−", () => hooks.zoom(stepZoom(shown, -1)));
   const into = button("zoom-in", "Zoom in (+)", "+", () => hooks.zoom(stepZoom(shown, 1)));
   const level = button("fit", "Fit the slide to the window (0)", "100%", () => hooks.zoom(FIT));
   level.classList.add("ed-view-level");
 
-  const element = h(
-    "div",
-    { class: "ed-view", role: "group", "aria-label": "Move between slides and zoom" },
-    previous,
-    where,
-    next,
-    h("span", { class: "ed-view-rule", "aria-hidden": "true" }),
-    out,
-    level,
-    into,
-  );
+  const element = h("div", { class: "ed-view", role: "group", "aria-label": "Zoom" }, out, level, into);
 
   return {
     element,
-    render(position, count, zoom) {
+    render(zoom) {
       shown = zoom;
-      where.textContent = `${position} / ${count}`;
-      previous.toggleAttribute("disabled", position <= 1);
-      next.toggleAttribute("disabled", position >= count);
       level.textContent = percent(zoom);
       level.title =
         zoom === FIT ? "Fit the slide to the window (0)" : `Back to Fit from ${percent(zoom)} (0)`;

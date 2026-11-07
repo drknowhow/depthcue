@@ -441,7 +441,7 @@ body {
   pointer-events: none;
 }
 
-/* Duplicate and delete sit on the thumbnail's corner, and show for the scene being pointed at or edited. */
+/* The More button sits on the thumbnail's corner, and shows for the scene being pointed at or edited. */
 .ed-scene-actions {
   position: absolute;
   top: calc(var(--dc-space-1) + 4px);
@@ -473,25 +473,38 @@ body {
   mask: var(--icon) center / contain no-repeat;
 }
 
-.ed-scene-actions [data-action="move-scene-earlier"] {
-  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 13V3M3.5 7.5 8 3l4.5 4.5'/%3E%3C/svg%3E");
+.ed-scene-more {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='black'%3E%3Ccircle cx='3' cy='8' r='1.4'/%3E%3Ccircle cx='8' cy='8' r='1.4'/%3E%3Ccircle cx='13' cy='8' r='1.4'/%3E%3C/svg%3E");
 }
 
-.ed-scene-actions [data-action="move-scene-later"] {
-  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 3v10M3.5 8.5 8 13l4.5-4.5'/%3E%3C/svg%3E");
+.ed-scene-more[hidden] {
+  display: none;
 }
 
-/* In a row of scenes, earlier and later point left and right. */
-.ed-scene-list[data-axis="x"] .ed-scene-actions [data-action^="move-scene"]::before {
-  transform: rotate(-90deg);
+/* The tile for a new slide: the shape of a thumbnail, drawn as an outline, at the end of the list. */
+.ed-app .ed-add-tile {
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--dc-space-1);
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-top: var(--dc-space-2);
+  border: 1px dashed var(--dc-line);
+  border-radius: var(--dc-radius-sm);
+  background: none;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
 }
 
-.ed-scene-actions [data-action="duplicate-scene"] {
-  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5'%3E%3Crect x='5.5' y='5.5' width='8' height='8' rx='1.5'/%3E%3Cpath d='M10.5 3.5v-1a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h1'/%3E%3C/svg%3E");
+.ed-app .ed-add-tile:hover {
+  border-color: var(--dc-text);
+  color: var(--dc-text);
 }
 
-.ed-scene-actions [data-action="delete-scene"] {
-  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M2.5 4.5h11M6.5 4.5v-2h3v2M4 4.5l.6 9h6.8l.6-9'/%3E%3C/svg%3E");
+.ed-add-tile::before {
+  content: "+";
+  font-size: 1.25rem;
+  line-height: 1;
 }
 
 .ed-scene .ed-num {
@@ -540,6 +553,28 @@ body {
   color: var(--dc-evidence);
 }
 
+/* A mark before who leads: a ring for a person, a filled diamond for the agent, a half for both. */
+.ed-lead::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.3rem;
+  border: 1.5px solid currentcolor;
+  border-radius: 50%;
+  vertical-align: 0.05em;
+}
+
+.ed-lead[data-lead="agent"]::before {
+  border-radius: 1px;
+  background: currentcolor;
+  transform: rotate(45deg) scale(0.85);
+}
+
+.ed-lead[data-lead="shared"]::before {
+  background: linear-gradient(90deg, currentcolor 50%, transparent 50%);
+}
+
 /* Canvas */
 
 /* The slide's column. The quick bar floats over its foot, and the stage under the slide keeps room for it. */
@@ -571,7 +606,7 @@ body {
   flex: none;
 }
 
-/* The bar for moving between slides and zooming, over the top right of the stage. */
+/* The zoom, at the foot of the editor. */
 .ed-view {
   display: flex;
   flex-shrink: 0;
@@ -591,22 +626,6 @@ body {
 .ed-app .ed-view .ed-view-level {
   min-width: 3.5rem;
   font-variant-numeric: tabular-nums;
-}
-
-.ed-view-where {
-  min-width: 3.5rem;
-  text-align: center;
-  color: var(--dc-muted);
-  font-family: var(--dc-font-mono);
-  font-size: 0.8125rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.ed-view-rule {
-  align-self: stretch;
-  width: 1px;
-  margin: var(--dc-space-1);
-  background: var(--dc-line);
 }
 
 .ed-app .ed-frame.dc-player {
@@ -3707,6 +3726,13 @@ body {
   .ed-scene-list {
     display: flex;
     gap: var(--dc-space-2);
+  }
+
+  /* Under a row of slides the tile is a plain button, not a slide-sized gap. */
+  .ed-app .ed-add-tile {
+    flex-direction: row;
+    aspect-ratio: auto;
+    min-height: 2.5rem;
   }
 
   .ed-scene-list > li {
