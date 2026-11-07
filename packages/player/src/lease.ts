@@ -122,8 +122,10 @@ export function mountLease(options: LeaseOptions): LeaseMount {
     "Take over",
     h("kbd", { class: "dc-lease-key" }, "Esc"),
   );
-  const chip = h("div", { class: "dc-lease", "data-holder": "human" }, text, status, grant, take);
-  bar.insertBefore(chip, bar.querySelector('[data-action="read"]'));
+  // "Live" says who has control now, beside the "Planned" lead the scene was written for.
+  const kicker = h("span", { class: "dc-k", "aria-hidden": "true" }, "Live");
+  const chip = h("div", { class: "dc-lease", "data-holder": "human" }, kicker, text, status, grant, take);
+  bar.insertBefore(chip, bar.querySelector(".dc-voice"));
 
   let notice: ReturnType<typeof setTimeout> | undefined;
   let message = "";

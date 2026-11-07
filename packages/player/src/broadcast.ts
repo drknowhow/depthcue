@@ -153,7 +153,7 @@ export function mountBroadcast(options: BroadcastOptions): BroadcastMount {
     window.open(url, "depthcue-presenter", "popup,width=1100,height=720");
   };
   open.addEventListener("click", onOpen);
-  bar.insertBefore(open, bar.querySelector('[data-action="read"]'));
+  bar.insertBefore(open, bar.querySelector(".dc-voice"));
 
   post(false);
 

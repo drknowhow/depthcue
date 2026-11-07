@@ -39,7 +39,7 @@ describe("mounting", () => {
   it("shows the first scene with a scene counter and the lead", () => {
     mount();
     expect(sceneId()).toBe("opening");
-    expect(count()).toBe("1 / 3");
+    expect(count()).toBe("1 of 3");
     expect(host.querySelector(".dc-title")?.textContent).toBe("Why channel B now leads");
     expect(host.querySelector<HTMLElement>(".dc-lead")?.dataset.lead).toBe("human");
     expect(host.querySelector("h1")?.textContent).toBe("Why channel B now leads");
@@ -158,9 +158,9 @@ describe("controls", () => {
 
   it("shows the step counter only for scenes with steps", () => {
     const p = mount();
-    expect(count()).toBe("1 / 3");
+    expect(count()).toBe("1 of 3");
     p.go({ scene: 1, step: 1 });
-    expect(count()).toBe("2 / 3 · 1/2");
+    expect(count()).toBe("2 of 3 · reveal 1 of 2");
   });
 
   it("announces scene changes to a screen reader", () => {
@@ -321,5 +321,110 @@ describe("onChange and destroy", () => {
     const event = press("ArrowRight");
     expect(event.defaultPrevented).toBe(false);
     player = undefined;
+  });
+});
+
+describe("the controls at rest", () => {
+  const root = () => host.querySelector<HTMLElement>(".dc-player") as HTMLElement;
+  const bar = () => host.querySelector<HTMLElement>(".dc-controls") as HTMLElement;
+
+  it("rest two seconds after the pointer stops, and come back when it moves", () => {
+    vi.useFakeTimers();
+    mount();
+    expect(root().dataset.chrome).toBe("shown");
+    vi.advanceTimersByTime(2000);
+    expect(root().dataset.chrome).toBe("rest");
+    root().dispatchEvent(new Event("pointermove", { bubbles: true }));
+    expect(root().dataset.chrome).toBe("shown");
+  });
+
+  it("stay while the keyboard is in them", () => {
+    vi.useFakeTimers();
+    mount();
+    host.querySelector<HTMLElement>('[data-action="next"]')?.focus();
+    vi.advanceTimersByTime(5000);
+    expect(root().dataset.chrome).toBe("shown");
+  });
+
+  it("stay while the pointer is over them", () => {
+    vi.useFakeTimers();
+    mount();
+    bar().dispatchEvent(new Event("pointerenter"));
+    vi.advanceTimersByTime(5000);
+    expect(root().dataset.chrome).toBe("shown");
+  });
+
+  it("label the scene's planned lead apart from who has control", () => {
+    mount();
+    const plan = host.querySelector<HTMLElement>(".dc-plan");
+    expect(plan?.querySelector(".dc-k")?.textContent).toBe("Planned");
+    expect(plan?.getAttribute("aria-label")).toMatch(/^Planned: /);
+  });
+});
+
+describe("the More menu", () => {
+  const more = () => host.querySelector<HTMLElement>("#dc-more") as HTMLElement;
+  const button = () => host.querySelector<HTMLButtonElement>('[data-action="more"]') as HTMLButtonElement;
+
+  it("holds the reading view, notes and overview, and opens and closes from its button", () => {
+    mount();
+    expect(more().hidden).toBe(true);
+    for (const action of ["overview", "read", "notes"])
+      expect(more().querySelector(`[data-action="${action}"]`)).not.toBeNull();
+    button().click();
+    expect(more().hidden).toBe(false);
+    expect(button().getAttribute("aria-expanded")).toBe("true");
+    button().click();
+    expect(more().hidden).toBe(true);
+    expect(button().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("closes on Escape and gives the keyboard back to its button", () => {
+    mount();
+    button().click();
+    press("Escape", {}, document.activeElement ?? document.body);
+    expect(more().hidden).toBe(true);
+    expect(document.activeElement).toBe(button());
+  });
+
+  it("closes once a choice in it is made", () => {
+    mount();
+    button().click();
+    more().querySelector<HTMLElement>('[data-action="notes"]')?.click();
+    expect(more().hidden).toBe(true);
+    expect(player?.state.notes).toBe(true);
+  });
+});
+
+describe("the overview", () => {
+  const overview = () => host.querySelector<HTMLElement>(".dc-overview") as HTMLElement;
+  const cards = () => [...host.querySelectorAll<HTMLButtonElement>(".dc-overview-card")];
+
+  it("opens on G with a card per scene and the keyboard on the one on show", () => {
+    mount();
+    press("g");
+    expect(overview().hidden).toBe(false);
+    expect(cards()).toHaveLength(3);
+    expect(cards()[0]?.getAttribute("aria-current")).toBe("true");
+    expect(document.activeElement).toBe(cards()[0]);
+  });
+
+  it("goes to a scene when its card is chosen, and closes", () => {
+    mount();
+    press("g");
+    cards()[2]?.click();
+    expect(overview().hidden).toBe(true);
+    expect(player?.state.position).toEqual({ scene: 2, step: 0 });
+  });
+
+  it("closes on Escape without moving, and arrows stay inside it", () => {
+    mount();
+    press("g");
+    press("ArrowRight", {}, document.activeElement ?? document.body);
+    expect(document.activeElement).toBe(cards()[1]);
+    expect(player?.state.position.scene).toBe(0);
+    press("Escape", {}, document.activeElement ?? document.body);
+    expect(overview().hidden).toBe(true);
+    expect(player?.state.position.scene).toBe(0);
   });
 });

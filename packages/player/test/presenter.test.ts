@@ -300,7 +300,7 @@ describe("the deck window's side", () => {
       const button = q<HTMLButtonElement>("[data-presenter-open]", deckHost);
       expect(button.textContent).toBe("Presenter view");
       expect(button.hasAttribute("data-action")).toBe(false);
-      expect(button.nextElementSibling?.getAttribute("data-action")).toBe("read");
+      expect(button.nextElementSibling?.classList.contains("dc-voice")).toBe(true);
       expect(button.previousElementSibling?.classList.contains("dc-lease")).toBe(true);
     });
 

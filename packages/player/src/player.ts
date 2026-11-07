@@ -26,6 +26,9 @@ export type Mode = "present" | "read";
 /** How long a finished recording rests before the deck moves on to the next scene. */
 const END_BEAT_MS = 900;
 
+/** How long the controls stay after the pointer last moved, while a scene is presented. */
+const REST_MS = 2000;
+
 export interface PlayerState {
   mode: Mode;
   position: Position;
@@ -101,32 +104,55 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
   const live = h("div", { class: "dc-sr-only", "aria-live": "polite", "aria-atomic": "true" });
   const previousButton = button("previous", "Previous", icon("previous"));
   const nextButton = button("next", "Next", icon("next"));
-  const readButton = button("read", "Reading view", h("span", {}, "Read"));
-  const notesButton = button("notes", "Speaker notes", h("span", {}, "Notes"));
+  const key = (letter: string) => h("kbd", { class: "dc-shortcut", "aria-hidden": "true" }, letter);
+  const readButton = button("read", "Reading view", h("span", {}, "Reading view"), key("R"));
+  const notesButton = button("notes", "Speaker notes", h("span", {}, "Speaker notes"), key("N"));
+  const overviewButton = button("overview", "All scenes", h("span", {}, "All scenes"), key("G"));
   // One small group for the voice-over: play or pause, captions, and whether the voice leads the deck.
   const pauseButton = button(
     "voice-pause",
     "Pause voice-over",
     h("span", { class: "dc-vi", "aria-hidden": "true" }),
   );
-  const captionsButton = button("voice-captions", "Captions", h("span", {}, "CC"));
-  const autoButton = button("voice-auto", "Voice leads the deck", h("span", {}, "Auto"));
+  const captionsButton = button("voice-captions", "Captions", h("span", {}, "Captions"), key("C"));
+  const autoButton = button("voice-auto", "Voice leads the deck", h("span", {}, "Voice leads"), key("A"));
   captionsButton.setAttribute("aria-pressed", "false");
   autoButton.setAttribute("aria-pressed", "false");
   autoButton.title = "Auto: the voice starts each scene, moves its steps and moves on when it ends";
+  // Play and pause stay in the bar; the rest of the voice-over's switches are in the More menu.
   const voiceGroup = h(
     "div",
     { class: "dc-voice", role: "group", "aria-label": "Voice-over", hidden: true },
     pauseButton,
+  );
+  // The switches a person reaches for now and then sit behind one button, so the bar keeps to moving the deck.
+  const moreButton = button("more", "More", h("span", {}, "More"));
+  moreButton.setAttribute("aria-haspopup", "true");
+  moreButton.setAttribute("aria-expanded", "false");
+  moreButton.setAttribute("aria-controls", "dc-more");
+  const more = h(
+    "div",
+    { class: "dc-more", id: "dc-more", role: "group", "aria-label": "More", hidden: true },
+    overviewButton,
+    readButton,
+    notesButton,
     captionsButton,
     autoButton,
   );
+  const moreWrap = h("div", { class: "dc-more-wrap" }, moreButton, more);
   readButton.setAttribute("aria-pressed", "false");
   notesButton.setAttribute("aria-pressed", "false");
   notesButton.setAttribute("aria-controls", "dc-notes");
   const count = h("span", { class: "dc-count" });
   const title = h("span", { class: "dc-title" });
   const lead = h("span", { class: "dc-lead" });
+  // Who the scene was written to be led by is the plan; who holds the deck now is the lease's chip, marked Live.
+  const plan = h(
+    "span",
+    { class: "dc-plan", title: "Planned: who this scene is written to be led by" },
+    h("span", { class: "dc-k" }, "Planned"),
+    lead,
+  );
   const fill = h("span", { class: "dc-fill" });
   const bar = h(
     "nav",
@@ -137,10 +163,23 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     nextButton,
     h("span", { class: "dc-cue", "aria-hidden": "true" }),
     title,
-    lead,
-    readButton,
-    notesButton,
+    plan,
     voiceGroup,
+    moreWrap,
+  );
+  // G shows every scene at once, to jump to one.
+  const overviewList = h("ol", { class: "dc-overview-grid" });
+  const overview = h(
+    "div",
+    {
+      class: "dc-overview",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": "dc-overview-title",
+      hidden: true,
+    },
+    h("h2", { class: "dc-overview-title", id: "dc-overview-title" }, "All scenes"),
+    overviewList,
   );
   // The caption sits at the foot of the slide, over the picture, so it reads on any layout.
   const captionBox = h("p", { class: "dc-captions", hidden: true });
@@ -192,6 +231,7 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     h("div", { class: "dc-stage" }, view, voiceStart, captionBox),
     notesPanel,
     bar,
+    overview,
     live,
   );
   host.replaceChildren(root);
@@ -249,6 +289,8 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
   function updateVoiceButton() {
     const now = voice.state();
     voiceGroup.hidden = !now.available || mode !== "present";
+    captionsButton.hidden = voiceGroup.hidden;
+    autoButton.hidden = voiceGroup.hidden;
     captionsButton.setAttribute("aria-pressed", String(now.captions));
     autoButton.setAttribute("aria-pressed", String(now.auto));
     pauseButton.dataset.state = now.playing ? "playing" : "paused";
@@ -269,12 +311,13 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     deckTitle.textContent = source.deck.title;
     count.textContent =
       steps > 0
-        ? `${position.scene + 1} / ${total} · ${position.step}/${steps}`
-        : `${position.scene + 1} / ${total}`;
+        ? `${position.scene + 1} of ${total} · reveal ${position.step} of ${steps}`
+        : `${position.scene + 1} of ${total}`;
     title.textContent = scene.title;
     const who = scene.lead ?? "human";
     lead.textContent = LEAD_LABEL[who];
     lead.dataset.lead = who;
+    plan.setAttribute("aria-label", `Planned: ${LEAD_LABEL[who]}`);
     fill.style.setProperty("--p", String(progress(source.scenes, position)));
     previousButton.setAttribute("aria-disabled", String(previousPosition(source.scenes, position) === null));
     nextButton.setAttribute("aria-disabled", String(nextPosition(source.scenes, position) === null));
@@ -371,6 +414,115 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
 
   const state = (): PlayerState => ({ mode, position: { ...position }, notes });
 
+  // The More menu: opened from its button, put away by a choice in it, by Escape or by a press anywhere else.
+  function openMore() {
+    more.hidden = false;
+    moreButton.setAttribute("aria-expanded", "true");
+    more.querySelector<HTMLElement>("button:not([hidden])")?.focus({ preventScroll: true });
+    wake();
+  }
+  function closeMore(giveBack: boolean) {
+    if (more.hidden) return;
+    more.hidden = true;
+    moreButton.setAttribute("aria-expanded", "false");
+    if (giveBack) moreButton.focus({ preventScroll: true });
+    wake();
+  }
+
+  // The overview: a card for each scene, the one on show marked, with the keyboard on it.
+  let overviewFrom: Element | null = null;
+  const cards = () => [...overviewList.querySelectorAll<HTMLButtonElement>("button")];
+  function openOverview() {
+    closeMore(false);
+    overviewFrom = document.activeElement;
+    overviewList.replaceChildren(
+      ...source.scenes.map((scene, index) => {
+        const who = scene.lead ?? "human";
+        const card = h(
+          "button",
+          {
+            type: "button",
+            class: "dc-overview-card",
+            "data-action": "overview-go",
+            "data-scene": String(index),
+            "aria-label": `Scene ${index + 1}: ${scene.title}, ${LEAD_LABEL[who]}`,
+          },
+          h("span", { class: "dc-overview-n" }, String(index + 1)),
+          h("span", { class: "dc-overview-name" }, scene.title),
+          h("span", { class: "dc-lead", "data-lead": who }, LEAD_LABEL[who]),
+        );
+        if (index === position.scene) card.setAttribute("aria-current", "true");
+        return h("li", {}, card);
+      }),
+    );
+    overview.hidden = false;
+    root.dataset.overview = "open";
+    cards()[position.scene]?.focus({ preventScroll: true });
+  }
+  function closeOverview(giveBack: boolean) {
+    if (overview.hidden) return;
+    overview.hidden = true;
+    delete root.dataset.overview;
+    const back = overviewFrom instanceof HTMLElement && overviewFrom.isConnected ? overviewFrom : null;
+    overviewFrom = null;
+    if (giveBack && back) back.focus({ preventScroll: true });
+  }
+  /** Moves the keyboard along the cards: by one sideways, by a row up and down, as the grid is laid out. */
+  function moveInOverview(key: string): boolean {
+    const all = cards();
+    const at = all.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return false;
+    const top = (card: Element | undefined) => card?.getBoundingClientRect().top ?? 0;
+    const columns = Math.max(1, all.filter((card) => top(card) === top(all[0])).length);
+    const by =
+      key === "ArrowRight"
+        ? 1
+        : key === "ArrowLeft"
+          ? -1
+          : key === "ArrowDown"
+            ? columns
+            : key === "ArrowUp"
+              ? -columns
+              : key === "Home"
+                ? -at
+                : key === "End"
+                  ? all.length - 1 - at
+                  : undefined;
+    if (by === undefined) return false;
+    all[Math.min(all.length - 1, Math.max(0, at + by))]?.focus({ preventScroll: true });
+    return true;
+  }
+
+  // While a scene is presented the controls rest out of sight: a pointer move brings them for two seconds, and they
+  // stay while the pointer is over them, the keyboard is in them or the More menu is open.
+  let restTimer: number | undefined;
+  let overBar = false;
+  function rest() {
+    restTimer = undefined;
+    if (overBar || !more.hidden || bar.contains(document.activeElement)) return;
+    root.dataset.chrome = "rest";
+  }
+  function wake() {
+    root.dataset.chrome = "shown";
+    if (restTimer !== undefined) clearTimeout(restTimer);
+    restTimer = window.setTimeout(rest, REST_MS);
+  }
+  const onPointerMove = () => wake();
+  const onBarEnter = () => {
+    overBar = true;
+    wake();
+  };
+  const onBarLeave = () => {
+    overBar = false;
+    wake();
+  };
+  const onPointerDown = (event: PointerEvent) => {
+    const target = event.target instanceof Node ? event.target : null;
+    if (!more.hidden && !(target && moreWrap.contains(target))) closeMore(false);
+    if (!overview.hidden && target && !overviewList.contains(target)) closeOverview(true);
+    wake();
+  };
+
   const api: Player = {
     get state() {
       return state();
@@ -424,6 +576,12 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
       voice.dispose();
       if (endTimer !== undefined) clearTimeout(endTimer);
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointerDown);
+      root.removeEventListener("pointermove", onPointerMove);
+      bar.removeEventListener("pointerenter", onBarEnter);
+      bar.removeEventListener("pointerleave", onBarLeave);
+      bar.removeEventListener("focusout", wake);
+      if (restTimer !== undefined) clearTimeout(restTimer);
       removeEventListener("hashchange", onHash);
       removeEventListener("popstate", onHash);
       root.removeEventListener("click", onClick);
@@ -438,6 +596,18 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
     const onVideo = target?.tagName === "VIDEO";
     const onControl = Boolean(target?.closest("button, a, summary"));
+    // Over the deck, the overview and the More menu answer their own keys first.
+    if (!overview.hidden) {
+      if (event.key === "Escape" || event.key === "g") closeOverview(true);
+      else if (!moveInOverview(event.key)) return;
+      event.preventDefault();
+      return;
+    }
+    if (!more.hidden && event.key === "Escape") {
+      closeMore(true);
+      event.preventDefault();
+      return;
+    }
     let handled = true;
     if (mode === "read") {
       if (event.key === "r" || event.key === "Escape") api.setMode("present");
@@ -473,6 +643,9 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
         case "n":
           api.toggleNotes();
           break;
+        case "g":
+          openOverview();
+          break;
         case "p":
         case "c":
         case "a":
@@ -501,7 +674,20 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
     const control =
       event.target instanceof Element ? event.target.closest<HTMLElement>("[data-action]") : null;
     if (!control || control.getAttribute("aria-disabled") === "true") return;
+    // A choice in the More menu puts the menu away, and the keyboard goes back to its button.
+    if (more.contains(control)) closeMore(true);
     switch (control.dataset.action) {
+      case "more":
+        if (more.hidden) openMore();
+        else closeMore(true);
+        break;
+      case "overview":
+        openOverview();
+        break;
+      case "overview-go":
+        closeOverview(false);
+        api.go({ scene: Number(control.dataset.scene), step: 0 });
+        break;
       case "next":
         api.next();
         break;
@@ -530,6 +716,13 @@ export function mountPlayer(host: HTMLElement, initial: PlayerSource, options: P
   }
 
   document.addEventListener("keydown", onKey);
+  document.addEventListener("pointerdown", onPointerDown);
+  root.addEventListener("pointermove", onPointerMove);
+  bar.addEventListener("pointerenter", onBarEnter);
+  bar.addEventListener("pointerleave", onBarLeave);
+  // Once the keyboard leaves the bar, the controls rest again after the usual time.
+  bar.addEventListener("focusout", wake);
+  wake();
   addEventListener("hashchange", onHash);
   addEventListener("popstate", onHash);
   root.addEventListener("click", onClick);
