@@ -2006,18 +2006,57 @@ describe("the quick bar in a real browser", () => {
     });
   }
 
-  it("opens the script as a drawer at the right of the stage, inside the window, and closes it with Escape", async () => {
-    await layout(1024, 768);
-    await page.locator("[data-tb='notes']").click();
+  for (const [width, height] of [
+    [1440, 900],
+    [1024, 768],
+  ] as const) {
+    it(`opens the script as a drawer along the foot of the stage at ${width} by ${height}, under the slide and the bar, and closes it with Escape`, async () => {
+      await layout(width, height);
+      await page.locator("[data-tb='notes']").click();
+      const drawer = page.locator(".ed-script");
+      await drawer.waitFor();
+      // The slide is fitted again to the room the drawer leaves, which takes a frame.
+      await page.waitForTimeout(200);
+      const [box, stage, slide, quick] = await Promise.all([
+        boxOf(drawer),
+        boxOf(page.locator(".ed-stage")),
+        boxOf(page.locator(".ed-frame")),
+        boxOf(bar()),
+      ]);
+      // As wide as the stage, at its foot.
+      expect(Math.abs(box.x - stage.x)).toBeLessThan(1);
+      expect(Math.abs(box.x + box.width - (stage.x + stage.width))).toBeLessThan(1);
+      expect(Math.abs(box.y + box.height - (stage.y + stage.height))).toBeLessThan(1);
+      // The bar stands on it, and the slide is above them both.
+      expect(quick.y + quick.height).toBeLessThanOrEqual(box.y);
+      expect(slide.y + slide.height).toBeLessThanOrEqual(quick.y);
+      // The tab the bar's Script button opens on is the speaker notes, with the keyboard in them.
+      expect(await page.evaluate(() => document.activeElement?.getAttribute("data-field"))).toBe(
+        "panel:notes",
+      );
+      await page.keyboard.press("Escape");
+      await drawer.waitFor({ state: "hidden" });
+      expect(problems).toEqual([]);
+    });
+  }
+
+  it("moves along the drawer's tabs with the arrows, and opens the reveal order from the footer", async () => {
+    await layout(1280, 800);
+    await page.locator(".ed-scene[data-scene='demand']").click();
+    await page.locator(".ed-footer [data-footer='steps']").click();
     const drawer = page.locator(".ed-script");
     await drawer.waitFor();
-    const [box, stage] = await Promise.all([boxOf(drawer), boxOf(page.locator(".ed-stage"))]);
-    expect(box.x + box.width).toBeLessThanOrEqual(stage.x + stage.width + 1);
-    expect(box.x).toBeGreaterThan(stage.x);
-    expect(box.y).toBeGreaterThanOrEqual(stage.y - 1);
-    expect(box.y + box.height).toBeLessThanOrEqual(stage.y + stage.height + 1);
-    await page.keyboard.press("Escape");
-    await drawer.waitFor({ state: "hidden" });
+    expect(await drawer.locator("[role='tab'][aria-selected='true']").getAttribute("data-tab")).toBe("steps");
+    expect(await drawer.locator(".ed-script-steps li").count()).toBeGreaterThan(0);
+    await drawer.locator("[role='tab'][data-tab='steps']").focus();
+    await page.keyboard.press("ArrowRight");
+    expect(await drawer.locator("[role='tab'][aria-selected='true']").getAttribute("data-tab")).toBe(
+      "reading",
+    );
+    await drawer.locator("[data-field='panel:reading']").waitFor();
+    await page.keyboard.press("ArrowRight");
+    await drawer.locator("[data-part='voice']").waitFor();
+    expect(await drawer.locator("[data-part='reading']").isHidden()).toBe(true);
     expect(problems).toEqual([]);
   });
 

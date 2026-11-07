@@ -282,7 +282,9 @@ describe("the notes", () => {
     expect(document.activeElement).toBe(notes);
     // The reading version the scene came with, and the notes just typed.
     expect(notesChip().querySelector(".ed-tb-n")?.textContent).toBe("2");
-    expect(notesChip().getAttribute("aria-label")).toBe("Speaker notes and reading version, 2 written");
+    expect(notesChip().getAttribute("aria-label")).toBe(
+      "Script: speaker notes, reveal order, reading version and voice-over. Speaker notes and reading version: 2 of 2 written",
+    );
     typeInto(field("panel:notes"), "");
     expect(notesChip().querySelector(".ed-tb-n")?.textContent).toBe("1");
   });

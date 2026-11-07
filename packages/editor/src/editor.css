@@ -602,7 +602,10 @@ body {
 /* The slide takes the width it is given, unless the height runs out first: the top bar, the problem ribbon, the padding, the hint and the room for the quick bar are about 13.75rem. A short window scrolls the slide under the bar instead of shrinking it past 24rem. */
 .ed-canvas-host {
   position: relative;
-  width: calc(min(100%, max(24rem, calc((100dvh - 16.5rem) * 16 / 9))) * var(--ed-zoom, 1));
+  width: calc(
+    min(100%, max(24rem, calc((100dvh - 16.5rem - var(--ed-drawer-room, 0rem)) * 16 / 9))) *
+    var(--ed-zoom, 1)
+  );
   flex: none;
 }
 
@@ -4697,19 +4700,27 @@ body {
   outline-offset: 2px;
 }
 
-/* The script: speaker notes, reading version and voice-over, in a drawer over the right of the stage. */
+/*
+ * The script: speaker notes, reveal order, reading version and voice-over, as tabs of one drawer along the foot of the
+ * stage. While it is open the slide and the quick bar keep to the stage above it, so nothing it covers is lost.
+ */
+.ed-stage {
+  --ed-drawer: 16rem;
+}
+
 .ed-script {
   position: absolute;
-  top: 0;
   right: 0;
   bottom: 0;
-  z-index: 6;
+  left: 0;
+  z-index: 10;
   display: flex;
   flex-direction: column;
-  width: min(24rem, 100%);
-  border-left: 1px solid var(--dc-line);
+  height: var(--ed-drawer);
+  max-height: 60%;
+  border-top: 1px solid var(--dc-line);
   background: var(--dc-surface);
-  box-shadow: -0.75rem 0 1.5rem -1rem color-mix(in srgb, var(--dc-text) 45%, transparent);
+  box-shadow: 0 -0.75rem 1.5rem -1rem color-mix(in srgb, var(--dc-text) 45%, transparent);
 }
 
 .ed-script[hidden] {
@@ -4720,51 +4731,85 @@ body {
   outline-offset: -3px;
 }
 
+/* The slide is fitted to the height the drawer leaves, as it is to the window's. */
+.ed-stage:has(> .ed-script:not([hidden])) {
+  --ed-drawer-room: var(--ed-drawer);
+}
+
+.ed-stage:has(> .ed-script:not([hidden])) .ed-main {
+  padding-bottom: calc(var(--ed-drawer) + 4.5rem);
+}
+
+.ed-stage:has(> .ed-script:not([hidden])) .ed-quick {
+  bottom: calc(var(--ed-drawer) + var(--dc-space-3));
+}
+
 .ed-script-head {
   display: flex;
   flex-shrink: 0;
-  align-items: baseline;
+  align-items: center;
   gap: var(--dc-space-2);
-  padding: var(--dc-space-3) var(--dc-space-4);
+  padding: 0 var(--dc-space-2) 0 var(--dc-space-3);
   border-bottom: 1px solid var(--dc-line);
 }
 
-.ed-script-head h2 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.ed-script-scene {
+.ed-script-tabs {
+  display: flex;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+}
+
+.ed-app .ed-script-tab {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--dc-space-1);
+  min-height: 2.75rem;
+  padding: 0 var(--dc-space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
   color: var(--dc-muted);
-  font-size: 0.8125rem;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.ed-app .ed-script-tab[aria-selected="true"] {
+  border-bottom-color: var(--dc-text);
+  color: var(--dc-text);
+  font-weight: 600;
+}
+
+.ed-app .ed-script-tab:focus-visible {
+  outline-offset: -3px;
+}
+
 .ed-script-body {
-  display: flex;
   flex: 1;
-  flex-direction: column;
-  gap: var(--dc-space-4);
   min-height: 0;
-  padding: var(--dc-space-4);
+  padding: var(--dc-space-3) var(--dc-space-4);
   overflow-y: auto;
 }
 
-.ed-script-part h3 {
-  display: flex;
-  gap: var(--dc-space-2);
-  align-items: center;
-  margin: 0 0 var(--dc-space-1);
-  font-size: 0.875rem;
+.ed-script-part[hidden] {
+  display: none;
 }
 
-.ed-script-part + .ed-script-part {
-  padding-top: var(--dc-space-4);
-  border-top: 1px solid var(--dc-line);
+.ed-script-steps {
+  display: grid;
+  gap: var(--dc-space-1);
+  margin: 0 0 var(--dc-space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.ed-script-step-n {
+  display: inline-block;
+  min-width: 4.5rem;
+  color: var(--dc-muted);
+  font-family: var(--dc-font-mono);
+  font-size: 0.8125rem;
 }
 
 .ed-script audio {
@@ -4777,23 +4822,15 @@ body {
 }
 
 .ed-script textarea {
-  min-height: 7rem;
+  min-height: 6rem;
   resize: vertical;
 }
 
+/* A phone has little height to share, so the drawer takes more of it and the slide scrolls above. */
 @media (max-width: 40rem) {
   .ed-script {
-    top: auto;
-    width: 100%;
     max-height: 70%;
-    border-top: 1px solid var(--dc-line);
-    border-left: 0;
   }
-}
-
-/* Over the bar and the view controls, which sit in the same stage; the notes under it stay in reach by scrolling. */
-.ed-script {
-  z-index: 10;
 }
 
 .ed-script-part > .ed-hint-text {

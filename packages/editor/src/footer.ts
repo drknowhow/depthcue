@@ -1,10 +1,11 @@
 import type { Scene } from "@depthcue/core";
 import { h } from "@depthcue/player";
 import { voiceStanding } from "./panels.ts";
+import type { ScriptTab } from "./scriptdrawer.ts";
 
 export interface FooterHooks {
-  /** A part of the script was pressed: show the drawer with the notes and the voice-over. */
-  script(): void;
+  /** A part of the script was pressed: show the drawer on that part's tab. */
+  script(tab: ScriptTab): void;
 }
 
 export interface Footer {
@@ -22,17 +23,17 @@ const VOICE_WORDS = {
 
 /**
  * The strip along the foot of the editor. On the left it says what the slide on show holds: which slide it is, its
- * steps, and whether it has speaker notes, a reading version and a voice-over, each of which opens the script. On the
- * right is the zoom, which is made elsewhere and put here.
+ * steps, and whether it has speaker notes, a reading version and a voice-over. Each of those opens the script drawer on
+ * its own tab. On the right is the zoom, which is made elsewhere and put here.
  */
 export function createFooter(controls: HTMLElement, hooks: FooterHooks): Footer {
   const where = h("span", { class: "ed-footer-where" });
-  const steps = h("span", { class: "ed-footer-fact", "data-footer": "steps" });
-  const part = (name: string) => {
-    const node = h("button", { type: "button", class: "ed-footer-part", "data-footer": name });
-    node.addEventListener("click", () => hooks.script());
+  const part = (name: ScriptTab, className = "ed-footer-part") => {
+    const node = h("button", { type: "button", class: className, "data-footer": name });
+    node.addEventListener("click", () => hooks.script(name));
     return node;
   };
+  const steps = part("steps", "ed-footer-part ed-footer-fact");
   const notes = part("notes");
   const reading = part("reading");
   const voice = part("voice");
@@ -57,6 +58,7 @@ export function createFooter(controls: HTMLElement, hooks: FooterHooks): Footer 
       where.textContent = `Slide ${position} of ${count} · ${scene.title ?? scene.id}`;
       const n = scene.steps?.length ?? 0;
       steps.textContent = n === 0 ? "No steps" : n === 1 ? "1 step" : `${n} steps`;
+      steps.setAttribute("aria-label", `${steps.textContent}: open the reveal order`);
       const hasNotes = Boolean(scene.notes);
       mark(
         notes,

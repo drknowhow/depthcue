@@ -867,10 +867,9 @@ export function scenePanel(host: PanelHost, current: () => string): ScenePanel {
   };
 }
 
-/** What the presenter reads and what a screen reader says for the scene. Neither is drawn on the slide. */
-export function notesPanel(host: PanelHost, current: () => string): Panel {
+/** The presenter's notes for a scene, which never appear on the slide. */
+export function speakerNotesPanel(host: PanelHost, current: () => string): Panel {
   const scene = () => host.scene(current());
-  const set = (changes: SceneChanges): Op => sceneSet(current(), changes);
   const fields = form(
     () => scene() !== undefined,
     () => [
@@ -880,33 +879,41 @@ export function notesPanel(host: PanelHost, current: () => string): Panel {
         hint: "For the presenter. They never appear on the slide.",
         multiline: true,
         read: () => scene()?.notes ?? "",
-        commit: (value) => set({ notes: optional(value) }),
+        commit: (value) => sceneSet(current(), { notes: optional(value) }),
       }),
+    ],
+  );
+  return {
+    name: "notes",
+    label: "Speaker notes",
+    title: "Speaker notes",
+    body: fields.body,
+    fill: fields.fill,
+  };
+}
+
+/** What a screen reader and the plain-text view say for a scene in place of the slide. */
+export function readingPanel(host: PanelHost, current: () => string): Panel {
+  const scene = () => host.scene(current());
+  const fields = form(
+    () => scene() !== undefined,
+    () => [
       textField(host.edits, {
         key: "panel:reading",
         label: "Reading version",
         hint: "What a screen reader and the plain-text view say for this scene.",
         multiline: true,
         read: () => scene()?.reading?.text ?? "",
-        commit: (value) => set({ reading: value === "" ? null : { text: value } }),
+        commit: (value) => sceneSet(current(), { reading: value === "" ? null : { text: value } }),
       }),
     ],
   );
-  const written = (live: Scene) => Number(Boolean(live.notes)) + Number(Boolean(live.reading?.text));
   return {
-    name: "notes",
-    label: "Notes",
-    title: "Speaker notes and reading version",
+    name: "reading",
+    label: "Reading version",
+    title: "Reading version",
     body: fields.body,
     fill: fields.fill,
-    state(live) {
-      const n = written(live);
-      return {
-        badge: n > 0 ? String(n) : "",
-        title:
-          n > 0 ? `Speaker notes and reading version, ${n} written` : "Speaker notes and reading version",
-      };
-    },
   };
 }
 
