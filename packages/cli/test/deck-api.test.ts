@@ -123,3 +123,47 @@ describe("applyToFolder", () => {
     expect(outcome).toMatchObject({ ok: false, code: "unreadable-deck" });
   });
 });
+
+describe("an agent sets up numbering and a contents slide", () => {
+  it("reads back what each slide shows after deck_apply-style edits on a copy of the demo deck", () => {
+    const folder = copyDeck();
+    const first = open(folder);
+    const ids = first.deck.scenes;
+    const done = applyToFolder(
+      folder,
+      [
+        { op: "brand.set", set: { id: "acme", name: "Acme" } },
+        {
+          op: "brand.set",
+          set: {
+            chrome: {
+              accent: "none",
+              bands: { header: { end: "{section}" }, footer: { center: "{number} / {count}" } },
+            },
+          },
+        },
+        { op: "deck.set", set: { date: "March 2027", numbering: { start: 1 } } },
+        { op: "scene.set", id: ids[0], set: { chrome: "none" } },
+        {
+          op: "scene.add",
+          scene: {
+            id: "toc",
+            title: "Contents",
+            layout: first.scenes[ids[1] as string]?.layout ?? "statement",
+            schemaVersion: "0.7",
+            blocks: [{ id: "list", type: "contents", of: "slides" }],
+          },
+          after: ids[0],
+        },
+      ],
+      revisionOf(first),
+    );
+    if (!done.ok) throw new Error(JSON.stringify(done));
+    const outline = getOutline(open(folder));
+    expect(outline.date).toBe("March 2027");
+    const [cover, toc] = outline.scenes as Array<Record<string, unknown>>;
+    expect(cover).toMatchObject({ id: ids[0], number: 1, chrome: "none" });
+    expect(cover).not.toHaveProperty("footer");
+    expect(toc).toMatchObject({ id: "toc", number: 2, footer: { center: `2 / ${ids.length + 1}` } });
+  });
+});

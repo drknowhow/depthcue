@@ -7,6 +7,8 @@ import {
   editDrafts,
   kitOf,
   loadDoc,
+  lookOf,
+  resolveChrome,
   revisionOf,
   type Scene,
   sceneRevision,
@@ -89,13 +91,35 @@ function kitSummary(doc: Doc, detail: Detail) {
   };
 }
 
+/** What each slide's header and footer say, when the brand has zones or a contents block reads the outline. */
+function chromeFacts(doc: Doc) {
+  const look = lookOf(doc);
+  const outline = look.outline;
+  const bands = look.chrome?.bands;
+  return (id: string) => {
+    const at = doc.deck.scenes.indexOf(id);
+    if (!outline || at < 0) return {};
+    const shown = resolveChrome(bands ?? { header: {}, footer: {} }, outline, at);
+    return {
+      ...(shown.number === undefined ? {} : { number: shown.number }),
+      ...(shown.section === undefined ? {} : { section: shown.section }),
+      ...(shown.mode === "full" ? {} : { chrome: shown.mode }),
+      ...(Object.keys(shown.header).length > 0 ? { header: shown.header } : {}),
+      ...(Object.keys(shown.footer).length > 0 ? { footer: shown.footer } : {}),
+    };
+  };
+}
+
 export function getOutline(doc: Doc, detail: Detail = "concise") {
+  const facts = chromeFacts(doc);
   return {
     rev: revisionOf(doc),
     id: doc.deck.id,
     title: doc.deck.title,
     theme: doc.deck.theme,
     language: doc.deck.language,
+    ...(doc.deck.date === undefined ? {} : { date: doc.deck.date }),
+    ...(doc.deck.numbering === undefined ? {} : { numbering: doc.deck.numbering }),
     ...(doc.brand === undefined
       ? {}
       : { brand: { id: doc.brand.id, name: doc.brand.name, ...(doc.brand.lock ? { locked: true } : {}) } }),
@@ -111,6 +135,7 @@ export function getOutline(doc: Doc, detail: Detail = "concise") {
         blocks: scene.blocks.length,
         steps: scene.steps?.length ?? 0,
         ...(pinned > 0 ? { pinned } : {}),
+        ...facts(id),
       };
       return detail === "concise"
         ? base
