@@ -6,12 +6,15 @@
  */
 import {
   type Brand,
+  bandsOf,
+  CHROME_FIELDS,
   type Doc,
   FONT_PAIRS,
   lookOf,
   type Op,
   PALETTE_COLORS,
   PRESETS,
+  resolveChrome,
   templatesOf,
 } from "@depthcue/core";
 import { applyLook, h } from "@depthcue/player";
@@ -43,6 +46,7 @@ import {
   textField,
 } from "./fields.ts";
 import { COLOR_LABEL, FONT_LABEL } from "./panels.ts";
+import { lookFor } from "./thumbnail.ts";
 
 type Palette = NonNullable<NonNullable<Brand["colors"]>[Theme]>;
 type Chrome = NonNullable<Brand["chrome"]>;
@@ -418,7 +422,104 @@ const ACCENT: Record<Accent, string> = {
   top: "A bar along the top",
   start: "A bar down the start side",
 };
-function chromeSection(ctx: BrandContext): Node[] {
+const BAND_LABEL = { header: "Header", footer: "Footer" } as const;
+const FIELD_LABEL: Record<(typeof CHROME_FIELDS)[number], string> = {
+  number: "Slide number",
+  count: "Slides in all",
+  section: "Section",
+  title: "Slide title",
+  deck: "Deck title",
+  date: "Date",
+};
+
+type Band = keyof typeof BAND_LABEL;
+type ChromeSetter = (patch: { [K in keyof Chrome]?: Chrome[K] | null }) => Op;
+
+/**
+ * One band of the chrome as three zones of text. The zones are written as `bands`; a brand that still has the older
+ * footer line and slide number has them turned into zones by the first change, so nothing it showed is lost. The
+ * buttons below put a field at the cursor of the zone last used.
+ */
+function bandPart(ctx: BrandContext, band: Band, setChrome: ChromeSetter): Node {
+  const write = (place: Place, value: string): Op => {
+    const now = bandsOf(ctx.brand().chrome);
+    const zone: Record<string, string> = { ...now[band] };
+    if (value === "") delete zone[place];
+    else zone[place] = value;
+    const next = { ...now, [band]: zone };
+    const kept = Object.fromEntries(
+      (["header", "footer"] as const)
+        .filter((name) => Object.keys(next[name]).length > 0)
+        .map((name) => [name, next[name]]),
+    );
+    return setChrome({
+      footer: null,
+      number: null,
+      bands: Object.keys(kept).length > 0 ? (kept as NonNullable<Chrome["bands"]>) : null,
+    });
+  };
+  const inputs = (["start", "center", "end"] as const).map((place) =>
+    textField(ctx.edits, {
+      key: `brand:chrome:${band}-${place}`,
+      label: PLACE[place],
+      placeholder: "Nothing here",
+      read: () => bandsOf(ctx.brand().chrome)[band][place] ?? "",
+      commit: (value) => write(place, value),
+    }),
+  );
+  const box = h("div", { class: "ed-brand-zones" }, ...inputs);
+  let last: HTMLInputElement | undefined;
+  box.addEventListener("focusin", (event) => {
+    if (event.target instanceof HTMLInputElement) last = event.target;
+  });
+  const chips = CHROME_FIELDS.map((field) =>
+    actionButton(
+      FIELD_LABEL[field],
+      () => {
+        const input = last ?? box.querySelector("input");
+        if (!input) return;
+        const at = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? at;
+        input.value = `${input.value.slice(0, at)}{${field}}${input.value.slice(end)}`;
+        input.focus();
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      { class: "ed-chip", "data-field": `brand:chrome:${band}-field-${field}` },
+    ),
+  );
+  return part(
+    BAND_LABEL[band],
+    box,
+    h(
+      "div",
+      { class: "ed-brand-chips", role: "group", "aria-label": `Put a field in the ${band}` },
+      ...chips,
+    ),
+  );
+}
+
+/** What the first slide that shows the full chrome says in the header and the footer, as the player resolves it. */
+function zonePreview(ctx: BrandContext): Node {
+  const look = lookFor(ctx.session.doc);
+  const { bands, deck } = look.chrome ?? {};
+  const slides = bands && deck ? deck.slides.map((_, index) => resolveChrome(bands, deck, index)) : [];
+  const index = slides.findIndex((slide) => slide.mode === "full");
+  const shown = slides[index];
+  const line = (zones: Record<string, string> | undefined) =>
+    (["start", "center", "end"] as const)
+      .map((place) => zones?.[place])
+      .filter((text) => text !== undefined && text !== "")
+      .join("  ·  ") || "nothing";
+  return h(
+    "div",
+    { class: "ed-hint-text", "data-brand": "chrome-preview", "aria-live": "polite" },
+    shown
+      ? `Slide ${index + 1} shows, in the header: ${line(shown.header)}. In the footer: ${line(shown.footer)}.`
+      : "No slide shows the header or the footer yet.",
+  );
+}
+
+export function chromeSection(ctx: BrandContext): Node[] {
   const chrome = (): Chrome => ctx.brand().chrome ?? {};
   const setChrome = (patch: { [K in keyof Chrome]?: Chrome[K] | null }): Op => {
     const next: Record<string, unknown> = { ...chrome() };
@@ -430,7 +531,9 @@ function chromeSection(ctx: BrandContext): Node[] {
   };
   const logo = chrome().logo;
   return [
-    hint("What sits on every slide. The slide shows each change as it is made."),
+    hint(
+      "What sits on every slide. The slide shows each change as it is made. A field in braces, such as {number}, is filled in for each slide.",
+    ),
     part(
       "Logo",
       selectField(ctx.edits, {
@@ -456,39 +559,8 @@ function chromeSection(ctx: BrandContext): Node[] {
         "data-field": "brand:chrome:to-logos",
       }),
     ),
-    part(
-      "Footer",
-      textField(ctx.edits, {
-        key: "brand:chrome:footer",
-        label: "Text",
-        placeholder: "No footer",
-        read: () => chrome().footer?.text ?? "",
-        commit: (value) =>
-          setChrome({
-            footer: value === "" ? null : { text: value, place: chrome().footer?.place ?? "start" },
-          }),
-      }),
-      chrome().footer &&
-        selectField(ctx.edits, {
-          key: "brand:chrome:footer-place",
-          label: "Place",
-          options: choices(PLACE),
-          read: () => chrome().footer?.place ?? "start",
-          commit: (value) =>
-            setChrome({ footer: { text: chrome().footer?.text ?? "", place: value as Place } }),
-        }),
-    ),
-    part(
-      "Slide number",
-      selectField(ctx.edits, {
-        key: "brand:chrome:number",
-        label: "Place",
-        empty: "No slide number",
-        options: choices(PLACE),
-        read: () => chrome().number?.place ?? "",
-        commit: (value) => setChrome({ number: value === "" ? null : { place: value as Place } }),
-      }),
-    ),
+    ...(["header", "footer"] as const).map((band) => bandPart(ctx, band, setChrome)),
+    zonePreview(ctx),
     part(
       "Accent",
       selectField(ctx.edits, {

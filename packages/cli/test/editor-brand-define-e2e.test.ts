@@ -349,21 +349,30 @@ describe("the Brand panel in a real browser", () => {
     const theirs = copy(harborDeck, "theirs");
     await open(mine, "context");
     await openBrand("chrome");
-    await field("brand:chrome:footer-place").selectOption("end");
+    await field("brand:chrome:footer-center").fill("Confidential");
     await expect
-      .poll(() => slide("context").locator(".dc-chrome .dc-foot:has(.dc-footer)").getAttribute("data-at"))
-      .toBe("end");
+      .poll(() => slide("context").locator(".dc-chrome .dc-foot[data-at='center']").textContent())
+      .toBe("Confidential");
     await field("brand:chrome:logo").selectOption("bottom-start");
     await expect
       .poll(() => slide("context").locator(".dc-chrome .dc-logo").getAttribute("data-corner"))
       .toBe("bottom-start");
     await saved();
     const chrome = brandOf(theirs).chrome ?? {};
-    // Harbor's footer has its words, so only the place changes.
-    const footer = chrome.footer as NonNullable<typeof chrome.footer>;
+    // Harbor has a footer line at the start and a number at the end: the first change turns them into zones.
+    const { footer, number: _number, ...rest } = chrome;
+    const line = footer as NonNullable<typeof footer>;
     await agentApply(theirs, [
-      { op: "brand.set", set: { chrome: { ...chrome, footer: { ...footer, place: "end" } } } },
-    ]);
+      {
+        op: "brand.set",
+        set: {
+          chrome: {
+            ...rest,
+            bands: { footer: { [line.place]: line.text, end: "{number}", center: "Confidential" } },
+          },
+        },
+      },
+    ] as Op[]);
     await agentApply(theirs, [
       {
         op: "brand.set",

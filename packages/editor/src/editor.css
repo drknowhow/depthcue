@@ -4705,3 +4705,21 @@ body {
   display: flex;
   gap: var(--dc-space-2);
 }
+
+/* Header and footer: three zones side by side, and the fields that go in them. */
+.ed-brand-zones {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--dc-space-2);
+}
+
+.ed-brand-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dc-space-1);
+}
+
+.ed-chip {
+  font-size: var(--dc-text-xs, 0.75rem);
+  padding: 0.15rem 0.5rem;
+}
