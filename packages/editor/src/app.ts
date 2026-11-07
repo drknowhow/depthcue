@@ -291,6 +291,13 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       () => showProblem(notLoaded("the export dialog")),
     ),
   );
+  const settingsButton = button("settings", "Settings…", () =>
+    withPart(
+      parts.controller,
+      (module) => module.openController(root),
+      () => showProblem(notLoaded("the settings")),
+    ),
+  );
   const present = h(
     "a",
     { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
@@ -406,6 +413,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       commentsButton,
       resolvedButton,
       exportButton,
+      settingsButton,
       present,
     ),
   );

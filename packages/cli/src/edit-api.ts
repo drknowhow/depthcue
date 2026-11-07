@@ -28,6 +28,7 @@ import {
   tooLarge,
 } from "./brand/files.ts";
 import { applyCommentsToFolder, readFolderComments } from "./comments-api.ts";
+import { checkSettings, EFFORTS, readController, writeController } from "./controller-file.ts";
 import { openDeck } from "./deck-api.ts";
 import type { LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send, TooLarge } from "./http.ts";
@@ -57,6 +58,11 @@ export interface EditContext {
   origins: () => readonly string[];
   /** Renders a scene to find its layout problems. Without it the editor is told that none can be made. */
   layout?: LayoutChecker;
+  /** What starts the controller session. A test stands in for the program and the terminal. */
+  session?: {
+    claude?: readonly string[];
+    open?: (plan: import("./control.ts").SessionPlan) => { ok: true } | { ok: false; message: string };
+  };
 }
 
 export const MAX_SAVE_BYTES = 8 * 1024 * 1024;
@@ -543,6 +549,53 @@ function loadAudit(response: ServerResponse, ctx: EditContext) {
   return send(response, 200, { entries: filterAudit(entries, { limit: AUDIT_LIST_MAX }), skipped });
 }
 
+/** How the controller session starts for this deck, and the command that does it by hand. */
+async function controllerState(response: ServerResponse, ctx: EditContext, status = 200) {
+  const control = await import("./control.ts");
+  const saved = readController(ctx.folder);
+  const planned = control.planSession(ctx.folder, saved.settings, ctx.session?.claude);
+  return send(response, status, {
+    settings: saved.settings,
+    ...(saved.problem ? { problem: saved.problem } : {}),
+    efforts: EFFORTS,
+    canStart: ctx.session?.open !== undefined || control.canOpenTerminal(),
+    ...(planned.ok
+      ? { command: control.commandLine(planned.plan), folder: planned.plan.folder }
+      : { problem: planned.message }),
+  });
+}
+
+async function saveController(request: IncomingMessage, response: ServerResponse, ctx: EditContext) {
+  if (!String(request.headers["content-type"]).startsWith("application/json")) {
+    return send(response, 415, { error: "bad-request", message: "Send application/json." });
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse((await readBody(request, 4096)).toString("utf8"));
+  } catch (error) {
+    if (error instanceof TooLarge) return send(response, 413, { error: "too-large", message: "Too large." });
+    return send(response, 400, { error: "bad-request", message: "The body is not valid JSON." });
+  }
+  const checked = checkSettings(body);
+  if (!checked.ok) return send(response, 422, { error: "invalid", message: checked.message });
+  writeController(ctx.folder, checked.settings);
+  return controllerState(response, ctx);
+}
+
+/**
+ * Opens a terminal with the session. What runs comes from the settings saved on disk, never from the request, so the
+ * page can only start the one command the deck's settings describe.
+ */
+async function startController(response: ServerResponse, ctx: EditContext) {
+  const control = await import("./control.ts");
+  const planned = control.planSession(ctx.folder, readController(ctx.folder).settings, ctx.session?.claude);
+  if (!planned.ok) return send(response, 500, { error: "server", message: planned.message });
+  const started = (ctx.session?.open ?? control.openTerminal)(planned.plan);
+  return started.ok
+    ? send(response, 200, { ok: true })
+    : send(response, 500, { error: "server", message: started.message });
+}
+
 function loadReview(response: ServerResponse, ctx: EditContext) {
   const read = loadReviewDir(ctx.folder);
   if (!read.ok) {
@@ -706,6 +759,12 @@ export async function handleEditApi(
     else if (route === "/_depthcue/api/comments" && request.method === "POST")
       await applyComments(request, response, ctx);
     else if (route === "/_depthcue/api/audit" && request.method === "GET") loadAudit(response, ctx);
+    else if (route === "/_depthcue/api/controller" && request.method === "GET")
+      await controllerState(response, ctx);
+    else if (route === "/_depthcue/api/controller" && request.method === "POST")
+      await saveController(request, response, ctx);
+    else if (route === "/_depthcue/api/controller/start" && request.method === "POST")
+      await startController(response, ctx);
     else if (route === "/_depthcue/api/review" && request.method === "GET") loadReview(response, ctx);
     else if (route === "/_depthcue/api/review" && request.method === "POST")
       await replaceReview(request, response, ctx);

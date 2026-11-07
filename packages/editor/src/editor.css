@@ -4683,3 +4683,25 @@ body {
 .ed-region-draft {
   border-color: var(--dc-text);
 }
+
+/* Settings: the command that starts the controller session, to read and copy. */
+.ed-field small {
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.ed-command {
+  display: block;
+  padding: var(--dc-space-2) var(--dc-space-3);
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-bg);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.ed-dialog-row {
+  display: flex;
+  gap: var(--dc-space-2);
+}

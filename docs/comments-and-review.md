@@ -130,6 +130,14 @@ starts `claude --mcp-config <file> --dangerously-load-development-channels serve
 Code shows a confirmation for the channel when it starts. The editor stops when the session ends. `DEPTHCUE_CLAUDE`
 names another command in place of `claude`, and `--print` prints both commands without running them.
 
+The editor's Settings button (top bar) does the same from the page. It sets the model (`opus`, `sonnet`, a full name,
+or empty for Claude Code's default) and the effort (`low` to `max`), shows the command, and has Copy command and Start
+session. Start opens a terminal on this computer, on Windows or macOS, and runs the command in it; Claude Code asks you
+to confirm the channel there. The two settings are kept in `controller.json` beside the deck. It is not part of the
+deck: the revision does not move, an export leaves it out, and the page does not reload when it changes.
+`depthcue control` reads it, and `--model` and `--effort` win over it. What Start runs always comes from the saved file,
+never from the page's request, and a model name is limited to letters, digits and `. _ : -`.
+
 ## Related guides
 
 - [The editor](editor.md): the drawer, the storyboard and the rest of the editor.

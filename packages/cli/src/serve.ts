@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { AUDIT_FILE, COMMENTS_FILE, pageLook, REVIEW_FILE } from "@depthcue/core";
+import { CONTROLLER_FILE } from "./controller-file.ts";
 import { type EditContext, handleEditApi } from "./edit-api.ts";
 import { createLayoutChecker, type LayoutChecker } from "./edit-layout.ts";
 import { crossOrigin, isRecord, readBody, sameToken, send as sendJson, TooLarge } from "./http.ts";
@@ -34,6 +35,8 @@ export interface ServeOptions {
   layout?: LayoutChecker;
   /** Makes a scene's voice-over for the editor. By default `buildVoice` with the Python from DEPTHCUE_PYTHON or the PATH. */
   voice?: EditContext["voice"];
+  /** What starts the controller session from the editor. For tests; by default Claude Code in a new terminal. */
+  session?: EditContext["session"];
 }
 
 export interface RunningServer {
@@ -545,6 +548,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
           token,
           origins,
           ...(layout ? { layout } : {}),
+          ...(options.session ? { session: options.session } : {}),
           voice:
             options.voice ??
             ((scene, voice) =>
@@ -688,6 +692,8 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   const watcher = watch(folder, { recursive: true }, (_event, name) => {
     const changed = String(name ?? "").replaceAll("\\", "/");
     if (changed.endsWith(".tmp")) return;
+    // How the controller session starts is the editor's own business; no page reloads for it.
+    if (changed === CONTROLLER_FILE) return;
     // The same for the audit log: no page reloads, and only an editor that asked is told.
     if (changed === AUDIT_FILE) {
       clearTimeout(pendingAudit);
