@@ -3,7 +3,7 @@ import { h } from "@depthcue/player";
 import { popoverChip } from "./chip.ts";
 import { actionButton, type Edits, fileButton } from "./fields.ts";
 import { type Panel, panelHost } from "./panels.ts";
-import { createScriptDrawer, type ScriptDrawer } from "./scriptdrawer.ts";
+import { createScriptDrawer, type ScriptDrawer, type ScriptTab } from "./scriptdrawer.ts";
 import { keyName } from "./shortcuts.ts";
 import { BLOCK_KINDS, IMAGE_ACCEPT, type NewBlockKind } from "./templates.ts";
 
@@ -22,6 +22,8 @@ export interface QuickBarHooks {
   voice?: Parameters<typeof panelHost>[1]["voice"];
   /** The script drawer opened: another drawer over the same place should close. */
   scriptOpened?(): void;
+  /** The drawer's Reveal order tab asked to change the steps: open them where they are edited. */
+  steps?(): void;
   /** Gives the slide a claim. */
   claim(): void;
   /** Whether the deck has a video a clip could play. */
@@ -42,8 +44,8 @@ export interface QuickBar {
   readonly drawer: HTMLElement;
   /** Puts the drawer away, as another drawer over the same place opens. */
   closeScript(): void;
-  /** Opens the drawer, or closes it when it is open. */
-  toggleScript(): void;
+  /** Opens the drawer on `tab`, or closes it when it is open on that tab (or on any, with none given). */
+  toggleScript(tab?: ScriptTab): void;
   /** Opens the file chooser that adds an image, as the Image button does. */
   pickImage(): void;
   /** Gives the keyboard back to the bar after the image library closes: to the Insert button. */
@@ -147,7 +149,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
       type: "button",
       class: "ed-tb-chip",
       "data-tb": "notes",
-      "aria-label": "Script: speaker notes, reading version and voice-over",
+      "aria-label": "Script: speaker notes, reveal order, reading version and voice-over",
       "aria-expanded": "false",
       "aria-controls": "ed-script",
     },
@@ -164,6 +166,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
       scriptButton.setAttribute("aria-expanded", "false");
       if (giveBack) scriptButton.focus({ preventScroll: true });
     },
+    steps: () => hooks.steps?.(),
   });
 
   // Build order is a view of the slide and not an addition to it, so it sits apart from the row of things to add.
@@ -219,7 +222,7 @@ export function createQuickBar(session: Session, hooks: QuickBarHooks): QuickBar
     setCommenting: (on) => comment.setAttribute("aria-pressed", String(on)),
     drawer: drawer.element,
     closeScript: () => drawer?.close(),
-    toggleScript: () => drawer?.toggle(),
+    toggleScript: (tab) => drawer?.toggle(tab),
     destroy() {
       insert.destroy();
     },

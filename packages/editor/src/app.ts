@@ -477,6 +477,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     scriptOpened: () => {
       drawer?.close();
     },
+    steps: () => sceneBar.open("steps"),
     claim: () => adder.claim(),
     hasVideo: () => adder.hasVideo(),
     build: (on) => canvas.setBuild(on),
@@ -741,7 +742,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
   const stage = h("main", { class: "ed-main", "aria-label": "Scene preview" }, canvas.element, hint);
   // The bar floats over the foot of the stage and stays there while the slide scrolls under it.
   const floor = h("div", { class: "ed-stage" }, stage, quick.element, quick.drawer);
-  const footer = createFooter(view.element, { script: () => quick.toggleScript() });
+  const footer = createFooter(view.element, { script: (tab) => quick.toggleScript(tab) });
   const root = h(
     "div",
     { class: "ed-app" },
