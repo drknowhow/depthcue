@@ -820,7 +820,7 @@ describe("the footer, the slide number and the date", () => {
     expect(done.json("brand.json").chrome).toEqual({ logo: { corner: "top-end", size: "m" } });
   });
 
-  it("lists the date placeholder as left out", async () => {
+  it("takes the date placeholder as a {date} zone", async () => {
     const date: ShapeSpec = {
       kind: "ph",
       type: "dt",
@@ -830,10 +830,8 @@ describe("the footer, the slide number and the date", () => {
       text: "1/1/2026",
     };
     const done = await importFixture(make, master(date));
-    expect(done.report.left).toContainEqual({
-      what: "The date placeholder",
-      why: "Depthcue slides have no date; only the footer and the slide number are chrome",
-    });
+    expect(done.report.left.map((item) => item.what)).not.toContain("The date placeholder");
+    expect(done.json("brand.json").chrome).toMatchObject({ bands: { footer: { start: "{date}" } } });
   });
 });
 

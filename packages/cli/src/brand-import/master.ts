@@ -203,6 +203,8 @@ export const placeOf = (shape: Shape, slideWidth: number): "start" | "center" | 
 export interface MasterChrome {
   footer?: { text: string; place: "start" | "center" | "end" };
   number?: { place: "start" | "center" | "end" };
+  /** Where the date placeholder sits: the brand says {date} there. */
+  date?: { place: "start" | "center" | "end" };
   /** Things worth a line: a footer with no text, a date placeholder. */
   notes: string[];
   hasDate: boolean;
@@ -218,7 +220,10 @@ export function chromeOfMaster(master: Master, others: readonly Shape[][], slide
     shapes.find((shape) => shape.placeholder?.type === type);
   const footer = typed(master.shapes, "ftr");
   const number = typed(master.shapes, "sldNum");
-  const out: MasterChrome = { notes, hasDate: typed(master.shapes, "dt") !== undefined };
+  const date = typed(master.shapes, "dt");
+  const out: MasterChrome = { notes, hasDate: date !== undefined };
+  const datePlace = date ? placeOf(date, slideWidth) : undefined;
+  if (datePlace) out.date = { place: datePlace };
   if (footer) {
     const text = [footer, ...others.flatMap((shapes) => typed(shapes, "ftr") ?? [])]
       .map(promptOf)

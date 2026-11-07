@@ -165,6 +165,8 @@ export interface ChromeMeasure {
   };
   footer?: TextPlace;
   number?: TextPlace;
+  /** Each cell of the header and the footer the page drew (`.dc-head`, `.dc-foot`), by its place along the band. */
+  zones?: Array<{ band: "head" | "foot"; at: "start" | "center" | "end"; place: TextPlace }>;
   accent?: { box: Box; color: string };
 }
 
@@ -698,6 +700,10 @@ export async function measureSlide(): Promise<SlideMeasure> {
       items.push(withCite({ kind: "text", id, text: place }, block));
       return;
     }
+    if (block.matches(".dc-contents") || block.querySelector(".dc-contents")) {
+      items.push({ kind: "text", id, text: placeOf(block) });
+      return;
+    }
     if (block.matches(".dc-clip")) {
       const video = block.querySelector<HTMLVideoElement>("video");
       if (!video || !visible(video)) return;
@@ -1024,6 +1030,13 @@ export async function measureSlide(): Promise<SlideMeasure> {
     if (footer && visible(footer)) chrome.footer = placeOf(footer);
     const number = chromeNode.querySelector(".dc-number");
     if (number && visible(number)) chrome.number = placeOf(number);
+    const zones: NonNullable<ChromeMeasure["zones"]> = [];
+    for (const cell of chromeNode.querySelectorAll<HTMLElement>(".dc-head, .dc-foot")) {
+      const at = cell.dataset.at;
+      if (!visible(cell) || (at !== "start" && at !== "center" && at !== "end")) continue;
+      zones.push({ band: cell.classList.contains("dc-head") ? "head" : "foot", at, place: placeOf(cell) });
+    }
+    if (zones.length > 0) chrome.zones = zones;
     const accent = chromeNode.querySelector(".dc-accent");
     if (accent && visible(accent)) {
       chrome.accent = {
