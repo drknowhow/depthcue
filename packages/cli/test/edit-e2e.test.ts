@@ -2132,6 +2132,57 @@ describe("keyboard shortcuts in a real browser", () => {
   });
 });
 
+describe("the inspector in a real browser", () => {
+  const inspector = () => page.locator(".ed-inspector");
+  const title = () => inspector().locator(".ed-inspector-title");
+  const shown = () => page.locator(".ed-dock:not([hidden])");
+  /** The open docked popover lies inside the inspector's column. */
+  async function insideColumn() {
+    const column = await inspector().boundingBox();
+    const pop = await shown().first().boundingBox();
+    if (!column || !pop) throw new Error("the inspector and its popover should be drawn");
+    expect(pop.x).toBeGreaterThanOrEqual(column.x - 1);
+    expect(pop.x + pop.width).toBeLessThanOrEqual(column.x + column.width + 1);
+  }
+
+  it("shows the slide with nothing chosen, the block once one is, and folds away with \\", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => localStorage.removeItem("depthcue.editor.inspector"));
+    await page.goto(url());
+    await inspector().waitFor();
+    expect(await page.locator(".ed-app").getAttribute("data-inspector")).toBe("open");
+    expect(await title().textContent()).toBe("Slide");
+    await shown().first().waitFor();
+    await insideColumn();
+
+    await headline().click();
+    await page.waitForFunction(() => document.querySelector(".ed-inspector-title")?.textContent !== "Slide");
+    await insideColumn();
+    expect(await shown().count()).toBe(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("\\");
+    await page.locator(".ed-app[data-inspector='closed']").waitFor();
+    expect(await shown().count()).toBe(0);
+    const button = inspector().locator("[data-action='inspector']");
+    expect(await button.getAttribute("aria-expanded")).toBe("false");
+    await button.click();
+    await page.locator(".ed-app[data-inspector='open']").waitFor();
+    expect(problems).toEqual([]);
+  });
+
+  it("has no column below 1440, where the popovers open under their chips", async () => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(url());
+    await page.locator(".ed-app").waitFor();
+    expect(await inspector().isVisible()).toBe(false);
+    expect(await shown().count()).toBe(0);
+    expect(problems).toEqual([]);
+  });
+});
+
 /** Opens the list under the checks chip once there is something in it. */
 async function openProblems(timeout?: { timeout: number }) {
   await page.locator(".ed-ribbon[data-state='problems']").waitFor(timeout);

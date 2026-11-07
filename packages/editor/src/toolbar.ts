@@ -15,7 +15,17 @@ import { builtInsLoaded } from "./brandchecks.ts";
 import { type Canvas, SUMMARY_LIMIT } from "./canvas.ts";
 import { addedRow, CHART_ROWS_MAX, sortedRows } from "./chart.ts";
 import { dataPanel } from "./chartpanel.ts";
-import { buildChip, type Chip, fillChip, fitPopover, hidePopover, showPopover, standBeside } from "./chip.ts";
+import {
+  buildChip,
+  type Chip,
+  docked,
+  fillChip,
+  fitPopover,
+  focusInto,
+  hidePopover,
+  showPopover,
+  standBeside,
+} from "./chip.ts";
 import { afterWhenMoving, removeBlock, removeClaim } from "./cleanup.ts";
 import { type CueBook, measureClip, videoOf } from "./cues.ts";
 import type { CueTools } from "./cuespanel.ts";
@@ -150,6 +160,8 @@ export interface Toolbar {
   picture(action: PictureAction, id: string): void;
   /** Moves the keyboard into the toolbar. False when there is no toolbar to go to. */
   focus(): boolean;
+  /** Puts away a popover that is open in the inspector, before the inspector is shown or hidden. */
+  undock(): void;
   destroy(): void;
 }
 
@@ -351,8 +363,24 @@ export function createToolbar(
 
   function chipFor(panel: Panel): Chip {
     const chip = buildChip(panel);
-    chip.button.addEventListener("click", () => (open === chip ? closePop() : openPop(chip)));
+    chip.pop.classList.add("ed-dock");
+    // In the inspector an open popover stays open: pressing its chip again goes into it.
+    chip.button.addEventListener("click", () => {
+      if (open !== chip) openPop(chip);
+      else if (docked(chip.pop)) focusInto(chip.pop);
+      else closePop();
+    });
     return chip;
+  }
+
+  /** With the inspector open, a chosen block shows its first popover there, and the keyboard stays on the slide. */
+  function dockFirst() {
+    if (open) return;
+    const first = chips.find((chip) => !chip.wrap.hidden);
+    if (!first || !docked(first.pop)) return;
+    open = first;
+    first.pop.hidden = false;
+    first.button.setAttribute("aria-expanded", "true");
   }
 
   function remove(id: string) {
@@ -732,12 +760,16 @@ export function createToolbar(
   element.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || !shown) return;
     event.stopPropagation();
-    if (open) closePop(true);
+    // Out of a docked popover the keyboard goes to its chip, and the popover stays in the inspector.
+    const inside = open && event.target instanceof Node && open.pop.contains(event.target);
+    if (open && inside && docked(open.pop)) open.button.focus();
+    else if (open && !docked(open.pop)) closePop(true);
     else hooks.focusBlock(shown.id);
   });
 
   const onPointerDown = (event: PointerEvent) => {
-    if (open && !(event.target instanceof Node && element.contains(event.target))) closePop();
+    if (open && !docked(open.pop) && !(event.target instanceof Node && element.contains(event.target)))
+      closePop();
   };
   document.addEventListener("pointerdown", onPointerDown);
   // A double click on a picture is the same as Crop.
@@ -770,6 +802,7 @@ export function createToolbar(
       }
       sync(target, typing);
       element.hidden = false;
+      dockFirst();
       soon();
     },
     place,
@@ -787,6 +820,9 @@ export function createToolbar(
       if (!chip) return false;
       openPop(chip, chip.pop.querySelector<HTMLElement>("[data-cell][tabindex='0']"));
       return true;
+    },
+    undock() {
+      if (open && docked(open.pop)) closePop();
     },
     focus() {
       if (element.hidden) return false;

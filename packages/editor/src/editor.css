@@ -4756,7 +4756,131 @@ body {
   margin-bottom: var(--dc-space-2);
 }
 
-/* The footer: what the slide on show holds, and the controls for moving between slides and zooming. */
+/*
+ * The inspector: a column on the right of a wide window with the properties of what is chosen. It is a heading and a
+ * button; the popover of the scene chip or of the block's toolbar is fixed over the rest of it, so it stays next to its
+ * chip in the page. Below 1440px there is no column and the popovers open under their chips.
+ */
+.ed-inspector {
+  display: none;
+}
+
+.ed-icon-panel {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Crect x='2' y='2.5' width='12' height='11' rx='1.5'/%3E%3Cpath d='M10 2.5v11'/%3E%3C/svg%3E");
+}
+
+@media (min-width: 1440px) {
+  .ed-app {
+    --ed-inspector-w: 20rem;
+  }
+
+  .ed-app[data-inspector] {
+    grid-template-columns: 10.5rem minmax(0, 1fr) auto;
+  }
+
+  .ed-inspector {
+    grid-column: 3;
+    grid-row: 4;
+    display: flex;
+    flex-direction: column;
+    width: var(--ed-inspector-w);
+    min-height: 0;
+    border-left: 1px solid var(--dc-line);
+    background: var(--dc-surface);
+  }
+
+  .ed-inspector-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dc-space-2);
+    padding: var(--dc-space-2) var(--dc-space-2) var(--dc-space-2) var(--dc-space-4);
+    border-bottom: 1px solid var(--dc-line);
+  }
+
+  .ed-inspector-title {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Hidden, it is a narrow rail with the button that brings it back. */
+  .ed-app[data-inspector="closed"] .ed-inspector {
+    width: 2.75rem;
+  }
+
+  .ed-app[data-inspector="closed"] .ed-inspector-head {
+    justify-content: center;
+    padding-inline: 0;
+    border-bottom: 0;
+  }
+
+  .ed-app[data-inspector="closed"] .ed-inspector-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .ed-app[data-inspector="open"] .ed-dock {
+    position: fixed;
+    top: var(--ed-inspector-top, 7rem);
+    right: 0;
+    bottom: var(--ed-inspector-bottom, 3rem);
+    left: auto;
+    z-index: 9;
+    width: var(--ed-inspector-w);
+    min-width: 0;
+    max-width: none;
+    max-height: none;
+    /* Its rows keep their own height and its width, so a wide control scrolls inside it instead of off the window. */
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: var(--dc-space-4);
+    border: 0;
+    border-radius: 0;
+    background: var(--dc-surface);
+    box-shadow: none;
+  }
+
+  /* A form drawn for a floating popover can ask for more room than the column has: in the column it takes the column's. */
+  .ed-app[data-inspector="open"] .ed-dock * {
+    max-width: 100%;
+  }
+
+  .ed-app[data-inspector="open"] .ed-dock .ed-row {
+    flex-wrap: wrap;
+  }
+
+  /* Four columns of the chart's data fit the column's width with room for their padding. */
+  .ed-app[data-inspector="open"] .ed-dock .ed-chart-grid .ed-grid :is(th, td) {
+    min-width: 4rem;
+  }
+
+  /* With the column open the stage is about as wide as a laptop's, so the quick bar is padded as it is there. */
+  .ed-app[data-inspector="open"] .ed-quick button,
+  .ed-app[data-inspector="open"] .ed-quick .ed-button {
+    padding-inline: calc(var(--dc-space-2) * 0.75);
+  }
+
+  .ed-app[data-inspector="open"] .ed-quick {
+    max-width: calc(100% - 2 * var(--dc-space-2));
+  }
+
+  /* A scene popover opened on purpose while a block is chosen comes over the block's. */
+  .ed-app[data-inspector="open"] .ed-scene-tools .ed-dock {
+    z-index: 10;
+  }
+}
+
+/* The footer: what the slide on show holds, and the zoom. */
 .ed-footer {
   grid-column: 1 / -1;
   grid-row: 5;

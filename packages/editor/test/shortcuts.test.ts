@@ -332,6 +332,14 @@ const CASES: Record<string, () => void | Promise<void>> = {
     expect(press(document.body, "-").defaultPrevented).toBe(true);
     expect(zoomShown()).toBe("75%");
   },
+  inspector() {
+    const app = host.querySelector(".ed-app") as HTMLElement;
+    const was = app.dataset.inspector;
+    expect(press(document.body, "\\").defaultPrevented).toBe(true);
+    expect(app.dataset.inspector).not.toBe(was);
+    press(document.body, "\\");
+    expect(app.dataset.inspector).toBe(was);
+  },
   "zoom-fit"() {
     press(document.body, "+");
     press(document.body, "+");
@@ -373,6 +381,7 @@ describe("the table of shortcuts", () => {
       menu: () => false,
       scene() {},
       zoom() {},
+      inspector() {},
     }).map((entry) => entry.id);
     expect([...drawn].sort()).toEqual([...table].sort());
     expect([...table].sort()).toEqual(Object.keys(CASES).sort());

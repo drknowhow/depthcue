@@ -152,10 +152,26 @@ describe("autosave in the bar", () => {
 });
 
 describe("the layout", () => {
-  it("has no column of details: every property is edited on the slide, in its toolbar or in a popover", () => {
+  it("has an inspector with no fields of its own: the popovers are drawn in it, and stay beside their chips", () => {
     expect(host.querySelector("[data-action='details']")).toBeNull();
-    expect(host.querySelector(".ed-inspector")).toBeNull();
-    expect(host.querySelector(".ed-app")?.hasAttribute("data-details")).toBe(false);
+    const inspector = host.querySelector(".ed-inspector") as HTMLElement;
+    expect(inspector.querySelector("[data-field]")).toBeNull();
+    expect(inspector.querySelector(".ed-inspector-title")?.textContent).toBe("Slide");
+    // The scene popover is still the chip's, so the keyboard reaches it from the chip.
+    expect(host.querySelector(".ed-scene-tools [data-tb='scene'] + .ed-tb-pop.ed-dock")).not.toBeNull();
+  });
+
+  it("says it shows the slide, and hides and shows on its button", () => {
+    const app = host.querySelector(".ed-app") as HTMLElement;
+    const title = () => host.querySelector(".ed-inspector-title")?.textContent;
+    expect(title()).toBe("Slide");
+    const button = host.querySelector<HTMLButtonElement>("[data-action='inspector']") as HTMLButtonElement;
+    const was = app.dataset.inspector;
+    button.click();
+    expect(app.dataset.inspector).not.toBe(was);
+    expect(button.getAttribute("aria-expanded")).toBe(String(app.dataset.inspector === "open"));
+    button.click();
+    expect(app.dataset.inspector).toBe(was);
   });
 
   it("keeps a popover content current while it is closed", () => {

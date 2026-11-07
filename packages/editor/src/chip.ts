@@ -63,6 +63,17 @@ export function hidePopover(chip: Chip) {
   chip.button.setAttribute("aria-expanded", "false");
 }
 
+/**
+ * True while the popover is drawn in the inspector, the column on the right of a wide window, and not under its chip.
+ * The stylesheet decides that, so the answer is read from it: a docked popover is fixed in place.
+ */
+export const docked = (pop: HTMLElement) =>
+  pop.classList.contains("ed-dock") && getComputedStyle(pop).position === "fixed";
+
+/** Puts the keyboard in an open popover, on its first control. */
+export const focusInto = (pop: HTMLElement) =>
+  pop.querySelector<HTMLElement>("input, select, textarea, button")?.focus({ preventScroll: true });
+
 interface Bounds {
   left: number;
   right: number;
@@ -75,6 +86,13 @@ interface Bounds {
  * `up` opens it above its chip instead of below.
  */
 export function fitPopover(pop: HTMLElement, bounds: Bounds, up: boolean) {
+  // The inspector gives a docked popover its place and its height.
+  if (docked(pop)) {
+    pop.style.left = "";
+    pop.style.maxHeight = "";
+    pop.removeAttribute("data-up");
+    return;
+  }
   // Measuring with no height limit would scroll a long popover back to its top, so the place is kept.
   const scrolled = pop.scrollTop;
   pop.style.left = "0px";
@@ -93,6 +111,7 @@ export function fitPopover(pop: HTMLElement, bounds: Bounds, up: boolean) {
  * chart's data watches the chart change. With no room on either side it stays where it is, over the block.
  */
 export function standBeside(pop: HTMLElement, block: Bounds, bounds: Bounds, gap = 8) {
+  if (docked(pop)) return;
   const box = pop.getBoundingClientRect();
   if (box.right <= block.left || box.left >= block.right) return;
   const nearest = [block.left - gap - box.width, block.right + gap]
@@ -106,7 +125,8 @@ export function standBeside(pop: HTMLElement, block: Bounds, bounds: Bounds, gap
 export interface PopoverChip {
   readonly chip: Chip;
   readonly isOpen: boolean;
-  open(): void;
+  /** Opens the popover with the keyboard on its first control, or, `quiet`, leaves the keyboard where it is. */
+  open(quiet?: boolean): void;
   /** Closes the popover. `giveBack` puts the keyboard on the chip, as Escape does. */
   close(giveBack?: boolean): void;
   /** Brings the popover and the chip's count up to date, and fits the popover again when it is open. */
@@ -140,21 +160,34 @@ export function popoverChip(panel: Panel, up = false, margin = 0): PopoverChip {
     hidePopover(chip);
     if (giveBack) chip.button.focus();
   };
-  const open = () => {
+  const open = (quiet = false) => {
     isOpen = true;
-    showPopover(chip, null, fit);
+    if (!quiet) {
+      showPopover(chip, null, fit);
+      return;
+    }
+    chip.pop.hidden = false;
+    chip.button.setAttribute("aria-expanded", "true");
+    fit();
   };
 
-  chip.button.addEventListener("click", () => (isOpen ? close() : open()));
+  // In the inspector the popover stays open: its chip goes into it, and Escape comes back out to the chip.
+  chip.button.addEventListener("click", () => {
+    if (!isOpen) open();
+    else if (docked(chip.pop)) focusInto(chip.pop);
+    else close();
+  });
   chip.wrap.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || !isOpen) return;
     event.stopPropagation();
-    close(true);
+    if (docked(chip.pop)) chip.button.focus();
+    else close(true);
   });
   // A details element reports its own opening and closing, and that event does not bubble.
   chip.pop.addEventListener("toggle", () => isOpen && fit(), true);
   const onPointerDown = (event: PointerEvent) => {
-    if (isOpen && !(event.target instanceof Node && chip.wrap.contains(event.target))) close();
+    if (isOpen && !docked(chip.pop) && !(event.target instanceof Node && chip.wrap.contains(event.target)))
+      close();
   };
   document.addEventListener("pointerdown", onPointerDown);
 

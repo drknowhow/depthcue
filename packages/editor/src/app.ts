@@ -12,6 +12,7 @@ import { createContextMenu } from "./contextmenu.ts";
 import { createCueBook } from "./cues.ts";
 import { type Edits, problemOf } from "./fields.ts";
 import { createFooter } from "./footer.ts";
+import { createInspector } from "./inspector.ts";
 import { createLayoutWatch, type LayoutWatch } from "./layout-watch.ts";
 import { notLoaded, PARTS, type Parts, withPart } from "./lazy.ts";
 import { createPalette } from "./palette.ts";
@@ -26,7 +27,7 @@ import type { DraftNotice, EditorStore } from "./store.ts";
 import type { Storyboard } from "./storyboard.ts";
 import { createStrip } from "./strip.ts";
 import { createTableEditing } from "./tablecells.ts";
-import { IMAGE_ACCEPT, IMAGE_FILE, type Layout, type NewBlockKind } from "./templates.ts";
+import { describeBlock, IMAGE_ACCEPT, IMAGE_FILE, type Layout, type NewBlockKind } from "./templates.ts";
 import { createToolbar } from "./toolbar.ts";
 import { createViewBar, FIT, stepZoom } from "./viewbar.ts";
 
@@ -97,7 +98,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     problem: showProblem,
     changed() {
       canvas.refreshCues();
-      toolbar.render(selected, selectedBlock);
+      renderChoice();
     },
   });
   // Templates, styles and the hints of a template's empty slots are a part of their own, fetched when first wanted.
@@ -538,6 +539,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     // Shift+F10 and the Menu key open the menu of the right-click on what the keyboard is on.
     menu: () => menu.openFromKeyboard(),
     scene: goScene,
+    inspector: () => inspector.toggle(),
     zoom: (change) => setZoom(change === "fit" ? FIT : stepZoom(zoom, change === "in" ? 1 : -1)),
   });
   const view = createViewBar({ zoom: (next) => setZoom(next) });
@@ -804,6 +806,16 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     keyName,
   });
   root.append(menu.element, imageHere);
+  // The properties of what is chosen, on the right of a wide window. Showing or hiding it docks the popovers or lets them
+  // float under their chips again, so the choice is drawn again.
+  const inspector = createInspector(root, {
+    leaving() {
+      sceneBar.dock(false);
+      toolbar.undock();
+    },
+    changed: () => renderChoice(),
+  });
+  root.insertBefore(inspector.element, footer.element);
   host.replaceChildren(root);
   // A file dropped anywhere but on an image would open in this tab and take the editor away.
   const refuseFiles = (event: DragEvent) => {
@@ -1006,7 +1018,17 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     renderBar();
     ribbon.render();
     canvas.render(selected, selectedBlock);
-    toolbar.render(selected, selectedBlock);
+    renderChoice();
+  }
+
+  /** The toolbar of what is chosen, and the inspector: the slide's properties with nothing chosen, else the block's. */
+  function renderChoice(typing = false) {
+    toolbar.render(selected, selectedBlock, typing);
+    sceneBar.dock(selectedBlock === undefined);
+    const scene = session.doc.scenes[selected];
+    const block = scene?.blocks.find((candidate) => candidate.id === selectedBlock);
+    const claim = selectedBlock !== undefined && scene?.summary?.id === selectedBlock;
+    inspector.title(block ? describeBlock(block, 28) : claim ? "Claim" : "Slide");
   }
 
   function selectBlock(id: string | undefined) {
@@ -1014,7 +1036,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     canvas.mark(next);
     if (next === selectedBlock) return;
     selectedBlock = next;
-    toolbar.render(selected, selectedBlock);
+    renderChoice();
   }
 
   const unsubscribeSession = session.subscribe((event) => {
@@ -1027,7 +1049,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     renderBar();
     ribbon.render();
     if (!canvas.typing) canvas.render(selected, selectedBlock);
-    toolbar.render(selected, selectedBlock, typingIn === "toolbar");
+    renderChoice(typingIn === "toolbar");
   });
   const unsubscribeStore = store.subscribe(() => {
     renderStatus();
@@ -1078,7 +1100,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
   renderBar();
   renderNotices();
   canvas.render(selected, selectedBlock);
-  toolbar.render(selected, selectedBlock);
+  renderChoice();
 
   return {
     get sceneId() {
