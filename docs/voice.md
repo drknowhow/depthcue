@@ -81,12 +81,12 @@ is wrong. With `--json` the result is one object: `ok: true` and `scenes`, one e
 ## In the player
 
 A scene with a recording plays it when the scene shows, and stops when you leave. Three small buttons sit together in
-the controls on those scenes:
+the controls on those scenes. Play or pause sits in the controls; Captions and Voice leads are in the **More** menu:
 
 - Play or pause (`p`) stops and restarts this scene's recording. After the recording ends it replays it.
-- CC (`c`) shows captions at the foot of the slide. They follow the word times, with the script's own punctuation, and
+- Captions (`c`) shows captions at the foot of the slide. They follow the word times, with the script's own punctuation, and
   when a scene has no word times they are spread over the recording by the text.
-- Auto (`a`) lets the voice lead. With it on, each scene's recording starts by itself, its marks show the steps, and a
+- Voice leads (`a`) lets the voice lead. With it on, each scene's recording starts by itself, its marks show the steps, and a
   beat after it ends the deck moves to the next scene, so you do not press Next. With it off, nothing starts or moves
   until you press Play, and Next works as before.
 
@@ -103,9 +103,10 @@ refuse, and the presenter view says to press Play there.
 
 ## In the editor
 
-The Script button in the bar under the slide opens a drawer at the right of the stage, with the slide still in view. It
-holds the speaker notes, the reading version and a Voice-over part: the text, the voice (any Kokoro voice name; common
-ones are suggested), a Make audio button and a player for the result. Typing changes the scene as any edit does.
+The Script button in the quick bar opens a drawer along the foot of the stage, with the slide still in view above it.
+Its tabs are Speaker notes, Reveal order, Reading version and Voice-over. The Voice-over tab holds the text, the voice
+(any Kokoro voice name; common ones are suggested), a Make audio button and a player for the result. Typing changes
+the scene as any edit does.
 
 Insert {step} mark puts a step mark at the cursor, so you do not type the tag. It counts the marks against the scene's
 steps, and is off when every step has one or the scene has none. Escape closes the drawer.

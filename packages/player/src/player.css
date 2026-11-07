@@ -2100,7 +2100,8 @@ button.dc-link {
 }
 
 .dc-pv-where,
-.dc-pv-label {
+.dc-pv-label,
+.dc-pv-later-label {
   margin: 0;
   color: var(--dc-muted);
   font: 0.75rem var(--dc-font-mono);
@@ -2201,6 +2202,72 @@ button.dc-link {
   color: var(--dc-bg);
 }
 
+/* Pictures of scenes: drawn by the player at 1280 by 720 and scaled to the width of their box */
+.dc-pv-pic {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--dc-line);
+  border-radius: var(--dc-radius-md);
+  background: var(--dc-bg);
+}
+
+.dc-player.dc-pv-mini {
+  position: absolute;
+  inset: 0 auto auto 0;
+  display: block;
+  width: 1280px;
+  height: 720px;
+  transform: scale(var(--pv-scale, 0.25));
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.dc-pv-mini .dc-stage {
+  position: absolute;
+  inset: 0;
+}
+
+.dc-pv-mini .dc-view {
+  overflow: hidden;
+  view-transition-name: none;
+}
+
+.dc-pv-now-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.dc-pv-later {
+  display: grid;
+  gap: 0.5rem;
+  width: 70%;
+  margin-top: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--dc-line);
+}
+
+.dc-pv-later-title {
+  margin: 0;
+  color: var(--dc-muted);
+}
+
+.dc-pv-clock-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-right: 1rem;
+}
+
+.dc-pv-slide-time {
+  color: var(--dc-muted);
+  font: 1.4rem var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 900px) {
   .dc-presenter {
     grid-template-columns: minmax(0, 1fr);
@@ -2216,6 +2283,10 @@ button.dc-link {
   .dc-pv-next {
     border-top: 1px solid var(--dc-line);
     border-left: 0;
+  }
+
+  .dc-pv-now-top {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .dc-pv-moves {

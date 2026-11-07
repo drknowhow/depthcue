@@ -112,11 +112,30 @@ describe("the presenter view in a real browser", () => {
 
     await audience.locator('[data-action="next"]').click();
     await expect.poll(() => pv(".dc-pv-scene").textContent()).toBe("Demand is shifting");
-    await expect(pv(".dc-pv-where").textContent()).resolves.toBe("Scene 2 of 3 · step 0 of 2 · Agent-led");
-    await expect(pv(".dc-pv-label").textContent()).resolves.toBe("Next click: step 1 of 2");
+    await expect(pv(".dc-pv-where").textContent()).resolves.toBe(
+      "Scene 2 of 3 · reveal 0 of 2 · Planned: Agent-led",
+    );
+    await expect(pv(".dc-pv-label").textContent()).resolves.toBe("Next click: reveal 1 of 2");
 
     await audience.keyboard.press("ArrowRight");
-    await expect.poll(() => pv(".dc-pv-where").textContent()).toContain("step 1 of 2");
+    await expect.poll(() => pv(".dc-pv-where").textContent()).toContain("reveal 1 of 2");
+  });
+
+  it("draws the scene on screen, the next click and the scene after it as pictures that fit their boxes", async () => {
+    await openAudience();
+    await openPresenter();
+    const pics = pv(".dc-pv-pic");
+    expect(await pics.count()).toBe(3);
+    await expect(pics.nth(0).getAttribute("aria-label")).resolves.toBe("On screen: Why channel B now leads");
+    await expect(pics.nth(1).getAttribute("aria-label")).resolves.toBe("Next click: Demand is shifting");
+    for (const at of [0, 1, 2]) {
+      const box = await pics.nth(at).boundingBox();
+      const drawn = await pics.nth(at).locator(".dc-pv-mini").boundingBox();
+      expect(box && drawn && Math.abs(box.width - drawn.width)).toBeLessThan(3);
+      expect(await pics.nth(at).locator(".dc-scene").count()).toBe(1);
+    }
+    await expect(pv(".dc-pv-slide-time").textContent()).resolves.toMatch(/^0:0\d$/);
+    expect(problems).toEqual([]);
   });
 
   it("moves the audience's deck from its Next and Previous buttons and from the arrow keys", async () => {
@@ -135,7 +154,9 @@ describe("the presenter view in a real browser", () => {
   it("finds the deck where it already is when it opens late", async () => {
     await openAudience("#/demand/1");
     await openPresenter();
-    await expect(pv(".dc-pv-where").textContent()).resolves.toBe("Scene 2 of 3 · step 1 of 2 · Agent-led");
+    await expect(pv(".dc-pv-where").textContent()).resolves.toBe(
+      "Scene 2 of 3 · reveal 1 of 2 · Planned: Agent-led",
+    );
   });
 
   it("shows when the person hands over, lets the agent move both windows, and hands back from its button", async () => {
@@ -155,7 +176,7 @@ describe("the presenter view in a real browser", () => {
       action: "next",
     });
     expect(moved.json).toMatchObject({ ok: true, position: { scene: "demand", step: 1 } });
-    await expect.poll(() => pv(".dc-pv-where").textContent()).toContain("step 1 of 2");
+    await expect.poll(() => pv(".dc-pv-where").textContent()).toContain("reveal 1 of 2");
 
     await pv('[data-pv="takeover"]').click();
     await expect.poll(() => pv(".dc-pv-holder").textContent()).toBe("You present");
@@ -186,7 +207,7 @@ describe("the presenter view in a real browser", () => {
     await pv('[data-pv="next"]').click();
     await grant().waitFor({ state: "visible" });
     await expect.poll(() => pv(".dc-pv-holder").textContent()).toBe("You present");
-    await expect.poll(() => pv(".dc-pv-where").textContent()).toContain("step 1 of 2");
+    await expect.poll(() => pv(".dc-pv-where").textContent()).toContain("reveal 1 of 2");
     expect((await call("state")).json.holder).toBe("human");
   });
 
@@ -216,7 +237,9 @@ describe("the presenter view in a real browser", () => {
     await pv(".dc-pv-scene:not(:empty)").waitFor();
     expect(new URL(presenter.url()).search).toBe("?presenter");
     expect(new URL(presenter.url()).hash).toBe("");
-    await expect(pv(".dc-pv-where").textContent()).resolves.toBe("Scene 2 of 3 · step 0 of 2 · Agent-led");
+    await expect(pv(".dc-pv-where").textContent()).resolves.toBe(
+      "Scene 2 of 3 · reveal 0 of 2 · Planned: Agent-led",
+    );
   });
 
   it("has a timer that runs and starts over", async () => {

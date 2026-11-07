@@ -9,7 +9,8 @@ import {
 } from "./broadcast.ts";
 import { h } from "./dom.ts";
 import type { PlayerSource } from "./load.ts";
-import { LEAD_LABEL, nextPosition, stepCount } from "./model.ts";
+import { LEAD_LABEL, nextPosition, revealedIds, stepCount } from "./model.ts";
+import { renderScene } from "./scene.ts";
 import { applyLook } from "./style.ts";
 
 export interface PresenterOptions {
@@ -49,13 +50,75 @@ function upcoming(scenes: readonly Scene[], at: { scene: number; step: number })
   if (to.scene === at.scene) {
     const reveals = scene.steps?.[at.step]?.reveal.length ?? 0;
     return {
-      label: `Next click: step ${to.step} of ${stepCount(scene)}`,
+      label: `Next click: reveal ${to.step} of ${stepCount(scene)}`,
       title: "",
       detail: `Reveals ${plural(reveals, "block")} on this scene.`,
     };
   }
   const next = scenes[to.scene] as Scene;
   return { label: "Next scene", title: next.title, detail: next.summary?.text ?? "" };
+}
+
+/** The size a picture of a scene is drawn at before it is scaled to its box, so its type keeps the slide's proportions. */
+const PICTURE_WIDTH = 1280;
+
+/**
+ * A picture of a scene at a step, as the audience sees it: the player draws it, then it is scaled down and made inert,
+ * so nothing in it can be reached, played or read out twice.
+ */
+function picture(source: PlayerSource, index: number, step: number): HTMLElement {
+  const scene = source.scenes[index] as Scene;
+  const view = renderScene(scene, {
+    assetBase: source.assetBase,
+    language: source.deck.language,
+    ...(source.look ? { look: source.look } : {}),
+    number: index + 1,
+    ...(source.deck.links ? { links: source.deck.links } : {}),
+    scenes: source.scenes,
+  });
+  const shown = revealedIds(scene, step);
+  for (const node of view.querySelectorAll<HTMLElement>("[data-gated]"))
+    node.dataset.revealed = String(shown.has(node.dataset.id ?? ""));
+  for (const node of view.querySelectorAll("[id]")) node.removeAttribute("id");
+  const mini = h(
+    "div",
+    { class: "dc-player dc-pv-mini" },
+    h("div", { class: "dc-stage" }, h("div", { class: "dc-view" }, view)),
+  );
+  applyLook(mini, source.look ?? source.deck, source.assetBase);
+  // The box around it carries its name; the drawing itself cannot be focused, clicked or read.
+  mini.setAttribute("inert", "");
+  return mini;
+}
+
+/** A box that holds a picture of a scene, scaled to the box's width. */
+function pictureBox(label: string) {
+  const box = h("div", { class: "dc-pv-pic", role: "img", "aria-label": label });
+  let key = "";
+  const fit = () =>
+    box.style.setProperty("--pv-scale", String((box.clientWidth || PICTURE_WIDTH) / PICTURE_WIDTH));
+  const watch = typeof ResizeObserver === "function" ? new ResizeObserver(fit) : undefined;
+  watch?.observe(box);
+  return {
+    box,
+    /** Shows scene `index` at `step`, or nothing. It draws again only when what it shows has changed. */
+    show(source: PlayerSource, at: { scene: number; step: number } | null, name: string) {
+      box.hidden = at === null;
+      const next = at ? `${at.scene}:${at.step}` : "";
+      if (at && name) box.setAttribute("aria-label", `${label}: ${name}`);
+      if (next === key) return;
+      key = next;
+      box.replaceChildren(...(at ? [picture(source, at.scene, at.step)] : []));
+      fit();
+    },
+    /** Forgets what it shows, so new deck content is drawn. */
+    reset() {
+      key = "";
+    },
+    stop() {
+      watch?.disconnect();
+    },
+  };
 }
 
 /**
@@ -69,6 +132,9 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
   let source = options.source;
   let shown: StateMessage | undefined;
   let startedAt = now();
+  // The slide clock starts again whenever the deck window moves to another scene.
+  let sceneStartedAt = startedAt;
+  let sceneShown: string | undefined;
 
   const deckTitle = h("h1", { class: "dc-pv-deck" });
   const holderText = h("p", { class: "dc-pv-holder", role: "status" });
@@ -84,7 +150,18 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
   const nextLabel = h("p", { class: "dc-pv-label" });
   const nextTitle = h("h2", { class: "dc-pv-next-title" });
   const nextDetail = h("p", { class: "dc-pv-detail" });
+  const nowPicture = pictureBox("On screen");
+  const nextPicture = pictureBox("Next click");
+  const laterPicture = pictureBox("After that");
+  const laterLabel = h("p", { class: "dc-pv-later-label" }, "After that");
+  const laterTitle = h("p", { class: "dc-pv-later-title" });
+  const later = h("div", { class: "dc-pv-later" }, laterLabel, laterPicture.box, laterTitle);
   const time = h("span", { class: "dc-pv-time", role: "timer", "aria-label": "Elapsed time" }, "0:00");
+  const slideTime = h(
+    "span",
+    { class: "dc-pv-slide-time", role: "timer", "aria-label": "Time on this scene" },
+    "0:00",
+  );
   const reset = h("button", { type: "button", class: "dc-btn", "data-pv": "reset" }, "Reset");
   const previous = h("button", { type: "button", class: "dc-btn", "data-pv": "previous" }, "Previous");
   const next = h("button", { type: "button", class: "dc-btn", "data-pv": "next" }, "Next");
@@ -120,9 +197,29 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
     "main",
     { class: "dc-presenter", "data-holder": "waiting" },
     h("header", { class: "dc-pv-head" }, deckTitle, holderText, takeOver),
-    h("section", { class: "dc-pv-now", "aria-label": "On screen" }, where, sceneTitle, notes),
-    h("aside", { class: "dc-pv-next", "aria-label": "Next" }, nextLabel, nextTitle, nextDetail),
-    h("section", { class: "dc-pv-clock", "aria-label": "Timer" }, time, reset, voicePanel),
+    h(
+      "section",
+      { class: "dc-pv-now", "aria-label": "On screen" },
+      where,
+      h("div", { class: "dc-pv-now-top" }, nowPicture.box, h("div", {}, sceneTitle)),
+      notes,
+    ),
+    h(
+      "aside",
+      { class: "dc-pv-next", "aria-label": "Next" },
+      nextLabel,
+      nextPicture.box,
+      nextTitle,
+      nextDetail,
+      later,
+    ),
+    h(
+      "section",
+      { class: "dc-pv-clock", "aria-label": "Timers" },
+      h("span", { class: "dc-pv-clock-part" }, h("span", { class: "dc-k" }, "Talk"), time, reset),
+      h("span", { class: "dc-pv-clock-part" }, h("span", { class: "dc-k" }, "This scene"), slideTime),
+      voicePanel,
+    ),
     h("nav", { class: "dc-pv-moves", "aria-label": "Moves" }, previous, next),
   );
   host.replaceChildren(root);
@@ -163,14 +260,23 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
       setDisabled(previous, true);
       setDisabled(next, true);
       voicePanel.hidden = true;
+      nowPicture.show(source, null, "");
+      nextPicture.show(source, null, "");
+      laterPicture.show(source, null, "");
+      later.hidden = true;
       return;
     }
     paintVoice(shown.voice);
+    if (sceneShown !== here.scene.id) {
+      sceneShown = here.scene.id;
+      sceneStartedAt = now();
+      tick();
+    }
     const steps = stepCount(here.scene);
     where.textContent = [
       `Scene ${here.index + 1} of ${source.scenes.length}`,
-      steps > 0 ? `step ${shown.step} of ${steps}` : "",
-      LEAD_LABEL[here.scene.lead ?? "human"],
+      steps > 0 ? `reveal ${shown.step} of ${steps}` : "",
+      `Planned: ${LEAD_LABEL[here.scene.lead ?? "human"]}`,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -185,8 +291,17 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
     nextDetail.textContent = after.detail;
     nextDetail.hidden = after.detail === "";
     const at = { scene: here.index, step: shown.step };
+    const to = nextPosition(source.scenes, at);
+    // After the next click: the scene that follows the one the next click shows.
+    const laterIndex = to ? (to.scene === at.scene ? at.scene + 1 : to.scene + 1) : -1;
+    const laterScene = source.scenes[laterIndex];
+    nowPicture.show(source, at, here.scene.title);
+    nextPicture.show(source, to, to ? (source.scenes[to.scene] as Scene).title : "");
+    laterPicture.show(source, laterScene ? { scene: laterIndex, step: 0 } : null, laterScene?.title ?? "");
+    later.hidden = !laterScene;
+    laterTitle.textContent = laterScene ? `${laterIndex + 1}. ${laterScene.title}` : "";
     setDisabled(previous, at.scene === 0 && at.step === 0);
-    setDisabled(next, nextPosition(source.scenes, at) === null);
+    setDisabled(next, to === null);
   }
 
   function paintVoice(voice: StateMessage["voice"]) {
@@ -207,7 +322,9 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
   const ask = (message: RequestMessage) => channel.postMessage(message);
 
   const tick = () => {
-    time.textContent = formatElapsed(now() - startedAt);
+    const at = now();
+    time.textContent = formatElapsed(at - startedAt);
+    slideTime.textContent = formatElapsed(at - sceneStartedAt);
   };
   const clock = setInterval(tick, 1000);
 
@@ -264,12 +381,14 @@ export function mountPresenterView(options: PresenterOptions): PresenterMount {
   return {
     update(fresh) {
       source = fresh;
+      for (const box of [nowPicture, nextPicture, laterPicture]) box.reset();
       paint();
       // The scene on screen may now have another id; the deck window will say which one it is on.
       if (shown && !scene()) ask({ type: "hello" });
     },
     destroy() {
       clearInterval(clock);
+      for (const box of [nowPicture, nextPicture, laterPicture]) box.stop();
       stopHello();
       document.removeEventListener("keydown", onKey);
       channel.removeEventListener("message", onMessage);
