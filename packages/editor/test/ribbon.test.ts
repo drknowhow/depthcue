@@ -59,12 +59,11 @@ const pinned: Op = {
 };
 
 describe("the problem ribbon", () => {
-  it("sits between the top bar and the slide, and says all clear for a deck with nothing to check", () => {
-    const app = host.querySelector(".ed-app") as HTMLElement;
-    const order = [...app.children].map((node) => node.className.split(" ")[0]);
-    expect(order.indexOf("ed-ribbon")).toBeGreaterThan(order.indexOf("ed-bar"));
-    expect(order.indexOf("ed-ribbon")).toBeLessThan(order.indexOf("ed-scenes"));
+  it("is a chip in the top bar, and says all clear for a deck with nothing to check", () => {
+    expect(ribbon().closest(".ed-bar")).not.toBeNull();
     expect(ribbon().dataset.state).toBe("clear");
+    // With nothing to check there is no list to open.
+    expect(part("open").disabled).toBe(true);
     expect(count()).toBe("All clear");
     expect(place()).toBe("");
     expect(part("show").hidden).toBe(true);
@@ -214,6 +213,25 @@ describe("the problem ribbon", () => {
     apply({ op: "block.set", scene: "method", id: "method-diagram", set: { alt: "The four steps" } });
     expect(seen.takeRecords().length).toBeGreaterThan(0);
     seen.disconnect();
+  });
+
+  it("opens its list from the chip, and closes it with Escape, giving the keyboard back to the chip", () => {
+    const panel = () => ribbon().querySelector<HTMLElement>(".ed-ribbon-panel") as HTMLElement;
+    apply(pinned);
+    expect(panel().hidden).toBe(true);
+    expect(part("open").getAttribute("aria-expanded")).toBe("false");
+    part("open").click();
+    expect(panel().hidden).toBe(false);
+    expect(part("open").getAttribute("aria-expanded")).toBe("true");
+    part("next").focus();
+    part("next").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(panel().hidden).toBe(true);
+    expect(document.activeElement).toBe(part("open"));
+    // Settling the last problem closes an open list, since there is nothing left in it.
+    part("open").click();
+    part("fix").click();
+    expect(panel().hidden).toBe(true);
+    expect(part("open").disabled).toBe(true);
   });
 
   it("is a status the screen reader hears and not a region that holds the buttons", () => {

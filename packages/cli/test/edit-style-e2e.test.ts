@@ -115,7 +115,7 @@ const docAt = (dir: string) => {
 };
 const disk = () => docAt(folder);
 const headline = () => page.locator(".ed-frame [data-id='opening-title']");
-const popover = () => page.locator(".ed-actions .ed-tb-pop:not([hidden])");
+const popover = () => page.locator(".ed-bar-deck .ed-tb-pop:not([hidden])");
 const swatch = (color: string) => popover().locator(`[data-field='panel:deck:palette:${color}']`);
 
 async function open() {
@@ -125,7 +125,7 @@ async function open() {
 
 /** Opens the Deck popover and its Style section, the way a person does. */
 async function openStyle() {
-  await page.locator(".ed-actions [data-tb='deck']").click();
+  await page.locator(".ed-bar-deck [data-tb='deck']").click();
   await popover().waitFor();
   const section = popover().locator("details[data-section='style']");
   if ((await section.getAttribute("open")) === null) await section.locator("summary").click();

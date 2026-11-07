@@ -25,7 +25,7 @@ const popOf = (selector: string) => {
   chip.click();
   return chip.closest(".ed-tb-chip-wrap")?.querySelector<HTMLElement>(".ed-tb-pop") as HTMLElement;
 };
-const deckPop = () => popOf(".ed-actions [data-tb='deck']");
+const deckPop = () => popOf(".ed-bar-deck [data-tb='deck']");
 const control = <T extends HTMLElement = HTMLInputElement>(pop: HTMLElement, key: string): T => {
   const found = pop.querySelector<T>(`[data-field="${key}"]`);
   if (!found) throw new Error(`no control with data-field ${key}`);

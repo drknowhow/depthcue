@@ -252,8 +252,15 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
 
   const deckTitle = h("h1", { class: "ed-deck" });
   const status = h("span", { class: "ed-status", role: "status", "aria-live": "polite" });
-  const undo = button("undo", "Undo", undoNow);
-  const redo = button("redo", "Redo", redoNow);
+  // The icon is the button's ::before, drawn by its class; the words are its label.
+  const iconButton = (action: string, label: string, keys: string, onClick: () => void) =>
+    button(action, "", onClick, {
+      "aria-label": label,
+      title: `${label} (${keys})`,
+      class: `ed-icon-button ed-icon-${action}`,
+    });
+  const undo = iconButton("undo", "Undo", "Ctrl+Z", undoNow);
+  const redo = iconButton("redo", "Redo", "Ctrl+Shift+Z", redoNow);
   const retry = button("retry", "Try again", () => void store.save());
   retry.hidden = true;
   const deckForm = deckPanel(
@@ -266,6 +273,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     }),
   );
   const deckChip = popoverChip(deckForm);
+  // Beside the title the chip is a chevron: the title says whose menu it is, and its name stays in its label.
+  deckChip.chip.button.className += " ed-icon-button ed-icon-chevron";
+  deckChip.chip.button.title = deckForm.title;
+  deckChip.chip.button.replaceChildren(deckChip.chip.badge);
   // Download PowerPoint is a part of its own; its button closes the Deck popover, so the dialog gives the keyboard back
   // to the Deck chip.
   const openDownload = () =>
@@ -283,6 +294,10 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       deckChip.close(true);
       openDownload();
     }),
+    button("settings", "Settings…", () => {
+      deckChip.close(true);
+      openSettings();
+    }),
   );
   const exportButton = button("export", "Export…", () =>
     withPart(
@@ -291,16 +306,16 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       () => showProblem(notLoaded("the export dialog")),
     ),
   );
-  const settingsButton = button("settings", "Settings…", () =>
+  function openSettings() {
     withPart(
       parts.controller,
       (module) => module.openController(root),
       () => showProblem(notLoaded("the settings")),
-    ),
-  );
+    );
+  }
   const present = h(
     "a",
-    { class: "ed-link", href: "/present", target: "_blank", rel: "noopener" },
+    { class: "ed-link ed-present", href: "/present", target: "_blank", rel: "noopener" },
     "Present",
   );
   // Comments: the button shows or hides the pins and says how many are open; a second one, only while there are some,
@@ -396,26 +411,25 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
         back,
       ),
   });
+  // Three groups: the deck and its menu, the history and whether it is saved, then what is done with the deck. The
+  // scene's own controls sit between them until they move to the inspector. The checks chip joins the last group once
+  // it is made, below.
+  const actions = h(
+    "div",
+    { class: "ed-actions" },
+    reviewButton,
+    commentsButton,
+    resolvedButton,
+    exportButton,
+    present,
+  );
   const bar = h(
     "header",
     { class: "ed-bar" },
-    deckTitle,
+    h("div", { class: "ed-bar-deck" }, deckTitle, deckChip.chip.wrap),
+    h("div", { class: "ed-bar-history", role: "group", "aria-label": "History" }, undo, redo, status, retry),
     sceneBar.element,
-    h(
-      "div",
-      { class: "ed-actions" },
-      undo,
-      redo,
-      status,
-      retry,
-      deckChip.chip.wrap,
-      reviewButton,
-      commentsButton,
-      resolvedButton,
-      exportButton,
-      settingsButton,
-      present,
-    ),
+    actions,
   );
   const notices = h("div", { class: "ed-notices" });
   // The strip, full screen. It reads the same counts the strip and the ribbon do, so the numbers on a card are theirs.
@@ -482,6 +496,7 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
       showProblem(result.ok ? undefined : problemOf(result));
     },
   });
+  actions.prepend(ribbon.element);
   const layout = createLayoutWatch(store, {
     scene: () => selected,
     changed() {
@@ -726,7 +741,6 @@ export function mountEditor(host: HTMLElement, store: EditorStore, parts: Parts 
     { class: "ed-app" },
     bar,
     notices,
-    ribbon.element,
     strip.element,
     floor,
     footer.element,

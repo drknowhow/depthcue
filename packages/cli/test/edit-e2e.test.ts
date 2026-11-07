@@ -625,8 +625,8 @@ describe("the editor in a real browser", () => {
 
   it("edits the deck's title and theme from the Deck popover, and the folder follows", async () => {
     await open();
-    await page.locator(".ed-actions [data-tb='deck']").click();
-    const pop = page.locator(".ed-actions .ed-tb-pop:not([hidden])");
+    await page.locator(".ed-bar-deck [data-tb='deck']").click();
+    const pop = page.locator(".ed-bar-deck .ed-tb-pop:not([hidden])");
     await pop.locator("[data-field='panel:deck:title']").fill("Spring review");
     // The theme is the preset of the Style section, which opens from its heading.
     await pop.locator("details[data-section='style'] > summary").click();
@@ -645,7 +645,7 @@ describe("the editor in a real browser", () => {
       sheet.replaceSync("*{font-family:Verdana,'DejaVu Sans',sans-serif !important}");
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
     });
-    for (const chip of [".ed-quick [data-tb='notes']", ".ed-actions [data-tb='deck']"]) {
+    for (const chip of [".ed-quick [data-tb='notes']", ".ed-bar-deck [data-tb='deck']"]) {
       await page.locator(chip).click();
       const pop = page.locator(
         chip.includes("notes") ? ".ed-script:not([hidden])" : ".ed-tb-pop:not([hidden])",
@@ -2127,6 +2127,14 @@ describe("keyboard shortcuts in a real browser", () => {
   });
 });
 
+/** Opens the list under the checks chip once there is something in it. */
+async function openProblems(timeout?: { timeout: number }) {
+  await page.locator(".ed-ribbon[data-state='problems']").waitFor(timeout);
+  const chip = page.locator(".ed-ribbon [data-ribbon='open']");
+  if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
+  await page.locator(".ed-ribbon-panel:not([hidden])").waitFor();
+}
+
 describe("the problem ribbon in a real browser", () => {
   const ribbon = () => page.locator(".ed-ribbon");
   const count = () => ribbon().locator(".ed-ribbon-count");
@@ -2152,19 +2160,15 @@ describe("the problem ribbon in a real browser", () => {
     return block?.frame;
   };
 
-  it("says all clear for the demo deck, in a strip between the top bar and the slide", async () => {
+  it("says all clear for the demo deck, in a chip inside the top bar", async () => {
     await page.goto(url());
     await count().waitFor();
     expect(await count().textContent()).toBe("All clear");
     expect(await ribbon().getAttribute("data-state")).toBe("clear");
-    const [bar, strip, slide] = await Promise.all([
-      page.locator(".ed-bar").boundingBox(),
-      ribbon().boundingBox(),
-      page.locator(".ed-canvas-host").boundingBox(),
-    ]);
-    if (!bar || !strip || !slide) throw new Error("the bar, the ribbon and the slide should all be drawn");
-    expect(strip.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
-    expect(slide.y).toBeGreaterThanOrEqual(strip.y + strip.height - 1);
+    const [bar, chip] = await Promise.all([page.locator(".ed-bar").boundingBox(), ribbon().boundingBox()]);
+    if (!bar || !chip) throw new Error("the bar and the chip should both be drawn");
+    expect(chip.y).toBeGreaterThanOrEqual(bar.y);
+    expect(chip.y + chip.height).toBeLessThanOrEqual(bar.y + bar.height);
     expect(problems).toEqual([]);
   });
 
@@ -2178,13 +2182,16 @@ describe("the problem ribbon in a real browser", () => {
     await bar
       .locator("[data-field='image:upload']")
       .setInputFiles({ name: "new.png", mimeType: "image/png", buffer: Buffer.from(PIXEL, "base64") });
-    await ribbon().locator("[data-ribbon='show']:not([hidden])").waitFor();
-    expect(await ribbon().getAttribute("data-state")).toBe("problems");
-    expect(await count().textContent()).toBe("1 thing to check");
-    expect(await ribbon().locator("[data-ribbon='show']").textContent()).toContain("alt text");
+    await page.locator(".ed-ribbon[data-state='problems']").waitFor();
     // A problem that appears is not allowed to push the slide down.
     expect(await page.locator(".ed-canvas-host").boundingBox()).toEqual(before);
-    await bar.locator("[data-field='image:alt']").fill("A diagram of the method");
+    await openProblems();
+    expect(await count().textContent()).toBe("1 thing to check");
+    expect(await ribbon().locator("[data-ribbon='show']").textContent()).toContain("alt text");
+    // Opening the list in the top bar closed the block's Edit popover; it opens again to describe the picture.
+    const alt = bar.locator("[data-field='image:alt']");
+    if (!(await alt.isVisible())) await bar.locator("[data-tb='edit']").click();
+    await alt.fill("A diagram of the method");
     await page.locator(".ed-ribbon[data-state='clear']").waitFor();
     await saved();
     const written = disk().scenes.method?.blocks.find((block) => block.id === "method-diagram");
@@ -2197,6 +2204,7 @@ describe("the problem ribbon in a real browser", () => {
     pinOnDisk("kr", "kr-words", MARGIN);
     await openScene("kr", "kr-words");
     expect(await count().textContent()).toBe("1 thing to check");
+    await openProblems();
     expect(await ribbon().locator("[data-ribbon='show']").textContent()).toContain("margin");
     const fix = ribbon().locator("[data-ribbon='fix']");
     expect(await fix.textContent()).toBe("Back to layout");
@@ -2218,6 +2226,7 @@ describe("the problem ribbon in a real browser", () => {
     pinOnDisk("kb", "kb-words", MARGIN);
     await page.goto(url());
     expect(await count().textContent()).toBe("2 things to check");
+    await openProblems();
     await ribbon().locator("[data-ribbon='next']").click();
     expect(await current()).toBe("kb");
     expect(await ribbon().locator(".ed-ribbon-place").textContent()).toBe("2 of 2");
@@ -2231,12 +2240,12 @@ describe("the problem ribbon in a real browser", () => {
     expect(problems).toEqual([]);
   });
 
-  it("fits a phone: the sentence wraps and the page does not scroll sideways", async () => {
+  it("fits a phone: the open list wraps its sentence and the page does not scroll sideways", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     addScene({ id: "kp", title: "Phone", layout: "text-media", blocks: [note("kp-words", "Words.")] });
     pinOnDisk("kp", "kp-words", MARGIN);
     await page.goto(url());
-    await ribbon().locator("[data-ribbon='show']:not([hidden])").waitFor();
+    await openProblems();
     const box = await ribbon().boundingBox();
     if (!box) throw new Error("the ribbon should be drawn");
     expect(box.x).toBeGreaterThanOrEqual(0);
@@ -2949,7 +2958,7 @@ describe("layout problems from a real render, in a real browser", () => {
         blocks: Array.from({ length: 7 }, (_, n) => note(`kl-body-${n}`, long(n))),
       });
       await openScene("kl", "kl-body-0");
-      await ribbon().locator("[data-ribbon='show']:not([hidden])").waitFor(AWHILE);
+      await openProblems(AWHILE);
       expect(await ribbon().getAttribute("data-state")).toBe("problems");
       expect(await sentence().textContent()).toContain("taller than the 1280x720 stage");
       // No change to make that is the same every time, so no Fix.
@@ -3018,7 +3027,7 @@ describe("layout problems from a real render, in a real browser", () => {
       if (!result.ok) throw new Error(result.diagnostics[0]?.message);
       writeFileSync(join(folder, "scenes", "kf.json"), `${JSON.stringify(result.doc.scenes.kf, null, 2)}\n`);
       await openScene("kf", "kf-words");
-      await ribbon().locator("[data-ribbon='show']:not([hidden])").waitFor(AWHILE);
+      await openProblems(AWHILE);
       expect(await sentence().textContent()).toContain("than its frame");
       const fix = ribbon().locator("[data-ribbon='fix']");
       expect(await fix.textContent()).toBe("Back to layout");
