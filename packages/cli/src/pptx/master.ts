@@ -10,7 +10,15 @@
  * The writer's master support cannot do this (one master, no placeholder types, no fields), so the parts are written
  * here, as plain XML, the same way every time.
  */
-import type { Block, DeckLook, Scene, Template, TemplateSlot } from "@depthcue/core";
+import {
+  type Block,
+  type DeckLook,
+  fillChrome,
+  resolveChrome,
+  type Scene,
+  type Template,
+  type TemplateSlot,
+} from "@depthcue/core";
 import { PICTURE_TITLE } from "./build.ts";
 import type { Box, ChromeMeasure, Ink, Item, SlideMeasure, TextPlace } from "./measure.ts";
 
@@ -528,14 +536,108 @@ function ownChrome(layout: LayoutPlan, master: ChromeMeasure): ChromeMeasure | u
   };
 }
 
+type Place = "start" | "center" | "end";
+const PLACES: readonly Place[] = ["start", "center", "end"];
+
+/**
+ * The footer zones that PowerPoint carries as its own placeholders: the zone that says only the number is the slide
+ * number, and the first zone with fixed words is the footer. Every other zone is text on each slide.
+ */
+function masterZones(look: DeckLook): { footer?: Place; number?: Place } {
+  const zones = look.chrome?.bands?.footer;
+  const out: { footer?: Place; number?: Place } = {};
+  if (!zones) return out;
+  for (const at of PLACES) {
+    const text = zones[at];
+    if (text === undefined) continue;
+    if (text.trim() === "{number}") out.number ??= at;
+    else if (!text.includes("{")) out.footer ??= at;
+  }
+  return out;
+}
+
+/** The measures with the footer and the number read from the zones the master carries, when the brand has zones. */
+function byZones(input: MasterInput): MasterInput {
+  if (!input.look.chrome?.bands) return input;
+  const carried = masterZones(input.look);
+  const measures = input.measures.map((measure): SlideMeasure => {
+    if (!measure.chrome) return measure;
+    const { footer: _footer, number: _number, ...rest } = measure.chrome;
+    const zone = (at: Place | undefined) =>
+      at === undefined
+        ? undefined
+        : measure.chrome?.zones?.find((z) => z.band === "foot" && z.at === at)?.place;
+    const footer = zone(carried.footer);
+    const number = zone(carried.number);
+    return { ...measure, chrome: { ...rest, ...(footer ? { footer } : {}), ...(number ? { number } : {}) } };
+  });
+  return { ...input, measures };
+}
+
+/** A zone's text as runs: its words with the fields filled, and the slide number as a field PowerPoint keeps current. */
+function zoneRuns(text: string, values: Parameters<typeof fillChrome>[1]): string[] {
+  const mark = String.fromCharCode(1);
+  const marked = text.replace(/\{number\}/g, values.number === undefined ? "" : mark);
+  return fillChrome(marked, values).split(mark);
+}
+
+/** The header and the footer zones that are not PowerPoint's own placeholders, as text boxes on one slide. */
+function zoneShapes(
+  look: DeckLook,
+  scene: Scene,
+  measure: SlideMeasure,
+  slide: { w: number; h: number },
+): string {
+  const bands = look.chrome?.bands;
+  const outline = look.outline;
+  const zones = measure.chrome?.zones;
+  if (!bands || !outline || !zones) return "";
+  const at = outline.slides.findIndex((s) => s.id === scene.id);
+  if (at < 0) return "";
+  const shown = resolveChrome(bands, outline, at);
+  const carried = masterZones(look);
+  let out = "";
+  let id = 9100;
+  for (const zone of zones) {
+    const header = zone.band === "head";
+    if (!header && (zone.at === carried.footer || zone.at === carried.number)) continue;
+    const text = bands[header ? "header" : "footer"][zone.at];
+    if (text === undefined) continue;
+    const pieces = zoneRuns(text, shown.values);
+    const { box, align } = footBox(zone.place, slide);
+    const rPr = runStyle(zone.place.ink, "a:rPr");
+    const words = (piece: string) => (piece === "" ? "" : `<a:r>${rPr}<a:t>${escapeXml(piece)}</a:t></a:r>`);
+    const field = `<a:fld id="${NUMBER_FIELD}" type="slidenum">${rPr}<a:t>${shown.values.number ?? ""}</a:t></a:fld>`;
+    const runs = pieces.map((piece, i) => words(piece) + (i < pieces.length - 1 ? field : "")).join("");
+    const name = `${header ? "Header" : "Footer"} ${zone.at}`;
+    out += `<p:sp><p:nvSpPr><p:cNvPr id="${id++}" name="${name}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"><a:noAutofit/></a:bodyPr><a:lstStyle/><a:p><a:pPr algn="${align}"/>${runs}</a:p></p:txBody></p:sp>`;
+  }
+  return out;
+}
+
 /** Writes the master, the layouts and each slide's links into the package. Returns the layouts' names, in order. */
-export function applyMaster(parts: Parts, input: MasterInput): { layouts: string[] } {
+export function applyMaster(parts: Parts, given: MasterInput): { layouts: string[] } {
+  const input = byZones(given);
   const { look, scenes, measures } = input;
   const first = measures[0];
   if (!first) return { layouts: [] };
   const slide = first.slide;
   const chrome = input.pictures ? {} : masterChrome(look, scenes, measures);
   const { layouts, layoutOf } = planLayouts(input);
+
+  // PowerPoint numbers slides from its own first number, so the number field shows what the deck says.
+  const start = look.outline?.numbering?.start;
+  const presentation = parts.get("ppt/presentation.xml");
+  if (start !== undefined && start !== 1 && presentation) {
+    parts.set(
+      "ppt/presentation.xml",
+      encode(
+        decode(presentation)
+          .replace(/ firstSlideNum="\d+"/, "")
+          .replace(/<p:presentation(?=[\s>])/, `<p:presentation firstSlideNum="${start}"`),
+      ),
+    );
+  }
 
   const logo = chrome.logo?.png !== undefined;
   if (chrome.logo?.png) parts.set(LOGO_PART, dataBytes(chrome.logo.png));
@@ -748,7 +850,12 @@ export function applyMaster(parts: Parts, input: MasterInput): { layouts: string
     }
     if (layout.chrome === "full" && !layout.picture) {
       const feet = owns[layoutAt] ?? chrome;
-      const foot = footShapes(feet, input.numbers?.[at] ?? at + 1, look.chrome?.footer?.text);
+      const zones = look.chrome?.bands?.footer;
+      const carried = masterZones(look);
+      const words = zones ? (carried.footer ? zones[carried.footer] : undefined) : look.chrome?.footer?.text;
+      const foot =
+        footShapes(feet, input.numbers?.[at] ?? at + 1, words) +
+        (input.pictures ? "" : zoneShapes(look, scene, measures[at] as SlideMeasure, slide));
       if (foot) xml = xml.replace("</p:spTree>", `${foot}</p:spTree>`);
     }
     parts.set(name, encode(xml));

@@ -12,6 +12,7 @@ import {
   type Cell,
   type ChartBlock,
   chartFromBarChart,
+  contentsOf,
   type Deck,
   type DeckStyle,
   parseTarget,
@@ -384,6 +385,55 @@ function textBlock(page: Page, block: Extract<Block, { type: "text" }>, place: T
     flowRuns(textFlow(page.scene, block), place.ink, page.context),
     block.role === "heading",
   );
+}
+
+/**
+ * A table of contents as one text box: a line for each entry, its number at the right edge on a tab, and both linked
+ * to the entry's slide. It is the list as the deck has it when the file is made, so it does not follow a moved slide.
+ */
+function contentsBlock(page: Page, block: Extract<Block, { type: "contents" }>, place: TextPlace) {
+  const seen = new Set<string>();
+  const slides = page.input.scenes.filter((scene) => !seen.has(scene.id) && seen.add(scene.id));
+  const entries = contentsOf(
+    {
+      slides: slides.map((scene) => ({ id: scene.id, title: scene.title, template: scene.template })),
+      ...(page.input.deck.numbering ? { numbering: page.input.deck.numbering } : {}),
+    },
+    block.of ?? "sections",
+    page.scene.id,
+  );
+  const base = plainRuns("x", place.ink, page.context)[0] as Run;
+  const frame = textFrame(place);
+  const runs: Run[] = entries.flatMap((entry, at): Run[] => {
+    const options = { ...(base.options ?? {}), align: "left" as const };
+    delete options.lineSpacing;
+    const slide = page.input.scenes.findIndex((scene) => scene.id === entry.id) + 1;
+    const link = slide > 0 ? { hyperlink: { slide, tooltip: entry.title } } : {};
+    const last = at === entries.length - 1;
+    return [
+      {
+        text: `${entry.level === 1 ? "  " : ""}${entry.title}`,
+        options: { ...options, ...link, ...(entry.level === 0 ? { bold: true } : {}) },
+      },
+      { text: `	${entry.number}`, options: { ...options, ...link, breakLine: !last } },
+    ];
+  });
+  if (runs.length === 0) return;
+  const { x, y, w, h } = frameOf(page, frame);
+  useInk(page, place.ink, false);
+  page.slide.addText(runs, {
+    x,
+    y,
+    w,
+    h,
+    margin: 0,
+    valign: "top",
+    fit: "none",
+    wrap: true,
+    paraSpaceAfter: pt(place.ink.px * 0.5),
+    tabStops: [{ position: w, alignment: "r" }],
+    objectName: "Contents",
+  });
 }
 
 /** The cell's words, as the player writes them. */
@@ -1032,6 +1082,7 @@ function item(page: Page, entry: Item) {
   switch (entry.kind) {
     case "text":
       if (block.type === "text") textBlock(page, block, entry.text);
+      else if (block.type === "contents") contentsBlock(page, block, entry.text);
       addCite(page, block, entry.cite);
       return;
     case "image":

@@ -9,6 +9,7 @@ import { basename, extname, resolve } from "node:path";
 import {
   type Brand,
   BUILT_IN_TEMPLATES,
+  bandsOf,
   brandFilePath,
   checkBrand,
   checkBrandFile,
@@ -326,10 +327,26 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
     }
   }
   notes.push(...(parts?.notes ?? []));
+  // A date placeholder is a zone that says {date}; the footer and the number at the same place are joined with it.
+  const bands = parts?.date
+    ? bandsOf({
+        accent: "none",
+        ...(parts.footer ? { footer: parts.footer } : {}),
+        ...(parts.number ? { number: parts.number } : {}),
+      })
+    : undefined;
+  if (bands && parts?.date) {
+    const at = parts.date.place;
+    bands.footer[at] = bands.footer[at] === undefined ? "{date}" : `${bands.footer[at]}  {date}`;
+  }
   const chrome = {
     ...(logo.logo ? { logo: { corner: logo.logo.corner, size: logo.logo.size } } : {}),
-    ...(parts?.footer ? { footer: parts.footer } : {}),
-    ...(parts?.number ? { number: parts.number } : {}),
+    ...(bands
+      ? { bands: { footer: bands.footer } }
+      : {
+          ...(parts?.footer ? { footer: parts.footer } : {}),
+          ...(parts?.number ? { number: parts.number } : {}),
+        }),
   };
 
   // Templates.
@@ -481,10 +498,10 @@ async function importFrom(pkg: OfficePackage, input: Source): Promise<ImportResu
       why: "Depthcue sets text by role, not by a master's text styles",
     });
   }
-  if (parts?.hasDate) {
+  if (parts?.hasDate && !parts.date) {
     left.push({
       what: "The date placeholder",
-      why: "Depthcue slides have no date; only the footer and the slide number are chrome",
+      why: "It sits nowhere the brand can place it; set the zone by hand",
     });
   }
   if (built.length > 0) {
