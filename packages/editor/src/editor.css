@@ -3151,6 +3151,50 @@ body {
   width: min(24rem, calc(100vw - 4rem));
 }
 
+/* The Insert menu: a short list of the kinds of block, drawn as a light card over the stage, above the bar. */
+.ed-quick .ed-tb-pop.ed-insert-pop[data-up] {
+  width: max-content;
+  min-width: 11rem;
+  padding: var(--dc-space-1);
+  color: var(--dc-text);
+}
+
+.ed-insert {
+  display: grid;
+  gap: 2px;
+}
+
+.ed-app .ed-quick .ed-insert button,
+.ed-app .ed-quick .ed-insert .ed-button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding-inline: var(--dc-space-3);
+  text-align: left;
+}
+
+.ed-app .ed-quick .ed-insert button:hover:not(:disabled),
+.ed-app .ed-quick .ed-insert .ed-button:hover,
+.ed-app .ed-quick .ed-insert .ed-button:focus-within {
+  background: color-mix(in srgb, var(--dc-text) 8%, transparent);
+}
+
+.ed-app .ed-quick .ed-insert :focus-visible,
+.ed-app .ed-quick .ed-insert .ed-button:focus-within {
+  outline-color: var(--dc-text);
+}
+
+.ed-quick [data-quick="insert"]::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: var(--dc-space-2);
+  border-top: 1.5px solid currentColor;
+  border-left: 1.5px solid currentColor;
+  transform: translateY(0.15em) rotate(45deg);
+}
+
 /* The list of keyboard shortcuts, over a dimmed editor. It is hidden until ? or the bar's button opens it. */
 .ed-sheet {
   position: fixed;
