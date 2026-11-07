@@ -1232,3 +1232,7 @@ Found, not fixed (older than the brand work):
   tested). With a long status ("Saved. Updated from the files on disk.") the top bar runs past the window at 1024 px,
   and at 1280 px with the list of changes open, hiding Present; this step does not change the bar. `edit-e2e`'s
   "moves freely while Alt is held" still fails now and then, as before.
+
+## Header and footer step 4 record: the contents block
+
+A scene block of type `contents` (`of`: `sections` or `slides`) draws a table of contents. It lists the slides on the `section` template, or every slide with the sections on top. It is built from `look.outline` each time the slide is drawn, so it is right after a slide moves. Each entry links to its slide (`#/<id>`) and shows the number that slide has (`numbering.start` plus its place; a slide that shows no number still has one to turn to). The slide holding the block is left out. `check` warns with `contents-empty` and `contents-too-long` (more than 14 entries). A deck with a contents block needs schema 0.7. The PowerPoint export does not draw it yet (step 5).

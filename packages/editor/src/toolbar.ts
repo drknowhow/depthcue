@@ -27,6 +27,7 @@ import {
   chartPanel,
   citePanel,
   clipPanel,
+  contentsPanel,
   evidencePanel,
   hasAltPrompt,
   imagePanel,
@@ -533,17 +534,20 @@ export function createToolbar(
             ),
           ];
         }
+        case "contents":
+          return [contentsPanel(host, sceneId, block.id)];
         default:
           return [];
       }
     };
     const style = styleChip(block, block.type === "text" ? stylePanel(host, sceneId, block.id) : undefined);
+    // A contents block cites no source and follows no link: it is built from the deck.
+    const built = block.type === "contents";
     return [
       ...own(),
       ...(style ? [style] : []),
       framePanel(host, sceneId, block.id),
-      citePanel(host, sceneId, block.id),
-      linkPanel(host, sceneId, block.id),
+      ...(built ? [] : [citePanel(host, sceneId, block.id), linkPanel(host, sceneId, block.id)]),
     ];
   }
 

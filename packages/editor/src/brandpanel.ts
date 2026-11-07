@@ -501,7 +501,8 @@ function bandPart(ctx: BrandContext, band: Band, setChrome: ChromeSetter): Node 
 /** What the first slide that shows the full chrome says in the header and the footer, as the player resolves it. */
 function zonePreview(ctx: BrandContext): Node {
   const look = lookFor(ctx.session.doc);
-  const { bands, deck } = look.chrome ?? {};
+  const bands = look.chrome?.bands;
+  const deck = look.outline;
   const slides = bands && deck ? deck.slides.map((_, index) => resolveChrome(bands, deck, index)) : [];
   const index = slides.findIndex((slide) => slide.mode === "full");
   const shown = slides[index];

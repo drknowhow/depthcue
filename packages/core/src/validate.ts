@@ -13,7 +13,7 @@ import {
   unusedBrand,
 } from "./brand.ts";
 import { type BrandData, readBrand } from "./brandcheck.ts";
-import { type ChromeDeck, checkChromeDeck } from "./chrome.ts";
+import { type ChromeDeck, checkChromeDeck, checkContents } from "./chrome.ts";
 import { checkData } from "./data.ts";
 import { explain } from "./diagnostics.ts";
 import { checkFrames } from "./frames.ts";
@@ -238,6 +238,7 @@ export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
 
   const listed = new Set<string>();
   const slides: ChromeDeck["slides"][number][] = [];
+  const blocked: Array<{ id: string; blocks: Scene["blocks"] }> = [];
   const ids = Array.isArray((manifest.data as { scenes?: unknown })?.scenes)
     ? ((manifest.data as { scenes: unknown[] }).scenes.filter((id) => typeof id === "string") as string[])
     : [];
@@ -265,8 +266,11 @@ export function checkDeckFiles(files: DeckFiles): Diagnostic[] {
     const found = scene.data as Partial<Scene> | null;
     if (found && typeof found === "object" && typeof found.title === "string")
       slides.push({ id, title: found.title, template: found.template, chrome: found.chrome });
+    if (found && typeof found === "object" && Array.isArray(found.blocks))
+      blocked.push({ id, blocks: found.blocks });
   });
   if (deck && slides.length === ids.length) {
+    out.push(...checkContents({ numbering: deck.numbering, slides }, blocked, scenePath));
     out.push(
       ...checkChromeDeck(
         part?.brand?.chrome,

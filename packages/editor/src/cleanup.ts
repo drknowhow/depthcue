@@ -38,7 +38,7 @@ export function removeClaim(scene: Scene): Op[] {
 export function removeSource(scene: Scene, sourceId: string): Op[] {
   const ops: Op[] = [];
   for (const block of scene.blocks) {
-    if (!block.sourceIds?.includes(sourceId)) continue;
+    if (!("sourceIds" in block) || !block.sourceIds?.includes(sourceId)) continue;
     const rest = block.sourceIds.filter((target) => target !== sourceId);
     ops.push({
       op: "block.set",

@@ -175,7 +175,7 @@ export type Pasted = { ok: true; id: string; ops: Op[] } | { ok: false; message:
  * takes it, so a paste, an add and a drop agree.
  */
 export function pasteInto(scene: Scene, copied: Block, where: Where): Pasted {
-  const { frame, sourceIds, ...rest } = copied as Block & { frame?: Block["frame"] };
+  const { frame, sourceIds, ...rest } = copied as Block & { frame?: Block["frame"]; sourceIds?: string[] };
   const sources = new Set((scene.sources ?? []).map((source) => source.id));
   const kept = (sourceIds ?? []).filter((id) => sources.has(id));
   const base = typeof copied.id === "string" ? copied.id : copied.type;

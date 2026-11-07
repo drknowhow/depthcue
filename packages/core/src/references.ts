@@ -66,6 +66,7 @@ export function checkReferences(scene: Scene, file: string): Diagnostic[] {
     }
   });
   scene.blocks.forEach((block, i) => {
+    if (!("sourceIds" in block)) return;
     block.sourceIds?.forEach((target, j) => {
       if (!sourceIds.includes(target)) {
         out.push(unknownTarget(file, `/blocks/${i}/sourceIds/${j}`, target, "source", sourceIds));

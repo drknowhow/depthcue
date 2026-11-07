@@ -59,6 +59,7 @@ describe("adding to the slide", () => {
       "Table",
       "Image",
       "Clip",
+      "Contents",
       "Claim",
       "Build order",
       "Comment",

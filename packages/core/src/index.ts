@@ -66,11 +66,14 @@ export {
 export type { BuildEntry, BuildTarget } from "./build.ts";
 export { buildOf, placeInBuild, revealable, STEPS_MAX } from "./build.ts";
 export { BUILT_IN_STYLES, BUILT_IN_TEMPLATES } from "./builtins.ts";
-export type { Bands, ChromeDeck, ChromeMode, SlideChrome, Zones } from "./chrome.ts";
+export type { Bands, ChromeDeck, ChromeMode, ContentsEntry, SlideChrome, Zones } from "./chrome.ts";
 export {
   bandsOf,
+  CONTENTS_FIT,
   checkChromeDeck,
   checkChromeFields,
+  checkContents,
+  contentsOf,
   fieldsIn,
   fill as fillChrome,
   resolveChrome,
@@ -254,6 +257,7 @@ export {
   COMMENT_LIMITS,
   COMMENT_OP_NAMES,
   COMMENTS_FORMAT,
+  CONTENTS_OF,
   commentOpsSchema,
   commentsSchema,
   DATA_LIMITS,

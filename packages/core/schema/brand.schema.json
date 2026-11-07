@@ -559,7 +559,8 @@
                 "image",
                 "table",
                 "chart",
-                "clip"
+                "clip",
+                "contents"
               ]
             }
           },

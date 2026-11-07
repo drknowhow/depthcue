@@ -61,6 +61,7 @@ export const KIND_LABEL: Record<BlockKind, string> = {
   table: "Table",
   chart: "Chart",
   clip: "Clip",
+  contents: "Contents",
 };
 
 const TEXT_KINDS = ["heading", "body", "caption", "quote"] as const;

@@ -1024,7 +1024,7 @@ function item(page: Page, entry: Item) {
   const block = page.blocks.get(entry.id);
   if (!block) return;
   page.placed.add(block.id);
-  if (block.link !== undefined && block.type !== "image") {
+  if ("link" in block && block.link !== undefined && block.type !== "image") {
     page.left.push(
       `"${block.id}": its link is not carried to PowerPoint; only a picture and the sources keep theirs.`,
     );

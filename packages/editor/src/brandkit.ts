@@ -99,6 +99,7 @@ const SAMPLE: Record<BlockKind, string> = {
   table: "Round a table",
   chart: "Round a chart",
   clip: "Round a clip",
+  contents: "Round a contents list",
 };
 
 /** The deck on another preset, with no colors of its own, so the brand's are what shows. */

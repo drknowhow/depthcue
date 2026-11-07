@@ -26,7 +26,7 @@ const deck = (more: Partial<ChromeDeck> = {}): ChromeDeck => ({
 const lookFor = (
   bands: NonNullable<NonNullable<DeckLook["chrome"]>["bands"]>,
   more: Partial<ChromeDeck> = {},
-): PageLook => lookWith({ chrome: { accent: "none", bands, deck: deck(more) } }) as unknown as PageLook;
+): PageLook => lookWith({ chrome: { accent: "none", bands }, outline: deck(more) }) as unknown as PageLook;
 
 const draw = (index: number, look: PageLook) => renderScene(SCENES[index] as Scene, { assetBase: ".", look });
 
@@ -94,5 +94,40 @@ describe("the header and the footer", () => {
     const section = renderScene(SCENES[2] as Scene, { assetBase: ".", look: old, number: 7 });
     expect(cell(section, "foot", "start")?.textContent).toBe("Harbor");
     expect(section.querySelector(".dc-number")?.textContent).toBe("7");
+  });
+});
+
+describe("the contents block", () => {
+  const toc = sceneWith({
+    id: "toc",
+    title: "Contents",
+    blocks: [{ id: "c", type: "contents", of: "slides" }],
+  } as never);
+  const outline = deck({ slides: [...deck().slides, { id: "toc", title: "Contents" }] });
+  const look = lookWith({ chrome: { accent: "none" }, outline }) as unknown as PageLook;
+
+  it("lists the other slides as links to them, with their numbers and levels", () => {
+    const nav = renderScene(toc, { assetBase: ".", look }).querySelector("nav.dc-contents");
+    const links = [...(nav?.querySelectorAll<HTMLAnchorElement>("a.dc-contents-link") ?? [])];
+    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+      "#/cover",
+      "#/part-one",
+      "#/revenue",
+      "#/costs",
+    ]);
+    expect(links.map((a) => a.querySelector(".dc-contents-number")?.textContent)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+    ]);
+    expect(nav?.querySelector("li[data-level='0']")?.textContent).toContain("Results");
+  });
+
+  it("draws an empty list as nothing, not a broken one", () => {
+    const bare = lookWith({ chrome: { accent: "none" } }) as unknown as PageLook;
+    const nav = renderScene(toc, { assetBase: ".", look: bare }).querySelector("nav.dc-contents");
+    expect(nav).not.toBeNull();
+    expect(nav?.querySelector("li")).toBeNull();
   });
 });

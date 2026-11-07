@@ -1,5 +1,6 @@
 import { type Block, type Deck, readsMarkup, type Scene, textFlow } from "@depthcue/core";
 import { chartTable } from "./charts/draw.ts";
+import { renderContents } from "./contents.ts";
 import { h } from "./dom.ts";
 import { assetUrl } from "./safe.ts";
 import { type RenderContext, renderChartTable, renderSources, templateOf } from "./scene.ts";
@@ -62,6 +63,8 @@ function evidence(scene: Scene, ctx: RenderContext): HTMLElement[] {
       // A chart of any kind reads as its data: its title, a column per series and a row per point.
       const table = block.type === "chart" ? chartTable(block) : block;
       out.push(h("figure", { class: "dc-figure" }, renderTable(table, ctx.language)));
+    } else if (block.type === "contents") {
+      out.push(renderContents(scene, block, ctx));
     } else if (block.type === "image" && !block.decorative) {
       const src = assetUrl(ctx.assetBase, block.asset);
       out.push(

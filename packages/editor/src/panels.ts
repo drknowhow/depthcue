@@ -117,6 +117,9 @@ export interface Panel {
 
 type Chart = Extract<Block, { type: "bar-chart" }>;
 
+/** The saved link a block points at. A contents block has none. */
+const linkOf = (block: Block | undefined): string | undefined =>
+  block && "link" in block ? block.link : undefined;
 const blockOf = (host: PanelHost, sceneId: string, id: string) =>
   host.scene(sceneId)?.blocks.find((block) => block.id === id);
 
@@ -174,7 +177,7 @@ export function citePanel(host: PanelHost, sceneId: string, id: string): Panel {
 
   const cited = (scene: Scene) => {
     const block = scene.blocks.find((candidate) => candidate.id === id);
-    return new Set(block?.sourceIds ?? []);
+    return new Set(block && "sourceIds" in block ? (block.sourceIds ?? []) : []);
   };
 
   function sync(scene: Scene) {
@@ -230,6 +233,36 @@ export function citePanel(host: PanelHost, sceneId: string, id: string): Panel {
   };
 }
 
+/** What a contents block lists: the deck's sections, or every slide. */
+export function contentsPanel(host: PanelHost, sceneId: string, id: string): Panel {
+  const listed = () => {
+    const block = blockOf(host, sceneId, id);
+    return block?.type === "contents" ? (block.of ?? "sections") : "sections";
+  };
+  const panel = form(
+    () => blockOf(host, sceneId, id)?.type === "contents",
+    () => [
+      selectField(host.edits, {
+        key: "contents:of",
+        label: "Lists",
+        options: [
+          { value: "sections", label: "The sections" },
+          { value: "slides", label: "Every slide" },
+        ],
+        read: listed,
+        commit: (value) => blockSet(sceneId, id, { of: value }),
+      }),
+    ],
+  );
+  return {
+    name: "contents",
+    label: "Contents",
+    title: "What this contents list shows",
+    body: panel.body,
+    fill: panel.fill,
+  };
+}
+
 /** The deck's saved links as choices, each with where it goes. */
 const linkOptions = (host: PanelHost) =>
   (host.deck().links ?? []).map((entry) => ({ value: entry.id, label: `${entry.title} (${entry.target})` }));
@@ -239,7 +272,7 @@ const linkOptions = (host: PanelHost) =>
  * made and changed in the Deck panel, so changing one there changes every block that follows it.
  */
 export function linkPanel(host: PanelHost, sceneId: string, id: string): Panel {
-  const followed = (scene: Scene) => scene.blocks.find((candidate) => candidate.id === id)?.link;
+  const followed = (scene: Scene) => linkOf(scene.blocks.find((candidate) => candidate.id === id));
   const panel = form(
     () => blockOf(host, sceneId, id) !== undefined,
     () => [
@@ -251,7 +284,7 @@ export function linkPanel(host: PanelHost, sceneId: string, id: string): Panel {
         label: "Link to",
         empty: "No link",
         options: linkOptions(host),
-        read: () => blockOf(host, sceneId, id)?.link ?? "",
+        read: () => linkOf(blockOf(host, sceneId, id)) ?? "",
         commit: (value) => blockSet(sceneId, id, { link: optional(value) }),
       }),
     ],

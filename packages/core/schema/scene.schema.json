@@ -965,6 +965,69 @@
                 "pattern": "^[a-z][a-z0-9-]{1,63}$"
               }
             }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "type": {
+                "const": "contents"
+              },
+              "of": {
+                "enum": [
+                  "sections",
+                  "slides"
+                ]
+              },
+              "frame": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "w": {
+                    "type": "number",
+                    "minimum": 5,
+                    "maximum": 100
+                  },
+                  "h": {
+                    "type": "number",
+                    "minimum": 5,
+                    "maximum": 100
+                  }
+                }
+              },
+              "slot": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "style": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              }
+            }
           }
         ]
       }

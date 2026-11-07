@@ -97,7 +97,7 @@ export function newScene(doc: Doc, layout: Layout): NewScene {
   return { id, title: "New scene", layout, blocks: [heading, body] };
 }
 
-export type NewBlockKind = "text" | "image" | "chart" | "clip" | "table";
+export type NewBlockKind = "text" | "image" | "chart" | "clip" | "table" | "contents";
 
 export const BLOCK_KINDS: ReadonlyArray<{ kind: NewBlockKind; label: string }> = [
   { kind: "text", label: "Text" },
@@ -105,6 +105,7 @@ export const BLOCK_KINDS: ReadonlyArray<{ kind: NewBlockKind; label: string }> =
   { kind: "chart", label: "Chart" },
   { kind: "table", label: "Table" },
   { kind: "clip", label: "Clip" },
+  { kind: "contents", label: "Contents" },
 ];
 
 /** True for a kind of block the editor can add. A layout may accept more, such as the old bar chart, that it cannot add. */
@@ -146,6 +147,9 @@ export function newBlock(scene: Scene, kind: NewBlockKind, asset?: string): Bloc
           [null, null, null],
         ],
       };
+    case "contents":
+      // The sections of the deck, as a list of links. The player builds it, so it stays right as slides move.
+      return { id, type: "contents", of: "sections" };
     case "image":
       return { id, type: "image", asset: asset as string, alt: placeholderAlt(asset as string) };
     case "clip":
@@ -197,6 +201,8 @@ export function blockLabel(block: Block, scene?: Pick<Scene, "schemaVersion">): 
       return block.title ?? "Table";
     case "chart":
       return block.title ?? `${CHART_KIND_LABELS[block.kind]} chart`;
+    case "contents":
+      return block.of === "slides" ? "Contents of the slides" : "Contents of the sections";
   }
 }
 
@@ -206,6 +212,7 @@ const KIND_LABEL = {
   "bar-chart": "Chart",
   table: "Table",
   chart: "Chart",
+  contents: "Contents",
 } as const;
 
 const capital = (word: string) => `${word[0]?.toUpperCase()}${word.slice(1)}`;

@@ -4,7 +4,7 @@
  * audience reads.
  */
 import { CHROME_FIELDS, CHROME_PLACES, SECTION_TEMPLATE } from "./schema.ts";
-import type { Brand, Diagnostic } from "./types.ts";
+import type { Block, Brand, Diagnostic } from "./types.ts";
 
 type Place = (typeof CHROME_PLACES)[number];
 type Field = (typeof CHROME_FIELDS)[number];
@@ -137,6 +137,84 @@ export function resolveChrome(bands: Bands, deck: ChromeDeck, index: number): Sl
       const shown = fill(text, values);
       if (shown !== "") out[band][place] = shown;
     }
+  }
+  return out;
+}
+
+/** One line of a table of contents. */
+export interface ContentsEntry {
+  id: string;
+  title: string;
+  /** The number the slide has in the deck. A slide that shows none still has one, to turn to. */
+  number: number;
+  /** 0 for a section, 1 for a slide under one. */
+  level: 0 | 1;
+}
+
+/**
+ * What a contents block lists: the slides on the `section` template, or every slide with the sections as the top
+ * level. The slide that holds the block is left out of its own list.
+ */
+export function contentsOf(
+  deck: Pick<ChromeDeck, "numbering" | "slides">,
+  of: "sections" | "slides",
+  holder?: string,
+): ContentsEntry[] {
+  const start = deck.numbering?.start ?? 1;
+  return deck.slides.flatMap((slide, index): ContentsEntry[] => {
+    if (slide.id === holder) return [];
+    const section = slide.template === SECTION_TEMPLATE;
+    if (of === "sections" && !section) return [];
+    return [{ id: slide.id, title: slide.title, number: start + index, level: section ? 0 : 1 }];
+  });
+}
+
+/** The most entries a contents block should list: past it, the list does not fit a slide. */
+export const CONTENTS_FIT = 14;
+
+/** A contents block with nothing to list, or more than a slide holds. */
+export function checkContents(
+  deck: Pick<ChromeDeck, "numbering" | "slides">,
+  scenes: ReadonlyArray<{ id: string; blocks: readonly Block[] }>,
+  file: (scene: string) => string,
+): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  for (const scene of scenes) {
+    scene.blocks.forEach((block, i) => {
+      if (block.type !== "contents") return;
+      const of = block.of ?? "sections";
+      const listed = contentsOf(deck, of, scene.id).length;
+      const path = `/blocks/${i}`;
+      if (listed === 0) {
+        out.push(
+          problem(
+            "warning",
+            file(scene.id),
+            path,
+            "contents-empty",
+            of === "sections"
+              ? `This contents block lists sections, but no slide is on the "${SECTION_TEMPLATE}" template, so it shows nothing.`
+              : "This contents block has no other slide to list.",
+            of === "sections"
+              ? `Put a slide on the "${SECTION_TEMPLATE}" template at the start of each part, or set "of" to "slides".`
+              : "Add the slides it should list.",
+          ),
+        );
+      } else if (listed > CONTENTS_FIT) {
+        out.push(
+          problem(
+            "warning",
+            file(scene.id),
+            path,
+            "contents-too-long",
+            `This contents block lists ${listed} entries; more than ${CONTENTS_FIT} do not fit a slide.`,
+            of === "slides"
+              ? 'Set "of" to "sections", or split the contents over two slides.'
+              : "Join some sections, or split the contents over two slides.",
+          ),
+        );
+      }
+    });
   }
   return out;
 }

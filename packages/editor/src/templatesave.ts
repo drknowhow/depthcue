@@ -48,6 +48,7 @@ const ROLE_OF: Record<BlockKind, SlotRole> = {
   chart: "chart",
   table: "table",
   clip: "content",
+  contents: "content",
 };
 
 /** The hint a slot starts with, by the kind of block that made it. The person edits it before saving. */
@@ -62,6 +63,7 @@ const HINT: Record<BlockKind | "title" | "claim", string> = {
   chart: "A chart of the numbers.",
   table: "A table.",
   clip: "A video clip.",
+  contents: "The contents of the deck.",
 };
 
 export interface Draft {

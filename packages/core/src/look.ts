@@ -42,12 +42,7 @@ function chromeDeckOf(source: LookSource, templates: Readonly<Record<string, Tem
   return { title: deck.title, date: deck.date, numbering: deck.numbering, slides, templateChrome };
 }
 
-function chromeOf(
-  brand: Brand,
-  theme: Deck["theme"],
-  source: LookSource,
-  templates: Readonly<Record<string, Template>>,
-): DeckLook["chrome"] {
+function chromeOf(brand: Brand, theme: Deck["theme"]): DeckLook["chrome"] {
   const chrome = brand.chrome;
   if (chrome === undefined) return undefined;
   const logo = logoFor(brand, theme);
@@ -57,7 +52,7 @@ function chromeOf(
       : {}),
     ...(chrome.footer ? { footer: { ...chrome.footer } } : {}),
     ...(chrome.number ? { number: { ...chrome.number } } : {}),
-    ...(hasBands(chrome) ? { bands: bandsOf(chrome), deck: chromeDeckOf(source, templates) } : {}),
+    ...(hasBands(chrome) ? { bands: bandsOf(chrome) } : {}),
     accent: chrome.accent ?? "none",
   };
 }
@@ -94,7 +89,10 @@ export function lookOf(source: LookSource): DeckLook {
     for (const block of scene.blocks) useStyle(block.style);
   }
   const fonts = brand?.lock || deck.fonts === undefined ? brand?.fonts : undefined;
-  const chrome = brand ? chromeOf(brand, deck.theme, source, allTemplates) : undefined;
+  const chrome = brand ? chromeOf(brand, deck.theme) : undefined;
+  const reads =
+    chrome?.bands !== undefined ||
+    deck.scenes.some((id) => own(source.scenes, id)?.blocks.some((block) => block.type === "contents"));
   return {
     theme: style.theme,
     colors: { ...style.colors },
@@ -110,6 +108,7 @@ export function lookOf(source: LookSource): DeckLook {
         }
       : {}),
     ...(chrome ? { chrome } : {}),
+    ...(reads ? { outline: chromeDeckOf(source, allTemplates) } : {}),
     styles,
     templates,
   };

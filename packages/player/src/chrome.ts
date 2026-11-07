@@ -29,13 +29,14 @@ export interface Shown {
  */
 export function shown(
   chrome: Chrome,
+  outline: ChromeDeck | undefined,
   scene: Scene,
   template: PageTemplate | undefined,
   ctx: RenderContext,
 ): Shown {
-  if (chrome.bands && chrome.deck) {
-    const index = chrome.deck.slides.findIndex((slide) => slide.id === scene.id);
-    return { mode: "full", slide: resolveChrome(chrome.bands, chrome.deck, index), bands: chrome.bands };
+  if (chrome.bands && outline) {
+    const index = outline.slides.findIndex((slide) => slide.id === scene.id);
+    return { mode: "full", slide: resolveChrome(chrome.bands, outline, index), bands: chrome.bands };
   }
   const footer: Bands["footer"] = {};
   if (chrome.footer) footer[chrome.footer.place] = chrome.footer.text;
