@@ -270,7 +270,8 @@ describe("an exported deck opened from a folder with the network off", () => {
   it("shows the speaker notes, which went with the deck", async () => {
     await page.goto(exportTo(folder, "out"));
     await scene("opening").waitFor();
-    await page.locator("[data-action='notes']").click();
+    await page.locator("[data-action='more']").click();
+    await page.locator("#dc-more [data-action='notes']").click();
     expect(await page.locator("#dc-notes").textContent()).toContain(
       "Open with the answer, then show the evidence.",
     );
@@ -279,7 +280,8 @@ describe("an exported deck opened from a folder with the network off", () => {
   it("has no notes to show when it was exported with --no-notes", async () => {
     await page.goto(exportTo(folder, "bare", false));
     await scene("opening").waitFor();
-    await page.locator("[data-action='notes']").click();
+    await page.locator("[data-action='more']").click();
+    await page.locator("#dc-more [data-action='notes']").click();
     const text = (await page.locator("#dc-notes").textContent()) ?? "";
     expect(text).toContain("No notes for this scene.");
     expect(text).not.toContain("Open with the answer");
@@ -289,9 +291,45 @@ describe("an exported deck opened from a folder with the network off", () => {
   it("opens the reading view, which holds the whole deck as one page", async () => {
     await page.goto(exportTo(folder, "out"));
     await scene("opening").waitFor();
-    await page.locator("[data-action='read']").click();
+    await page.locator("[data-action='more']").click();
+    await page.locator("#dc-more [data-action='read']").click();
     await page.locator(".dc-reading").waitFor();
     expect(await page.locator(".dc-reading-scene").count()).toBe(4);
+    expect(problems).toEqual([]);
+  });
+
+  it("rests its controls two seconds after the pointer stops, over a stage that fills the window", async () => {
+    await page.goto(exportTo(folder, "out"));
+    await scene("opening").waitFor();
+    const bar = page.locator(".dc-controls");
+    const stage = await page.locator(".dc-stage").boundingBox();
+    expect(stage?.height).toBe(page.viewportSize()?.height);
+    await page.mouse.move(200, 200);
+    expect(await bar.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    await page.waitForFunction(
+      () => document.querySelector<HTMLElement>(".dc-player")?.dataset.chrome === "rest",
+      null,
+      {
+        timeout: 4000,
+      },
+    );
+    await expect.poll(() => bar.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+    await page.mouse.move(300, 300);
+    await expect.poll(() => bar.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+  });
+
+  it("opens an overview of every scene on G, and goes to the one chosen", async () => {
+    await page.goto(exportTo(folder, "out"));
+    await scene("opening").waitFor();
+    await page.keyboard.press("g");
+    const cards = page.locator(".dc-overview-card");
+    await cards.first().waitFor();
+    expect(await cards.count()).toBe(4);
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Enter");
+    await page.locator(".dc-overview").waitFor({ state: "hidden" });
+    // The scene changes over a view transition, so the count follows a moment later.
+    await expect.poll(() => page.locator(".dc-count").textContent()).toMatch(/^2 of 4/);
     expect(problems).toEqual([]);
   });
 
@@ -440,7 +478,8 @@ describe("an exported scene with pinned blocks", () => {
 
   it("is not pinned in the reading view, which holds the same words as one page", async () => {
     await openPinned();
-    await page.locator("[data-action='read']").click();
+    await page.locator("[data-action='more']").click();
+    await page.locator("#dc-more [data-action='read']").click();
     await page.locator(".dc-reading").waitFor();
     const reading = page.locator(".dc-reading-scene[data-scene='pinned']");
     expect(await reading.textContent()).toContain("A paragraph pinned to the lower right.");

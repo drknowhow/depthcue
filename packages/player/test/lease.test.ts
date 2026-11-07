@@ -104,7 +104,8 @@ describe("the chip", () => {
     mount();
     const bar = control(".dc-controls");
     expect(chip().parentElement).toBe(bar);
-    expect(chip().nextElementSibling).toBe(control('[data-action="read"]'));
+    expect(chip().nextElementSibling).toBe(control(".dc-voice"));
+    expect(chip().querySelector(".dc-k")?.textContent).toBe("Live");
     expect(chip().dataset.holder).toBe("human");
     expect(pill()).toBe("You present");
     expect(grant().hidden).toBe(false);
