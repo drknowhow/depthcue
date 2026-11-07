@@ -617,6 +617,18 @@ export function scenePanel(host: PanelHost, current: () => string): ScenePanel {
       read: () => scene()?.title ?? "",
       commit: (value) => set({ title: value }),
     }),
+    selectField(host.edits, {
+      key: "panel:chrome",
+      label: "Header and footer",
+      empty: "As the template says",
+      options: [
+        { value: "full", label: "All of it" },
+        { value: "minimal", label: "Logo only" },
+        { value: "none", label: "None" },
+      ],
+      read: () => scene()?.chrome ?? "",
+      commit: (value) => set({ chrome: value === "" ? null : (value as "full" | "minimal" | "none") }),
+    }),
   ]);
 
   const steps = form(exists, () => {
@@ -1204,6 +1216,49 @@ export function deckPanel(host: PanelHost): DeckPanel {
     },
   );
 
+  // The date the header and footer show, and how slides are numbered: where the first starts, and which skip it.
+  const numbering = () => deck().numbering ?? {};
+  const setNumbering = (patch: { start?: number | null; skip?: string[] | null }): Op => {
+    const next: { start?: number; skip?: string[] } = { ...numbering() };
+    if (patch.start !== undefined) {
+      if (patch.start === null || patch.start === 1) delete next.start;
+      else next.start = patch.start;
+    }
+    if (patch.skip !== undefined) {
+      if (patch.skip === null || patch.skip.length === 0) delete next.skip;
+      else next.skip = patch.skip;
+    }
+    return { op: "deck.set", set: { numbering: Object.keys(next).length > 0 ? next : null } };
+  };
+  const footing = form(
+    () => true,
+    () => [
+      textField(host.edits, {
+        key: "panel:deck:date",
+        label: "Date",
+        hint: "What {date} shows in the header and footer, as written.",
+        read: () => deck().date ?? "",
+        commit: (value) => ({ op: "deck.set", set: { date: value === "" ? null : value } }),
+      }),
+      numberField(host.edits, {
+        key: "panel:deck:numbering-start",
+        label: "First slide is number",
+        read: () => numbering().start ?? 1,
+        commit: (value) => setNumbering({ start: value }),
+      }),
+      selectField(host.edits, {
+        key: "panel:deck:numbering-skip",
+        label: "No number on",
+        options: [
+          { value: "", label: "No slide" },
+          { value: "title,section", label: "Title and section slides" },
+        ],
+        read: () => (numbering().skip ?? []).join(","),
+        commit: (value) => setNumbering({ skip: value === "" ? null : value.split(",") }),
+      }),
+    ],
+  );
+
   const links = form(
     () => true,
     () => {
@@ -1319,6 +1374,12 @@ export function deckPanel(host: PanelHost): DeckPanel {
     h("summary", {}, "Style"),
     style.body,
   );
+  const footingSection = h(
+    "details",
+    { class: "ed-tb-section", "data-section": "footing" },
+    h("summary", {}, "Date and numbers"),
+    footing.body,
+  );
   const linksCount = h("span", { class: "ed-tb-n" });
   const linksSection = h(
     "details",
@@ -1326,7 +1387,15 @@ export function deckPanel(host: PanelHost): DeckPanel {
     h("summary", {}, "Links", linksCount),
     links.body,
   );
-  const body = h("div", { class: "ed-tb-form" }, top.body, styleSection, linksSection, moduleSettings.body);
+  const body = h(
+    "div",
+    { class: "ed-tb-form" },
+    top.body,
+    styleSection,
+    footingSection,
+    linksSection,
+    moduleSettings.body,
+  );
   return {
     name: "deck",
     label: "Deck",
@@ -1335,6 +1404,7 @@ export function deckPanel(host: PanelHost): DeckPanel {
     fill(live, typing) {
       top.fill(live, typing);
       style.fill(live, typing);
+      footing.fill(live, typing);
       links.fill(live, typing);
       linksCount.textContent = (deck().links ?? []).length > 0 ? String((deck().links ?? []).length) : "";
       moduleSettings.fill(live, typing);

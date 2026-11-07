@@ -45,7 +45,7 @@ Decisions (Dimitri, 2026-11-01):
   `deck.json` takes `date` (text, never a clock) and `numbering` (`start`, and `skip`, template ids that show no
   number but still count); a scene takes `chrome` (`full`, `minimal` or `none`), which wins over its template's.
   `depthcue check` reports `chrome-unknown-field`, `chrome-no-date`, `chrome-no-section` and `chrome-no-number`.
-  The player draws the header along the top and each zone of the footer along the bottom. The PowerPoint export and the editor's controls follow in the next steps.
+  The player draws the header along the top and each zone of the footer along the bottom. The Brand panel's Chrome section has three zones for the header and three for the footer, buttons that put a field at the cursor, and a line that says what the first slide with chrome shows; the Deck popover has the date and the numbering, and the Scene popover has Header and footer for one slide. The PowerPoint export follows in the next step.
 - `styles`: the brand's components. A style is a named look for a block, chosen from a bounded list of properties:
   font (display, body, mono), size, weight, case, tone, fill (none, surface, action, evidence, text), border, an
   accent edge, corner radius, padding and alignment, and which block kinds it applies to. A block takes one with

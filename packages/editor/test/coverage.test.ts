@@ -450,6 +450,24 @@ const WAYS: Record<string, Entry> = {
       find(host, "[data-action='duplicate-scene']") &&
       find(host, "[data-action='delete-scene']"),
   },
+  "deck.date": {
+    where: "Deck popover, Date and numbers section, Date",
+    reach: () => field(deckPop() as HTMLElement, "panel:deck:date"),
+  },
+  "deck.numbering": {
+    where: "Deck popover, Date and numbers section, First slide is number and No number on",
+    reach: () =>
+      field(deckPop() as HTMLElement, "panel:deck:numbering-start") &&
+      field(deckPop() as HTMLElement, "panel:deck:numbering-skip"),
+  },
+  "deck.numbering.start": {
+    where: "Deck popover, Date and numbers section, First slide is number",
+    reach: () => field(deckPop() as HTMLElement, "panel:deck:numbering-start"),
+  },
+  "deck.numbering.skip": {
+    where: "Deck popover, Date and numbers section, No number on",
+    reach: () => field(deckPop() as HTMLElement, "panel:deck:numbering-skip"),
+  },
   "deck.modules": {
     where: "Deck popover, one choice per module",
     reach: () => find(deckPop() as HTMLElement, "select[data-field^='panel:deck:module:']"),
@@ -486,6 +504,10 @@ const WAYS: Record<string, Entry> = {
     reach: () => field(scenePop() as HTMLElement, "panel:title"),
   },
   "scene.layout": { where: "Layout buttons in the top bar", reach: () => find(host, "[data-layout]") },
+  "scene.chrome": {
+    where: "Scene popover, Header and footer",
+    reach: () => field(scenePop() as HTMLElement, "panel:chrome"),
+  },
   "scene.lead": { where: "Who leads buttons in the top bar", reach: () => find(host, "[data-lead]") },
   "scene.summary": {
     where: "Quick bar, Claim; the claim's toolbar removes it",
@@ -883,9 +905,6 @@ const WAYS: Record<string, Entry> = {
  */
 const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
   ["scene.template", "BRANDS_AND_PPTX step 7, the template picker and Change template"],
-  ["scene.chrome", "HEADER_FOOTER step 3, Show header and footer in the scene inspector"],
-  ["deck.date", "HEADER_FOOTER step 3, the Header and footer panel"],
-  ["deck.numbering", "HEADER_FOOTER step 3, the Header and footer panel"],
   ...["text", "image", "bar-chart", "clip", "table", "chart"].flatMap(
     (type): Array<[string, string]> => [
       [`scene.blocks<${type}>.slot`, "BRANDS_AND_PPTX step 7, Change template"],
