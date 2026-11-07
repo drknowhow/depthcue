@@ -205,13 +205,14 @@ describe("adding from a place", () => {
   it("offers the kinds the area takes, and no others", () => {
     canvas.render("hollow");
     const kinds = [...menu("evidence").children].map((node) => node.textContent);
-    expect(kinds).toEqual(["Text", "Image", "Clip", "Table", "Chart"]);
+    expect(kinds).toEqual(["Text", "Image", "Clip", "Table", "Chart", "Contents"]);
     canvas.render("words");
     expect([...menu("media").children].map((node) => node.textContent)).toEqual([
       "Image",
       "Clip",
       "Table",
       "Chart",
+      "Contents",
     ]);
   });
 

@@ -92,7 +92,10 @@ export const BLOCK_KINDS = [
   "table",
   "chart",
   "clip",
+  "contents",
 ] as const;
+/** What a contents block lists: the deck's sections, or every slide with its section. */
+export const CONTENTS_OF = ["sections", "slides"] as const;
 /** Which of the deck's faces a style sets its text in. */
 export const STYLE_FONTS = ["display", "body", "mono"] as const;
 export const STYLE_WEIGHTS = ["regular", "bold"] as const;
@@ -354,6 +357,24 @@ const rows = (minCells: number, maxCells: number) =>
     items: { type: "array", minItems: minCells, maxItems: maxCells, items: cell },
   }) as const;
 
+/**
+ * A table of contents. It holds no text: the player builds it from the deck, so it is right after any slide moves,
+ * and each entry is a link to its slide. It lists the slides on the `section` template, or every slide.
+ */
+const contentsBlock = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "type"],
+  properties: {
+    id,
+    type: { const: "contents" },
+    of: { enum: CONTENTS_OF },
+    frame,
+    slot: id,
+    style: id,
+  },
+} as const;
+
 const tableBlock = {
   type: "object",
   additionalProperties: false,
@@ -491,7 +512,7 @@ export const sceneSchema = {
       items: {
         type: "object",
         discriminator: { propertyName: "type" },
-        oneOf: [textBlock, imageBlock, barChartBlock, clipBlock, tableBlock, chartBlock],
+        oneOf: [textBlock, imageBlock, barChartBlock, clipBlock, tableBlock, chartBlock, contentsBlock],
       },
     },
     sources: { type: "array", maxItems: 32, items: source },

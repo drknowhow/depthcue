@@ -1,6 +1,7 @@
 import type { Block, Deck, PageLook, PageSlot, PageStyle, PageTemplate, Scene } from "@depthcue/core";
 import { renderChart } from "./charts/draw.ts";
 import { shown, zoneNodes } from "./chrome.ts";
+import { renderContents } from "./contents.ts";
 import { h } from "./dom.ts";
 import { type Followed, followLink, linkElement } from "./links.ts";
 import { gatedIds } from "./model.ts";
@@ -112,7 +113,7 @@ export function renderSources(scene: Scene, ctx: RenderContext): HTMLElement | n
 }
 
 function cite(scene: Scene, block: Block): HTMLElement | null {
-  const titles = (block.sourceIds ?? [])
+  const titles = ("sourceIds" in block ? (block.sourceIds ?? []) : [])
     .map((id) => scene.sources?.find((source) => source.id === id)?.title)
     .filter((title): title is string => title !== undefined);
   return titles.length ? h("p", { class: "dc-cite" }, `Source: ${titles.join("; ")}`) : null;
@@ -170,6 +171,9 @@ function renderBlock(
     case "chart":
       node = renderChart(block, ctx.language);
       break;
+    case "contents":
+      node = renderContents(scene, block, ctx);
+      break;
   }
   node.dataset.id = block.id;
   node.classList.add("dc-block");
@@ -179,7 +183,8 @@ function renderBlock(
   }
   const citation = cite(scene, block);
   if (citation) node.append(citation);
-  const followed: Followed | undefined = block.link === undefined ? undefined : followLink(ctx, block.link);
+  const link = "link" in block ? block.link : undefined;
+  const followed: Followed | undefined = link === undefined ? undefined : followLink(ctx, link);
   if (followed) node.append(h("p", { class: "dc-link-row" }, linkElement(followed)));
   return node;
 }
@@ -295,7 +300,7 @@ function renderChrome(
 ) {
   const chrome = look?.chrome;
   if (!chrome) return null;
-  const { mode, slide, bands } = shown(chrome, scene, template, ctx);
+  const { mode, slide, bands } = shown(chrome, look?.outline, scene, template, ctx);
   if (mode === "none") return null;
   const { logo } = chrome;
   const src = logo && brandUrl(ctx.assetBase, logo.path);

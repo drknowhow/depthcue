@@ -70,7 +70,7 @@ let store: EditorStore;
 let editor: Editor;
 // A scene with a claim, steps, sources, a chart and one block of each other kind, so every control has something to edit.
 const SCENE = "demand";
-const blocks = { text: "", image: "", clip: "", table: "", chart: "" };
+const blocks = { text: "", image: "", clip: "", table: "", chart: "", contents: "" };
 // A table with a column of words and a column of numbers with a unit, so each kind of column has its controls.
 const TABLE: Block = {
   id: "table-demand",
@@ -107,19 +107,16 @@ beforeEach(async () => {
     newBlock(scene, "clip", "assets/walk.mp4"),
     TABLE,
     newBlock(scene, "chart"),
+    newBlock(scene, "contents"),
   ];
   const result = store.session.apply([
     { op: "link.add" as const, link: { id: "docs", title: "The docs", target: "https://example.com" } },
     ...added.map((block) => ({ op: "block.add" as const, scene: SCENE, block })),
   ]);
   if (!result.ok) throw new Error("the extra blocks should be accepted");
-  [blocks.text, blocks.image, blocks.clip, blocks.table, blocks.chart] = added.map((block) => block.id) as [
-    string,
-    string,
-    string,
-    string,
-    string,
-  ];
+  [blocks.text, blocks.image, blocks.clip, blocks.table, blocks.chart, blocks.contents] = added.map(
+    (block) => block.id,
+  ) as [string, string, string, string, string, string];
   host = document.createElement("div");
   document.body.replaceChildren(host);
   // The picture tools are a part of their own, which a session that used them has fetched.
@@ -202,6 +199,7 @@ const FRAMED: Record<string, { id: () => string; kind: "text" | "other" }> = {
   chart: { id: () => blocks.chart, kind: "other" },
   clip: { id: () => blocks.clip, kind: "other" },
   table: { id: () => blocks.table, kind: "other" },
+  contents: { id: () => blocks.contents, kind: "other" },
 };
 const FRAMES = Object.fromEntries(
   Object.entries(FRAMED).flatMap(([type, { id, kind }]): [string, Entry][] => [
@@ -824,6 +822,16 @@ const WAYS: Record<string, Entry> = {
     reach: () => cited("other", blocks.clip),
   },
 
+  "scene.blocks<contents>.id": { never: NEVER_ID },
+  "scene.blocks<contents>.type": { never: NEVER_KIND },
+  "scene.blocks<contents>.of": {
+    where: "Contents toolbar, Contents chip, Lists",
+    reach: () => {
+      choose(blocks.contents, "other");
+      return field(openChip("contents") as HTMLElement, "contents:of");
+    },
+  },
+
   "scene.blocks<table>.id": { never: NEVER_ID },
   "scene.blocks<table>.type": { never: NEVER_KIND },
   "scene.blocks<table>.title": {
@@ -905,7 +913,7 @@ const WAYS: Record<string, Entry> = {
  */
 const PENDING: ReadonlyArray<[prefix: string, step: string]> = [
   ["scene.template", "BRANDS_AND_PPTX step 7, the template picker and Change template"],
-  ...["text", "image", "bar-chart", "clip", "table", "chart"].flatMap(
+  ...["text", "image", "bar-chart", "clip", "table", "chart", "contents"].flatMap(
     (type): Array<[string, string]> => [
       [`scene.blocks<${type}>.slot`, "BRANDS_AND_PPTX step 7, Change template"],
       [`scene.blocks<${type}>.style`, "BRANDS_AND_PPTX step 7, the Style menu"],

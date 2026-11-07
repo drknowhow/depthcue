@@ -4,9 +4,12 @@ import {
   type Bands,
   bandsOf,
   type ChromeDeck,
+  CONTENTS_FIT,
   checkChromeDeck,
   checkChromeFields,
+  checkContents,
   checkDeckFiles,
+  contentsOf,
   type Doc,
   fieldsIn,
   fillChrome,
@@ -246,5 +249,41 @@ describe("a deck folder", () => {
   it("warns that {date} shows nothing in a deck with no date", () => {
     const files = withBands({ footer: { end: "{date}" } });
     expect(checkDeckFiles(files).map((d) => d.code)).toContain("chrome-no-date");
+  });
+});
+
+describe("contents", () => {
+  it("lists the sections, numbered by their place in the deck", () => {
+    expect(contentsOf(deck(), "sections")).toEqual([
+      { id: "part-one", title: "Results", number: 2, level: 0 },
+      { id: "part-two", title: "Outlook", number: 5, level: 0 },
+    ]);
+  });
+
+  it("lists every slide with the sections on top, leaves out the holder, and starts where the deck does", () => {
+    const all = contentsOf(deck({ numbering: { start: 0 } }), "slides", "plan");
+    expect(all.map((e) => [e.id, e.number, e.level])).toEqual([
+      ["cover", 0, 1],
+      ["part-one", 1, 0],
+      ["revenue", 2, 1],
+      ["costs", 3, 1],
+      ["part-two", 4, 0],
+    ]);
+  });
+
+  it("warns about an empty list and a list too long for a slide", () => {
+    const block = (of: "sections" | "slides") =>
+      [{ id: "toc", blocks: [{ id: "c", type: "contents", of }] }] as never;
+    const plain = { slides: [{ id: "a", title: "A" }] };
+    expect(checkContents(plain, block("sections"), () => "s.json").map((d) => d.code)).toEqual([
+      "contents-empty",
+    ]);
+    const many = {
+      slides: Array.from({ length: CONTENTS_FIT + 2 }, (_, i) => ({ id: `s${i}`, title: `S${i}` })),
+    };
+    expect(checkContents(many, block("slides"), () => "s.json").map((d) => d.code)).toEqual([
+      "contents-too-long",
+    ]);
+    expect(checkContents(deck(), block("sections"), () => "s.json")).toEqual([]);
   });
 });

@@ -13,8 +13,8 @@ export interface Slot {
   accepts: readonly BlockType[];
 }
 
-const ANY: readonly BlockType[] = ["text", "image", "bar-chart", "clip", "table", "chart"];
-const MEDIA: readonly BlockType[] = ["image", "bar-chart", "clip", "table", "chart"];
+const ANY: readonly BlockType[] = ["text", "image", "bar-chart", "clip", "table", "chart", "contents"];
+const MEDIA: readonly BlockType[] = ["image", "bar-chart", "clip", "table", "chart", "contents"];
 
 /**
  * Where each block of a scene is drawn, which is decided by the layout and not stored in the deck: a title scene

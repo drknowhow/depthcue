@@ -139,7 +139,7 @@ export function checkLinkAssets(deck: Deck, assets: ReadonlySet<string>, file: s
 export function linkUses(scene: Scene): Array<{ id: string; path: string }> {
   const uses: Array<{ id: string; path: string }> = [];
   scene.blocks.forEach((block, i) => {
-    if (block.link !== undefined) uses.push({ id: block.link, path: `/blocks/${i}/link` });
+    if ("link" in block && block.link !== undefined) uses.push({ id: block.link, path: `/blocks/${i}/link` });
   });
   scene.sources?.forEach((source, i) => {
     if (source.link !== undefined) uses.push({ id: source.link, path: `/sources/${i}/link` });
@@ -171,7 +171,9 @@ export function relink(scene: Scene, from: string, to: string): Scene {
   if (!linkUses(scene).some((use) => use.id === from)) return scene;
   return {
     ...scene,
-    blocks: scene.blocks.map((block) => (block.link === from ? { ...block, link: to } : block)),
+    blocks: scene.blocks.map((block) =>
+      "link" in block && block.link === from ? { ...block, link: to } : block,
+    ),
     ...(scene.sources
       ? { sources: scene.sources.map((s) => (s.link === from ? { ...s, link: to } : s)) }
       : {}),

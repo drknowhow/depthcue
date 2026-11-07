@@ -47,13 +47,14 @@ function newerParts(block: Block): Part[] {
   if (block === null || typeof block !== "object") return out;
   if (block.type === "table" || block.type === "chart")
     out.push({ name: block.type, version: "0.3", path: "" });
+  if (block.type === "contents") out.push({ name: "contents", version: "0.7", path: "" });
   if (block.type === "text") {
     for (const key of TEXT_STYLE_KEYS)
       if (block[key] !== undefined) out.push({ name: key, version: "0.3", path: `/${key}` });
   }
   for (const key of BLOCK_BRAND_KEYS)
     if (block[key] !== undefined) out.push({ name: key, version: "0.4", path: `/${key}` });
-  if (block.link !== undefined) out.push({ name: "link", version: "0.5", path: "/link" });
+  if ("link" in block && block.link !== undefined) out.push({ name: "link", version: "0.5", path: "/link" });
   if (block.type === "image") {
     for (const key of IMAGE_KEYS)
       if (block[key] !== undefined) out.push({ name: key, version: "0.6", path: `/${key}` });
