@@ -810,7 +810,11 @@ describe("depthcue new", () => {
     const { code, out } = await cli("new", dir);
     expect(code).toBe(0);
     expect(out).toContain('Made the deck "Autumn Review"');
-    expect(Object.keys(snapshot(dir)).sort()).toEqual(["deck.json", "scenes/opening.json"]);
+    expect(Object.keys(snapshot(dir)).sort()).toEqual([
+      "autumn-review.dcue",
+      "deck.json",
+      "scenes/opening.json",
+    ]);
     expect(json(join(dir, "deck.json"))).toEqual({
       schemaVersion: "0.4",
       id: "autumn-review",
@@ -832,7 +836,13 @@ describe("depthcue new", () => {
   it("names the deck with --name, and answers --json", async () => {
     const dir = join(make(), "q4");
     const made = JSON.parse((await cli("new", dir, "--name", "The fourth quarter", "--json")).out);
-    expect(made).toEqual({ ok: true, dir, files: ["deck.json", "scenes/opening.json"], brand: null });
+    expect(made).toEqual({
+      ok: true,
+      dir,
+      files: ["deck.json", "scenes/opening.json", "q4.dcue"],
+      file: "q4.dcue",
+      brand: null,
+    });
     expect(json(join(dir, "deck.json")).title).toBe("The fourth quarter");
   });
 

@@ -4,6 +4,16 @@ Notable changes to Depthcue, newest first. Nothing has been released yet, so eve
 
 ## Unreleased
 
+### Open a deck with a double-click
+
+- `depthcue new` writes `<folder>.dcue` beside `deck.json`. The file holds no part of the deck: it marks the folder,
+  so agents, git and every command still work on the plain files. `depthcue file` gives an older deck its `.dcue`.
+- `depthcue open` takes a `.dcue` file, a deck folder or its `deck.json`, starts the editor on port 4173 (or the next
+  free one) and opens it in the browser. When an editor is open on the deck already, it shows that one again.
+- `depthcue register` makes `.dcue` files open with `depthcue open` on Windows, for the current user, with the
+  Depthcue icon. `depthcue unregister` takes it away. A double-click on a file that cannot open keeps its window
+  until Enter, so the reason can be read.
+
 ### Working desk: a new layout for the editor, the player and the presenter view
 
 The editor now has the layout of familiar slide tools: slides down the left, the slide in the middle, and one
