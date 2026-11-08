@@ -12,6 +12,7 @@
     "schema": "pnpm --filter @depthcue/core schema",
     "tokens": "node tools/build-tokens.mjs",
     "brand": "node tools/build-brand.mjs",
+    "icon": "node tools/build-icon.mjs",
     "demo:capture": "node tools/capture-demo.mjs",
     "demo:scene": "node tools/build-demo.mjs",
     "demo:render": "node tools/render-demo.mjs",

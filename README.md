@@ -50,6 +50,23 @@ This gives the `depthcue` command and the `depthcue-mcp` server. It needs Node 2
 carries the same package as a `.tgz` that `npm install -g` accepts. `depthcue --version` prints the version, and
 `depthcue upgrade` checks npm for a newer one (`--yes` installs it).
 
+## Open a deck with a double-click
+
+`depthcue new my-talk` makes the deck folder and a `my-talk.dcue` file in it. The deck is still the folder of plain
+files; the `.dcue` file only marks it. On Windows, run `depthcue register` once, and double-clicking any `.dcue` file
+opens the editor in your browser. Double-clicking it again while the editor is open shows the same editor. The
+editor runs in the window that opens with it; close that window to stop it.
+
+```sh
+depthcue register              # this Windows user only; no administrator needed
+depthcue file old-deck         # gives a deck made before this its .dcue file
+depthcue open my-talk.dcue     # the same as a double-click, from a terminal, on any system
+depthcue unregister            # takes the file type away
+```
+
+The file type names the Node and the Depthcue it was registered with, so run `depthcue register` again after moving
+either. macOS and Linux have `depthcue open`, but no double-click yet.
+
 ## Try it
 
 You need Node 22.12 or later and pnpm 10. `render` also needs Chrome or Edge; set `DEPTHCUE_BROWSER` to use another
@@ -94,6 +111,8 @@ and runs neither. See [comments and review](docs/comments-and-review.md).
 
 A folder: `deck.json` lists the scenes in order, and each scene is its own JSON file. This is a scene from the
 bundled demo, trimmed:
+
+A deck made with `depthcue new` also has a `.dcue` file named after the folder, which opens it with a double-click.
 
 ```
 fixtures/decks/demo/

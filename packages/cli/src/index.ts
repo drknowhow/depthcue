@@ -89,6 +89,22 @@ const ASSET_TEXT = `asset  Manages the images in the deck's assets folder. add c
        pixels and where the deck uses it. unused lists the ones nothing uses. remove deletes one, and is refused
        while a block, source or link names it. check warns about an image a scene uses that is over 4 MB.`;
 
+const OPEN_USAGE = `  depthcue open <file.dcue | deck-folder> [--port <n>] [--no-browser]
+  depthcue file <deck-folder> [--json]
+  depthcue register [--json]
+  depthcue unregister [--json]`;
+
+const OPEN_TEXT = `open   Opens the editor in your browser. Name the deck's .dcue file, its folder or its deck.json. It takes port
+       4173, or the next free one, and runs until its window closes or Ctrl+C. When an editor is open on the
+       deck already, open shows that one again and starts nothing.
+
+file   Writes <folder>.dcue into a deck folder that has none; new writes one too. The file holds no part of
+       the deck: it marks the folder, so that a double-click on it opens the deck.
+
+register Makes .dcue files open with depthcue open when double-clicked, for this Windows user only (under
+       HKCU, no administrator needed). unregister takes that away. Run register again after moving Node or
+       Depthcue, since the file type names both.`;
+
 const UPGRADE_USAGE = `  depthcue --version
   depthcue upgrade [--yes]`;
 
@@ -103,6 +119,7 @@ const USAGE = `Usage:
   depthcue serve <deck-folder> [--port <n>]
   depthcue edit <deck-folder> [--port <n>]
   depthcue control <deck-folder> [--port <n>] [--model <name>] [--effort low|medium|high|xhigh|max] [--print]
+${OPEN_USAGE}
 ${EXPORT_USAGE}
   depthcue render <deck-folder> [scene] [--out <dir>] [--step <n>] [--width <px>] [--height <px>] [--json]
   depthcue clip build <deck-folder> <kinescript-scene> [--name <id>] [--quality draft|standard|high]
@@ -142,6 +159,8 @@ control Opens the editor and starts Claude Code beside it, as the deck's control
        channel when it starts. When the session ends, so does the editor. The model and effort come from
        controller.json beside the deck, which the editor's Settings write; --model and --effort win over
        it. --print shows both commands and runs neither.
+
+${OPEN_TEXT}
 
 ${EXPORT_TEXT}
 
@@ -961,6 +980,64 @@ function diffActCommand(
   return 0;
 }
 
+const OPEN_TAKES = {
+  open: "open takes --port, --no-browser and --pause-on-error.",
+  file: "file takes --json.",
+  register: "register takes --json.",
+  unregister: "unregister takes --json.",
+} as const;
+
+/** open, file, register and unregister: the commands behind the .dcue file. */
+async function openFamily(command: keyof typeof OPEN_TAKES, parsed: Parsed, io: Io): Promise<number> {
+  const usage = (message: string) => {
+    io.err(`${message}\n\nUsage:\n${OPEN_USAGE}`);
+    return 2;
+  };
+  const { positional, values, unknown } = parsed;
+  const switches = command === "open" ? ["--no-browser", "--pause-on-error"] : [];
+  const extraValue = Object.keys(values).find((name) => !(command === "open" && name === "port"));
+  const strange =
+    parsed.all || parsed.force || parsed.replace || parsed.online || parsed.noNotes || parsed.help
+      ? "switch"
+      : unknown.find((arg) => !switches.includes(arg));
+  if (strange !== undefined || extraValue !== undefined || (command === "open" && parsed.json)) {
+    return usage(OPEN_TAKES[command]);
+  }
+  if (command === "register" || command === "unregister") {
+    if (positional.length > 0) return usage(`Unexpected argument ${positional[0]}.`);
+    const open = await import("./open.ts");
+    return open.registerCommand({ remove: command === "unregister", json: parsed.json }, io);
+  }
+  const [path, extra] = positional;
+  if (!path) {
+    return usage(
+      command === "open"
+        ? "open needs a .dcue file, a deck folder or its deck.json."
+        : "file needs a deck folder.",
+    );
+  }
+  if (extra !== undefined) return usage(`Unexpected argument ${extra}.`);
+  if (command === "file") return (await import("./dcue.ts")).fileCommand(path, parsed.json, io);
+  const open = await import("./open.ts");
+
+  const port = values.port === undefined ? undefined : Number(values.port);
+  if (port !== undefined && !(Number.isInteger(port) && port >= 0 && port <= 65535)) {
+    return usage("--port needs a whole number from 0 to 65535.");
+  }
+  let code: number;
+  try {
+    code = await open.openCommand(
+      { path, ...(port === undefined ? {} : { port }), browser: !unknown.includes("--no-browser") },
+      io,
+    );
+  } catch (error) {
+    io.err((error as Error).message);
+    code = 2;
+  }
+  if (code !== 0 && unknown.includes("--pause-on-error")) await open.holdWindow(io);
+  return code;
+}
+
 /** Test seams: the commands that run Kinescript and Python, so a stand-in can be used where they are not installed. */
 export interface RunOptions {
   kine?: readonly string[];
@@ -989,6 +1066,9 @@ export function run(argv: readonly string[], io: Io, options: RunOptions = {}): 
   if (yes) {
     io.err(`--yes belongs to upgrade.\n\n${UPGRADE_USAGE}`);
     return 2;
+  }
+  if (command === "open" || command === "file" || command === "register" || command === "unregister") {
+    return openFamily(command, parse(rest), io);
   }
   const baseRev = values["base-rev"];
   const portText = values.port;

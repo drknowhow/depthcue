@@ -14,6 +14,7 @@ import {
   type Template,
   templatesOf,
 } from "@depthcue/core";
+import { dcueName, dcueText } from "../dcue.ts";
 import type { Io } from "../index.ts";
 import { checkBrandSource } from "./check.ts";
 import { idFromName, nameFromFolder } from "./init.ts";
@@ -63,6 +64,9 @@ function openingScene(title: string, part: BrandPart): { scene: Scene; ops: Op[]
     ops: retemplate({ ...part, scenes: { [SCENE_ID]: scene } }, SCENE_ID, { template: "title" }).ops,
   };
 }
+
+const opener = (dir: string, file: string): string =>
+  `Open it by double-clicking ${file} (once depthcue register has run), or with: depthcue open ${dir}`;
 
 /** The scene after the operations that move it, for a deck with no brand to apply them to. */
 function moved(scene: Scene, ops: readonly Op[]): Scene {
@@ -142,6 +146,7 @@ export function newCommand(
     scenes: [SCENE_ID],
   };
   const scenePath = join(dir, "scenes", `${SCENE_ID}.json`);
+  const file = dcueName(dir);
   const wipe = (): void => {
     if (found === undefined) rmSync(dir, { recursive: true, force: true });
     else for (const name of readdirSync(dir)) rmSync(join(dir, name), { recursive: true, force: true });
@@ -149,6 +154,7 @@ export function newCommand(
   try {
     mkdirSync(join(dir, "scenes"), { recursive: true });
     writeFileSync(join(dir, "deck.json"), text(deck));
+    writeFileSync(join(dir, file), dcueText());
     // With a brand the scene starts on the layout and the brand's operations move it, in the transaction that copies it.
     writeFileSync(scenePath, text(source === undefined ? moved(opening.scene, opening.ops) : opening.scene));
   } catch (error) {
@@ -159,16 +165,16 @@ export function newCommand(
     if (json)
       io.out(
         JSON.stringify(
-          { ok: true, dir, files: ["deck.json", `scenes/${SCENE_ID}.json`], brand: null },
+          { ok: true, dir, files: ["deck.json", `scenes/${SCENE_ID}.json`, file], file, brand: null },
           null,
           2,
         ),
       );
     else {
       io.out(
-        `Made the deck "${chosen}" in ${dir}: deck.json and scenes/${SCENE_ID}.json, on Depthcue's title template.`,
+        `Made the deck "${chosen}" in ${dir}: deck.json, scenes/${SCENE_ID}.json and ${file}, on Depthcue's title template.`,
       );
-      io.out(`Open it with: depthcue edit ${dir}`);
+      io.out(opener(dir, file));
     }
     return 0;
   }
@@ -186,7 +192,7 @@ export function newCommand(
   if (json) {
     io.out(
       JSON.stringify(
-        { ok: true, dir, brand: result.brand, copied: result.copied, written: result.written },
+        { ok: true, dir, file, brand: result.brand, copied: result.copied, written: result.written },
         null,
         2,
       ),
@@ -196,7 +202,7 @@ export function newCommand(
     io.out(
       `  the opening scene is on the brand's title template; ${result.copied.length} font, logo and image files copied`,
     );
-    io.out(`Open it with: depthcue edit ${dir}`);
+    io.out(opener(dir, file));
   }
   return 0;
 }

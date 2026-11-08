@@ -51,7 +51,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "icons"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
